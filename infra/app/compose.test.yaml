@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: jrc_broker
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: container-test-postgres-password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d jrc_broker"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - ./test-init.sql:/docker-entrypoint-initdb.d/01-runtime-roles.sql:ro
+
+  redis:
+    image: redis:7.4.0-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    image: ${JRC_TEST_IMAGE:-jrc-whatsapp-broker:phase-1-increment-2}
+    entrypoint: ['node', 'infra/app/provision.mjs']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://postgres:container-test-postgres-password@postgres:5432/jrc_broker
+      JRC_APP_PASSWORD: container-test-app-password-0000000000
+      JRC_AUTH_PASSWORD: container-test-auth-password-0000000000
+      JRC_PLATFORM_PASSWORD: container-test-platform-password-0000000000
+      EVOLUTION_DB_PASSWORD: container-test-engine-password-0000000000
+
+  api:
+    image: ${JRC_TEST_IMAGE:-jrc-whatsapp-broker:phase-1-increment-2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1::3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://jrc_app:container-test-app-password-0000000000@postgres:5432/jrc_broker
+      AUTH_DATABASE_URL: postgresql://jrc_auth:container-test-auth-password-0000000000@postgres:5432/jrc_broker
+      REDIS_URL: redis://redis:6379
+      EVOLUTION_BASE_URL: http://evolution.invalid:8080
+      EVOLUTION_API_KEY: container-test-evolution-secret-00000001
+      JWT_SECRET: container-test-jwt-secret-00000000000002
+      REFRESH_TOKEN_HASH_SECRET: container-test-refresh-secret-000000003
+      API_KEY_HMAC_SECRET: container-test-api-key-secret-000000004
+      IP_RATE_LIMIT_HMAC_SECRET: container-test-ip-rate-secret-000000005
+      IDENTITY_RATE_LIMIT_HMAC_SECRET: container-test-identity-secret-00000006
+      CHALLENGE_ENCRYPTION_KEY: container-test-challenge-secret-0000007
+      BROWSER_CSRF_SECRET: container-test-browser-csrf-secret-000008
+      CONSOLE_ALLOWED_ORIGINS: https://console.example.test
+      CONSOLE_COOKIE_SECURE: "true"
+      SWAGGER_UI_ENABLED: "false"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 1s
+      timeout: 3s
+      retries: 30

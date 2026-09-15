@@ -1,0 +1,370 @@
+[
+  {
+    "method": "GET",
+    "path": "/v1/api-keys",
+    "authentication": "JWT_OR_JRC_API_KEY",
+    "permission": "api_keys:manage",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "query:cursor",
+      "query:limit"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NOT_APPLICABLE",
+    "handlerFile": "apps/api/src/http/routes/api-keys.ts",
+    "handlerLine": 133,
+    "ownershipCheck": "RLS_ORGANIZATION_FILTER"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/api-keys",
+    "authentication": "JWT_OR_JRC_API_KEY",
+    "permission": "api_keys:manage",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "201:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "409:application/problem+json",
+      "415:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NOT_APPLICABLE",
+    "handlerFile": "apps/api/src/http/routes/api-keys.ts",
+    "handlerLine": 115,
+    "ownershipCheck": "ACTIVE_ORGANIZATION_CONTEXT"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/api-keys/{id}",
+    "authentication": "JWT_OR_JRC_API_KEY",
+    "permission": "api_keys:manage",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "204:NO_BODY",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NOT_APPLICABLE",
+    "handlerFile": "apps/api/src/http/routes/api-keys.ts",
+    "handlerLine": 150,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/login",
+    "authentication": "NONE",
+    "permission": "NOT_APPLICABLE_PRE_AUTH",
+    "tenantRls": false,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "429:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NOT_APPLICABLE",
+    "handlerFile": "apps/api/src/http/routes/auth.ts",
+    "handlerLine": 148,
+    "ownershipCheck": "NOT_APPLICABLE_PRE_AUTH"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/logout",
+    "authentication": "REFRESH_TOKEN",
+    "permission": "NOT_APPLICABLE_PRE_AUTH",
+    "tenantRls": false,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "204:NO_BODY",
+      "400:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NOT_APPLICABLE",
+    "handlerFile": "apps/api/src/http/routes/auth.ts",
+    "handlerLine": 246,
+    "ownershipCheck": "REFRESH_TOKEN_FAMILY_BOUND"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/refresh",
+    "authentication": "REFRESH_TOKEN",
+    "permission": "NOT_APPLICABLE_PRE_AUTH",
+    "tenantRls": false,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NOT_APPLICABLE",
+    "handlerFile": "apps/api/src/http/routes/auth.ts",
+    "handlerLine": 223,
+    "ownershipCheck": "REFRESH_TOKEN_TENANT_BOUND"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/select-organization",
+    "authentication": "SELECTION_TOKEN",
+    "permission": "NOT_APPLICABLE_PRE_AUTH",
+    "tenantRls": false,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "429:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NOT_APPLICABLE",
+    "handlerFile": "apps/api/src/http/routes/auth.ts",
+    "handlerLine": 192,
+    "ownershipCheck": "SELECTION_TOKEN_MEMBERSHIP_REVALIDATED"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/instances",
+    "authentication": "JWT_OR_JRC_API_KEY",
+    "permission": "instances:read",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "query:cursor",
+      "query:limit"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/instances.ts",
+    "handlerLine": 152,
+    "ownershipCheck": "RLS_ORGANIZATION_FILTER_AND_TENANT_CURSOR"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/instances",
+    "authentication": "JWT_OR_JRC_API_KEY",
+    "permission": "instances:connect",
+    "tenantRls": true,
+    "idempotency": "REQUIRED",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "201:application/json",
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/instances.ts",
+    "handlerLine": 126,
+    "ownershipCheck": "RLS_PROVIDER_ACCOUNT_AND_ORGANIZATION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/instances/{id}",
+    "authentication": "JWT_OR_JRC_API_KEY",
+    "permission": "instances:read",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/instances.ts",
+    "handlerLine": 169,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/instances/{id}/connect",
+    "authentication": "JWT_OR_JRC_API_KEY",
+    "permission": "instances:connect",
+    "tenantRls": true,
+    "idempotency": "REQUIRED",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "EPHEMERAL_FIRST_RESPONSE_ONLY",
+    "handlerFile": "apps/api/src/http/routes/instances.ts",
+    "handlerLine": 183,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID_BEFORE_PROVIDER"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/instances/{id}/disconnect",
+    "authentication": "JWT_OR_JRC_API_KEY",
+    "permission": "instances:connect",
+    "tenantRls": true,
+    "idempotency": "REQUIRED",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/instances.ts",
+    "handlerLine": 226,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID_BEFORE_PROVIDER"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/instances/{id}/status",
+    "authentication": "JWT_OR_JRC_API_KEY",
+    "permission": "instances:read",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "502:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/instances.ts",
+    "handlerLine": 211,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID_BEFORE_PROVIDER"
+  }
+]

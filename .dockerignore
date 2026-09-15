@@ -1,0 +1,14 @@
+.git
+.github
+.superpowers
+node_modules
+**/node_modules
+**/dist
+coverage
+.env
+.env.*
+!.env.example
+*.log
+.sessions
+upstream
+docs/security

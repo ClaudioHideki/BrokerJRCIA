@@ -1,0 +1,245 @@
+import { sql } from "drizzle-orm";
+import {
+  bigint,
+  check,
+  foreignKey,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
+import {
+  organizations,
+  messagingChannels,
+  messagingConversations,
+  messagingMessages,
+} from "./schema.js";
+const dates = {
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+};
+export const chatwootAccounts = pgTable(
+  "chatwoot_accounts",
+  {
+    organizationId: uuid("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    baseUrl: text("base_url").notNull(),
+    accountId: bigint("account_id", { mode: "number" }),
+    encryptedToken: text("encrypted_token"),
+    provisioningKey: uuid("provisioning_key").notNull().defaultRandom(),
+    status: text("status").notNull().default("PENDING"),
+    lastError: text("last_error"),
+    ...dates,
+  },
+  (t) => [
+    unique().on(t.baseUrl, t.accountId),
+    check(
+      "chatwoot_accounts_status_check",
+      sql`${t.status} IN ('PENDING','READY','FAILED','UNKNOWN','DISABLED')`,
+    ),
+  ],
+);
+export const chatwootConnections = pgTable(
+  "chatwoot_connections",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => chatwootAccounts.organizationId, {
+        onDelete: "restrict",
+      }),
+    channelId: uuid("channel_id").notNull(),
+    inboxId: bigint("inbox_id", { mode: "number" }),
+    encryptedWebhookSecret: text("encrypted_webhook_secret"),
+    name: text("name").notNull(),
+    status: text("status").notNull().default("PENDING"),
+    lastError: text("last_error"),
+    ...dates,
+  },
+  (t) => [
+    unique().on(t.organizationId, t.id),
+    unique().on(t.organizationId, t.channelId),
+    unique().on(t.organizationId, t.inboxId),
+    foreignKey({
+      columns: [t.organizationId, t.channelId],
+      foreignColumns: [messagingChannels.organizationId, messagingChannels.id],
+    }).onDelete("restrict"),
+    check(
+      "chatwoot_connections_status_check",
+      sql`${t.status} IN ('PENDING','READY','FAILED','UNKNOWN','DISABLED')`,
+    ),
+  ],
+);
+export const chatwootConversations = pgTable(
+  "chatwoot_conversations",
+  {
+    organizationId: uuid("organization_id").notNull(),
+    integrationId: uuid("integration_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    contactId: bigint("contact_id", { mode: "number" }).notNull(),
+    sourceId: text("source_id").notNull(),
+    remoteConversationId: bigint("remote_conversation_id", {
+      mode: "number",
+    }).notNull(),
+  },
+  (t) => [
+    primaryKey({
+      columns: [t.organizationId, t.integrationId, t.conversationId],
+    }),
+    unique().on(t.organizationId, t.integrationId, t.remoteConversationId),
+    foreignKey({
+      columns: [t.organizationId, t.integrationId],
+      foreignColumns: [
+        chatwootConnections.organizationId,
+        chatwootConnections.id,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [t.organizationId, t.conversationId],
+      foreignColumns: [
+        messagingConversations.organizationId,
+        messagingConversations.id,
+      ],
+    }).onDelete("restrict"),
+  ],
+);
+export const chatwootMessages = pgTable(
+  "chatwoot_messages",
+  {
+    organizationId: uuid("organization_id").notNull(),
+    integrationId: uuid("integration_id").notNull(),
+    messageId: uuid("message_id").notNull(),
+    remoteMessageId: bigint("remote_message_id", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.organizationId, t.integrationId, t.messageId] }),
+    index("chatwoot_messages_remote_lookup").on(
+      t.organizationId,
+      t.integrationId,
+      t.remoteMessageId,
+    ),
+    foreignKey({
+      columns: [t.organizationId, t.integrationId],
+      foreignColumns: [
+        chatwootConnections.organizationId,
+        chatwootConnections.id,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [t.organizationId, t.messageId],
+      foreignColumns: [messagingMessages.organizationId, messagingMessages.id],
+    }).onDelete("restrict"),
+  ],
+);
+export const integrationJobs = pgTable(
+  "integration_jobs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull(),
+    integrationId: uuid("integration_id").notNull(),
+    kind: text("kind").notNull(),
+    dedupeKey: text("dedupe_key").notNull(),
+    messageId: uuid("message_id"),
+    payload: jsonb("payload")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    status: text("status").notNull().default("PENDING"),
+    attempts: integer("attempts").notNull().default(0),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    ...dates,
+  },
+  (t) => [
+    unique().on(t.organizationId, t.id),
+    unique().on(t.organizationId, t.integrationId, t.dedupeKey),
+    foreignKey({
+      columns: [t.organizationId, t.integrationId],
+      foreignColumns: [
+        chatwootConnections.organizationId,
+        chatwootConnections.id,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [t.organizationId, t.messageId],
+      foreignColumns: [messagingMessages.organizationId, messagingMessages.id],
+    }).onDelete("restrict"),
+    index("integration_jobs_claim").on(
+      t.organizationId,
+      t.status,
+      t.availableAt,
+      t.createdAt,
+    ),
+    check(
+      "integration_jobs_kind_check",
+      sql`${t.kind} IN ('CHATWOOT_REPLY','MIRROR_MESSAGE')`,
+    ),
+    check(
+      "integration_jobs_status_check",
+      sql`${t.status} IN ('PENDING','RUNNING','SUCCEEDED','FAILED','UNKNOWN')`,
+    ),
+    check("integration_jobs_attempts_check", sql`${t.attempts}>=0`),
+    check(
+      "integration_jobs_check",
+      sql`(${t.status}='RUNNING' AND ${t.leaseToken} IS NOT NULL AND ${t.leaseExpiresAt} IS NOT NULL) OR (${t.status}<>'RUNNING' AND ${t.leaseToken} IS NULL AND ${t.leaseExpiresAt} IS NULL)`,
+    ),
+  ],
+);
+export const integrationAudit = pgTable("integration_audit", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id),
+  actorId: uuid("actor_id"),
+  action: text("action").notNull(),
+  resourceId: uuid("resource_id"),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+export const chatwootProvisioning = pgTable(
+  "chatwoot_provisioning",
+  {
+    organizationId: uuid("organization_id")
+      .primaryKey()
+      .references(() => chatwootAccounts.organizationId, {
+        onDelete: "restrict",
+      }),
+    stage: text("stage").notNull().default("ACCOUNT"),
+    state: text("state").notNull().default("PENDING"),
+    encryptedInput: text("encrypted_input"),
+    remoteUserId: bigint("remote_user_id", { mode: "number" }),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    ...dates,
+  },
+  (t) => [
+    check(
+      "chatwoot_provisioning_stage_check",
+      sql`${t.stage} IN ('ACCOUNT','USER','ACCESS','VERIFY','DONE')`,
+    ),
+    check(
+      "chatwoot_provisioning_state_check",
+      sql`${t.state} IN ('PENDING','RUNNING','FAILED','UNKNOWN','READY')`,
+    ),
+    check(
+      "chatwoot_provisioning_check",
+      sql`(${t.state}='RUNNING' AND ${t.leaseToken} IS NOT NULL AND ${t.leaseExpiresAt} IS NOT NULL) OR (${t.state}<>'RUNNING' AND ${t.leaseToken} IS NULL AND ${t.leaseExpiresAt} IS NULL)`,
+    ),
+  ],
+);

@@ -1,0 +1,21 @@
+services:
+  web:
+    ports: ['127.0.0.1:8088:8080']
+  api:
+    environment:
+      NODE_ENV: development
+      CONSOLE_COOKIE_SECURE: 'false'
+      PLATFORM_LOCAL_PASSWORD_ONLY: 'true'
+  worker:
+    environment:
+      NODE_ENV: development
+      CONSOLE_COOKIE_SECURE: 'false'
+  evolution:
+    environment:
+      TELEMETRY_ENABLED: 'false'
+      LOG_LEVEL: ERROR,WARN
+      LOG_BAILEYS: error
+      CONFIG_SESSION_PHONE_CLIENT: JRC Broker
+    volumes: [engine_instances:/evolution/instances]
+volumes:
+  engine_instances:

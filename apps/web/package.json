@@ -1,0 +1,25 @@
+{
+  "name": "@jrc/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@jrc/contracts": "0.0.0",
+    "@jrc/ui": "0.0.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-router": "7.18.3"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "5.2.0",
+    "axe-core": "4.13.0",
+    "vite": "7.3.6"
+  }
+}

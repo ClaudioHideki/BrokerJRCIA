@@ -1,0 +1,48 @@
+name: Build reviewed SaaS images
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish this reviewed revision to GHCR'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  images:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: ghcr-release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - run: npm ci
+      - run: npm run build && npm test && npm run test:web:bundle && npm run security:submodule && npm audit --audit-level=high
+      - name: Build API and web without publication
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          image="ghcr.io/${REPOSITORY,,}"
+          docker build --target runtime -f infra/app/Dockerfile -t "$image-api:$GITHUB_SHA" .
+          docker build --target web -f infra/app/Dockerfile -t "$image-web:$GITHUB_SHA" .
+          echo "IMAGE_BASE=$image" >> "$GITHUB_ENV"
+      - name: Publish explicitly approved immutable revision tags
+        if: ${{ inputs.publish }}
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          docker push "$IMAGE_BASE-api:$GITHUB_SHA"
+          docker push "$IMAGE_BASE-web:$GITHUB_SHA"
+          docker logout ghcr.io

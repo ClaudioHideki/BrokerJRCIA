@@ -1,0 +1,63 @@
+{
+  "name": "@jrc/whatsapp-broker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.19.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace @jrc/web run dev -- --host 127.0.0.1 --port 4317",
+    "build": "tsc -b && npm --workspace @jrc/web run build",
+    "build:web": "npm --workspace @jrc/web run build",
+    "clean": "tsc -b --clean",
+    "db:migrate:test": "node apps/api/dist/db/migrate.js",
+    "start": "node apps/api/dist/server.js",
+    "start:messaging-worker": "node apps/api/dist/commands/messaging-worker.js",
+    "messaging:channel:create": "node apps/api/dist/commands/messaging-channel-create.js",
+    "platform:admin:create": "node apps/api/dist/commands/platform-admin-create.js",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run",
+    "test:web": "vitest run apps/web/src",
+    "test:web:bundle": "node scripts/security/check-web-bundle.mjs apps/web/dist",
+    "test:compiled": "npm run clean && npm run build && vitest run --config vitest.compiled.config.ts",
+    "test:container": "node scripts/test-container-entrypoint.mjs",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "npm run build:web && playwright test",
+    "test:smoke:evolution": "vitest run --config vitest.smoke.config.ts",
+    "openapi:generate": "node apps/api/dist/http/openapi.js",
+    "security:contracts": "node scripts/security/check-public-contracts.mjs",
+    "security:notices": "node scripts/security/check-third-party-notices.mjs",
+    "security:submodule": "node scripts/security/check-submodule-clean.mjs",
+    "security:audit:generate": "node scripts/security/generate-security-audit.mjs",
+    "security:audit:verify-pdf": "node scripts/security/verify-pdf-artifact.mjs",
+    "security:audit:gate": "node scripts/security/gate-security-audit.mjs",
+    "ci:verify": "npm run clean && npm run build && npm run test:web:bundle && npm run typecheck && npm run test:compiled && npm test && npm run test:web && npm run test:integration && npm run test:e2e && npm run openapi:generate && git diff --exit-code -- docs/api/openapi.json && npm run security:contracts && npm run security:notices && npm run security:submodule && npm audit --audit-level=high && docker build --file infra/app/Dockerfile --tag jrc-whatsapp-broker:phase-1-increment-2 . && npm run test:container && npm run security:release && npm run security:audit:verify-pdf && npm run security:audit:gate && git diff --exit-code -- docs/security/phase-1-increment-2 && git diff --check",
+    "test:baseline": "vitest run tests/repository-baseline.test.mjs",
+    "test:compose": "vitest run tests/compose-pins.test.mjs",
+    "test:evolution-upstream": "vitest run tests/evolution-upstream.test.mjs",
+    "security:release": "node scripts/security/check-release.mjs"
+  },
+  "devDependencies": {
+    "@babel/parser": "7.29.8",
+    "@playwright/test": "1.63.0",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "24.13.3",
+    "@types/pdfkit": "0.17.6",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "5.2.0",
+    "jsdom": "30.0.1",
+    "pdfkit": "0.20.2",
+    "svg-to-pdfkit": "0.1.8",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}

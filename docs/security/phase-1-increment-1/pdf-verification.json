@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "sourceDateEpoch": 1788393600,
+  "inputDigest": "a10ee9473eca967c05fbbaa0fc79ebcc3e31e12cd827d81bf61cc569bd562e5b",
+  "pageCount": 6,
+  "pageSize": "A4",
+  "marginMillimeters": 18,
+  "headerFromPage": 2,
+  "footerPattern": "Página X de Y",
+  "minimumRasterDpi": 150,
+  "expectedRasterizedPageCount": 6,
+  "chromePages": [
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "palette": {
+    "CRITICAL": "#B91C1C",
+    "HIGH": "#EA580C",
+    "MEDIUM": "#D97706",
+    "LOW": "#2563EB",
+    "STRENGTH": "#059669",
+    "INFO": "#475569",
+    "BACKGROUND": "#F8FAFC"
+  }
+}

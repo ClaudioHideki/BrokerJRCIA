@@ -1,0 +1,16 @@
+node_modules/
+.npm-cache/
+*.tsbuildinfo
+dist/
+dist-types/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.sessions/
+auth-state/
+credentials.json
+playwright-report/
+test-results/
+blob-report/

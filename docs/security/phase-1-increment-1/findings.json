@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-03T00:00:00.000Z",
+  "findings": [
+    {
+      "id": "JRC-SEC-001",
+      "title": "Verificações exclusivas de XSS no frontend não se aplicam ao Incremento 1",
+      "category": "INPUTS_XSS",
+      "severity": "INFO",
+      "status": "NOT_APPLICABLE",
+      "control": "INPUT-XSS-FRONTEND-001",
+      "file": "apps/web/README.md",
+      "lineStart": 3,
+      "lineEnd": 3,
+      "codeExcerptMasked": "O Incremento 1 não contém implementação funcional de frontend.",
+      "description": "O escopo aprovado entrega somente backend; não existe superfície HTML ou JavaScript de cliente a ser exercitada neste incremento.",
+      "impact": "Nenhum impacto aplicável ao runtime entregue; validação de inputs da API permanece auditada separadamente.",
+      "exploitability": "Não explorável neste incremento porque nenhum frontend funcional é servido.",
+      "exploitConditions": "Passaria a ser aplicável quando apps/web ou qualquer resposta HTML funcional entrar no escopo.",
+      "remediation": "Criar especificação e testes próprios de XSS antes da implementação do painel web.",
+      "acceptanceCriteria": [
+        "Manter apps/web sem implementação funcional neste incremento.",
+        "Abrir auditoria específica de frontend antes do Incremento 2 ser publicado."
+      ],
+      "verification": "Confirmar que apps/web contém apenas documentação e que a API não serve HTML de produto.",
+      "suggestedLabels": [
+        "security",
+        "not-applicable",
+        "frontend"
+      ],
+      "issueMarkdown": "--- ISSUE 1 ---\n# JRC-SEC-001 — Verificações exclusivas de XSS no frontend não se aplicam ao Incremento 1\n\n## Contexto\nO Incremento 1 entrega somente backend e não contém superfície HTML/JavaScript funcional.\n\n## Evidência\n`apps/web/README.md:3`: `O Incremento 1 não contém implementação funcional de frontend.`\n\n## Condições de exploração\nA verificação passa a ser aplicável quando o painel web ou qualquer resposta HTML funcional entrar no produto.\n\n## Impacto\nNenhum impacto aplicável ao runtime atual; inputs da API continuam no escopo.\n\n## Correção\nCriar especificação e testes próprios de XSS antes do Incremento 2.\n\n## Critérios de aceite\n- Manter o diretório web sem implementação funcional neste incremento.\n- Auditar o frontend antes de sua publicação.\n\n## Verificação\nInspecionar a composição HTTP e o conteúdo de `apps/web`.\n\n## Labels sugeridas\n`security`, `not-applicable`, `frontend`\n--- FIM ISSUE 1 ---",
+      "evidencePaths": [
+        "apps/web/README.md",
+        "docs/architecture/phase-1-increment-1.md"
+      ]
+    }
+  ],
+  "strengths": [
+    {
+      "id": "JRC-STRENGTH-001",
+      "category": "MULTITENANT_ISOLATION",
+      "title": "RLS forçada e contexto local à transação",
+      "description": "As tabelas tenant usam FORCE ROW LEVEL SECURITY e o runtime aplica organization_id com set_config local.",
+      "file": "apps/api/drizzle/migrations/0004_rls_and_grants.sql",
+      "lineStart": 30,
+      "lineEnd": 48,
+      "evidencePaths": [
+        "apps/api/drizzle/migrations/0004_rls_and_grants.sql",
+        "apps/api/src/db/tenant-transaction.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-002",
+      "category": "AUTHORIZATION_RBAC",
+      "title": "RBAC aplicado no backend",
+      "description": "A matriz de papéis e permissões é avaliada pelo plugin Fastify antes dos handlers protegidos.",
+      "file": "apps/api/src/http/plugins/authorization.ts",
+      "lineStart": 34,
+      "lineEnd": 53,
+      "evidencePaths": [
+        "apps/api/src/http/plugins/authorization.ts",
+        "apps/api/tests/unit/rbac.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-003",
+      "category": "SECRETS_CRYPTOGRAPHY",
+      "title": "API keys verificadas com HMAC e comparação constante",
+      "description": "O segredo bruto é exibido somente na emissão; autenticação usa HMAC-SHA-256 e timingSafeEqual.",
+      "file": "packages/security/src/api-keys/hmac.ts",
+      "lineStart": 1,
+      "lineEnd": 103,
+      "evidencePaths": [
+        "packages/security/src/api-keys/hmac.ts",
+        "apps/api/tests/integration/api-keys.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-004",
+      "category": "AUTHENTICATION",
+      "title": "Verificação Argon2id fictícia contra enumeração",
+      "description": "Usuários ausentes executam verificação equivalente usando hash fictício inicializado no startup.",
+      "file": "packages/security/src/passwords/argon2id.ts",
+      "lineStart": 39,
+      "lineEnd": 54,
+      "evidencePaths": [
+        "packages/security/src/passwords/argon2id.ts",
+        "packages/security/tests/passwords.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-005",
+      "category": "PROVIDER_BOUNDARY",
+      "title": "Evolution isolada atrás do adapter",
+      "description": "O cliente bloqueia redirects e propaga somente contratos e erros canônicos para os casos de uso.",
+      "file": "packages/providers/src/evolution/client.ts",
+      "lineStart": 145,
+      "lineEnd": 161,
+      "evidencePaths": [
+        "packages/providers/src/evolution/client.ts",
+        "packages/providers/tests/evolution-provider-adapter.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-006",
+      "category": "IDOR",
+      "title": "Ownership verificado antes de chamadas ao provider",
+      "description": "Instâncias são buscadas no contexto da organização ativa e acesso cruzado retorna 404 sem invocar o adapter.",
+      "file": "apps/api/src/modules/instances/service.ts",
+      "lineStart": 370,
+      "lineEnd": 390,
+      "evidencePaths": [
+        "apps/api/src/modules/instances/service.ts",
+        "apps/api/tests/integration/instance-isolation.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-007",
+      "category": "RATE_LIMITING",
+      "title": "Rate limit distribuído com chaves HMAC",
+      "description": "O runtime usa Redis com TTL e deriva chaves opacas por HMAC para IP e identidade, aceitando encaminhamento somente de proxies confiáveis.",
+      "file": "apps/api/src/http/routes/auth.ts",
+      "lineStart": 54,
+      "lineEnd": 81,
+      "evidencePaths": [
+        "apps/api/src/modules/auth/rate-limit/redis-store.ts",
+        "apps/api/tests/integration/rate-limit-redis.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-008",
+      "category": "LOGGING_AUDIT",
+      "title": "Redaction estrutural conectada ao logger e auditoria",
+      "description": "Campos e headers sensíveis são removidos por configuração do logger e metadados de auditoria são sanitizados antes da persistência.",
+      "file": "packages/security/src/redaction/logger.ts",
+      "lineStart": 156,
+      "lineEnd": 201,
+      "evidencePaths": [
+        "packages/security/src/redaction/logger.ts",
+        "apps/api/tests/unit/fastify-logger-redaction.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-009",
+      "category": "IDEMPOTENCY_DOS",
+      "title": "Idempotência tenant-aware com TTL",
+      "description": "Operações mutáveis reservam chaves por organização e rota, detectam payload divergente e expiram registros sem serializar desafios.",
+      "file": "apps/api/src/modules/instances/idempotency.ts",
+      "lineStart": 75,
+      "lineEnd": 113,
+      "evidencePaths": [
+        "apps/api/src/modules/instances/idempotency.ts",
+        "apps/api/tests/integration/idempotency.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-010",
+      "category": "SUPPLY_CHAIN",
+      "title": "Dependências bloqueadas e auditadas no CI",
+      "description": "O pipeline instala o lockfile com npm ci e bloqueia vulnerabilidades HIGH ou CRITICAL com npm audit.",
+      "file": ".github/workflows/ci.yml",
+      "lineStart": 60,
+      "lineEnd": 97,
+      "evidencePaths": [
+        ".github/workflows/ci.yml",
+        "package-lock.json"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-011",
+      "category": "OPENAPI_ROUTES",
+      "title": "OpenAPI derivado da composição real e versionado",
+      "description": "O documento é gerado pela aplicação Fastify, normalizado deterministicamente e comparado no CI com o contrato versionado.",
+      "file": "apps/api/src/http/openapi.ts",
+      "lineStart": 105,
+      "lineEnd": 129,
+      "evidencePaths": [
+        "apps/api/src/http/openapi.ts",
+        "docs/api/openapi.json"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-012",
+      "category": "CONTAINER_RUNTIME",
+      "title": "Imagem imutável e runtime não-root",
+      "description": "A imagem fixa Node por versão e digest, separa build do runtime e executa o entrypoint compilado como usuário node.",
+      "file": "infra/app/Dockerfile",
+      "lineStart": 1,
+      "lineEnd": 37,
+      "evidencePaths": [
+        "infra/app/Dockerfile",
+        "scripts/test-container-entrypoint.mjs"
+      ]
+    }
+  ]
+}

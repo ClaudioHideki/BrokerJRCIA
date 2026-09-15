@@ -1,0 +1,4 @@
+[submodule "upstream/evolution-api"]
+	path = upstream/evolution-api
+	url = https://github.com/evolution-foundation/evolution-api.git
+	branch = main

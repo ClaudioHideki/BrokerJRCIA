@@ -1,0 +1,98 @@
+[
+  {
+    "file": "apps/api/src/modules/platform/service.ts",
+    "line": 11,
+    "description": "Administração dedicada, MFA e suporte auditado",
+    "sha256": "8604a3a117ad1352a701194d2e5cb76097de136fa1409a80bc3d714ddd05e8ab"
+  },
+  {
+    "file": "apps/api/drizzle/migrations/0011_tenant_operational_limits.sql",
+    "line": 1,
+    "description": "Limites e admissão transacional por empresa",
+    "sha256": "dd152d2e5eb60bb1a42761fd1a43d6843321fef7aa696cb5f00189badd1fe999"
+  },
+  {
+    "file": "apps/api/src/modules/meta-onboarding/service.ts",
+    "line": 17,
+    "description": "Autorização Meta do aplicativo JRC",
+    "sha256": "878209980dd32853e5d857e5a4c26607193d171524abcf50ab6b07f5f6f4f966"
+  },
+  {
+    "file": "apps/web/src/pages/Platform.tsx",
+    "line": 12,
+    "description": "Interface administrativa separada do portal",
+    "sha256": "b246a4f21b0b94bc54743779044cedb3d56eac86464d58569c757086fcc14181"
+  },
+  {
+    "file": "infra/dokploy/compose.yaml",
+    "line": 29,
+    "description": "Serviços Docker e fronteiras de credenciais",
+    "sha256": "fb09ed1a54955b55a752a3cc8ca3324d126a5861f0454da7ab7f61875a9b0eb2"
+  },
+  {
+    "file": "packages/providers/src/meta/cloud-client.ts",
+    "line": 293,
+    "description": "Transporte Meta limitado e sem retry cego",
+    "sha256": "ba1f04834e8b1d20345c3e10b29255dfe2ccb17166f849a4128db7fd6a061fb6"
+  },
+  {
+    "file": "packages/providers/src/meta/webhook.ts",
+    "line": 56,
+    "description": "Assinatura dos bytes originais",
+    "sha256": "484c2b17cca00267a17ec1d4b3f4521684e0f982057ea49fea43f76709429f50"
+  },
+  {
+    "file": "packages/providers/src/typebot/client.ts",
+    "line": 52,
+    "description": "Conector Typebot com validação de destino",
+    "sha256": "91df0f227ce91efffeed97ec094b100894a74f13e36434e989fde833866a201d"
+  },
+  {
+    "file": "apps/api/src/modules/messaging/credentials.ts",
+    "line": 37,
+    "description": "Credenciais Typebot limitadas por organização",
+    "sha256": "47e4d822c43c13e181fa1c49d1a4cc9bfe18c5c4ca74d94711d998e3756c747a"
+  },
+  {
+    "file": "apps/api/src/modules/messaging/repository.ts",
+    "line": 878,
+    "description": "Claim durável e política de envio",
+    "sha256": "ebef597c0e57dba791ce25f7162a0299d4b37b6d1c4863ac69eea1008c2ee149"
+  },
+  {
+    "file": "apps/api/src/modules/messaging/repository.ts",
+    "line": 1340,
+    "description": "Sessão e respostas atômicas",
+    "sha256": "ebef597c0e57dba791ce25f7162a0299d4b37b6d1c4863ac69eea1008c2ee149"
+  },
+  {
+    "file": "apps/api/src/http/routes/messaging.ts",
+    "line": 45,
+    "description": "RBAC e rotas JRC",
+    "sha256": "e430e5daa6f214b8bedec0fdf05fafa3d33e9ead59e32ef751c48a8704ebdee2"
+  },
+  {
+    "file": "apps/api/src/modules/messaging/membership.ts",
+    "line": 5,
+    "description": "Membership atual, usuário e organização ativos",
+    "sha256": "33e8ec3cf0f0886a98a3eeb1821a5d683bc5044621b03ede578342607d237461"
+  },
+  {
+    "file": "apps/api/src/modules/messaging/worker.ts",
+    "line": 15,
+    "description": "Execução fora da transação",
+    "sha256": "4e166d34f8e9c8aefe2befcdd4e81d182c87d21ef761f1396071f6339883a48b"
+  },
+  {
+    "file": "apps/api/drizzle/migrations/0009_messaging_storage.sql",
+    "line": 13,
+    "description": "Persistência, chaves compostas e RLS",
+    "sha256": "60c7de5872c1b53239e8593f2dbe0ca1b550575a00d655ec0ab3073fa297a14c"
+  },
+  {
+    "file": "apps/web/tests/e2e/messaging.spec.ts",
+    "line": 5,
+    "description": "Percurso de navegador com doubles",
+    "sha256": "b8f7e0125f12b3b6e7582e07d8bf03b837efbf33879a4bf0f338cd8349304445"
+  }
+]

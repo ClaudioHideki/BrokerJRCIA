@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "sourceDateEpoch": 1788652800,
+  "sourceReference": "sha256:91f865cd22db3301885098a077d4dd8b1723290a683eda3bd9d05193e81e7cf9",
+  "inputDigest": "1c319d1960352ac0ed7580d19ebfbc1fe44fd45ecc488a29d37fc89e8341dc27",
+  "pageCount": 7,
+  "pageSize": "A4",
+  "marginMillimeters": 18,
+  "headerFromPage": 2,
+  "footerPattern": "Página X de Y",
+  "minimumRasterDpi": 150,
+  "expectedRasterizedPageCount": 7,
+  "chromePages": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "palette": {
+    "CRITICAL": "#B91C1C",
+    "HIGH": "#EA580C",
+    "MEDIUM": "#D97706",
+    "LOW": "#2563EB",
+    "STRENGTH": "#059669",
+    "INFO": "#475569",
+    "BACKGROUND": "#F8FAFC"
+  },
+  "headerText": "JRC WhatsApp Broker | Auditoria de Segurança — Incremento 2",
+  "subject": "Fase 1 — Incremento 2"
+}

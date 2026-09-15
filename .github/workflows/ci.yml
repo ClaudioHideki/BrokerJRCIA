@@ -1,0 +1,143 @@
+name: JRC Broker CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Build, test, and security gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7.4.0-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      CI: "true"
+      TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+      TEST_DATABASE_ADMIN_URL: postgresql://postgres@127.0.0.1:5432/postgres
+      TEST_REDIS_URL: redis://127.0.0.1:6379
+      SOURCE_DATE_EPOCH: "1788652800"
+      AUDIT_FINGERPRINT_SECRET: ${{ secrets.AUDIT_FINGERPRINT_SECRET }}
+
+    steps:
+      - name: Check out the repository and pinned submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Use the pinned Node.js runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Install the locked dependency graph
+        run: npm ci
+
+      - name: Install the pinned Playwright Chromium runtime
+        run: npx playwright install --with-deps chromium
+
+      - name: Install PDF verification tools
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends poppler-utils
+
+      - name: Clean compiled outputs
+        run: npm run clean
+
+      - name: Build all TypeScript project references
+        run: npm run build
+
+      - name: Rebuild the production web bundle explicitly
+        run: npm run build:web
+
+      - name: Inspect the production web bundle
+        run: npm run test:web:bundle
+
+      - name: Apply migrations from an empty PostgreSQL database
+        run: npm run db:migrate:test
+
+      - name: Type-check strict TypeScript
+        run: npm run typecheck
+
+      - name: Test compiled workspace resolution and entrypoint
+        run: npm run test:compiled
+
+      - name: Run unit, contract, and HTTP tests
+        run: npm test
+
+      - name: Run the focused web component suite
+        run: npm run test:web
+
+      - name: Run PostgreSQL and Redis integration tests
+        run: npm run test:integration
+
+      - name: Run browser journeys against the real JRC API composition
+        run: npm run test:e2e
+
+      - name: Generate and verify the OpenAPI contract
+        run: |
+          npm run openapi:generate
+          git diff --exit-code -- docs/api/openapi.json
+
+      - name: Build the immutable non-root runtime image
+        run: docker build --file infra/app/Dockerfile --tag jrc-whatsapp-broker:phase-1-increment-2 .
+
+      - name: Test the real container entrypoint
+        run: npm run test:container
+
+      - name: Audit production dependency severity
+        run: npm audit --audit-level=high
+
+      - name: Enforce public contract boundaries
+        run: npm run security:contracts
+
+      - name: Verify browser third-party notices
+        run: npm run security:notices
+
+      - name: Verify the Evolution submodule boundary
+        run: npm run security:submodule
+
+      - name: Check current routes and scans, preserving the historical audit
+        run: |
+          npm run security:release
+          npm run security:audit:verify-pdf
+          npm run security:audit:gate
+          git diff --exit-code -- docs/security/phase-1-increment-2
+
+      - name: Retain sanitized current verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: broker-security-verification
+          path: .sessions/security-release.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Check patch whitespace
+        run: git diff --check

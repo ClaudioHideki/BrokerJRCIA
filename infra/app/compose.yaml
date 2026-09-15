@@ -1,0 +1,87 @@
+services:
+  api:
+    image: jrc-whatsapp-broker:phase-1-increment-2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution:
+        condition: service_started
+    ports:
+      - "${JRC_API_BIND:-127.0.0.1:3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: "${DATABASE_URL:?required}"
+      AUTH_DATABASE_URL: "${AUTH_DATABASE_URL:?required}"
+      REDIS_URL: "${REDIS_URL:?required}"
+      EVOLUTION_BASE_URL: http://evolution:8080
+      EVOLUTION_API_KEY: "${EVOLUTION_API_KEY:?required}"
+      JWT_SECRET: "${JWT_SECRET:?required}"
+      REFRESH_TOKEN_HASH_SECRET: "${REFRESH_TOKEN_HASH_SECRET:?required}"
+      API_KEY_HMAC_SECRET: "${API_KEY_HMAC_SECRET:?required}"
+      IP_RATE_LIMIT_HMAC_SECRET: "${IP_RATE_LIMIT_HMAC_SECRET:?required}"
+      IDENTITY_RATE_LIMIT_HMAC_SECRET: "${IDENTITY_RATE_LIMIT_HMAC_SECRET:?required}"
+      CHALLENGE_ENCRYPTION_KEY: "${CHALLENGE_ENCRYPTION_KEY:?required}"
+      BROWSER_CSRF_SECRET: "${BROWSER_CSRF_SECRET:?required}"
+      CONSOLE_ALLOWED_ORIGINS: "${CONSOLE_ALLOWED_ORIGINS:?required}"
+      CONSOLE_COOKIE_SECURE: "true"
+      SWAGGER_UI_ENABLED: "false"
+    networks: [broker, provider]
+
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: jrc_broker
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?required}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d jrc_broker"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [broker, provider]
+
+  redis:
+    image: redis:7.4.0-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?required}"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?required}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes: [redis_data:/data]
+    networks: [broker, provider]
+
+  evolution:
+    image: "${EVOLUTION_ENGINE_IMAGE:?required}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose: ["8080"]
+    environment:
+      SERVER_TYPE: http
+      SERVER_PORT: "8080"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: "postgresql://postgres:${POSTGRES_PASSWORD:?required}@postgres:5432/jrc_broker?schema=evolution_api"
+      DATABASE_CONNECTION_CLIENT_NAME: jrc_broker
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: "redis://:${REDIS_PASSWORD:?required}@redis:6379/6"
+      CACHE_REDIS_PREFIX_KEY: jrc-evolution
+      CACHE_REDIS_SAVE_INSTANCES: "true"
+      AUTHENTICATION_API_KEY: "${EVOLUTION_API_KEY:?required}"
+    networks: [provider]
+
+networks:
+  broker:
+  provider:
+    internal: true
+
+volumes:
+  postgres_data:
+  redis_data:

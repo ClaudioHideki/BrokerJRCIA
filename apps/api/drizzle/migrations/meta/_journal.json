@@ -1,0 +1,125 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1788436800000,
+      "tag": "0001_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788436801000,
+      "tag": "0002_identity_and_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788436802000,
+      "tag": "0003_providers_and_instances",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788436803000,
+      "tag": "0004_rls_and_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788436804000,
+      "tag": "0005_admin_onboarding_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788436805000,
+      "tag": "0006_auth_selection_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788436806000,
+      "tag": "0007_auth_least_privilege",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788436807000,
+      "tag": "0008_browser_session_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789372800000,
+      "tag": "0009_messaging_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789372801000,
+      "tag": "0010_platform_administration",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789372802000,
+      "tag": "0011_tenant_operational_limits",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789372803000,
+      "tag": "0012_meta_saas_onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789473600000,
+      "tag": "0013_generic_messaging",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789473601000,
+      "tag": "0014_chatwoot_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789473602000,
+      "tag": "0015_chatwoot_provisioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789473603000,
+      "tag": "0016_private_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789473604000,
+      "tag": "0017_chatwoot_attachments",
+      "breakpoints": true
+    }
+  ]
+}

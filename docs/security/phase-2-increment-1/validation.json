@@ -1,0 +1,71 @@
+{
+  "baseCommit": "159ddfc18ed110957849e43e1825ef6c31ca3cd3",
+  "images": {
+    "api": "sha256:b193b14279c06e3d229fd8399765a9c1351c0231e140bec317f4070511618fa0",
+    "web": "sha256:1130700be7a1c1a08c76afff90a1c8bdefa12c692170e93840c4633642b5cf94"
+  },
+  "branch": "codex/phase-2-console-meta-automations",
+  "checks": [
+    {
+      "command": "npm ci / Docker npm ci",
+      "result": "Lockfile instalado; Node local 24.16.0 e imagens verificadas com Node 24.19.0."
+    },
+    {
+      "command": "npm test",
+      "result": "826/826 testes passaram, 103 arquivos; inclui HTTP, UI e reprodutibilidade dos artefatos."
+    },
+    {
+      "command": "npm run test:integration",
+      "result": "151/151 testes passaram, 23 arquivos; PostgreSQL 16.4 e Redis 7.4 reais, duas ou mais organizações."
+    },
+    {
+      "command": "npm run build / npm run typecheck",
+      "result": "Compilação API/web e TypeScript strict passaram."
+    },
+    {
+      "command": "vitest --config vitest.compiled.config.ts",
+      "result": "2/2 passaram; servidor compilado com PostgreSQL e Redis reais."
+    },
+    {
+      "command": "playwright test",
+      "result": "9 passaram; 5 exclusões esperadas de seleção de projeto mobile já existentes. Administração e mensageria passam em desktop e mobile; acessibilidade sem violações automáticas."
+    },
+    {
+      "command": "openapi:generate / security:contracts",
+      "result": "Contrato atualizado, inventário de rotas explícito e fronteira pública aprovados."
+    },
+    {
+      "command": "test:web:bundle / security:notices",
+      "result": "3 arquivos do bundle sem achados; avisos de 7 pacotes de navegador aprovados."
+    },
+    {
+      "command": "npm audit",
+      "result": "0 vulnerabilidades reportadas em 14/09/2026; Vitest 4.1.11."
+    },
+    {
+      "command": "security:submodule",
+      "result": "Passou; Evolution e submódulo interno preservados nos commits fixados."
+    },
+    {
+      "command": "docker build runtime / web",
+      "result": "Duas imagens locais construídas, sem publicação: jrc-whatsapp-broker:saas-local e jrc-whatsapp-broker-web:saas-local."
+    },
+    {
+      "command": "test:container / smoke web",
+      "result": "API saudável; frontend / e /jrc retornam 200; UID 1000. Containers temporários de smoke removidos."
+    },
+    {
+      "command": "docker compose config --quiet",
+      "result": "Compose Dokploy validado com valores sintéticos; nenhum serviço de produção iniciado."
+    },
+    {
+      "command": "Revisão independente",
+      "result": "Quatro achados corrigidos e reavaliados como atendidos: revogação Meta, troca de empresa, atualização no limite e rota raiz."
+    },
+    {
+      "command": "git diff --check",
+      "result": "Passou. Branch codex/phase-2-console-meta-automations, HEAD 159ddfc preservado."
+    }
+  ],
+  "date": "2026-09-14"
+}

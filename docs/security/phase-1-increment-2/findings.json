@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-06T00:00:00.000Z",
+  "findings": [
+    {
+      "id": "JRC-SEC-201",
+      "title": "Enforcement final de CSP e Permissions-Policy depende da camada de publicação",
+      "category": "INPUTS_XSS",
+      "severity": "LOW",
+      "status": "OPEN",
+      "control": "WEB-EDGE-HEADERS-001",
+      "file": "docs/operations/web-console.md",
+      "lineStart": 29,
+      "lineEnd": 45,
+      "codeExcerptMasked": "A borda HTTPS deve aplicar CSP e Permissions-Policy à console [ORIGIN OMITTED].",
+      "description": "O bundle e a API possuem controles próprios, mas o enforcement dos headers da página HTML depende da camada HTTPS que publicará a console, fora deste incremento sem deploy.",
+      "impact": "Uma publicação futura que ignore o runbook poderá reduzir a defesa em profundidade contra injeção de conteúdo e uso indevido de recursos do navegador.",
+      "exploitability": "Baixa no incremento atual porque não há deploy; passa a depender de erro de configuração na futura borda de produção.",
+      "exploitConditions": "A console precisaria ser publicada sem a CSP e a Permissions-Policy documentadas ou em origem diferente da API JRC.",
+      "remediation": "Aplicar e testar os headers da console na camada HTTPS antes de qualquer deploy de produção.",
+      "acceptanceCriteria": [
+        "Servir console e /v1 na mesma origem HTTPS.",
+        "Aplicar CSP sem unsafe-eval e Permissions-Policy restritiva à resposta HTML.",
+        "Executar teste automatizado dos headers no ambiente de publicação antes do go-live."
+      ],
+      "verification": "Inspecionar os headers da resposta HTML publicada e executar o roteiro do runbook antes do deploy.",
+      "suggestedLabels": [
+        "security",
+        "frontend",
+        "deployment",
+        "hardening"
+      ],
+      "issueMarkdown": "--- ISSUE 1 ---\n# JRC-SEC-201 — Enforcement final de CSP e Permissions-Policy depende da camada de publicação\n\n## Contexto\nO Incremento 2 entrega o bundle e a integração local, mas não realiza deploy.\n\n## Evidência\n`docs/operations/web-console.md:29-45`: política obrigatória da borda HTTPS.\n\n## Condições de exploração\nPublicação futura sem os headers documentados ou fora da origem da API JRC.\n\n## Impacto\nRedução da defesa em profundidade contra injeção de conteúdo e recursos desnecessários do navegador.\n\n## Correção\nAplicar CSP e Permissions-Policy na borda antes do go-live.\n\n## Critérios de aceite\n- Console e `/v1` na mesma origem HTTPS.\n- CSP sem `unsafe-eval`.\n- Permissions-Policy restritiva.\n- Teste dos headers no ambiente publicado.\n\n## Verificação\nInspecionar os headers e executar o runbook de publicação.\n\n## Labels sugeridas\n`security`, `frontend`, `deployment`, `hardening`\n--- FIM ISSUE 1 ---",
+      "evidencePaths": [
+        "docs/operations/web-console.md",
+        "apps/web/index.html",
+        "apps/api/src/app.ts"
+      ]
+    }
+  ],
+  "strengths": [
+    {
+      "id": "JRC-STRENGTH-201",
+      "category": "MULTITENANT_ISOLATION",
+      "title": "Troca de tenant invalida requests e estado local",
+      "description": "O cliente incrementa a geração, aborta requests e executa os purges registrados antes de publicar a organização seguinte.",
+      "file": "apps/web/src/api/client.ts",
+      "lineStart": 222,
+      "lineEnd": 606,
+      "evidencePaths": [
+        "apps/web/src/api/client.ts",
+        "apps/web/tests/e2e/console.spec.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-202",
+      "category": "AUTHORIZATION_RBAC",
+      "title": "Permissões do frontend são somente UX e o servidor permanece autoritativo",
+      "description": "O navegador oculta ações incompatíveis com o papel, enquanto o guard Fastify revalida cada permissão no backend.",
+      "file": "apps/api/src/http/plugins/authorization.ts",
+      "lineStart": 52,
+      "lineEnd": 79,
+      "evidencePaths": [
+        "apps/api/src/http/plugins/authorization.ts",
+        "apps/web/src/pages/ApiKeys.test.tsx"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-203",
+      "category": "IDOR",
+      "title": "Provider accounts e instâncias são resolvidos no tenant ativo",
+      "description": "A organização vem da autenticação, a operação usa transação tenant e RLS, e identificadores de outro tenant não são revelados.",
+      "file": "apps/api/src/modules/provider-accounts/service.ts",
+      "lineStart": 95,
+      "lineEnd": 106,
+      "evidencePaths": [
+        "apps/api/src/modules/provider-accounts/service.ts",
+        "apps/api/tests/integration/provider-account-isolation.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-204",
+      "category": "SECRETS_CRYPTOGRAPHY",
+      "title": "Refresh HttpOnly e segredos voláteis no navegador",
+      "description": "O refresh usa cookie host-only; access token fica em closure; QR, pairing e API key emitida são eliminados do estado volátil.",
+      "file": "packages/security/src/browser/cookies.ts",
+      "lineStart": 21,
+      "lineEnd": 56,
+      "evidencePaths": [
+        "packages/security/src/browser/cookies.ts",
+        "apps/web/src/api/client.ts",
+        "apps/web/src/api-keys/IssuedKeyDialog.tsx"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-205",
+      "category": "INPUTS_XSS",
+      "title": "Conteúdo não confiável não vira HTML ou navegação",
+      "description": "React mantém escaping padrão e o QR é aceito somente como PNG base64 estrito, sem URL arbitrária nem dangerouslySetInnerHTML.",
+      "file": "apps/web/src/connections/safe-png.ts",
+      "lineStart": 12,
+      "lineEnd": 40,
+      "evidencePaths": [
+        "apps/web/src/connections/safe-png.ts",
+        "apps/web/src/connections/safe-png.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-206",
+      "category": "AUTHENTICATION",
+      "title": "Sessão de navegador valida Origin, CSRF e rotação",
+      "description": "Rotas cookie-auth exigem origem exata e CSRF assinado; restore e switch rotacionam refresh com uso único.",
+      "file": "apps/api/src/http/routes/console-auth.ts",
+      "lineStart": 157,
+      "lineEnd": 210,
+      "evidencePaths": [
+        "apps/api/src/http/routes/console-auth.ts",
+        "apps/api/tests/integration/browser-session-switch.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-207",
+      "category": "RATE_LIMITING",
+      "title": "Rate limit distribuído persiste somente chaves HMAC",
+      "description": "IP canônico e identidade normalizada são derivados com segredos distintos antes de entrar no Redis.",
+      "file": "packages/security/src/api-keys/hmac.ts",
+      "lineStart": 29,
+      "lineEnd": 36,
+      "evidencePaths": [
+        "packages/security/src/api-keys/hmac.ts",
+        "apps/api/tests/integration/redis-rate-limit.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-208",
+      "category": "LOGGING_AUDIT",
+      "title": "Logger e E2E rejeitam canários sensíveis",
+      "description": "A redaction estrutural cobre headers, cookies e desafios; o teardown falha se credenciais, QR, pairing ou identidade sintética chegarem aos logs.",
+      "file": "packages/security/src/redaction/logger.ts",
+      "lineStart": 157,
+      "lineEnd": 235,
+      "evidencePaths": [
+        "packages/security/src/redaction/logger.ts",
+        "apps/web/tests/e2e/global-setup.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-209",
+      "category": "PROVIDER_BOUNDARY",
+      "title": "Evolution permanece atrás de contratos JRC",
+      "description": "O registry separa provider comum e administrativo; a console usa apenas rotas JRC e o fake é admitido somente no runtime de teste.",
+      "file": "packages/providers/src/registry.ts",
+      "lineStart": 42,
+      "lineEnd": 56,
+      "evidencePaths": [
+        "packages/providers/src/registry.ts",
+        "apps/web/tests/e2e/global-setup.ts",
+        "infra/app/compose.yaml"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-210",
+      "category": "IDEMPOTENCY_DOS",
+      "title": "Intenções mutáveis são opacas, voláteis e reutilizadas com segurança",
+      "description": "A UI preserva a mesma chave somente para retry incerto e cria outra após nova intenção; leases impedem duplicação concorrente no backend.",
+      "file": "apps/web/src/connections/use-volatile-intent.ts",
+      "lineStart": 11,
+      "lineEnd": 28,
+      "evidencePaths": [
+        "apps/web/src/connections/use-volatile-intent.ts",
+        "apps/api/tests/integration/connection-leases.test.ts"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-211",
+      "category": "SUPPLY_CHAIN",
+      "title": "Dependências e browser de teste são fixados no lockfile",
+      "description": "CI usa npm ci, Node fixo, Playwright fixado, audit bloqueante para vulnerabilidades HIGH ou CRITICAL e um gate que confere os avisos das dependências distribuídas no browser.",
+      "file": ".github/workflows/ci.yml",
+      "lineStart": 55,
+      "lineEnd": 124,
+      "evidencePaths": [
+        ".github/workflows/ci.yml",
+        "package-lock.json",
+        "scripts/security/check-third-party-notices.mjs",
+        "apps/web/public/THIRD_PARTY_NOTICES.txt"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-212",
+      "category": "OPENAPI_ROUTES",
+      "title": "Contrato e inventário derivam da composição real",
+      "description": "O OpenAPI é gerado deterministicamente pela aplicação e cada operação possui política explícita no inventário de segurança.",
+      "file": "apps/api/src/http/openapi.ts",
+      "lineStart": 178,
+      "lineEnd": 186,
+      "evidencePaths": [
+        "apps/api/src/http/openapi.ts",
+        "scripts/security/inventory-routes.mjs",
+        "docs/api/openapi.json"
+      ]
+    },
+    {
+      "id": "JRC-STRENGTH-213",
+      "category": "CONTAINER_RUNTIME",
+      "title": "Runtime imutável, mínimo e não-root",
+      "description": "A imagem fixa Node por tag e digest, separa build/runtime e executa o entrypoint compilado como usuário node.",
+      "file": "infra/app/Dockerfile",
+      "lineStart": 1,
+      "lineEnd": 45,
+      "evidencePaths": [
+        "infra/app/Dockerfile",
+        "scripts/test-container-entrypoint.mjs"
+      ]
+    }
+  ]
+}

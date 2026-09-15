@@ -1,0 +1,20 @@
+import {expect,it,vi} from 'vitest';
+import type {Pool} from 'pg';
+import {hashPassword} from '@jrc/security';
+import {PlatformService} from './service.js';
+import {encryptSeed} from './crypto.js';
+it('local password login validates password and activity, audits its mode, and default still requires MFA',async()=>{
+ const key=Buffer.alloc(32,1);
+ const user={id:'test-admin',email:'admin@example.test',role:'SUPER_ADMIN',active:true,password_hash:await hashPassword('strong-local-password'),mfa_seed:encryptSeed(Buffer.alloc(20,2),key),last_totp_step:-1};
+ const query=vi.fn(async(sql:string)=>({rows:sql.includes('select current_user')?[{current_user:'jrc_platform',rolsuper:false,rolbypassrls:false}]:sql.includes('returning attempts')?[{attempts:1}]:sql.startsWith('select * from platform_users')?[user]:[]}));
+ const pool={connect:async()=>({query,release(){}})} as unknown as Pool;
+ const local=new PlatformService(pool,key,{localPasswordOnly:'true',nodeEnv:'development',origin:'http://127.0.0.1:8088'});
+ await expect(local.login(user.email,'wrong-password','','127.0.0.1')).rejects.toMatchObject({statusCode:401});
+ user.active=false;
+ await expect(local.login(user.email,'strong-local-password','','127.0.0.1')).rejects.toMatchObject({statusCode:401});
+ user.active=true;
+ await expect(local.login(user.email,'strong-local-password','','127.0.0.1')).resolves.toMatchObject({user:{role:'SUPER_ADMIN'}});
+ expect(query).toHaveBeenCalledWith(expect.stringContaining('insert into platform_audit_logs'),expect.arrayContaining(['Password verified in configured email/password mode']));
+ await expect(new PlatformService(pool,key,{mode:'password',nodeEnv:'production',origin:'https://broker.example.com'}).login(user.email,'strong-local-password','','127.0.0.1')).resolves.toMatchObject({user:{role:'SUPER_ADMIN'}});
+ await expect(new PlatformService(pool,key).login(user.email,'strong-local-password','','127.0.0.1')).rejects.toMatchObject({statusCode:401});
+});
