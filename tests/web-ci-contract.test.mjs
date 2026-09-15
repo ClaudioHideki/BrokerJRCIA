@@ -47,6 +47,13 @@ describe('pipeline da console web', () => {
     expect(workflow).toContain('npm run security:submodule');
   });
 
+  it('instala o verificador de PDF antes da suíte no workflow de imagens', async () => {
+    const workflow = await readFile('.github/workflows/images.yml', 'utf8');
+    const install = workflow.indexOf('sudo apt-get update && sudo apt-get install --yes --no-install-recommends poppler-utils');
+    expect(install).toBeGreaterThan(-1);
+    expect(install).toBeLessThan(workflow.indexOf('npm test'));
+  });
+
   it('preserva o segredo administrativo da auditoria sem fallback', async () => {
     const workflow = await readFile('.github/workflows/ci.yml', 'utf8');
 

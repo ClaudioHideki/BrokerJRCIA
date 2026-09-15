@@ -27,6 +27,8 @@ jobs:
           node-version: 24.19.0
           cache: npm
       - run: npm ci
+      - name: Install PDF verification tools required by the unit suite
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends poppler-utils
       - run: npm run build && npm test && npm run test:web:bundle && npm run security:submodule && npm audit --audit-level=high
       - name: Build API and web without publication
         env:
