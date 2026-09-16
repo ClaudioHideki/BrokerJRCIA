@@ -1,6 +1,6 @@
 name: jrc-broker
 
-x-runtime: &a1
+x-runtime: &runtime
   NODE_ENV: production
   DATABASE_URL: postgresql://jrc_app:${JRC_APP_PASSWORD:?required}@postgres:5432/jrc_broker
   AUTH_DATABASE_URL: postgresql://jrc_auth:${JRC_AUTH_PASSWORD:?required}@postgres:5432/jrc_broker
@@ -49,8 +49,6 @@ services:
     networks:
       - edge
       - backend
-      - dokploy-network
-      - default
     read_only: true
     cap_drop:
       - ALL
@@ -58,25 +56,12 @@ services:
       - no-new-privileges:true
     mem_limit: 256m
     cpus: 0.5
-    labels:
-      - traefik.docker.network=dokploy-network
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-web.rule=Host(`jrc-broker.jrcws.cloud`)
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-web.entrypoints=web
-      - traefik.http.services.jrc-broker-broker-ophydn-57-web.loadbalancer.server.port=8080
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-web.service=jrc-broker-broker-ophydn-57-web
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-web.middlewares=redirect-to-https@file
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-websecure.rule=Host(`jrc-broker.jrcws.cloud`)
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-websecure.entrypoints=websecure
-      - traefik.http.services.jrc-broker-broker-ophydn-57-websecure.loadbalancer.server.port=8080
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-websecure.service=jrc-broker-broker-ophydn-57-websecure
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-websecure.tls.certresolver=letsencrypt
-      - traefik.enable=true
 
   api:
     image: ${JRC_API_IMAGE:?required}
     restart: unless-stopped
     environment:
-      <<: *a1
+      <<: *runtime
       PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
       PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
       PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
@@ -96,7 +81,7 @@ services:
         - CMD
         - node
         - -e
-        - fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+        - "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
       interval: 15s
       timeout: 5s
       retries: 5
@@ -116,21 +101,64 @@ services:
       - -c
     command:
       - |
-        echo "=== JRC API DEBUG V2 ==="
+        echo "=== JRC API DEBUG V3 ==="
         echo "PWD:"
         pwd
 
-        echo "=== SERVER.JS COMPLETO ==="
-        cat apps/api/dist/server.js || true
+        echo "=== COPIANDO SERVER.JS ==="
+        cp apps/api/dist/server.js /tmp/server-debug.js
 
-        echo "=== INICIANDO API ==="
-        node --trace-uncaught --trace-warnings apps/api/dist/server.js
+        echo "=== ALTERANDO CATCH PARA EXIBIR ERRO REAL ==="
+        node - <<'NODE'
+        const fs = require('node:fs');
+
+        const file = '/tmp/server-debug.js';
+        let source = fs.readFileSync(file, 'utf8');
+
+        const oldCode = `catch {
+            process.stderr.write('JRC API failed to start\\n');
+            process.exitCode = 1;
+        }`;
+
+        const newCode = `catch (error) {
+            console.error('=== ERRO REAL DA API ===');
+            console.error(error);
+            console.error('NAME:', error?.name);
+            console.error('MESSAGE:', error?.message);
+            console.error('STACK:', error?.stack);
+            process.exitCode = 1;
+        }`;
+
+        if (!source.includes(oldCode)) {
+          console.error('ERRO: bloco catch esperado nao encontrado em server.js');
+          process.exit(2);
+        }
+
+        source = source.replace(oldCode, newCode);
+        fs.writeFileSync(file, source);
+
+        console.log('PATCH APLICADO COM SUCESSO');
+        NODE
+
+        PATCH_CODE=$?
+
+        if [ "$PATCH_CODE" -ne 0 ]; then
+          echo "=== PATCH FALHOU ==="
+          exit "$PATCH_CODE"
+        fi
+
+        echo "=== FINAL DO SERVER DEBUG ==="
+        tail -n 30 /tmp/server-debug.js
+
+        echo "=== INICIANDO API DEBUG ==="
+        node --trace-uncaught --trace-warnings /tmp/server-debug.js
 
         CODE=$?
+
         echo "=== EXIT CODE: $CODE ==="
-        exit $CODE
+        exit "$CODE"
     environment:
-      <<: *a1
+      <<: *runtime
       PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
       PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
       PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
@@ -152,7 +180,7 @@ services:
       - --watch
     restart: unless-stopped
     environment:
-      <<: *a1
+      <<: *runtime
       MESSAGING_WORKER_MODE: automatic
       MESSAGING_WORKER_SHARDS: ${MESSAGING_WORKER_SHARDS:-1}
       MESSAGING_WORKER_SHARD: ${MESSAGING_WORKER_SHARD:-0}
@@ -171,7 +199,7 @@ services:
         - CMD
         - node
         - -e
-        - const fs=require('node:fs');try{const t=Number(fs.readFileSync('/tmp/jrc-worker-heartbeat','utf8'));process.exit(Date.now()-t<180000?0:1)}catch{process.exit(1)}
+        - "const fs=require('node:fs');try{const t=Number(fs.readFileSync('/tmp/jrc-worker-heartbeat','utf8'));process.exit(Date.now()-t<180000?0:1)}catch{process.exit(1)}"
       interval: 30s
       timeout: 5s
       start_period: 30s
@@ -227,7 +255,7 @@ services:
     command:
       - redis-server
       - --appendonly
-      - yes
+      - "yes"
       - --requirepass
       - ${REDIS_PASSWORD:?required}
       - --maxmemory
@@ -285,17 +313,12 @@ services:
     cpus: 2
 
 networks:
-  edge: null
-
+  edge:
   backend:
     internal: true
-
-  egress: null
-
-  dokploy-network:
-    external: true
+  egress:
 
 volumes:
-  postgres_data: null
-  redis_data: null
-  engine_instances: null
+  postgres_data:
+  redis_data:
+  engine_instances:
