@@ -20,3 +20,24 @@ export const OperatorGrantsSchema = z.strictObject({
   grants: z.array(z.strictObject({ userId: z.uuid(), canPair: z.boolean() })).max(100),
 }).refine(v => new Set(v.grants.map(x => x.userId)).size === v.grants.length, 'Duplicate user');
 export const ControlIdempotencyKeySchema = z.string().min(8).max(128).regex(/^[A-Za-z0-9:_-]+$/);
+export const ControlAgentIdsSchema = z.array(z.number().int().positive().max(Number.MAX_SAFE_INTEGER)).max(100)
+  .refine(v => new Set(v).size === v.length, 'Duplicate agent');
+export const OnboardingInputSchema = z.strictObject({
+  name: z.string().trim().min(1).max(100),
+  source: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('EXISTING'), instanceId: z.uuid() }),
+    z.strictObject({ kind: z.literal('NEW'), instanceName: z.string().trim().min(1).max(100), providerAccountId: z.uuid() }),
+  ]),
+  inboxId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  agentIds: ControlAgentIdsSchema,
+  replaceExistingWebhook: z.boolean(),
+});
+export const OnboardingOperationSchema = z.strictObject({
+  operationId: z.uuid(), state: z.enum(['PENDING', 'RUNNING', 'FAILED', 'UNKNOWN', 'SUCCEEDED']),
+  stage: z.enum(['INSTANCE', 'ACTIVATE_CHANNEL', 'LINK_INBOX', 'ASSIGN_AGENTS', 'VERIFY', 'DONE']),
+  instanceId: z.uuid().nullable(), integrationId: z.uuid().nullable(), inboxId: z.number().int().positive().nullable(),
+  lastError: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/).nullable(),
+});
+export const OnboardingRecoverySchema = z.strictObject({ action: z.enum(['RETRY', 'RECONCILE', 'CANCEL']) });
+export type OnboardingInput = z.infer<typeof OnboardingInputSchema>;
+export type OnboardingOperation = z.infer<typeof OnboardingOperationSchema>;

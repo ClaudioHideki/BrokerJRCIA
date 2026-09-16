@@ -10,6 +10,8 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'POST /v1/integrations/chatwoot/control/onboarding', 'GET /v1/integrations/chatwoot/control/onboarding/{operationId}',
+  'POST /v1/integrations/chatwoot/control/onboarding/{operationId}/recover',
   'GET /v1/integrations/chatwoot/control/context', 'POST /v1/integrations/chatwoot/control-credentials',
   'PUT /v1/integrations/chatwoot/connections/{id}/operator-grants',
   'GET /v1/integrations/chatwoot/destination', 'PUT /v1/integrations/chatwoot/destination',

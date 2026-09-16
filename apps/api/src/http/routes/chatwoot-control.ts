@@ -1,14 +1,15 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { ControlContextSchema, ControlIdempotencyKeySchema, IssueControlCredentialSchema, IssuedControlCredentialSchema, OperatorGrantsSchema, PROBLEM_CONTENT_TYPE } from '@jrc/contracts';
+import { ControlContextSchema, ControlIdempotencyKeySchema, IssueControlCredentialSchema, IssuedControlCredentialSchema, OperatorGrantsSchema, PROBLEM_CONTENT_TYPE, OnboardingInputSchema, OnboardingOperationSchema, OnboardingRecoverySchema } from '@jrc/contracts';
 import { authenticateRequest, type AuthenticationOptions } from '../plugins/authentication.js';
 import type { ChatwootControlAuth } from '../../modules/integrations/chatwoot-control-auth.js';
 import { IntegrationError } from '../../modules/integrations/integration-error.js';
 import { ChatwootError } from '../../modules/integrations/chatwoot-client.js';
 import { tenantOperationalProblem } from '../../modules/tenancy/operational-limits.js';
 import { IdempotencyConflictError } from '../../modules/instances/idempotency.js';
+import type { OnboardingService } from '../../modules/integrations/chatwoot-onboarding.js';
 
-export interface ChatwootControlRouteOptions extends AuthenticationOptions { service: ChatwootControlAuth }
+export interface ChatwootControlRouteOptions extends AuthenticationOptions { service: ChatwootControlAuth; onboarding?: OnboardingService | undefined }
 export async function registerChatwootControlRoutes(app: FastifyInstance, options: ChatwootControlRouteOptions) {
   app.decorateRequest('authentication', null);
   app.addHook('onRequest', async (_request, reply) => { reply.header('Cache-Control', 'no-store'); });
@@ -31,6 +32,23 @@ export async function registerChatwootControlRoutes(app: FastifyInstance, option
   app.get('/v1/integrations/chatwoot/control/context', {
     preHandler: read, schema: { querystring: empty, response: { 200: ControlContextSchema } },
   }, req => options.service.context(req.authentication!));
+  const onboarding = () => { if (!options.onboarding) throw new IntegrationError('ONBOARDING_NOT_CONFIGURED', 503); return options.onboarding; };
+  const attributedActor = (req: FastifyRequest) => req.headers['x-jrc-external-actor'] === undefined ? undefined : z.string().regex(/^[A-Za-z0-9:_-]{1,80}$/).parse(req.headers['x-jrc-external-actor']);
+  app.post('/v1/integrations/chatwoot/control/onboarding', {
+    preHandler: read, schema: { querystring: empty, headers: mutationHeaders, body: OnboardingInputSchema, response: { 202: OnboardingOperationSchema } },
+  }, async (req, reply) => {
+    const principal = await options.service.authorize(req.authentication!, 'chatwoot:manage', undefined, attributedActor(req));
+    return reply.code(202).send(await onboarding().start(principal, OnboardingInputSchema.parse(req.body), String(req.headers['idempotency-key'])));
+  });
+  app.get('/v1/integrations/chatwoot/control/onboarding/:operationId', {
+    preHandler: read, schema: { querystring: empty, params: z.strictObject({ operationId: z.uuid() }), response: { 200: OnboardingOperationSchema } },
+  }, async req => onboarding().get(await options.service.authorize(req.authentication!, 'chatwoot:read'), (req.params as { operationId: string }).operationId));
+  app.post('/v1/integrations/chatwoot/control/onboarding/:operationId/recover', {
+    preHandler: read, schema: { querystring: empty, headers: mutationHeaders, params: z.strictObject({ operationId: z.uuid() }), body: OnboardingRecoverySchema, response: { 202: OnboardingOperationSchema } },
+  }, async (req, reply) => {
+    const principal = await options.service.authorize(req.authentication!, 'chatwoot:manage', undefined, attributedActor(req));
+    return reply.code(202).send(await onboarding().recover(principal, (req.params as { operationId: string }).operationId, OnboardingRecoverySchema.parse(req.body).action, String(req.headers['idempotency-key'])));
+  });
   app.post('/v1/integrations/chatwoot/control-credentials', {
     preHandler: manage, schema: { querystring: empty, headers: mutationHeaders, body: IssueControlCredentialSchema, response: { 201: IssuedControlCredentialSchema } },
   }, async (req, reply) => reply.code(201).send(await options.service.issueCredential(req.authentication!, IssueControlCredentialSchema.parse(req.body), String(req.headers['idempotency-key']))));

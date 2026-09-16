@@ -4,6 +4,18 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'POST /v1/integrations/chatwoot/control/onboarding': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'PERSISTENT_IDEMPOTENCY_KEY_CANONICAL_HASH', 'NONE', 'RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION',
+  ),
+  'GET /v1/integrations/chatwoot/control/onboarding/{operationId}': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
+    true, 'NOT_APPLICABLE', 'NONE', 'RLS_ACTIVE_ORGANIZATION_OPERATION_AND_INTEGRATION_GRANT',
+  ),
+  'POST /v1/integrations/chatwoot/control/onboarding/{operationId}/recover': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'IDEMPOTENCY_KEY_CANONICAL_HASH', 'NONE', 'RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION',
+  ),
   'GET /v1/integrations/chatwoot/control/context': policy(
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
     true, 'NOT_APPLICABLE', 'NONE', 'RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION',

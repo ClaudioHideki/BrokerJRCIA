@@ -13,6 +13,12 @@ import {
 import { createMessagingWorker } from "../modules/messaging/worker.js";
 import { createMetaOnboardingService } from "../modules/meta-onboarding/service.js";
 import { writeFile } from "node:fs/promises";
+import { EvolutionProviderAdapter, ProviderRegistry } from '@jrc/providers';
+import { createInstanceService } from '../modules/instances/service.js';
+import { createPostgresInstanceRepository } from '../modules/instances/repository.js';
+import { writeTenantAudit } from '../modules/audit/audit.js';
+import { createChatwootControlAuth } from '../modules/integrations/chatwoot-control-auth.js';
+import { createMessagingMembershipResolver } from '../modules/messaging/membership.js';
 
 export function loadWorkerConfig(environment: NodeJS.ProcessEnv) {
   const databaseUrl = z.string().url().parse(environment.DATABASE_URL);
@@ -69,6 +75,12 @@ export async function runMessagingWorker(
   watch = false,
 ): Promise<void> {
   const config = loadWorkerConfig(environment);
+  const controlEnabled = z.enum(['true', 'false']).default('false').parse(environment.CHATWOOT_CONTROL_ENABLED) === 'true';
+  const controlConfig = controlEnabled ? {
+    authUrl: z.url().parse(environment.AUTH_DATABASE_URL), hmacSecret: z.string().min(32).parse(environment.API_KEY_HMAC_SECRET),
+    baseUrl: z.url().parse(environment.EVOLUTION_BASE_URL), apiKey: z.string().min(32).parse(environment.EVOLUTION_API_KEY),
+  } : undefined;
+  if (controlConfig && new URL(controlConfig.authUrl).username !== 'jrc_auth') throw new Error('CONTROL_WORKER_REQUIRES_AUTH_ROLE');
   const resolveTypebotClient = createTypebotClientResolver(environment);
   const pool = new Pool({
     connectionString: config.databaseUrl,
@@ -85,10 +97,23 @@ export async function runMessagingWorker(
     environment,
     metaOnboarding.resolveCredential,
   );
+  const authPool = controlConfig ? new Pool({ connectionString: controlConfig.authUrl, max: 2, connectionTimeoutMillis: 5000, statement_timeout: 30_000 }) : undefined;
+  const control = controlConfig && authPool ? (() => {
+    const transact = <T>(org: string, work: Parameters<typeof withOrganizationTransaction<T>>[2]) => withOrganizationTransaction(pool, org, work);
+    const engine = new EvolutionProviderAdapter({ baseUrl: controlConfig.baseUrl, apiKey: controlConfig.apiKey });
+    return {
+      auth: createChatwootControlAuth({ enabled: true, hmacSecret: controlConfig.hmacSecret, transact,
+        managedOrigin: environment.CHATWOOT_BASE_URL ? new URL(environment.CHATWOOT_BASE_URL).origin : undefined,
+        resolveCurrentRole: createMessagingMembershipResolver(authPool) }),
+      instances: createInstanceService({ repository: createPostgresInstanceRepository(), providers: new ProviderRegistry([engine], [['BAILEYS', engine]]),
+        runInOrganizationTransaction: transact, writeAudit: writeTenantAudit }),
+    };
+  })() : undefined;
   const integrations = createIntegrationRuntime(
     environment,
     pool,
     resolveMetaClient,
+    control,
   );
   const shutdown = new AbortController();
   const stop = () => shutdown.abort();
@@ -135,6 +160,7 @@ export async function runMessagingWorker(
             await integrations.media?.runOnce(organizationId);
             await worker.runOnce(organizationId);
             await integrations.chatwootWorker?.runOnce(organizationId);
+            await integrations.onboarding?.runOnce(organizationId);
             if (environment.WORKER_HEARTBEAT_FILE)
               await writeFile(
                 environment.WORKER_HEARTBEAT_FILE,
@@ -157,6 +183,7 @@ export async function runMessagingWorker(
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
     await pool.end();
+    await authPool?.end();
   }
 }
 

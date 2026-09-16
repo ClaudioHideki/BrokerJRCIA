@@ -84,7 +84,7 @@ com `--frozen-lockfile --ignore-scripts`, passou sem alterar o lockfile.
 
 ## Gates pendentes
 
-B5–B7, J1–J5 e E1–E5 ainda não foram implementados/validados.
+B6–B7, J1–J5 e E1–E5 ainda não foram implementados/validados.
 Nenhum piloto remoto ou telefone real foi usado. Ausência desses testes não é PASS.
 O resultado local não libera produção.
 
@@ -185,3 +185,41 @@ foi validada com os 6 testes OpenAPI (PASS, exit 0). Não há evidência RED par
 esse último ajuste de documentação: a execução iniciada ainda carregava módulos
 quando a correção foi aplicada. Os logs ficam em `.sessions/b4-*.log` (ignorados).
 O teste RED de contrato B5 foi criado após a coleta da suíte e fica fora deste commit.
+
+## Tarefa B5 — onboarding persistente
+
+B4 registrada em `b14aae9`. Migração `0020` cria operações tenant com RLS,
+idempotência persistente, hash do input, revisão/conta e referências aos recursos.
+Não guarda JWT, chave de controle em claro, token Chatwoot ou QR. Os atores são
+identificadores revalidados pelo serviço de B4 a cada etapa; uma recuperação por
+outro administrador fica auditada. Remover uma filiação não apaga o histórico.
+
+O worker executa uma etapa por vez, com lease e transações curtas. `InstanceService`
+registra o ID da instância na operação dentro da mesma transação que cria a instância,
+antes do POST do provider. Isso evita depender da validade temporária da chave
+idempotente após uma interrupção. Inbox é reconciliada pelo callback exclusivo.
+Agentes já associados são preservados. Cancelar conserva instância, inbox e sessão.
+Lease expirado vira UNKNOWN e exige reconciliação autorizada. Não há POST automático
+de criação após resultado incerto. Falha conhecida de cota continua FAILED.
+
+Rotas adicionadas sob `/v1/integrations/chatwoot/control`: POST `/onboarding`,
+GET `/onboarding/:operationId`, POST `/onboarding/:operationId/recover`.
+A recuperação explícita aceita RETRY, RECONCILE ou CANCEL e também exige idempotência.
+O processo worker usa a conexão `jrc_auth` já prevista no Compose para revalidar
+filiação; não recebeu acesso irrestrito às tabelas pelo papel `jrc_app`.
+
+RED: schema/serviço ausentes. Fixtures inicialmente violavam o proprietário mínimo,
+unicidade do nome da instância e a cota padrão; corrigidas somente nas fixtures.
+Novo RED específico mostrou cota tratada como UNKNOWN; corrigido usando o tradutor
+de erros operacionais existente. GREEN: 6 testes unitários (3 arquivos), 3 testes
+HTTP, 18 testes PostgreSQL (onboarding/autorização/destinos, 3 arquivos). Cenários:
+criação concorrente, hash conflitante, serviço reiniciado entre etapas, resposta de
+inbox perdida, falha em agentes, cancelamento, lease expirado, administrador removido,
+interrupção após criação da instância e limite de instâncias. O teste verifica ausência
+de transação tenant aberta durante chamadas externas. APIs remotas usam fixture HTTP
+injetada; não se trata de homologação Chatwoot/Evolution real. Typecheck, geração
+OpenAPI e contratos públicos: PASS. Logs em `.sessions/b5-*.log` (ignorados).
+
+Gate final: `npm test -- --maxWorkers=2` PASS, 1007 testes / 137 arquivos, exit 0;
+`git diff --check` PASS. O teste RED de saúde B6 foi acrescentado após a coleta da
+suíte B5 e está fora deste commit. Nenhum serviço remoto/número real foi utilizado.

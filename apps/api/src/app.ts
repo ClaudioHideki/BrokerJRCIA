@@ -374,6 +374,11 @@ export function buildApp(options: BuildAppOptions = {}) {
       transact: (organizationId, operation) =>
         withOrganizationTransaction(pools.appPool, organizationId, operation),
     });
+    const controlAuth = createChatwootControlAuth({ enabled: z.enum(['true', 'false']).default('false').parse(messagingEnvironment.CHATWOOT_CONTROL_ENABLED) === 'true',
+      hmacSecret: config.apiKeyHmacSecret,
+      managedOrigin: messagingEnvironment.CHATWOOT_BASE_URL ? new URL(messagingEnvironment.CHATWOOT_BASE_URL).origin : undefined,
+      transact: (org, work) => withOrganizationTransaction(pools.appPool, org, work),
+      resolveCurrentRole: createMessagingMembershipResolver(pools.authPool) });
     const integrationRuntime = createIntegrationRuntime(
       { ...messagingEnvironment, NODE_ENV: nodeEnv },
       pools.appPool,
@@ -381,6 +386,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         messagingEnvironment,
         metaOnboardingService.resolveCredential,
       ),
+      { auth: controlAuth, instances: instances.service },
     );
     integrations = {
       jwtSecret: config.jwtSecret,
@@ -391,11 +397,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     };
     chatwootControl = {
       jwtSecret: config.jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey,
-      service: createChatwootControlAuth({ enabled: z.enum(['true', 'false']).default('false').parse(messagingEnvironment.CHATWOOT_CONTROL_ENABLED) === 'true',
-        hmacSecret: config.apiKeyHmacSecret,
-        managedOrigin: messagingEnvironment.CHATWOOT_BASE_URL ? new URL(messagingEnvironment.CHATWOOT_BASE_URL).origin : undefined,
-        transact: (org, work) => withOrganizationTransaction(pools.appPool, org, work),
-        resolveCurrentRole: createMessagingMembershipResolver(pools.authPool) }),
+      service: controlAuth, onboarding: integrationRuntime.onboarding,
     };
     metaOnboarding = {
       service: metaOnboardingService,

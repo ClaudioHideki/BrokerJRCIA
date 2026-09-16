@@ -20,6 +20,9 @@ import {
 } from "./chatwoot-service.js";
 import { MediaError, type MetaCloudClient } from "@jrc/providers";
 import type { MessagingChannel, OutboxClaim } from "../messaging/types.js";
+import { createOnboardingService } from './chatwoot-onboarding.js';
+import type { ChatwootControlAuth } from './chatwoot-control-auth.js';
+import type { InstanceService } from '../instances/service.js';
 
 type QrConfig = Pick<
   QrServiceOptions,
@@ -94,6 +97,7 @@ export function createIntegrationRuntime(
   environment: NodeJS.ProcessEnv,
   pool: Pool,
   resolveMetaClient?: (channel: MessagingChannel) => Promise<MetaCloudClient>,
+  control?: { auth: ChatwootControlAuth; instances: InstanceService },
 ) {
   const config = loadIntegrationConfig(environment);
   const transact: ChatwootOptions["transact"] = (org, operation) =>
@@ -225,9 +229,11 @@ export function createIntegrationRuntime(
         ...(file.caption ? { caption: file.caption } : {}),
       });
   }
+  const chatwoot = options ? createChatwootService(options) : undefined;
   return {
     qr,
-    chatwoot: options ? createChatwootService(options) : undefined,
+    chatwoot,
+    onboarding: control && chatwoot && qr ? createOnboardingService({ transact, ...control, chatwoot, activateQr: qr.activate }) : undefined,
     chatwootWorker: options ? createChatwootWorker(options) : undefined,
     provisioner: options ? createChatwootProvisioner(options) : undefined,
     media,

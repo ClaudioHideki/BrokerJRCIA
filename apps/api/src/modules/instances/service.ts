@@ -45,7 +45,8 @@ export type InstanceActorContext = Readonly<{
   | Readonly<{ credentialKind: 'JWT'; actorId: string }>
   | Readonly<{ credentialKind: 'API_KEY'; actorId: null; apiKeyId: string }>
   | Readonly<{ credentialKind: 'CHATWOOT_CONTROL'; actorId: string | null; apiKeyId?: string;
-      authorize(transaction: TenantTransaction, operation: DelegatedInstanceOperation, instanceId?: string): Promise<void> }>
+      authorize(transaction: TenantTransaction, operation: DelegatedInstanceOperation, instanceId?: string): Promise<void>;
+      onInstanceCreated?(transaction: TenantTransaction, instanceId: string): Promise<void> }>
 );
 
 export interface CreateInstanceCommand {
@@ -344,6 +345,9 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
             name: command.name,
             upstreamInstanceKey: deriveUpstreamInstanceKey(instanceId),
           });
+          // Persist a delegated saga's resource ID in this same transaction, before the provider POST.
+          if (context.credentialKind === 'CHATWOOT_CONTROL')
+            await context.onInstanceCreated?.(transaction, created.instance.id);
           await dependencies.repository.linkIdempotency(transaction, {
             organizationId: context.organizationId,
             recordId: idempotency.recordId,

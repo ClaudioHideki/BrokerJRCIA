@@ -54,7 +54,8 @@ export function createChatwootDestinationService(options: {
         const current = await readChatwootDestination(t, org);
         if (current?.baseUrl === baseUrl && current.mode === input.mode) return current;
         const busy = await t.query(`SELECT 1 FROM chatwoot_connections WHERE organization_id=$1
-          UNION ALL SELECT 1 FROM chatwoot_provisioning WHERE organization_id=$1 AND state IN ('PENDING','RUNNING','UNKNOWN') LIMIT 1`, [org]);
+            UNION ALL SELECT 1 FROM chatwoot_provisioning WHERE organization_id=$1 AND state IN ('PENDING','RUNNING','UNKNOWN')
+            UNION ALL SELECT 1 FROM chatwoot_onboarding_operations WHERE organization_id=$1 AND NOT cancel_requested AND state<>'SUCCEEDED' LIMIT 1`, [org]);
         if (busy.rowCount) throw new ChatwootDestinationError('DESTINATION_IN_USE', 409);
         await t.query(`INSERT INTO chatwoot_destinations(organization_id,base_url,mode) VALUES($1,$2,$3)
           ON CONFLICT(organization_id) DO UPDATE SET base_url=$2,mode=$3`, [org, baseUrl, input.mode]);

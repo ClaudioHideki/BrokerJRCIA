@@ -18,6 +18,7 @@ import {
   organizations,
   apiKeys,
   memberships,
+  instances,
   messagingChannels,
   messagingConversations,
   messagingMessages,
@@ -30,6 +31,20 @@ const dates = {
     .notNull()
     .defaultNow(),
 };
+export const chatwootOnboardingOperations = pgTable('chatwoot_onboarding_operations', {
+  id: uuid('id').primaryKey().defaultRandom(), organizationId: uuid('organization_id').notNull().references(() => chatwootAccounts.organizationId, { onDelete: 'restrict' }),
+  idempotencyKey: text('idempotency_key').notNull(), inputHash: text('input_hash').notNull(), input: jsonb('input').notNull(),
+  accountId: bigint('account_id', { mode: 'number' }).notNull(), destinationRevision: integer('destination_revision').notNull(), chatwootOrigin: text('chatwoot_origin').notNull(),
+  actorId: uuid('actor_id'), actorApiKeyId: uuid('actor_api_key_id'), externalActorId: text('external_actor_id'),
+  state: text('state').notNull().default('PENDING'), stage: text('stage').notNull().default('INSTANCE'),
+  instanceId: uuid('instance_id'), channelId: uuid('channel_id'), integrationId: uuid('integration_id'), inboxId: bigint('inbox_id', { mode: 'number' }),
+  reconcileOnly: boolean('reconcile_only').notNull().default(false), retryRequested: boolean('retry_requested').notNull().default(false), cancelRequested: boolean('cancel_requested').notNull().default(false),
+  leaseToken: uuid('lease_token'), leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }), lastError: text('last_error'), ...dates,
+}, t => [unique().on(t.organizationId, t.id), unique().on(t.organizationId, t.idempotencyKey),
+  foreignKey({ columns: [t.organizationId, t.actorApiKeyId], foreignColumns: [apiKeys.organizationId, apiKeys.id] }).onDelete('restrict'),
+  foreignKey({ columns: [t.organizationId, t.instanceId], foreignColumns: [instances.organizationId, instances.id] }).onDelete('restrict'),
+  foreignKey({ columns: [t.organizationId, t.channelId], foreignColumns: [messagingChannels.organizationId, messagingChannels.id] }).onDelete('restrict'),
+  foreignKey({ columns: [t.organizationId, t.integrationId], foreignColumns: [chatwootConnections.organizationId, chatwootConnections.id] }).onDelete('restrict')]);
 export const chatwootControlBindings = pgTable('chatwoot_control_bindings', {
   apiKeyId: uuid('api_key_id').primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => chatwootAccounts.organizationId, { onDelete: 'restrict' }),
