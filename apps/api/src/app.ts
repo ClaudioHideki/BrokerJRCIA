@@ -397,7 +397,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     };
     chatwootControl = {
       jwtSecret: config.jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey,
-      service: controlAuth, onboarding: integrationRuntime.onboarding,
+      service: controlAuth, onboarding: integrationRuntime.onboarding, facade: integrationRuntime.controlService,
     };
     metaOnboarding = {
       service: metaOnboardingService,

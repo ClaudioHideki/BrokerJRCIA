@@ -1271,6 +1271,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                 )
               )
               AND (message.source <> 'AUTOMATION' OR conversation.mode = 'BOT')
+              AND chatwoot_channel_identity_ready(message.organization_id,message.channel_id)
               AND NOT EXISTS (
                 SELECT 1 FROM messaging_channels c JOIN instances i ON i.organization_id=c.organization_id AND i.id=c.instance_id
                  WHERE c.organization_id=message.organization_id AND c.id=message.channel_id AND c.provider='BAILEYS' AND i.status<>'CONNECTED'
@@ -1343,6 +1344,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                      AND (connection.token_expires_at IS NULL OR connection.token_expires_at>now())
                 )) AS "metaChannelReady",
                 (channel.provider <> 'BAILEYS' OR EXISTS(SELECT 1 FROM instances i WHERE i.organization_id=channel.organization_id AND i.id=channel.instance_id AND i.status='CONNECTED')) AS "qrChannelReady",
+                chatwoot_channel_identity_ready(channel.organization_id,channel.id) AS "identityReady",
                 conversation.mode,
                 (channel.provider = 'BAILEYS' OR message.content->>'type' = 'TEMPLATE' OR EXISTS (
                   SELECT 1 FROM messaging_messages inbound
@@ -1381,6 +1383,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
           .qrChannelReady === false
       )
         reason = "QR_CHANNEL_DISCONNECTED";
+      else if ((selected as ClaimDatabaseRow & { identityReady?: boolean }).identityReady === false)
+        reason = 'IDENTITY_CONFIRMATION_REQUIRED';
       else if (selected.metaChannelReady === false)
         reason = "META_CHANNEL_NOT_READY";
       else if (claim.contact.suppressedAt) reason = "CONTACT_SUPPRESSED";
@@ -1417,7 +1421,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       }
 
       if (
-        reason === "CONVERSATION_PAUSED" ||
+        reason === 'IDENTITY_CONFIRMATION_REQUIRED' || reason === "CONVERSATION_PAUSED" ||
         reason === "QR_CHANNEL_DISCONNECTED"
       ) {
         await transaction.query(

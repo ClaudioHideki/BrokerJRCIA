@@ -4,7 +4,7 @@ import type { MediaRegistration } from "./media-store.js";
 import { safeMediaName } from "@jrc/providers";
 
 export type QrEvent =
-  | { kind: "connection"; state: "CONNECTED" | "DISCONNECTED" }
+  | { kind: "connection"; state: "CONNECTED" | "DISCONNECTED"; identity?: string }
   | {
       kind: "message";
       upstreamMessageId: string;
@@ -47,9 +47,9 @@ export function normalizeQrEvent(
     throw new Error("QR_INSTANCE_MISMATCH");
   const event = String(envelope.event).toLowerCase().replace(/_/gu, ".");
   if (event === "connection.update") {
-    const state = object(envelope.data).state;
+    const data = object(envelope.data), state = data.state, identity = phone(data.wuid);
     return state === "open"
-      ? [{ kind: "connection", state: "CONNECTED" }]
+      ? [{ kind: "connection", state: "CONNECTED", ...(identity ? { identity } : {}) }]
       : state === "close"
         ? [{ kind: "connection", state: "DISCONNECTED" }]
         : [];

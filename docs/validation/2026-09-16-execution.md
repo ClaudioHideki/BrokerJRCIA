@@ -223,3 +223,53 @@ OpenAPI e contratos públicos: PASS. Logs em `.sessions/b5-*.log` (ignorados).
 Gate final: `npm test -- --maxWorkers=2` PASS, 1007 testes / 137 arquivos, exit 0;
 `git diff --check` PASS. O teste RED de saúde B6 foi acrescentado após a coleta da
 suíte B5 e está fora deste commit. Nenhum serviço remoto/número real foi utilizado.
+
+## Tarefa B6 — pareamento autorizado, identidade e saúde
+
+B5 registrada em `72baa75`. Migração aditiva `0021` mantém evidência de callback,
+revisão/versão da credencial, identidade observada/aprovada e janela de pareamento.
+Identidade usa HMAC com contexto de organização/canal; somente quatro dígitos finais
+são apresentados. A operação não armazena telefone completo, QR ou pairing code.
+
+Fachada de controle reutiliza `InstanceService` para pair/status/logout. Pair confere
+perfil administrativo, acesso à inbox API, callback e segredo no Chatwoot antes de
+chamar o provider. 401/403 ou falha remota não apagam sessão. Concessão/membro/empresa
+são revalidados; agente não faz a primeira vinculação nem confirma troca de número.
+Duas abas compartilham uma janela idempotente de 60 s, limitada pela expiração do
+desafio retornado. Repetir a chave original não recupera QR em claro nem gera outro.
+
+Novas conexões de onboarding entram com proteção de identidade. Admin precisa
+confirmar explicitamente a revisão observada pelo provider. Troca de identidade
+bloqueia claim e última validação antes de envio, preservando a mensagem pendente.
+O worker atualiza a identidade sem depender da tela. A observação usa `wuid` no
+evento autenticado ou `ownerJid` na leitura autenticada do engine; nomes de exibição
+e telefone enviados pelo navegador não são identidade. Fluxos legados não inscritos
+nessa proteção continuam funcionando. Desligar UI/controle não remove a proteção.
+
+Saúde separa configuração/instância/transporte. OPERATIONAL exige identidade aprovada,
+callback válido na revisão/credencial atual e evidência de entrada/saída nas últimas
+24 h, posterior à confirmação da identidade. GET status não cria QR. PUT agents,
+POST pair, disconnect e confirm-identity usam idempotência e respostas no-store.
+
+RED: módulos de saúde/fachada ausentes. GREEN: 1 teste da regra de saúde, 14 testes
+HTTP/OpenAPI/eventos; regressão PostgreSQL inicial PASS com 27 testes em 3 arquivos
+(inclui 17 legados). Arquivo de saúde ampliado PASS com 5 testes: primeira vinculação,
+401 sem logout, concorrência/expiração, fingerprint divergente após claim, fila
+preservada, grants revogados, callback assinado, duas direções/24 h, rotação de
+credencial e worker sem UI. As evidências de transporte desse último teste são
+fixtures de armazenamento; a regressão de transporte está no arquivo legado separado.
+Typecheck, geração OpenAPI, contratos públicos e diff-check: PASS.
+
+Primeira suíte completa: 1008 PASS / 2 FAIL em 139 arquivos. Falharam dois findByRole
+dos testes preexistentes de Connections/ConnectionDetail. Reexecução isolada dos dois
+arquivos sem mudanças: PASS, 33 testes. A suíte completa será repetida com um worker
+para conferir a interferência de carga; o primeiro resultado não foi omitido.
+Houve falha transitória da revisão automática ao iniciar o RED de B7, por capacidade
+do modelo de revisão. Depois de conferir teste/setup sem rede/banco/credenciais,
+o mesmo comando foi autorizado e registrou o RED por módulo ausente. Sem contorno.
+
+Gate final B6: reexecução completa com um worker PASS, 1010 testes em 139 arquivos,
+exit 0 (`.sessions/b6-full-serial.log`). Foi excluído somente o teste RED de B7,
+criado depois da coleta da primeira suíte B6 e fora do commit desta tarefa.
+Os 139 arquivos B6 foram executados integralmente. Nenhuma mudança de frontend
+foi necessária para a reexecução. `git diff --check`: PASS.

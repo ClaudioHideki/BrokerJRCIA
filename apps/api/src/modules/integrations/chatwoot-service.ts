@@ -35,6 +35,7 @@ export interface ChatwootOptions {
   transact<T>(org: string, operation: OrganizationTransaction<T>): Promise<T>;
   resolveIntegration(id: string): Promise<string | undefined>;
   activateQr?(org: string, instanceId: string): Promise<{ id: string }>;
+  assertIdentity?(org: string, channelId: string): Promise<void>;
 }
 type IntegrationState = "PENDING" | "READY" | "FAILED" | "UNKNOWN" | "DISABLED";
 export interface ConnectionRow {
@@ -377,6 +378,7 @@ export function createChatwootService(options: ChatwootOptions) {
         inboxId?: number | undefined;
         name: string;
         replaceExistingWebhook?: boolean | undefined;
+        requireIdentity?: boolean | undefined;
       },
       actorId?: string,
     ) {
@@ -407,6 +409,7 @@ export function createChatwootService(options: ChatwootOptions) {
           )
         ).rows[0];
         if (!row) throw new IntegrationError("CONNECTION_ALREADY_EXISTS", 409);
+        if (input.requireIdentity) await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id,identity_enforced) VALUES($1,$2,$3,true)`, [org, id, channelId]);
         await integrationAudit(
           t,
           org,
@@ -637,6 +640,9 @@ export function createChatwootService(options: ChatwootOptions) {
           inboxId: Number(c.inbox_id),
         });
         if (!reply) return;
+        await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id,callback_verified_at,callback_destination_revision,callback_credential_version)
+          VALUES($1,$2,$3,now(),$4,$5) ON CONFLICT(organization_id,integration_id) DO UPDATE SET
+          callback_verified_at=now(),callback_destination_revision=$4,callback_credential_version=$5`, [org, id, c.channel_id, a.destination?.revision ?? null, a.credential_version]);
         await t.query(
           `INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,payload)
           VALUES($1,$2,'CHATWOOT_REPLY',$3,$4::jsonb) ON CONFLICT(organization_id,integration_id,dedupe_key) DO NOTHING`,

@@ -4,6 +4,26 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/status': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
+    true, 'READ_ONLY_PROVIDER_STATUS', 'NONE', 'RLS_ACCOUNT_REVISION_CONNECTION_GRANT',
+  ),
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/pair': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CHATWOOT_PAIR_AND_FIRST_BINDING_ADMIN',
+    true, 'IDEMPOTENCY_KEY_AND_SHARED_PAIR_WINDOW', 'NONE', 'RLS_CURRENT_CONNECTION_GRANT_AND_PROVIDER_IDENTITY',
+  ),
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/disconnect': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_DISCONNECT',
+    true, 'IDEMPOTENCY_KEY', 'NONE', 'RLS_CURRENT_CONNECTION_ADMIN_OR_SERVICE',
+  ),
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/confirm-identity': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'IDEMPOTENCY_KEY_AND_OBSERVATION_REVISION', 'NONE', 'RLS_ADMIN_PROVIDER_OBSERVED_IDENTITY',
+  ),
+  'PUT /v1/integrations/chatwoot/control/connections/{integrationId}/agents': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'IDEMPOTENCY_KEY_NO_UNCERTAIN_WRITE_REPLAY', 'NONE', 'RLS_VALIDATED_ACCOUNT_AGENTS',
+  ),
   'POST /v1/integrations/chatwoot/control/onboarding': policy(
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
     true, 'PERSISTENT_IDEMPOTENCY_KEY_CANONICAL_HASH', 'NONE', 'RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION',

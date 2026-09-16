@@ -157,6 +157,7 @@ export async function runMessagingWorker(
           )
             continue;
           try {
+            await integrations.identity?.runOnce(organizationId);
             await integrations.media?.runOnce(organizationId);
             await worker.runOnce(organizationId);
             await integrations.chatwootWorker?.runOnce(organizationId);

@@ -10,6 +10,7 @@ import type { MessagingChannel } from "./types.js";
 import { requireActiveOrganization } from "../tenancy/operational-limits.js";
 import { registerPendingMedia } from "./media-store.js";
 import type { MessageContent } from "./types.js";
+import type { ChatwootHealth } from '../integrations/chatwoot-health.js';
 
 const error = (code: string, status = 422) =>
   Object.assign(new Error(code), { code, status });
@@ -18,6 +19,7 @@ export interface QrServiceOptions {
   apiKey: string;
   webhookOrigin: string;
   signingKey: string;
+  identity?: ChatwootHealth | undefined;
   transact<T>(org: string, operation: OrganizationTransaction<T>): Promise<T>;
   resolveChannel(
     id: string,
@@ -101,6 +103,7 @@ export function createQrMessagingService(options: QrServiceOptions) {
       };
     },
     async resolveClient(channel: MessagingChannel) {
+      await options.identity?.refreshForDispatch(channel.organizationId, channel.id);
       const info = await instance(channel);
       if (info.status !== "CONNECTED") throw error("QR_CHANNEL_DISCONNECTED");
       return new EvolutionMessagingClient({
@@ -152,6 +155,7 @@ export function createQrMessagingService(options: QrServiceOptions) {
           row.upstream_instance_key,
         )) {
           if (event.kind === "connection") {
+            await options.identity?.observe(tx, binding.organizationId, channelId, { connected: event.state === 'CONNECTED', phone: event.identity ?? null });
             await tx.query(
               "UPDATE instances SET status=$3,updated_at=now() WHERE organization_id=$1 AND id=$2 AND status NOT IN ('PROVISIONING','PROVISIONING_FAILED')",
               [binding.organizationId, binding.instanceId, event.state],

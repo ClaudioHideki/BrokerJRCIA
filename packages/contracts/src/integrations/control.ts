@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { InstanceStatusSchema } from '../instances/schemas.js';
 export const ChatwootControlScopeSchema = z.enum(['chatwoot:read', 'chatwoot:manage', 'chatwoot:pair', 'chatwoot:disconnect']);
 export type ChatwootControlScope = z.infer<typeof ChatwootControlScopeSchema>;
 export const IssueControlCredentialSchema = z.strictObject({
@@ -41,3 +42,15 @@ export const OnboardingOperationSchema = z.strictObject({
 export const OnboardingRecoverySchema = z.strictObject({ action: z.enum(['RETRY', 'RECONCILE', 'CANCEL']) });
 export type OnboardingInput = z.infer<typeof OnboardingInputSchema>;
 export type OnboardingOperation = z.infer<typeof OnboardingOperationSchema>;
+export const ConnectionHealthSchema = z.strictObject({
+  integrationId: z.uuid(), inboxId: z.number().int().positive().nullable(), instanceId: z.uuid(),
+  integrationStatus: z.enum(['PENDING', 'READY', 'FAILED', 'UNKNOWN', 'DISABLED']), instanceStatus: InstanceStatusSchema,
+  callbackVerifiedAt: z.iso.datetime().nullable(), lastSuccessfulInboundAt: z.iso.datetime().nullable(), lastSuccessfulOutboundAt: z.iso.datetime().nullable(),
+  transportStatus: z.enum(['UNVERIFIED', 'OPERATIONAL', 'DEGRADED']), checkedAt: z.iso.datetime(), lastError: z.string().nullable(),
+  allowedActions: z.array(z.enum(['status', 'pair', 'disconnect', 'manage'])),
+  identityStatus: z.enum(['UNVERIFIED', 'CONFIRMED', 'CONFIRMATION_REQUIRED']), identityRevision: z.number().int().positive(),
+  observedNumberSuffix: z.string().regex(/^\d{4}$/).nullable(),
+});
+export const ConfirmIdentitySchema = z.strictObject({ observedRevision: z.number().int().positive() });
+export const ControlAgentsSchema = z.strictObject({ agentIds: ControlAgentIdsSchema });
+export type ConnectionHealth = z.infer<typeof ConnectionHealthSchema>;

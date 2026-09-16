@@ -18,7 +18,10 @@ import {
   readChatwootAccount,
   readChatwootConnection,
 } from "./chatwoot-service.js";
-import { MediaError, type MetaCloudClient } from "@jrc/providers";
+import { MediaError, EvolutionWorkspaceClient, type MetaCloudClient } from "@jrc/providers";
+import { randomUUID } from 'node:crypto';
+import { createChatwootHealth } from './chatwoot-health.js';
+import { createChatwootControlService } from './chatwoot-control-service.js';
 import type { MessagingChannel, OutboxClaim } from "../messaging/types.js";
 import { createOnboardingService } from './chatwoot-onboarding.js';
 import type { ChatwootControlAuth } from './chatwoot-control-auth.js';
@@ -102,10 +105,20 @@ export function createIntegrationRuntime(
   const config = loadIntegrationConfig(environment);
   const transact: ChatwootOptions["transact"] = (org, operation) =>
     withOrganizationTransaction(pool, org, operation);
+  const identity = config.qr && config.chatwoot ? createChatwootHealth({ transact, encryptionKey: config.chatwoot.encryptionKey,
+    async readIdentity(org, instanceId) {
+      const row = await transact(org, async t => (await t.query<{ upstream_instance_key: string }>('SELECT upstream_instance_key FROM instances WHERE organization_id=$1 AND id=$2', [org, instanceId])).rows[0]);
+      if (!row) throw new Error('INSTANCE_NOT_FOUND');
+      const snapshot = await new EvolutionWorkspaceClient({ baseUrl: config.qr!.baseUrl, apiKey: config.qr!.apiKey }).read({ organizationId: org,
+        requestId: randomUUID(), deadline: new Date(Date.now() + 10000), signal: AbortSignal.timeout(10000) }, row.upstream_instance_key);
+      return { connected: snapshot.profile.state === 'open', phone: snapshot.profile.phone };
+    },
+  }) : undefined;
   const qr = config.qr
     ? createQrMessagingService({
         ...config.qr,
         transact,
+        identity,
         async resolveChannel(id) {
           const row = (
             await pool.query<{ organization_id: string; instance_id: string }>(
@@ -137,6 +150,7 @@ export function createIntegrationRuntime(
             return value;
           }),
         ...(qr ? { activateQr: qr.activate } : {}),
+        ...(identity ? { assertIdentity: identity.assertReady } : {}),
         async resolveIntegration(id) {
           return (
             await pool.query<{ organization_id: string }>(
@@ -233,6 +247,8 @@ export function createIntegrationRuntime(
   return {
     qr,
     chatwoot,
+    identity,
+    controlService: control && options && chatwoot && identity ? createChatwootControlService({ ...options, ...control, chatwoot, health: identity }) : undefined,
     onboarding: control && chatwoot && qr ? createOnboardingService({ transact, ...control, chatwoot, activateQr: qr.activate }) : undefined,
     chatwootWorker: options ? createChatwootWorker(options) : undefined,
     provisioner: options ? createChatwootProvisioner(options) : undefined,
