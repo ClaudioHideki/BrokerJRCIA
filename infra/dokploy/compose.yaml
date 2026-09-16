@@ -2,11 +2,23 @@ name: jrc-broker
 
 x-runtime: &runtime
   NODE_ENV: production
+
+  # Banco principal / autenticação
   DATABASE_URL: postgresql://jrc_app:${JRC_APP_PASSWORD:?required}@postgres:5432/jrc_broker
   AUTH_DATABASE_URL: postgresql://jrc_auth:${JRC_AUTH_PASSWORD:?required}@postgres:5432/jrc_broker
+
+  # Administração da plataforma
+  PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
+  PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
+  PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
+  PLATFORM_LOGIN_MODE: ${PLATFORM_LOGIN_MODE:-password}
+
+  # Redis / Evolution
   REDIS_URL: redis://:${REDIS_PASSWORD:?required}@redis:6379/0
   EVOLUTION_BASE_URL: http://evolution:8080
   EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?required}
+
+  # Segurança
   JWT_SECRET: ${JWT_SECRET:?required}
   REFRESH_TOKEN_HASH_SECRET: ${REFRESH_TOKEN_HASH_SECRET:?required}
   API_KEY_HMAC_SECRET: ${API_KEY_HMAC_SECRET:?required}
@@ -14,16 +26,24 @@ x-runtime: &runtime
   IDENTITY_RATE_LIMIT_HMAC_SECRET: ${IDENTITY_RATE_LIMIT_HMAC_SECRET:?required}
   CHALLENGE_ENCRYPTION_KEY: ${CHALLENGE_ENCRYPTION_KEY:?required}
   BROWSER_CSRF_SECRET: ${BROWSER_CSRF_SECRET:?required}
+
+  # Console
   CONSOLE_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:?required}
   CONSOLE_COOKIE_SECURE: "true"
   PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?required}
+
+  # Chatwoot / JRC Conversas
   CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:?required}
   INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:?required}
   CHATWOOT_PLATFORM_TOKEN: ${CHATWOOT_PLATFORM_TOKEN:-}
   CHATWOOT_MEDIA_ORIGINS: ${CHATWOOT_MEDIA_ORIGINS:-}
   MEDIA_STORAGE_BYTES_PER_ORGANIZATION: ${MEDIA_STORAGE_BYTES_PER_ORGANIZATION:-1073741824}
+
+  # QR / Webhook
   QR_WEBHOOK_ORIGIN: http://api:3000
   QR_WEBHOOK_SIGNING_KEY: ${QR_WEBHOOK_SIGNING_KEY:?required}
+
+  # Meta
   META_APP_ID: ${META_APP_ID:-}
   META_APP_SECRET: ${META_APP_SECRET:-}
   META_SIGNUP_CONFIG_ID: ${META_SIGNUP_CONFIG_ID:-}
@@ -32,31 +52,44 @@ x-runtime: &runtime
   META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-}
   META_CREDENTIALS_JSON: ${META_CREDENTIALS_JSON:?required-json-object}
   META_ASSET_BINDINGS_JSON: ${META_ASSET_BINDINGS_JSON:?required-json-object}
+
+  # Typebot
   TYPEBOT_ORIGINS_JSON: ${TYPEBOT_ORIGINS_JSON:?required-json-object}
 
+
 services:
+
   web:
     image: ${JRC_WEB_IMAGE:?required}
     restart: unless-stopped
+
     environment:
       API_ORIGIN: http://api:3000
+
     expose:
       - "8080"
+
     depends_on:
       api:
         condition: service_healthy
+
     networks:
       - edge
       - backend
       - dokploy-network
       - default
+
     read_only: true
+
     cap_drop:
       - ALL
+
     security_opt:
       - no-new-privileges:true
+
     mem_limit: 256m
     cpus: 0.5
+
     labels:
       - traefik.docker.network=dokploy-network
       - traefik.http.routers.jrc-broker-broker-ophydn-57-web.rule=Host(`jrc-broker.jrcws.cloud`)
@@ -64,6 +97,7 @@ services:
       - traefik.http.services.jrc-broker-broker-ophydn-57-web.loadbalancer.server.port=8080
       - traefik.http.routers.jrc-broker-broker-ophydn-57-web.service=jrc-broker-broker-ophydn-57-web
       - traefik.http.routers.jrc-broker-broker-ophydn-57-web.middlewares=redirect-to-https@file
+
       - traefik.http.routers.jrc-broker-broker-ophydn-57-websecure.rule=Host(`jrc-broker.jrcws.cloud`)
       - traefik.http.routers.jrc-broker-broker-ophydn-57-websecure.entrypoints=websecure
       - traefik.http.services.jrc-broker-broker-ophydn-57-websecure.loadbalancer.server.port=8080
@@ -71,25 +105,27 @@ services:
       - traefik.http.routers.jrc-broker-broker-ophydn-57-websecure.tls.certresolver=letsencrypt
       - traefik.enable=true
 
+
   api:
     image: ${JRC_API_IMAGE:?required}
     restart: unless-stopped
+
     environment:
       <<: *runtime
-      PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
-      PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
-      PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
-      PLATFORM_LOGIN_MODE: ${PLATFORM_LOGIN_MODE:-password}
+
     expose:
       - "3000"
+
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
     networks:
       - backend
       - egress
+
     healthcheck:
       test:
         - CMD
@@ -99,104 +135,49 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+
     read_only: true
+
     cap_drop:
       - ALL
+
     security_opt:
       - no-new-privileges:true
+
     mem_limit: 1g
     cpus: 1
 
-  api-debug:
-    image: ${JRC_API_IMAGE:?required}
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-    command:
-      - |
-        echo "=== JRC API DEBUG V5 ==="
-        echo "PWD:"
-        pwd
-
-        echo "=== CRIANDO PATCH AUTOMATICO ==="
-
-        node -e "
-        const fs=require('node:fs');
-        const file='apps/api/dist/server.js';
-        const out='apps/api/dist/server-debug.js';
-
-        let s=fs.readFileSync(file,'utf8');
-
-        console.log('server.js bytes:', s.length);
-
-        const marker=\"process.stderr.write('JRC API failed to start\\\\n');\";
-
-        if (!s.includes(marker)) {
-          console.error('ERRO: marcador JRC API failed to start nao encontrado');
-          process.exit(10);
-        }
-
-        s=s.replace(
-          marker,
-          \"console.error('=== ERRO REAL DA API ==='); console.error(error); console.error(error?.stack);\"
-        );
-
-        s=s.replace(
-          /catch\\s*\\{/g,
-          'catch (error) {'
-        );
-
-        fs.writeFileSync(out,s);
-        console.log('PATCH V5 APLICADO');
-        "
-
-        echo "=== VALIDANDO PATCH ==="
-
-        grep -n "ERRO REAL DA API" apps/api/dist/server-debug.js || true
-
-        echo "=== INICIANDO API DEBUG V5 ==="
-
-        node --trace-uncaught --trace-warnings apps/api/dist/server-debug.js
-
-        echo "=== API DEBUG FINALIZADA ==="
-    environment:
-      <<: *runtime
-      PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
-      PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
-      PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
-      PLATFORM_LOGIN_MODE: ${PLATFORM_LOGIN_MODE:-password}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - backend
-      - egress
 
   worker:
     image: ${JRC_API_IMAGE:?required}
+
     entrypoint:
       - node
       - apps/api/dist/commands/messaging-worker.js
       - --watch
+
     restart: unless-stopped
+
     environment:
       <<: *runtime
       MESSAGING_WORKER_MODE: automatic
       MESSAGING_WORKER_SHARDS: ${MESSAGING_WORKER_SHARDS:-1}
       MESSAGING_WORKER_SHARD: ${MESSAGING_WORKER_SHARD:-0}
       WORKER_HEARTBEAT_FILE: /tmp/jrc-worker-heartbeat
+
     depends_on:
       api:
         condition: service_healthy
+
     networks:
       - backend
       - egress
+
     read_only: true
+
     tmpfs:
       - /tmp:size=1m,uid=1000,gid=1000,mode=0700
+
     healthcheck:
       test:
         - CMD
@@ -207,37 +188,52 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 3
+
     cap_drop:
       - ALL
+
     security_opt:
       - no-new-privileges:true
+
     mem_limit: 768m
     cpus: 1
 
+
   migrate:
     image: ${JRC_API_IMAGE:?required}
+
+    profiles:
+      - maintenance
+
     restart: "no"
+
     entrypoint:
       - node
       - infra/app/provision.mjs
+
     environment:
       MIGRATION_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?required}@postgres:5432/jrc_broker
       JRC_APP_PASSWORD: ${JRC_APP_PASSWORD:?required}
       JRC_AUTH_PASSWORD: ${JRC_AUTH_PASSWORD:?required}
       JRC_PLATFORM_PASSWORD: ${JRC_PLATFORM_PASSWORD:?required}
       EVOLUTION_DB_PASSWORD: ${EVOLUTION_DB_PASSWORD:?required}
+
     depends_on:
       postgres:
         condition: service_healthy
+
     networks:
       - backend
+
 
   postgres:
     image: postgres:16.4-alpine
     restart: unless-stopped
+
     environment:
       POSTGRES_DB: jrc_broker
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+
     healthcheck:
       test:
         - CMD-SHELL
@@ -245,16 +241,21 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
     networks:
       - backend
+
     mem_limit: 2g
     cpus: 2
+
 
   redis:
     image: redis:7.4.0-alpine
     restart: unless-stopped
+
     command:
       - redis-server
       - --appendonly
@@ -265,6 +266,7 @@ services:
       - 384mb
       - --maxmemory-policy
       - noeviction
+
     healthcheck:
       test:
         - CMD
@@ -275,58 +277,77 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
     volumes:
       - redis_data:/data
+
     networks:
       - backend
+
     mem_limit: 512m
     cpus: 0.5
+
 
   evolution:
     image: ${EVOLUTION_ENGINE_IMAGE:?required}
     restart: unless-stopped
+
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
     environment:
       SERVER_TYPE: http
       SERVER_PORT: "8080"
+
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://jrc_evolution:${EVOLUTION_DB_PASSWORD:?required}@postgres:5432/jrc_evolution?schema=public
       DATABASE_CONNECTION_CLIENT_NAME: jrc_broker
+
       CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: redis://:${REDIS_PASSWORD:?required}@redis:6379/6
       CACHE_REDIS_PREFIX_KEY: jrc-evolution
       CACHE_REDIS_SAVE_INSTANCES: "true"
+
       DATABASE_SAVE_DATA_INSTANCE: "true"
       DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
       DATABASE_SAVE_MESSAGE_UPDATE: "true"
       DATABASE_SAVE_DATA_CONTACTS: "true"
       DATABASE_SAVE_DATA_CHATS: "true"
       DATABASE_SAVE_DATA_HISTORIC: "true"
+
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?required}
+
     volumes:
       - engine_instances:/evolution/instances
+
     networks:
       - backend
       - egress
+
     mem_limit: 2g
     cpus: 2
 
+
 networks:
-  edge: null
+
+  edge:
 
   backend:
     internal: true
 
-  egress: null
+  egress:
 
   dokploy-network:
     external: true
 
+
 volumes:
-  postgres_data: null
-  redis_data: null
-  engine_instances: null
+
+  postgres_data:
+
+  redis_data:
+
+  engine_instances:
