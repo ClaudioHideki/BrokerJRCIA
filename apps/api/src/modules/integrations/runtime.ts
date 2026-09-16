@@ -27,7 +27,7 @@ type QrConfig = Pick<
 >;
 type ChatwootConfig = Pick<
   ChatwootOptions,
-  "baseUrl" | "publicOrigin" | "encryptionKey" | "platformToken" | "allowLocal"
+  "baseUrl" | "publicOrigin" | "encryptionKey" | "platformToken" | "allowLocal" | "externalDestinationsEnabled"
 >;
 export function loadIntegrationConfig(environment: NodeJS.ProcessEnv): {
   qr?: QrConfig;
@@ -64,6 +64,8 @@ export function loadIntegrationConfig(environment: NodeJS.ProcessEnv): {
         .min(1)
         .parse(environment.INTEGRATION_ENCRYPTION_KEY),
       allowLocal: environment.NODE_ENV !== "production",
+      externalDestinationsEnabled: z.enum(['true', 'false']).default('false')
+        .parse(environment.CHATWOOT_EXTERNAL_DESTINATIONS_ENABLED) === 'true',
       ...(environment.CHATWOOT_PLATFORM_TOKEN
         ? {
             platformToken: z

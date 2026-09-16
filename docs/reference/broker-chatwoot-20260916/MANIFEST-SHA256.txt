@@ -1,0 +1,9 @@
+826d34e6c90f274ff485035ca03c8c76b8ed905ecd732c7a9fc783158b668157  DOCUMENT_QA.json
+7f9c2cf69353b89cc0e9ef2de5d4bcd76e7478a1d965ce42a93360b83db792e6  PROMPT-CODEX.md
+73c7d4b4f3aac2db0b4886ff048d52a42ef60d6b0a69a63eb117a0b3d85fd416  README-CODEX.md
+603988cce1917fed030a4db90963ec52a6f9547730f113fcd22649702c07dfc1  docs/superpowers/plans/2026-09-16-01-broker-multi-destination-control.md
+184860471c753b754a84b90f6ba772e3d0972525178a14e21ec2a9c770bcad17  docs/superpowers/plans/2026-09-16-02-jrc-conversas-native.md
+3f9cf4ae5c8d60d2a9e13a6a9da6cf49448234310fbd198d5067d9b331c03be7  docs/superpowers/plans/2026-09-16-03-chatwoot-embedded-app.md
+a5081291b123352753a794e312b12fef8318cae7c1448c83ce5845119cb70943  docs/superpowers/specs/2026-09-16-broker-chatwoot-integration-design.md
+c2317f1ee750602091561d228f28b6e3c4728c4aa689955fcdfade9a78dee997  docs/validation/2026-09-16-integration-acceptance.md
+d668fd8e2b954bab29c27951934111170ffbb4f9a19223056ba7068d64ccefc2  docs/validation/2026-09-16-source-evidence.md

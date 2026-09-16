@@ -1,0 +1,70 @@
+{
+  "date": "2026-09-16",
+  "scope": "Documentation package structural QA only",
+  "application_tests_executed": false,
+  "production_changed": false,
+  "plans": 3,
+  "tasks": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6",
+    "B7",
+    "J1",
+    "J2",
+    "J3",
+    "J4",
+    "J5",
+    "E1",
+    "E2",
+    "E3",
+    "E4",
+    "E5"
+  ],
+  "acceptance_scenarios": 40,
+  "checks": [
+    {
+      "file": "PROMPT-CODEX.md",
+      "bytes": 8246,
+      "fences_balanced": true
+    },
+    {
+      "file": "README-CODEX.md",
+      "bytes": 1919,
+      "fences_balanced": true
+    },
+    {
+      "file": "docs/superpowers/plans/2026-09-16-01-broker-multi-destination-control.md",
+      "bytes": 31624,
+      "fences_balanced": true
+    },
+    {
+      "file": "docs/superpowers/plans/2026-09-16-02-jrc-conversas-native.md",
+      "bytes": 22673,
+      "fences_balanced": true
+    },
+    {
+      "file": "docs/superpowers/plans/2026-09-16-03-chatwoot-embedded-app.md",
+      "bytes": 21125,
+      "fences_balanced": true
+    },
+    {
+      "file": "docs/superpowers/specs/2026-09-16-broker-chatwoot-integration-design.md",
+      "bytes": 21233,
+      "fences_balanced": true
+    },
+    {
+      "file": "docs/validation/2026-09-16-integration-acceptance.md",
+      "bytes": 6331,
+      "fences_balanced": true
+    },
+    {
+      "file": "docs/validation/2026-09-16-source-evidence.md",
+      "bytes": 5732,
+      "fences_balanced": true
+    }
+  ],
+  "result": "PASS"
+}

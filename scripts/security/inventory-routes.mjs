@@ -4,6 +4,18 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/integrations/chatwoot/destination': policy(
+    'apps/api/src/http/routes/integrations.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN_OPERATOR_VIEWER',
+    true, 'NOT_APPLICABLE', 'NONE', 'RLS_ORGANIZATION_ONLY',
+  ),
+  'PUT /v1/integrations/chatwoot/destination': policy(
+    'apps/api/src/http/routes/integrations.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'SAME_ORIGIN_AND_MODE_NO_CHANGE', 'NONE', 'RLS_ORGANIZATION_AND_DESTINATION_NOT_IN_USE',
+  ),
+  'POST /v1/platform/organizations/{id}/chatwoot/destination/approve': policy(
+    'apps/api/src/http/routes/platform.ts', 'PLATFORM_COOKIE_CSRF_EXACT_ORIGIN', 'SUPER_ADMIN_AUDITED',
+    true, 'REVIEWED_DESTINATION_REVISION', 'NONE', 'DEDICATED_PLATFORM_ROLE_AND_DESTINATION_REVISION',
+  ),
   ...Object.fromEntries(
     ["GET /v1/integrations/chatwoot", "GET /v1/integrations/chatwoot/jobs"].map(
       (route) => [

@@ -17,6 +17,7 @@ import {
 } from "./secrets.js";
 import { parseChatwootReply } from "./chatwoot-events.js";
 import type { MediaStore } from "../messaging/media-store.js";
+import { createChatwootDestinationService } from './chatwoot-destination.js';
 
 export class IntegrationError extends Error {
   constructor(
@@ -32,6 +33,7 @@ export interface ChatwootOptions {
   encryptionKey: string;
   platformToken?: string;
   allowLocal?: boolean;
+  externalDestinationsEnabled?: boolean;
   fetch?: typeof globalThis.fetch;
   mediaOrigins?: readonly string[];
   media?: MediaStore;
@@ -144,6 +146,8 @@ export function createChatwootService(options: ChatwootOptions) {
   const env = chatwootEnvironment(options);
   const repo = createPostgresMessagingRepository();
   const tx = options.transact;
+  const destinations = createChatwootDestinationService({ enabled: options.externalDestinationsEnabled === true,
+    managedOrigin: env.origin, transact: tx });
   function connectionView(row: ConnectionRow) {
     return {
       id: row.id,
@@ -195,6 +199,7 @@ export function createChatwootService(options: ChatwootOptions) {
     });
   }
   return {
+    destinations,
     async status(org: string) {
       return tx(org, async (t) => {
         const a = await readChatwootAccount(t, org);

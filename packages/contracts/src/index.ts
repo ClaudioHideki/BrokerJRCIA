@@ -8,3 +8,4 @@ export * from './problems.js';
 export * from './messaging/schemas.js';
 export * from './broker/schemas.js';
 export * from './integrations/schemas.js';
+export * from './integrations/destinations.js';

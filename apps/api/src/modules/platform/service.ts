@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import { hashPassword, initializePasswordVerifier } from '@jrc/security';
 import { digest, decryptSeed, verifyTotp } from './crypto.js';
 import {platformMfaRequired,type PlatformLoginPolicy} from './login-policy.js';
+import { normalizeChatwootOrigin } from '../integrations/chatwoot-destination.js';
 
 export class PlatformError extends Error { constructor(public statusCode:number, public code:string) {super(code);} }
 export type PlatformAction = 'list'|'create'|'update'|'memberships'|'membership'|'monitor'|'acknowledge';
@@ -53,6 +54,25 @@ export class PlatformService {
   return {user:{id:r.id,email:r.email,role:r.role},csrfToken:r.csrf_token,expiresAt:new Date(r.expires_at).toISOString()};
  }
  session(token:string) {return this.transaction(c=>this.readSession(c,token));}
+ async approveChatwootDestination(token:string,csrf:string,reason:string,org:string,input:{revision:number;mediaOrigins:string[]}) {
+  if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  const origins=[...new Set(input.mediaOrigins.map(normalizeChatwootOrigin))];
+  return this.transaction(async c=>{
+   const session=await this.readSession(c,token);
+   if(session.csrfToken!==csrf||session.user.role!=='SUPER_ADMIN') throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+   await c.query("SELECT pg_advisory_xact_lock(hashtextextended('chatwoot-destination:'||$1,0))",[org]);
+   const row=(await c.query('SELECT * FROM chatwoot_destinations WHERE organization_id=$1 FOR UPDATE',[org])).rows[0];
+   if(!row) throw new PlatformError(404,'DESTINATION_NOT_FOUND');
+   if(row.revision!==input.revision) throw new PlatformError(409,'DESTINATION_REVISION_CHANGED');
+   normalizeChatwootOrigin(row.base_url);
+   const audit=(await c.query(`INSERT INTO platform_audit_logs(actor_id,organization_id,action,reason)
+    VALUES($1,$2,'chatwoot-destination-approve',$3) RETURNING id`,[session.user.id,org,reason])).rows[0];
+   return (await c.query(`UPDATE chatwoot_destinations SET approval_status='APPROVED',approval_audit_id=$2,
+    approved_at=now(),media_origins=$3,updated_at=now() WHERE organization_id=$1
+    RETURNING organization_id AS "organizationId",base_url AS "baseUrl",mode,approval_status AS "approvalStatus",media_origins AS "mediaOrigins",revision`,
+   [org,audit.id,JSON.stringify(origins)])).rows[0];
+  });
+ }
  async authorizeIntegration(token:string,reason:string,org:string,write:boolean) {
   if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
   return this.transaction(async c=>{

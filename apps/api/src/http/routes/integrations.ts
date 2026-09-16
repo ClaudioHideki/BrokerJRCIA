@@ -9,7 +9,10 @@ import {
   ReconcileIntegrationJobSchema,
   MessagingChannelViewSchema,
   PROBLEM_CONTENT_TYPE,
+  DestinationRequestSchema,
+  ChatwootDestinationSchema,
 } from "@jrc/contracts";
+import { ChatwootDestinationError } from '../../modules/integrations/chatwoot-destination.js';
 import {
   authenticateRequest,
   type AuthenticationOptions,
@@ -52,7 +55,7 @@ export async function registerIntegrationRoutes(
       statusCode?: number;
     };
     const status =
-      error instanceof IntegrationError
+      error instanceof IntegrationError || error instanceof ChatwootDestinationError
         ? error.status
         : candidate.validation || error instanceof z.ZodError
           ? 400
@@ -66,7 +69,7 @@ export async function registerIntegrationRoutes(
                 ? (candidate.statusCode ?? candidate.status)!
                 : 503;
     const code =
-      error instanceof IntegrationError || error instanceof ChatwootError
+      error instanceof IntegrationError || error instanceof ChatwootError || error instanceof ChatwootDestinationError
         ? error.code
         : candidate.code === "23505"
           ? "INTEGRATION_ALREADY_BOUND"
@@ -108,6 +111,12 @@ export async function registerIntegrationRoutes(
   const read = [authenticateRequest(options), guard(false)],
     write = [authenticateRequest(options), guard(true)];
   const api = app.withTypeProvider<ZodTypeProvider>();
+  api.get('/v1/integrations/chatwoot/destination', {
+    preHandler: read, schema: { querystring: empty, response: { 200: ChatwootDestinationSchema.nullable() } },
+  }, async request => (await service().destinations.get(org(request))) ?? null);
+  api.put('/v1/integrations/chatwoot/destination', {
+    preHandler: write, schema: { querystring: empty, body: DestinationRequestSchema, response: { 200: ChatwootDestinationSchema } },
+  }, request => service().destinations.request(org(request), request.body));
   api.post(
     "/v1/integrations/chatwoot/connections/:id/retry",
     {

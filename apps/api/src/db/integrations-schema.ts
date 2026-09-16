@@ -27,6 +27,22 @@ const dates = {
     .notNull()
     .defaultNow(),
 };
+export const chatwootDestinations = pgTable('chatwoot_destinations', {
+  organizationId: uuid('organization_id').primaryKey().references(() => organizations.id, { onDelete: 'restrict' }),
+  baseUrl: text('base_url').notNull(),
+  mode: text('mode').notNull(),
+  approvalStatus: text('approval_status').notNull().default('PENDING'),
+  mediaOrigins: jsonb('media_origins').notNull().default(sql`'[]'::jsonb`),
+  revision: integer('revision').notNull().default(1),
+  approvalAuditId: uuid('approval_audit_id'),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  ...dates,
+}, t => [
+  unique().on(t.organizationId, t.baseUrl),
+  check('chatwoot_destinations_mode_check', sql`${t.mode} IN ('MANAGED','EXTERNAL')`),
+  check('chatwoot_destinations_approval_status_check', sql`${t.approvalStatus} IN ('PENDING','APPROVED','REVOKED')`),
+  check('chatwoot_destinations_revision_check', sql`${t.revision}>0`),
+]);
 export const chatwootAccounts = pgTable(
   "chatwoot_accounts",
   {
@@ -36,6 +52,9 @@ export const chatwootAccounts = pgTable(
     baseUrl: text("base_url").notNull(),
     accountId: bigint("account_id", { mode: "number" }),
     encryptedToken: text("encrypted_token"),
+    credentialVersion: integer('credential_version').notNull().default(1),
+    capabilities: jsonb('capabilities').notNull().default(sql`'{}'::jsonb`),
+    capabilitiesVerifiedAt: timestamp('capabilities_verified_at', { withTimezone: true }),
     provisioningKey: uuid("provisioning_key").notNull().defaultRandom(),
     status: text("status").notNull().default("PENDING"),
     lastError: text("last_error"),
@@ -43,6 +62,8 @@ export const chatwootAccounts = pgTable(
   },
   (t) => [
     unique().on(t.baseUrl, t.accountId),
+    foreignKey({ name: 'chatwoot_accounts_destination_fk', columns: [t.organizationId, t.baseUrl],
+      foreignColumns: [chatwootDestinations.organizationId, chatwootDestinations.baseUrl] }),
     check(
       "chatwoot_accounts_status_check",
       sql`${t.status} IN ('PENDING','READY','FAILED','UNKNOWN','DISABLED')`,

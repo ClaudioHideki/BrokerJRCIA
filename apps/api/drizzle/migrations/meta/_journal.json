@@ -120,6 +120,13 @@
       "when": 1789473604000,
       "tag": "0017_chatwoot_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789560000000,
+      "tag": "0018_chatwoot_destinations",
+      "breakpoints": true
     }
   ]
 }
