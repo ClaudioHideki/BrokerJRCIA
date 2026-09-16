@@ -15,7 +15,7 @@ x-runtime: &runtime
   CHALLENGE_ENCRYPTION_KEY: ${CHALLENGE_ENCRYPTION_KEY:?required}
   BROWSER_CSRF_SECRET: ${BROWSER_CSRF_SECRET:?required}
   CONSOLE_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:?required}
-  CONSOLE_COOKIE_SECURE: 'true'
+  CONSOLE_COOKIE_SECURE: "true"
   PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?required}
   CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:?required}
   INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:?required}
@@ -40,13 +40,19 @@ services:
     restart: unless-stopped
     environment:
       API_ORIGIN: http://api:3000
-    expose: ['8080']
+    expose:
+      - "8080"
     depends_on:
-      api: { condition: service_healthy }
-    networks: [edge, backend]
+      api:
+        condition: service_healthy
+    networks:
+      - edge
+      - backend
     read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     mem_limit: 256m
     cpus: 0.5
 
@@ -59,25 +65,68 @@ services:
       PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
       PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
       PLATFORM_LOGIN_MODE: ${PLATFORM_LOGIN_MODE:-password}
-    expose: ['3000']
+    expose:
+      - "3000"
     depends_on:
-      postgres: { condition: service_healthy }
-      redis: { condition: service_healthy }
-    networks: [backend, egress]
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+      - egress
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
       interval: 15s
       timeout: 5s
       retries: 5
     read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     mem_limit: 1g
     cpus: 1
 
+  # TEMPORARIO:
+  # Executa a mesma API sem restart automatico para capturarmos
+  # o erro real de inicializacao. Remover depois do diagnostico.
+  api-debug:
+    image: ${JRC_API_IMAGE:?required}
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - |
+        echo "=== JRC API DEBUG ==="
+        echo "Iniciando API em modo de diagnostico..."
+        exec node apps/api/dist/server.js
+    environment:
+      <<: *runtime
+      PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
+      PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
+      PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
+      PLATFORM_LOGIN_MODE: ${PLATFORM_LOGIN_MODE:-password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+      - egress
+
   worker:
     image: ${JRC_API_IMAGE:?required}
-    entrypoint: ['node', 'apps/api/dist/commands/messaging-worker.js', '--watch']
+    entrypoint:
+      - node
+      - apps/api/dist/commands/messaging-worker.js
+      - --watch
     restart: unless-stopped
     environment:
       <<: *runtime
@@ -86,27 +135,37 @@ services:
       MESSAGING_WORKER_SHARD: ${MESSAGING_WORKER_SHARD:-0}
       WORKER_HEARTBEAT_FILE: /tmp/jrc-worker-heartbeat
     depends_on:
-      api: { condition: service_healthy }
-    networks: [backend, egress]
+      api:
+        condition: service_healthy
+    networks:
+      - backend
+      - egress
     read_only: true
-    tmpfs: ['/tmp:size=1m,uid=1000,gid=1000,mode=0700']
+    tmpfs:
+      - /tmp:size=1m,uid=1000,gid=1000,mode=0700
     healthcheck:
-      test: ['CMD', 'node', '-e', "const fs=require('node:fs');try{const t=Number(fs.readFileSync('/tmp/jrc-worker-heartbeat','utf8'));process.exit(Date.now()-t<180000?0:1)}catch{process.exit(1)}"]
+      test:
+        - CMD
+        - node
+        - -e
+        - "const fs=require('node:fs');try{const t=Number(fs.readFileSync('/tmp/jrc-worker-heartbeat','utf8'));process.exit(Date.now()-t<180000?0:1)}catch{process.exit(1)}"
       interval: 30s
       timeout: 5s
       start_period: 30s
       retries: 3
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     mem_limit: 768m
     cpus: 1
 
-  # Executa o provisionamento inicial do PostgreSQL.
-  # Temporariamente sem "profiles: [maintenance]" para que o Dokploy execute.
   migrate:
     image: ${JRC_API_IMAGE:?required}
-    restart: 'no'
-    entrypoint: ['node', 'infra/app/provision.mjs']
+    restart: "no"
+    entrypoint:
+      - node
+      - infra/app/provision.mjs
     environment:
       MIGRATION_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?required}@postgres:5432/jrc_broker
       JRC_APP_PASSWORD: ${JRC_APP_PASSWORD:?required}
@@ -114,8 +173,10 @@ services:
       JRC_PLATFORM_PASSWORD: ${JRC_PLATFORM_PASSWORD:?required}
       EVOLUTION_DB_PASSWORD: ${EVOLUTION_DB_PASSWORD:?required}
     depends_on:
-      postgres: { condition: service_healthy }
-    networks: [backend]
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
 
   postgres:
     image: postgres:16.4-alpine
@@ -124,26 +185,46 @@ services:
       POSTGRES_DB: jrc_broker
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d jrc_broker']
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres -d jrc_broker
       interval: 5s
       timeout: 3s
       retries: 20
-    volumes: [postgres_data:/var/lib/postgresql/data]
-    networks: [backend]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
     mem_limit: 2g
     cpus: 2
 
   redis:
     image: redis:7.4.0-alpine
     restart: unless-stopped
-    command: ['redis-server', '--appendonly', 'yes', '--requirepass', '${REDIS_PASSWORD:?required}', '--maxmemory', '384mb', '--maxmemory-policy', 'noeviction']
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?required}
+      - --maxmemory
+      - 384mb
+      - --maxmemory-policy
+      - noeviction
     healthcheck:
-      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:?required}', 'ping']
+      test:
+        - CMD
+        - redis-cli
+        - -a
+        - ${REDIS_PASSWORD:?required}
+        - ping
       interval: 5s
       timeout: 3s
       retries: 20
-    volumes: [redis_data:/data]
-    networks: [backend]
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
     mem_limit: 512m
     cpus: 0.5
 
@@ -151,27 +232,32 @@ services:
     image: ${EVOLUTION_ENGINE_IMAGE:?required}
     restart: unless-stopped
     depends_on:
-      postgres: { condition: service_healthy }
-      redis: { condition: service_healthy }
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       SERVER_TYPE: http
-      SERVER_PORT: '8080'
+      SERVER_PORT: "8080"
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://jrc_evolution:${EVOLUTION_DB_PASSWORD:?required}@postgres:5432/jrc_evolution?schema=public
       DATABASE_CONNECTION_CLIENT_NAME: jrc_broker
-      CACHE_REDIS_ENABLED: 'true'
+      CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: redis://:${REDIS_PASSWORD:?required}@redis:6379/6
       CACHE_REDIS_PREFIX_KEY: jrc-evolution
-      CACHE_REDIS_SAVE_INSTANCES: 'true'
-      DATABASE_SAVE_DATA_INSTANCE: 'true'
-      DATABASE_SAVE_DATA_NEW_MESSAGE: 'true'
-      DATABASE_SAVE_MESSAGE_UPDATE: 'true'
-      DATABASE_SAVE_DATA_CONTACTS: 'true'
-      DATABASE_SAVE_DATA_CHATS: 'true'
-      DATABASE_SAVE_DATA_HISTORIC: 'true'
+      CACHE_REDIS_SAVE_INSTANCES: "true"
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      DATABASE_SAVE_DATA_HISTORIC: "true"
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?required}
-    volumes: [engine_instances:/evolution/instances]
-    networks: [backend, egress]
+    volumes:
+      - engine_instances:/evolution/instances
+    networks:
+      - backend
+      - egress
     mem_limit: 2g
     cpus: 2
 
