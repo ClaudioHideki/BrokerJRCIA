@@ -10,6 +10,8 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/integrations/chatwoot/control/context', 'POST /v1/integrations/chatwoot/control-credentials',
+  'PUT /v1/integrations/chatwoot/connections/{id}/operator-grants',
   'GET /v1/integrations/chatwoot/destination', 'PUT /v1/integrations/chatwoot/destination',
   'POST /v1/platform/organizations/{id}/chatwoot/destination/approve',
   'GET /v1/integrations/chatwoot', 'POST /v1/integrations/chatwoot/{id}/events',
@@ -190,6 +192,12 @@ describe('OpenAPI público da JRC', () => {
 
     expect(second).toBe(first);
     expect(committed).toBe(first);
+  });
+  it('documents the scoped control key without broadening legacy integration authentication', async () => {
+    const document = await createOpenApiDocument();
+    expect(document.paths['/v1/integrations/chatwoot/control/context']?.get?.security).toEqual([{ bearerAuth: [] }, { jrcApiKeyAuth: [] }]);
+    expect(document.paths['/v1/integrations/chatwoot/control-credentials']?.post?.security).toEqual([{ bearerAuth: [] }]);
+    expect(document.paths['/v1/integrations/chatwoot']?.get?.security).toEqual([{ bearerAuth: [] }]);
   });
 
   it('mantém a Swagger UI desabilitada por padrão', async () => {

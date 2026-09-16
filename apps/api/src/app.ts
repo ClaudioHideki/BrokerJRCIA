@@ -1,5 +1,8 @@
 import swagger from "@fastify/swagger";
 import { createIntegrationRuntime } from "./modules/integrations/runtime.js";
+import { z } from 'zod';
+import { createChatwootControlAuth } from './modules/integrations/chatwoot-control-auth.js';
+import { registerChatwootControlRoutes, type ChatwootControlRouteOptions } from './http/routes/chatwoot-control.js';
 import {
   registerIntegrationRoutes,
   type IntegrationRouteOptions,
@@ -126,6 +129,7 @@ export interface BuildAppOptions {
   metaOnboarding?: MetaOnboardingRouteOptions;
   tenantOperations?: TenantOperationsOptions;
   integrations?: IntegrationRouteOptions;
+  chatwootControl?: ChatwootControlRouteOptions;
   environment?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 }
 
@@ -184,7 +188,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       options.platform !== undefined ||
       options.metaOnboarding !== undefined ||
       options.tenantOperations !== undefined ||
-      options.integrations !== undefined)
+      options.integrations !== undefined || options.chatwootControl !== undefined)
   ) {
     throw new Error("Runtime authentication dependency injection is forbidden");
   }
@@ -208,6 +212,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   let tenantOperations =
     nodeEnv === "test" ? options.tenantOperations : undefined;
   let integrations = nodeEnv === "test" ? options.integrations : undefined;
+  let chatwootControl = nodeEnv === 'test' ? options.chatwootControl : undefined;
   let readinessCheck = nodeEnv === "test" ? options.readinessCheck : undefined;
   if (
     (!auth || !consoleAuth || !apiKeys || !providerAccounts || !instances) &&
@@ -383,6 +388,14 @@ export function buildApp(options: BuildAppOptions = {}) {
       resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
       service: integrationRuntime.chatwoot,
       qr: integrationRuntime.qr,
+    };
+    chatwootControl = {
+      jwtSecret: config.jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey,
+      service: createChatwootControlAuth({ enabled: z.enum(['true', 'false']).default('false').parse(messagingEnvironment.CHATWOOT_CONTROL_ENABLED) === 'true',
+        hmacSecret: config.apiKeyHmacSecret,
+        managedOrigin: messagingEnvironment.CHATWOOT_BASE_URL ? new URL(messagingEnvironment.CHATWOOT_BASE_URL).origin : undefined,
+        transact: (org, work) => withOrganizationTransaction(pools.appPool, org, work),
+        resolveCurrentRole: createMessagingMembershipResolver(pools.authPool) }),
     };
     metaOnboarding = {
       service: metaOnboardingService,
@@ -706,6 +719,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     void app.register(async (scope) =>
       registerIntegrationRoutes(scope, configured),
     );
+  }
+  if (chatwootControl) {
+    const configured = chatwootControl;
+    void app.register(scope => registerChatwootControlRoutes(scope, configured));
   }
 
   app.get("/health", { schema: { hide: true } }, async () => ({

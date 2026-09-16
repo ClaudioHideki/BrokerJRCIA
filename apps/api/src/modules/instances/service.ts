@@ -34,6 +34,7 @@ const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1_000;
 const CONNECT_LEASE_MS = 60_000;
 const DISCONNECT_LEASE_MS = 60_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export type DelegatedInstanceOperation = 'create' | 'pair' | 'disconnect' | 'status' | 'list';
 
 export type InstanceActorContext = Readonly<{
   organizationId: string;
@@ -43,6 +44,8 @@ export type InstanceActorContext = Readonly<{
 }> & (
   | Readonly<{ credentialKind: 'JWT'; actorId: string }>
   | Readonly<{ credentialKind: 'API_KEY'; actorId: null; apiKeyId: string }>
+  | Readonly<{ credentialKind: 'CHATWOOT_CONTROL'; actorId: string | null; apiKeyId?: string;
+      authorize(transaction: TenantTransaction, operation: DelegatedInstanceOperation, instanceId?: string): Promise<void> }>
 );
 
 export interface CreateInstanceCommand {
@@ -146,9 +149,11 @@ function providerContext(context: InstanceActorContext): ProviderContext {
 }
 
 function auditActor(context: InstanceActorContext) {
-  return context.credentialKind === 'API_KEY'
-    ? { actorId: null, actorKind: 'API_KEY' as const, actorApiKeyId: context.apiKeyId }
-    : { actorId: context.actorId };
+  if (context.credentialKind === 'API_KEY')
+    return { actorId: null, actorKind: 'API_KEY' as const, actorApiKeyId: context.apiKeyId };
+  if (context.credentialKind === 'CHATWOOT_CONTROL' && context.apiKeyId !== undefined)
+    return { actorId: null, actorKind: 'API_KEY' as const, actorApiKeyId: context.apiKeyId };
+  return { actorId: context.actorId };
 }
 
 function errorCode(error: unknown): string {
@@ -291,6 +296,8 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
 
   return {
     async createInstance(context, command) {
+      if (context.credentialKind === 'CHATWOOT_CONTROL')
+        await dependencies.runInOrganizationTransaction(context.organizationId, tx => context.authorize(tx, 'create'));
       const initial = await dependencies.runInOrganizationTransaction(
         context.organizationId,
         async (transaction) => {
@@ -429,6 +436,8 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
     },
 
     async listInstances(context, input) {
+      if (context.credentialKind === 'CHATWOOT_CONTROL')
+        await dependencies.runInOrganizationTransaction(context.organizationId, tx => context.authorize(tx, 'list'));
       const cursor = input.cursor ? decodeCursor(input.cursor, context.organizationId) : null;
       const rows = await dependencies.runInOrganizationTransaction(
         context.organizationId,
@@ -453,6 +462,8 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
     },
 
     async getInstance(context, instanceId) {
+      if (context.credentialKind === 'CHATWOOT_CONTROL')
+        await dependencies.runInOrganizationTransaction(context.organizationId, tx => context.authorize(tx, 'status', instanceId));
       const row = await dependencies.runInOrganizationTransaction(
         context.organizationId,
         (transaction) => dependencies.repository.findById(
@@ -466,6 +477,8 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
     },
 
     async connectInstance(context, command) {
+      if (context.credentialKind === 'CHATWOOT_CONTROL')
+        await dependencies.runInOrganizationTransaction(context.organizationId, tx => context.authorize(tx, 'pair', command.instanceId));
       const route = `/v1/instances/${command.instanceId}/connect`;
       const acquiredAt = now();
       const initial = await dependencies.runInOrganizationTransaction(
@@ -735,6 +748,8 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
     },
 
     async getInstanceStatus(context, instanceId) {
+      if (context.credentialKind === 'CHATWOOT_CONTROL')
+        await dependencies.runInOrganizationTransaction(context.organizationId, tx => context.authorize(tx, 'status', instanceId));
       const instance = await dependencies.runInOrganizationTransaction(
         context.organizationId,
         (transaction) => dependencies.repository.findById(
@@ -848,6 +863,8 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
     },
 
     async disconnectInstance(context, command) {
+      if (context.credentialKind === 'CHATWOOT_CONTROL')
+        await dependencies.runInOrganizationTransaction(context.organizationId, tx => context.authorize(tx, 'disconnect', command.instanceId));
       const route = `/v1/instances/${command.instanceId}/disconnect`;
       const acquiredAt = now();
       const initial = await dependencies.runInOrganizationTransaction(

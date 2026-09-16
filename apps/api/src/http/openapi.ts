@@ -39,6 +39,10 @@ function documentationOptions() {
     },
   ) as ProviderAccountService;
   return {
+    chatwootControl: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
+      service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/integrations/chatwoot-control-auth.js').ChatwootControlAuth,
+    },
     integrations: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`,
       authenticateApiKey: unavailable,
@@ -259,8 +263,10 @@ function normalizeDocument(document: JsonObject): JsonObject {
         operation.security = [{ bearerAuth: [] }];
       if (path.startsWith("/v1/integrations/"))
         operation.security = path.endsWith("/events")
-          ? [{ chatwootSignature: [] }]
-          : [{ bearerAuth: [] }];
+            ? [{ chatwootSignature: [] }]
+            : [{ bearerAuth: [] }];
+      if (path.startsWith('/v1/integrations/chatwoot/control/'))
+        operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
       if (
         path.startsWith("/v1/meta-onboarding") ||
         path === "/v1/organization/operations"

@@ -6,7 +6,8 @@ import {
   type FormEvent,
 } from "react";
 
-import type { ApiKey, ApiKeyScope, IssuedApiKey } from "@jrc/contracts";
+import type { ApiKey, IssueApiKeyRequest, IssuedApiKey } from "@jrc/contracts";
+type ApiKeyScope = IssueApiKeyRequest['scopes'][number];
 
 import { ApiClientError } from "../api/client.js";
 import { IssuedKeyDialog } from "../api-keys/IssuedKeyDialog.js";

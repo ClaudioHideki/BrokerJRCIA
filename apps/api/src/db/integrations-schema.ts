@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   check,
   foreignKey,
   index,
@@ -15,6 +16,8 @@ import {
 } from "drizzle-orm/pg-core";
 import {
   organizations,
+  apiKeys,
+  memberships,
   messagingChannels,
   messagingConversations,
   messagingMessages,
@@ -27,6 +30,20 @@ const dates = {
     .notNull()
     .defaultNow(),
 };
+export const chatwootControlBindings = pgTable('chatwoot_control_bindings', {
+  apiKeyId: uuid('api_key_id').primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => chatwootAccounts.organizationId, { onDelete: 'restrict' }),
+  accountId: bigint('account_id', { mode: 'number' }).notNull(),
+  destinationRevision: integer('destination_revision').notNull(),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [foreignKey({ columns: [t.organizationId, t.apiKeyId], foreignColumns: [apiKeys.organizationId, apiKeys.id] }).onDelete('cascade')]);
+export const chatwootOperatorGrants = pgTable('chatwoot_operator_grants', {
+  organizationId: uuid('organization_id').notNull(), integrationId: uuid('integration_id').notNull(), userId: uuid('user_id').notNull(),
+  canPair: boolean('can_pair').notNull().default(false), ...dates,
+}, t => [primaryKey({ columns: [t.organizationId, t.integrationId, t.userId] }),
+  foreignKey({ columns: [t.organizationId, t.integrationId], foreignColumns: [chatwootConnections.organizationId, chatwootConnections.id] }).onDelete('restrict'),
+  foreignKey({ columns: [t.organizationId, t.userId], foreignColumns: [memberships.organizationId, memberships.userId] }).onDelete('cascade')]);
 export const chatwootDestinations = pgTable('chatwoot_destinations', {
   organizationId: uuid('organization_id').primaryKey().references(() => organizations.id, { onDelete: 'restrict' }),
   baseUrl: text('base_url').notNull(),
@@ -225,6 +242,8 @@ export const integrationAudit = pgTable("integration_audit", {
     .notNull()
     .references(() => organizations.id),
   actorId: uuid("actor_id"),
+  actorApiKeyId: uuid('actor_api_key_id'),
+  externalActorId: text('external_actor_id'),
   action: text("action").notNull(),
   resourceId: uuid("resource_id"),
   reason: text("reason").notNull(),

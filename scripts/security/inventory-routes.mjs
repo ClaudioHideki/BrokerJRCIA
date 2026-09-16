@@ -4,6 +4,18 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/integrations/chatwoot/control/context': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
+    true, 'NOT_APPLICABLE', 'NONE', 'RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION',
+  ),
+  'POST /v1/integrations/chatwoot/control-credentials': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'IDEMPOTENCY_KEY_NO_SECRET_REPLAY', 'NONE', 'RLS_ACTIVE_ORGANIZATION_APPROVED_ACCOUNT',
+  ),
+  'PUT /v1/integrations/chatwoot/connections/{id}/operator-grants': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'IDEMPOTENCY_KEY_CANONICAL_HASH', 'NONE', 'RLS_ACTIVE_ORGANIZATION_CURRENT_MEMBERSHIP_AND_CONNECTION',
+  ),
   'GET /v1/integrations/chatwoot/destination': policy(
     'apps/api/src/http/routes/integrations.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN_OPERATOR_VIEWER',
     true, 'NOT_APPLICABLE', 'NONE', 'RLS_ORGANIZATION_ONLY',

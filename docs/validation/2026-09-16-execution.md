@@ -84,7 +84,7 @@ com `--frozen-lockfile --ignore-scripts`, passou sem alterar o lockfile.
 
 ## Gates pendentes
 
-B4–B7, J1–J5 e E1–E5 ainda não foram implementados/validados.
+B5–B7, J1–J5 e E1–E5 ainda não foram implementados/validados.
 Nenhum piloto remoto ou telefone real foi usado. Ausência desses testes não é PASS.
 O resultado local não libera produção.
 
@@ -149,3 +149,39 @@ de produção são cobertos separadamente pelos testes de socket de B2.
 Typecheck, geração OpenAPI, contratos públicos e `git diff --check`: PASS.
 Suíte completa B3: PASS, 999 testes / 133 arquivos, exit 0. O teste RED de B4,
 criado depois da coleta desta suíte, fica fora do commit B3.
+
+## Tarefa B4 — autorização de controle
+
+B3 registrada em `f1af2fb`. B4 acrescenta escopos `chatwoot:*` e emissão dedicada,
+sem permitir esses escopos no emissor genérico sem binding. O mecanismo HMAC
+preexistente autentica as chaves; o segredo aparece somente na emissão inicial.
+Repetição da emissão recebe 409, sem recuperar ou armazenar o segredo em claro.
+
+A migração `0019` acrescenta bindings por chave/conta/revisão e grants por membro
+e conexão, com RLS/FKs compostas. Revogar uma chave pelo mecanismo existente
+desativa seu binding na mesma transação por trigger. Auditoria separa ator do
+Broker, chave do serviço e usuário externo atribuído pelo serviço.
+
+O contexto delegado de `InstanceService` tem tipo próprio e exige revalidação
+antes das operações; não simula JWT nem concede `instances:write`. A delegação
+confere o mapeamento conexão/canal/instância persistido. Uso pela saga/pair será
+concluído nas tarefas B5/B6, respectivamente.
+
+RED: autorização ausente; HTTP retornava 404 porque as rotas ainda não existiam.
+RED delegado: serviço avançava para o banco sem chamar a autorização. A revisão
+automática bloqueou uma execução por falta de créditos do workspace; após a
+solicitação do usuário para continuar, o mesmo comando foi autorizado. Não houve
+contorno do bloqueio. GREEN focal inicial: 4 testes em 3 arquivos; PostgreSQL:
+5 testes. Fixture de auditoria corrigida para `requestId` UUID, conforme banco.
+Resposta HTTP com campo secreto inesperado falha fechada (503), sem serializá-lo;
+o teste foi ajustado para verificar esse comportamento, sem relaxar o schema.
+
+Gate final B4: `npm test -- --maxWorkers=2` PASS, 1003 testes em 136 arquivos,
+exit 0. PostgreSQL (controle, upgrade e transporte tenant): PASS, 12 testes em
+3 arquivos. Typecheck, contratos públicos e `git diff --check`: PASS.
+O OpenAPI documenta Bearer ou chave restrita somente no contexto de controle;
+emissão/grants continuam exigindo JWT. Essa correção posterior à suíte completa
+foi validada com os 6 testes OpenAPI (PASS, exit 0). Não há evidência RED para
+esse último ajuste de documentação: a execução iniciada ainda carregava módulos
+quando a correção foi aplicada. Os logs ficam em `.sessions/b4-*.log` (ignorados).
+O teste RED de contrato B5 foi criado após a coleta da suíte e fica fora deste commit.
