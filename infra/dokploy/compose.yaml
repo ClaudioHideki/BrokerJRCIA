@@ -101,9 +101,10 @@ services:
     mem_limit: 768m
     cpus: 1
 
+  # Executa o provisionamento inicial do PostgreSQL.
+  # Temporariamente sem "profiles: [maintenance]" para que o Dokploy execute.
   migrate:
     image: ${JRC_API_IMAGE:?required}
-    profiles: [maintenance]
     restart: 'no'
     entrypoint: ['node', 'infra/app/provision.mjs']
     environment:
@@ -179,6 +180,7 @@ networks:
   backend:
     internal: true
   egress:
+
 volumes:
   postgres_data:
   redis_data:
