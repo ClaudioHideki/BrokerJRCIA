@@ -6313,6 +6313,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -6362,6 +6365,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -6640,6 +6646,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -6689,6 +6698,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -6943,6 +6955,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -6992,6 +7007,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -7237,6 +7255,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -7286,6 +7307,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -7833,6 +7857,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -7882,6 +7909,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -8125,6 +8155,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -8174,6 +8207,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -13722,6 +13758,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -13771,6 +13810,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -14026,6 +14068,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -14075,6 +14120,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -14342,6 +14390,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -14391,6 +14442,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -14647,6 +14701,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -14696,6 +14753,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -15065,6 +15125,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -15114,6 +15177,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -15368,6 +15434,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -15417,6 +15486,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -16166,6 +16238,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -16215,6 +16290,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -16461,6 +16539,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -16510,6 +16591,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"
@@ -16749,6 +16833,9 @@
                       },
                       "type": "array"
                     },
+                    "controlEnabled": {
+                      "type": "boolean"
+                    },
                     "destination": {
                       "additionalProperties": false,
                       "nullable": true,
@@ -16798,6 +16885,9 @@
                         "revision"
                       ],
                       "type": "object"
+                    },
+                    "embedEnabled": {
+                      "type": "boolean"
                     },
                     "externalDestinationsEnabled": {
                       "type": "boolean"

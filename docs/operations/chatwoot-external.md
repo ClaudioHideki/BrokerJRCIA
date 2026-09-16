@@ -17,13 +17,16 @@ WhatsApp real, alta disponibilidade ou recuperação anterior ao ACK.
 
 1. Fazer backup e ensaiar restauração em ambiente isolado. Manter a chave de cifra
    no cofre junto com o procedimento de restauração; ela não pertence ao Git.
-2. Aplicar migrações aditivas 0018–0021 pelos comandos existentes. O backfill preserva
+2. Aplicar migrações aditivas 0018–0023 pelos comandos existentes. O backfill preserva
    as contas MANAGED e os ciphertexts; não gera prova de compatibilidade.
 3. Configurar `PUBLIC_ORIGIN` HTTPS e `INTEGRATION_ENCRYPTION_KEY` conforme o ambiente.
    `CHATWOOT_BASE_URL` é o destino MANAGED opcional. `CHATWOOT_PLATFORM_TOKEN` só
    pode operar nesse destino. Não fornecer esse token a instalações externas.
 4. Ativar `CHATWOOT_EXTERNAL_DESTINATIONS_ENABLED` e `CHATWOOT_CONTROL_ENABLED`
    apenas no ambiente piloto. Os padrões são `false`.
+   Para o Dashboard App, ativar também `CHATWOOT_EMBED_ENABLED`; seu padrão é
+   `false` e depende do controle ligado. A resposta de status informa as flags;
+   o portal oculta os controles desligados. Isso não desliga o worker de mensagens.
 5. O administrador da empresa solicita a origem HTTPS, sem token. O administrador
    JRC confere e aprova a revisão exata e as origens de mídia necessárias.
 6. Somente então vincular ID da conta e token de um administrador dessa conta.

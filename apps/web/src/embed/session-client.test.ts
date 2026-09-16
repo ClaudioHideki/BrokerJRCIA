@@ -28,6 +28,18 @@ function setup() {
 }
 async function authorize(h: ReturnType<typeof setup>) { await h.client.begin(); await vi.advanceTimersByTimeAsync(1000); }
 
+it('drops a late pairing challenge after a newer health response removes pairing permission', async () => {
+  const h = setup(); await authorize(h);
+  let complete!: (r: Response) => void;
+  h.fetchImpl.mockImplementationOnce(async () => new Promise<Response>(resolve => { complete = resolve; }));
+  const pairing = h.client.pair();
+  h.fetchImpl.mockImplementationOnce(async () => response({ ...health, allowedActions: ['status'] }));
+  await h.client.refresh();
+  complete(response({ instance: { id, organizationId: id, providerAccountId: id, provider: 'BAILEYS', name: 'Synthetic', status: 'AWAITING_ACTION', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    operationId: other, pending: false, replayed: false, reconciliationRequired: false, action: { type: 'PAIRING_CODE', code: 'SYNTHETIC-LATE', expiresAt: new Date(Date.now() + 30000).toISOString() } }));
+  await pairing; expect(h.client.snapshot().action).toBeNull();
+});
+
 it('starts only on user action, binds the proof and never exposes secrets in public state or URLs', async () => {
   const h = setup(); expect(h.fetchImpl).not.toHaveBeenCalled();
   const link = await h.client.begin(); expect(link).toBe(`/embed/authorize?requestId=${id}`);

@@ -290,8 +290,8 @@ export function ChatwootPanel({
         <>
           {data.externalDestinationsEnabled && <ChatwootDestinationPanel key={`${data.destination?.baseUrl}:${data.destination?.revision}`}
             data={data} platform={platform} canManage={canManage} blocked={blocked} action={action} />}
-          {!platform && accountReady && <ChatwootControlPanel request={request} canManage={canManage} connections={data.connections} />}
-          {!platform && accountReady && canManage && <DashboardAppSetup request={request} />}
+          {!platform && accountReady && data.controlEnabled && <ChatwootControlPanel request={request} canManage={canManage} connections={data.connections} />}
+          {!platform && accountReady && data.controlEnabled && data.embedEnabled && canManage && <DashboardAppSetup request={request} />}
           <div className="metric-grid metric-grid--four">
             <Metric
               label="Conta de atendimento"

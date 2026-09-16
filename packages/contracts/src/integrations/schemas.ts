@@ -22,6 +22,8 @@ export const ChatwootStatusSchema = z.object({
   managedBaseUrl: z.url().nullable().optional(),
   destination: ChatwootDestinationSchema.nullable().optional(),
   externalDestinationsEnabled: z.boolean().optional(),
+  controlEnabled: z.boolean().optional(),
+  embedEnabled: z.boolean().optional(),
   provisioningAvailable: z.boolean(),
   provisioning: z
     .object({

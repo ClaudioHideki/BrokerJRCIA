@@ -19,6 +19,14 @@ const status = {
   jobs: {},
 };
 afterEach(cleanup);
+it('keeps new control/embed surfaces hidden when flags are off without hiding the integration', async () => {
+  const request = vi.fn(async (path: string) => path === '' ? { ...status, controlEnabled: false, embedEnabled: false,
+    account: { accountId: 1, status: 'READY', lastError: null, hasCredential: true } } : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform={false} />);
+  expect(await screen.findByText(/Conta 1 vinculada/)).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Preparar painel do Chatwoot' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Abrir controle de conexões' })).not.toBeInTheDocument();
+});
 it('requests an external destination without collecting a token before approval', async () => {
   const request = vi.fn(async (path: string) => path === '' ? { ...status, managedBaseUrl: 'https://conversas.test', externalDestinationsEnabled: true,
     destination: { organizationId: id, baseUrl: 'https://customer.example.com', mode: 'EXTERNAL', approvalStatus: 'PENDING', revision: 2, mediaOrigins: [] } } : { data: [] });

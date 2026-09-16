@@ -309,6 +309,9 @@ describe('migrations PostgreSQL', () => {
     const expectedTables = [
       'api_keys',
       'audit_logs',
+      'chatwoot_embed_apps',
+      'chatwoot_embed_authorizations',
+      'chatwoot_embed_sessions',
       'connection_challenges',
       'idempotency_records',
       'instances',
@@ -373,6 +376,10 @@ describe('migrations PostgreSQL', () => {
       { policyname:'meta_connections_lookup',roles:['jrc_migrator'],cmd:'SELECT' },
       {policyname:'messaging_channels_ingress_resolution',roles:['jrc_migrator'],cmd:'SELECT'},
       {policyname:'chatwoot_ingress_resolution',roles:['jrc_migrator'],cmd:'SELECT'},
+      ...['chatwoot_embed_apps','chatwoot_embed_authorizations','chatwoot_embed_sessions'].flatMap(table => [
+        {policyname:table+'_tenant',roles:['jrc_app'],cmd:'ALL'},
+        {policyname:table+'_lookup',roles:['jrc_migrator'],cmd:'SELECT'},
+      ]),
       ...['chatwoot_connection_health','chatwoot_control_bindings','chatwoot_destinations','chatwoot_onboarding','chatwoot_operator_grants']
         .map(table=>({policyname:table+'_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'chatwoot_destinations_platform',roles:['jrc_platform'],cmd:'ALL'},

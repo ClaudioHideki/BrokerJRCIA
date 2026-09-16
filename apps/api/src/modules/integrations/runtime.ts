@@ -33,7 +33,7 @@ type QrConfig = Pick<
 >;
 type ChatwootConfig = Pick<
   ChatwootOptions,
-  "baseUrl" | "publicOrigin" | "encryptionKey" | "platformToken" | "allowLocal" | "externalDestinationsEnabled"
+  "baseUrl" | "publicOrigin" | "encryptionKey" | "platformToken" | "allowLocal" | "externalDestinationsEnabled" | "controlEnabled" | "embedEnabled"
 >;
 export function loadIntegrationConfig(environment: NodeJS.ProcessEnv): {
   qr?: QrConfig;
@@ -59,6 +59,8 @@ export function loadIntegrationConfig(environment: NodeJS.ProcessEnv): {
   }
   const externalDestinationsEnabled = z.enum(['true', 'false']).default('false')
     .parse(environment.CHATWOOT_EXTERNAL_DESTINATIONS_ENABLED) === 'true';
+  const controlEnabled = z.enum(['true', 'false']).default('false').parse(environment.CHATWOOT_CONTROL_ENABLED) === 'true';
+  const embedEnabled = z.enum(['true', 'false']).default('false').parse(environment.CHATWOOT_EMBED_ENABLED) === 'true' && controlEnabled;
   if (
     environment.CHATWOOT_BASE_URL ||
     environment.CHATWOOT_PLATFORM_TOKEN ||
@@ -74,6 +76,7 @@ export function loadIntegrationConfig(environment: NodeJS.ProcessEnv): {
         .parse(environment.INTEGRATION_ENCRYPTION_KEY),
       allowLocal: environment.NODE_ENV !== "production",
       externalDestinationsEnabled,
+      controlEnabled, embedEnabled,
       ...(environment.CHATWOOT_PLATFORM_TOKEN
         ? {
             platformToken: z

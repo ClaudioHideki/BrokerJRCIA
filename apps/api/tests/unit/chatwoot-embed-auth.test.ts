@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { verifyEmbedProof } from '../../src/modules/integrations/embed/authorization.js';
+import { sanitizeEmbedDiagnostic } from '@jrc/contracts';
+
+it('removes pairing and proof material from diagnostic output', () => {
+  expect(sanitizeEmbedDiagnostic({ qr: 'synthetic-qr', token: 'synthetic', verifier: 'synthetic', status: 'EXPIRED' })).toEqual({ status: 'EXPIRED' });
+});
 
 describe('embedded authorization proof', () => {
   const verifier = 'v'.repeat(64);

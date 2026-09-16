@@ -21,3 +21,18 @@ export const EmbedExchangeResultSchema = z.discriminatedUnion('status', [
 ]);
 export type EmbedConnection = z.infer<typeof EmbedConnectionSchema>;
 export type EmbedExchangeResult = z.infer<typeof EmbedExchangeResultSchema>;
+
+const diagnosticStatuses = new Set(['PENDING', 'AUTHORIZED', 'DENIED', 'EXPIRED', 'UNAVAILABLE', 'IDLE', 'WAITING', 'STARTING']);
+const diagnosticCodes = new Set(['EMBED_AUTHORIZATION_DENIED', 'EMBED_UNAVAILABLE', 'CHATWOOT_EMBED_DISABLED', 'INVALID_REQUEST',
+  'EMBED_RATE_LIMITED', 'EMBED_INSTALL_UNAVAILABLE', 'EMBED_INSTALL_IN_PROGRESS', 'EMBED_INSTALL_CONTEXT_CHANGED', 'CHATWOOT_CONTROL_FORBIDDEN']);
+/** Whitelist diagnostics; callers must never supply request/response bodies or pairing material. */
+export function sanitizeEmbedDiagnostic(value: unknown): { requestId?: string; status?: string | number; code?: string } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const field = (key: string): unknown => Object.getOwnPropertyDescriptor(value, key)?.value;
+  const requestId = field('requestId'), status = field('status'), code = field('code');
+  return {
+    ...(typeof requestId === 'string' && z.uuid().safeParse(requestId).success ? { requestId } : {}),
+    ...((typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599) || (typeof status === 'string' && diagnosticStatuses.has(status)) ? { status: status as string | number } : {}),
+    ...(typeof code === 'string' && diagnosticCodes.has(code) ? { code } : {}),
+  };
+}

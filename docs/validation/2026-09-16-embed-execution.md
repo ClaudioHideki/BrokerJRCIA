@@ -187,3 +187,88 @@ TDD/evidências `.sessions/e4-*`:
   do diff gerado; sem afrouxar a comparação de endpoints.
 - Gate final E4: **1.071 PASS / 149 arquivos, 183,43s** (`e4-gate-final.log`).
   Geração OpenAPI repetida com SHA-256 idêntico. Diff check PASS. Commit local.
+
+## E5 — isolamento, artefatos e distribuição
+
+E4 registrado em `938e4b2`, após E3 `6ad699e`. Novos diagnósticos passam por uma
+allowlist: UUID de requisição, status HTTP/estado conhecido e código conhecido.
+Campos extras, valores arbitrários e getters são ignorados; nenhum payload deve
+ser entregue ao logger. A fixture Chrome utiliza essa projeção. Capturas, vídeos
+e traces automáticos continuam off; test-results/playwright-report fora da imagem.
+
+Flags control/embed propagadas na configuração/DTO da integração e nos exemplos
+Dokploy; todas off por padrão. Embed exige control. Desligar oculta os componentes
+novos, nega handshake/controle e preserva portal legado, webhook e worker.
+
+TDD `.sessions/e5-*`:
+
+- RED: 6 falhas reais para sanitização ausente, flag não propagada, UI ainda
+  visível e desafio atrasado reaparecendo no iframe. GREEN: **36 PASS / 5 arquivos**.
+- Mesma revisão de ação usada no portal aplicada ao iframe: uma consulta mais
+  nova que retira pair invalida a resposta pendente. Desafio não reaparece.
+- Contrato HTTP: **6 PASS**; token limitado recebe 401 em instâncias/mensageria/
+  cadastro administrativo, sem side effects. Disconnect embed é rota inexistente
+  (404); pair revogado é 403. Corpos de fixture inicialmente incompletos causaram
+  400, corrigidos conforme schemas para testar autenticação, sem relaxar validação.
+- Matriz PostgreSQL **6 PASS / 12 direções**, 9,29s (`e5-media-recheck.log`): texto,
+  imagem, áudio, vídeo, documento, sticker. Normalização, HMAC, deduplicação, filas,
+  mappings, cifra/decifra e clientes Chatwoot/engine reais; HTTP remoto sintético.
+  Download de CDN sem token, fidelidade dos bytes e envio de WebP por sendSticker.
+  Sem Dashboard App cadastrado e com flags off, o transporte continua. Bytes são
+  sintéticos por MIME: não prova reprodução, aceite em celular ou qualidade de mídia.
+  Primeira execução falhou por usar `.id` em retorno de status da fixture; corrigida
+  para `connections[0].id`, sem alterar o produto.
+- Build PASS, 205 módulos; aviso upstream de anotação Zod permanece.
+
+### Gates finais E5
+
+- Primeira integração completa: **221 PASS / 1 FAIL**. O inventário fechado de
+  políticas ainda não incluía as seis políticas E1 (tenant e lookup em três tabelas).
+  Adicionados nomes/roles/comandos exatos e verificação de RLS forçada das três
+  tabelas. Não removida nenhuma asserção. Reexecução integral:
+  **222 PASS / 34 arquivos, 136,81s**, `e5-integration-final.log`.
+- `npm run test:compiled`: clean/build PASS; inicialmente 1 PASS/1 SKIP por ausência
+  de variáveis de runtime. Reexecução compiled com PG/Redis exclusivos de teste:
+  **2 PASS, 6,13s**, `e5-compiled-runtime.log`. Entrypoint compilado iniciou,
+  respondeu e encerrou; não é teste de imagem Docker ou produção.
+- Chrome embed: **8 PASS, 55,0s**, `e5-browser-embed.log`. Login first-party,
+  cookies de terceiros bloqueados, popup bloqueado com link alternativo,
+  postMessage adulterado, troca de conta, revogação, expiração e framing.
+- Navegador principal: **11 PASS / 5 SKIP, 1,1min**, `e5-browser-regression.log`.
+  Os cinco skips são combinações de viewport já excluídas pela suíte: quatro
+  jornadas desktop não duplicadas em mobile e shell mobile não executado em desktop.
+  Destino externo, administração e mensageria sintética passaram nos dois projetos.
+- Typecheck, scanner de bundle (11 arquivos, zero findings), contratos públicos,
+  notices (sete pacotes) e submódulo PASS. A verificação de submódulo precisou
+  executar fora do sandbox por EPERM; reexecução autorizada PASS, sem mudar o Git.
+- OpenAPI gerado após build: apenas campos opcionais `controlEnabled` e
+  `embedEnabled` adicionados ao status. Diff revisado; geração repetida com SHA-256
+  idêntico (`e5-openapi-repeat.log`). Auditorias históricas preservadas.
+- Regressão geral final: **1.078 PASS / 150 arquivos, 161,36s**, exit 0
+  (`e5-gate.log`). Executada após todas as alterações de código; nenhuma falha ou
+  skip. Revisão do diff e inventário de arquivos: somente código, testes sintéticos,
+  exemplos sem segredo e documentação. `git diff --check` PASS.
+
+Comandos de reprodução (PowerShell, somente laboratório):
+
+```powershell
+$env:TEST_DATABASE_ADMIN_URL='postgresql://postgres@127.0.0.1:55433/jrc_validation'
+$env:TEST_REDIS_URL='redis://127.0.0.1:16380'
+npm run test:integration -- --maxWorkers=2
+npm run test:compiled
+npx playwright test --config playwright.embed.config.ts
+npx playwright test console.spec.ts platform.spec.ts messaging.spec.ts chatwoot.spec.ts
+npm test -- --maxWorkers=2
+npm run typecheck
+npm run test:web:bundle
+npm run openapi:generate
+npm run security:contracts
+npm run security:notices
+npm run security:submodule
+git diff --check
+```
+
+A porta 55433 é exclusiva do laboratório desta execução; o harness cria bancos
+aleatórios. Não substituir por URL produtiva. Execute a suíte geral sem Chrome
+concorrente nesta máquina para evitar pressão de memória. A documentação consolidada
+de branches, migrações, ativação e rollback está em `2026-09-16-delivery.md`.

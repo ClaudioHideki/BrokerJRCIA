@@ -1,6 +1,7 @@
 import type { Server } from 'node:http';
 import { resolve } from 'node:path';
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+import { sanitizeEmbedDiagnostic } from '../../../../packages/contracts/src/integrations/embed.js';
 import { createWebServer } from '../../../../infra/web/server.mjs';
 import { createEmbedAuthFixture, embedBrokerOrigin as broker, embedParentOrigin as parent } from './embed-auth-fixture.js';
 
@@ -15,7 +16,7 @@ test.afterAll(async () => { if (web) await new Promise<void>(resolve => web.clos
 test.beforeEach(async () => { await fixture.reset(); });
 
 async function lab(context: BrowserContext, page: Page) {
-  const requests: { url: string; headers: Record<string, string> }[] = [], diagnostics: { path: string; status: number; code?: string }[] = [];
+  const requests: { url: string; headers: Record<string, string> }[] = [], diagnostics: ReturnType<typeof sanitizeEmbedDiagnostic>[] = [];
   const cdp = await context.newCDPSession(page);
   await cdp.send('Network.enable');
   await cdp.send('Network.setCookieControls', { enableThirdPartyCookieRestriction: true, disableThirdPartyCookieMetadata: true, disableThirdPartyCookieHeuristics: true });
@@ -31,7 +32,7 @@ async function lab(context: BrowserContext, page: Page) {
       const body = Buffer.from(await reply.arrayBuffer());
       if (url.pathname.startsWith('/v1/')) {
         const code = reply.status >= 400 ? JSON.parse(body.toString()).code : undefined;
-        diagnostics.push({ path: url.pathname, status: reply.status, ...(typeof code === 'string' ? { code } : {}) });
+        diagnostics.push(sanitizeEmbedDiagnostic({ requestId: reply.headers.get('x-request-id'), status: reply.status, code }));
       }
       await route.fulfill({ status: reply.status, headers: responseHeaders, body });
     } else if (url.origin === parent) {

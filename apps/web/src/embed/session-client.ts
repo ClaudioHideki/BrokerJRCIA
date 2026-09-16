@@ -108,7 +108,9 @@ export class EmbedSessionClient {
       if (generation !== this.#generation || selection !== this.#selection || !this.#active()) return;
       const health = ConnectionHealthSchema.parse(raw);
       if (health.integrationId !== id) throw new Error('MISMATCH');
-      this.#publish({ health, ...(!health.allowedActions.includes('pair') || health.instanceStatus === 'CONNECTED' ? { action: null } : {}) });
+      const clear = !health.allowedActions.includes('pair') || health.instanceStatus === 'CONNECTED';
+      if (clear) this.#selection++;
+      this.#publish({ health, ...(clear ? { action: null, busy: false } : {}) });
     } catch (error) { if (generation === this.#generation && selection === this.#selection) this.#failed(error); }
   }
   async pair() {

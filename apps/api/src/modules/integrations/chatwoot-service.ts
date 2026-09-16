@@ -30,6 +30,8 @@ export interface ChatwootOptions {
   platformToken?: string;
   allowLocal?: boolean;
   externalDestinationsEnabled?: boolean;
+  controlEnabled?: boolean;
+  embedEnabled?: boolean;
   fetch?: typeof globalThis.fetch;
   mediaOrigins?: readonly string[];
   media?: MediaStore;
@@ -212,6 +214,8 @@ export function createChatwootService(options: ChatwootOptions) {
           managedBaseUrl: env.origin ?? null,
           destination: destination ?? null,
           externalDestinationsEnabled: destinations.enabled,
+          controlEnabled: options.controlEnabled === true,
+          embedEnabled: options.controlEnabled === true && options.embedEnabled === true,
           provisioningAvailable: Boolean(options.platformToken && destination?.approvalStatus === 'APPROVED' &&
             mayUsePlatformToken({ mode: destination.mode, origin: destination.baseUrl, managedOrigin: env.origin ?? null })),
           provisioning,
