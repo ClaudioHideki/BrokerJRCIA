@@ -35,6 +35,7 @@ x-runtime: &a1
   TYPEBOT_ORIGINS_JSON: ${TYPEBOT_ORIGINS_JSON:?required-json-object}
 
 services:
+
   web:
     image: ${JRC_WEB_IMAGE:?required}
     restart: unless-stopped
@@ -109,22 +110,25 @@ services:
 
   api-debug:
     image: ${JRC_API_IMAGE:?required}
-    restart: no
+    restart: "no"
     entrypoint:
       - /bin/sh
       - -c
     command:
       - |
-        echo "=== JRC API DEBUG ==="
+        echo "=== JRC API DEBUG V2 ==="
         echo "PWD:"
         pwd
-        echo "=== procurando mensagem de erro ==="
-        grep -R -n "JRC API failed to start" apps 2>/dev/null || true
-        echo "=== arquivos API ==="
-        ls -lah apps/api/dist/ 2>/dev/null || true
-        echo "=== package ==="
-        node --version
-        echo "=== FIM DEBUG ==="
+
+        echo "=== SERVER.JS COMPLETO ==="
+        cat apps/api/dist/server.js || true
+
+        echo "=== INICIANDO API ==="
+        node --trace-uncaught --trace-warnings apps/api/dist/server.js
+
+        CODE=$?
+        echo "=== EXIT CODE: $CODE ==="
+        exit $CODE
     environment:
       <<: *a1
       PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
@@ -181,7 +185,7 @@ services:
 
   migrate:
     image: ${JRC_API_IMAGE:?required}
-    restart: no
+    restart: "no"
     entrypoint:
       - node
       - infra/app/provision.mjs
@@ -282,9 +286,12 @@ services:
 
 networks:
   edge: null
+
   backend:
     internal: true
+
   egress: null
+
   dokploy-network:
     external: true
 
