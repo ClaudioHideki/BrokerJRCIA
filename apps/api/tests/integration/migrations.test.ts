@@ -373,6 +373,10 @@ describe('migrations PostgreSQL', () => {
       { policyname:'meta_connections_lookup',roles:['jrc_migrator'],cmd:'SELECT' },
       {policyname:'messaging_channels_ingress_resolution',roles:['jrc_migrator'],cmd:'SELECT'},
       {policyname:'chatwoot_ingress_resolution',roles:['jrc_migrator'],cmd:'SELECT'},
+      ...['chatwoot_connection_health','chatwoot_control_bindings','chatwoot_destinations','chatwoot_onboarding','chatwoot_operator_grants']
+        .map(table=>({policyname:table+'_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      {policyname:'chatwoot_destinations_platform',roles:['jrc_platform'],cmd:'ALL'},
+      {policyname:'chatwoot_destinations_legacy_insert',roles:['jrc_migrator'],cmd:'ALL'},
       ...['chatwoot_accounts','chatwoot_connections','chatwoot_conversations','chatwoot_messages','integration_jobs','integration_audit','chatwoot_provisioning','messaging_media'].map(table=>({policyname:table+'_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:4},()=>({policyname:'platform_boundary',roles:['jrc_platform'],cmd:'ALL'})),
       ...Array.from({length:3},()=>({policyname:'platform_administration',roles:['jrc_platform'],cmd:'ALL'})),

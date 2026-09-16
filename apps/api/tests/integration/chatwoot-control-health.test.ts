@@ -133,7 +133,9 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
     const ts = String(Math.floor(Date.now() / 1000)), signature = 'sha256=' + createHmac('sha256', 'synthetic-webhook-secret').update(`${ts}.`).update(raw).digest('hex');
     await expect(chatwoot.ingest(integration, raw, ts, 'sha256=' + '0'.repeat(64))).rejects.toMatchObject({ status: 401 });
     expect((await control.status(principal, integration)).callbackVerifiedAt).toBeNull();
+    expect((await auth.context(principal.authentication)).capabilities.signatures).toBe('UNVERIFIED');
     await chatwoot.ingest(integration, raw, ts, signature);
+    expect((await auth.context(principal.authentication)).capabilities.signatures).toBe('SUPPORTED');
     expect(await control.status(principal, integration)).toMatchObject({ transportStatus: 'UNVERIFIED', callbackVerifiedAt: expect.any(String) });
     // These storage fixtures exercise the evidence query; end-to-end transport is covered separately.
     const repo = createPostgresMessagingRepository();
@@ -155,5 +157,6 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
     expect((await transact(org, t => t.query('SELECT chatwoot_channel_identity_ready($1,$2) AS ready', [org, channel]))).rows[0].ready).toBe(true);
     await transact(org, t => t.query('UPDATE chatwoot_accounts SET credential_version=credential_version+1'));
     expect((await control.status(principal, integration)).callbackVerifiedAt).toBeNull();
+    expect((await auth.context(principal.authentication)).capabilities.signatures).toBe('UNVERIFIED');
   });
 });

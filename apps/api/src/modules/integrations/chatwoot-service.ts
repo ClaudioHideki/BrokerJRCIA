@@ -19,6 +19,7 @@ import { parseChatwootReply } from "./chatwoot-events.js";
 import type { MediaStore } from "../messaging/media-store.js";
 import { createChatwootDestinationService, lockChatwootDestination } from './chatwoot-destination.js';
 import { IntegrationError } from './integration-error.js';
+import { accountCompatibility, observeChatwootCapabilities } from './chatwoot-compatibility.js';
 import { readChatwootAccount, resolveChatwootContext, requireApprovedDestination, mayUsePlatformToken, type AccountRow } from './chatwoot-context.js';
 export { IntegrationError } from './integration-error.js';
 export { readChatwootAccount, type AccountRow } from './chatwoot-context.js';
@@ -144,7 +145,8 @@ export function createChatwootService(options: ChatwootOptions) {
       throw new IntegrationError("CHATWOOT_ACCOUNT_NOT_CONFIGURED", 409);
     return row;
   }
-  async function rememberInbox(org: string, id: string, remote: ChatwootInbox) {
+  async function rememberInbox(org: string, id: string, remote: ChatwootInbox, snapshot: AccountRow) {
+    await tx(org, t => observeChatwootCapabilities(t, snapshot, { apiInbox: remote.channel_type === 'Channel::Api', webhookSecret: Boolean(remote.secret) }));
     // Keep a successful creation ID even when a later verification needs repair.
     await tx(org, (t) =>
       t.query(
@@ -164,6 +166,9 @@ export function createChatwootService(options: ChatwootOptions) {
     );
     await tx(org, async (t) => {
       await requireActiveOrganization(t, org);
+      const current = await readChatwootAccount(t, org);
+      if (current?.credential_version !== snapshot.credential_version || current.destination?.revision !== snapshot.destination?.revision)
+        throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
       await t.query(
         "UPDATE chatwoot_connections SET inbox_id=$3,encrypted_webhook_secret=$4,status='READY',last_error=NULL,updated_at=now() WHERE organization_id=$1 AND id=$2",
         [org, id, remote.id, encryptedSecret],
@@ -217,7 +222,7 @@ export function createChatwootService(options: ChatwootOptions) {
                 lastError: a.last_error,
                 hasCredential: Boolean(a.encrypted_token),
                 credentialVersion: a.credential_version,
-                compatibility: 'UNVERIFIED' as const,
+                compatibility: accountCompatibility(a).state === 'READY' ? 'SUPPORTED' as const : accountCompatibility(a).state === 'UNSUPPORTED' ? 'UNSUPPORTED' as const : 'UNVERIFIED' as const,
               }
             : null,
           connections: connections.map(connectionView),
@@ -280,6 +285,7 @@ export function createChatwootService(options: ChatwootOptions) {
             env.vault.encrypt(`${org}:chatwoot-account`, input.token),
           ],
         );
+        await observeChatwootCapabilities(t, (await readChatwootAccount(t, org))!, { adminAccount: true, apiAccess: true });
         await integrationAudit(
           t,
           org,
@@ -454,7 +460,7 @@ export function createChatwootService(options: ChatwootOptions) {
             input.name,
             env.callback(connection.id),
           );
-        await rememberInbox(org, connection.id, remote);
+        await rememberInbox(org, connection.id, remote, a);
       } catch (failure) {
         const uncertain =
           !(failure instanceof IntegrationError) &&
@@ -493,6 +499,7 @@ export function createChatwootService(options: ChatwootOptions) {
         org,
         id,
         await client.getInbox(Number(a.account_id), matches[0]!.id),
+        a,
       );
       return this.status(org);
     },
@@ -556,7 +563,7 @@ export function createChatwootService(options: ChatwootOptions) {
             c.name,
             env.callback(id),
           );
-        await rememberInbox(org, id, remote);
+        await rememberInbox(org, id, remote, a);
       } catch (failure) {
         const uncertain =
           !(failure instanceof IntegrationError) &&
@@ -640,6 +647,7 @@ export function createChatwootService(options: ChatwootOptions) {
           inboxId: Number(c.inbox_id),
         });
         if (!reply) return;
+        await observeChatwootCapabilities(t, a, { signedCallback: true });
         await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id,callback_verified_at,callback_destination_revision,callback_credential_version)
           VALUES($1,$2,$3,now(),$4,$5) ON CONFLICT(organization_id,integration_id) DO UPDATE SET
           callback_verified_at=now(),callback_destination_revision=$4,callback_credential_version=$5`, [org, id, c.channel_id, a.destination?.revision ?? null, a.credential_version]);

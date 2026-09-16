@@ -10,6 +10,7 @@ import { resolveChatwootContext, requireApprovedDestination } from './chatwoot-c
 import { lockChatwootDestination } from './chatwoot-destination.js';
 import { IntegrationError } from './integration-error.js';
 import type { InstanceActorContext } from '../instances/service.js';
+import { publicChatwootCapabilities } from './chatwoot-compatibility.js';
 
 export function authorizeControlRequest(v: {
   credential: { organizationId: string; scopes: readonly string[]; revoked: boolean };
@@ -98,8 +99,12 @@ export function createChatwootControlAuth(options: ChatwootControlAuthOptions) {
     },
     async context(authentication: AuthenticationContext) {
       const principal = await this.authorize(authentication, 'chatwoot:read');
-      return { organizationId: principal.organizationId, accountId: principal.accountId, destinationRevision: principal.destinationRevision,
-        chatwootOrigin: principal.chatwootOrigin, capabilities: { inboxes: 'UNVERIFIED' as const, signatures: 'UNVERIFIED' as const, dashboardApps: 'UNVERIFIED' as const } };
+      return options.transact(principal.organizationId, async tx => {
+        await this.revalidate(tx, principal, 'chatwoot:read');
+        const { account } = await resolveChatwootContext(tx, principal.organizationId, options.managedOrigin);
+        return { organizationId: principal.organizationId, accountId: principal.accountId, destinationRevision: principal.destinationRevision,
+          chatwootOrigin: principal.chatwootOrigin, capabilities: publicChatwootCapabilities(account!) };
+      });
     },
     delegate(principal: ChatwootControlPrincipal, request: { requestId: string; deadline: Date; signal: AbortSignal }, integrationId?: string): InstanceActorContext {
       const service = this;

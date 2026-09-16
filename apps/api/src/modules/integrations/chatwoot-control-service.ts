@@ -9,6 +9,7 @@ import { readChatwootAccount } from './chatwoot-context.js';
 import { readChatwootHealth, identityStatus, deriveTransportStatus, type ChatwootHealth } from './chatwoot-health.js';
 import { IntegrationError } from './integration-error.js';
 import { ChatwootError } from './chatwoot-client.js';
+import { observeChatwootCapabilities } from './chatwoot-compatibility.js';
 
 export interface ChatwootControlOptions extends ChatwootOptions { auth: ChatwootControlAuth; health: ChatwootHealth; instances: InstanceService; chatwoot: ChatwootService }
 interface Mapping extends ConnectionRow { instance_id: string }
@@ -35,6 +36,9 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
       const client = env.client(a);
       await client.verifyAccount(p.accountId);
       const remote = await client.getInbox(p.accountId, Number(c.inbox_id));
+      await tx(p.organizationId, t => observeChatwootCapabilities(t, a, {
+        adminAccount: true, apiAccess: true, apiInbox: remote.channel_type === 'Channel::Api', webhookSecret: Boolean(remote.secret),
+      }));
       const localSecret = Buffer.from(env.vault.decrypt(`${p.organizationId}:chatwoot-webhook:${id}`, c.encrypted_webhook_secret));
       const remoteSecret = Buffer.from(remote.secret ?? '');
       if (remote.channel_type !== 'Channel::Api' || remote.webhook_url !== env.callback(id) || !remoteSecret.length ||

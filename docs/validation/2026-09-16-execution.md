@@ -84,7 +84,7 @@ com `--frozen-lockfile --ignore-scripts`, passou sem alterar o lockfile.
 
 ## Gates pendentes
 
-B6–B7, J1–J5 e E1–E5 ainda não foram implementados/validados.
+Plano 01 concluído localmente. J1–J5 e E1–E5 ainda não foram implementados/validados.
 Nenhum piloto remoto ou telefone real foi usado. Ausência desses testes não é PASS.
 O resultado local não libera produção.
 
@@ -273,3 +273,53 @@ exit 0 (`.sessions/b6-full-serial.log`). Foi excluído somente o teste RED de B7
 criado depois da coleta da primeira suíte B6 e fora do commit desta tarefa.
 Os 139 arquivos B6 foram executados integralmente. Nenhuma mudança de frontend
 foi necessária para a reexecução. `git diff --check`: PASS.
+
+## Tarefa B7 — compatibilidade e regressão
+
+RED unitário e PostgreSQL: módulo de compatibilidade ausente. GREEN: regra unitária
+e 12 testes PostgreSQL em três arquivos. Capacidades observadas são vinculadas à
+revisão do destino e versão da credencial, com data. Perfil administrativo não marca
+assinatura como verificada; somente webhook válido o faz. Ausência de segredo é
+incompatibilidade. Rotação/revisão invalida evidência anterior; atualização tardia de
+um snapshot antigo é ignorada por condição SQL e RLS continua protegendo tenants.
+Contexto de controle e painel mostram apenas o diagnóstico sanitizado.
+
+Gate: clean/build PASS (executados pelo script test:compiled). Primeira execução
+compiled: 1 PASS/1 SKIP porque não recebeu variáveis de runtime. Reexecução da suíte
+compiled com PostgreSQL/Redis descartáveis explícitos: 2 PASS/0 SKIP, exit 0.
+Typecheck, OpenAPI, contratos públicos, notices, submódulo e diff-check: PASS.
+Build emite aviso preexistente de chunk JS acima de 500 kB; não houve troca de dependências.
+
+E2E completo: 11 PASS/5 SKIP, exit 0. Os skips são combinações desktop/mobile já
+excluídas pela suíte original. O novo cenário de destino externo executou nos dois
+projetos: solicitação, recarga, isolamento de empresa e ausência de formulário de
+token antes da aprovação. Backend/DB/autenticação reais locais; sem HTTP remoto.
+QR do teste legado é sintético, com captura/trace/video desligados por padrão.
+
+Integração completa inicial: 198 PASS/1 FAIL, 31 arquivos, exit 1. Inventário fechado
+de políticas ainda descrevia o baseline anterior às migrações 0018–0021. Atualizado
+com os sete nomes/roles/comandos exatos novos, sem trocar por match parcial ou remover
+asserts. Regressão desse arquivo: 22 PASS, exit 0. As demais 30 suítes passaram.
+Logs: `.sessions/b7-*.log`. Suíte unitária completa ainda em execução.
+
+Resultado final da suíte completa: PASS, 1011 testes / 140 arquivos, exit 0.
+Gate explícito web: PASS, 175 testes / 25 arquivos, exit 0. Bundle: 3 arquivos,
+nenhum achado. Testes adicionais posteriores à suíte: HTTP controle 3 PASS (inclui
+409 de idempotência) e PostgreSQL control-storage 2 PASS (inclui recusa de inbox
+não API/webhook ocupado sem escrita HTTP). Esse último teste teve duas correções
+de fixture: conta de provider única reutilizada e IDs de inbox distintos. Restrições
+de unicidade não foram alteradas. Typecheck e diff-check finais PASS.
+
+B7 aprovado para desenvolvimento do plano 02, sem liberação de produção. A suíte
+de integração foi executada integralmente (198 PASS/1 FAIL), seguida do arquivo
+de inventário corrigido (22 PASS) e dos testes novos (2 PASS). Isso não é apresentado
+como uma execução única de integração com exit 0. Nenhum teste foi omitido nessa suíte.
+
+Documentação operacional e matriz real adicionadas separadamente das referências
+originais. A23 permanece bloqueio de homologação até testar recuperação antes do ACK
+no emissor; retries internos posteriores ao ACK não resolvem esse requisito.
+
+Preparação isolada Rails: Docker não tinha mais blocos automáticos de rede. Criada
+rede interna própria 10.246.117.0/24, sem sobreposição às redes locais listadas,
+com PostgreSQL pgvector em 55434 e Redis em 16381, ambos descartáveis. Nenhum banco
+existente foi reutilizado ou alterado.

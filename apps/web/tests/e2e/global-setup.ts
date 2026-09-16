@@ -47,6 +47,7 @@ import { SYNTHETIC_PAIRING_HINT } from './artifact-policy.js';
 import { createMessagingFixture } from './messaging-fixture.js';
 import { createPlatformFixture } from './platform-fixture.js';
 import { createMessagingMembershipResolver } from '../../../api/src/modules/messaging/membership.js';
+import { createChatwootService } from '../../../api/src/modules/integrations/chatwoot-service.js';
 
 const API_PORT = 33_10;
 const CONSOLE_ORIGIN = 'http://127.0.0.1:4173';
@@ -282,6 +283,12 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     app = buildApp({
       nodeEnv: 'test',
       platform:platformFixture.routeOptions,
+      integrations: {
+        jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey, resolveCurrentRole: createMessagingMembershipResolver(authPool),
+        service: createChatwootService({ publicOrigin: CONSOLE_ORIGIN, allowLocal: true, encryptionKey: Buffer.alloc(32, 19).toString('base64'),
+          externalDestinationsEnabled: true, transact: (org, work) => withOrganizationTransaction(appPool!, org, work),
+          resolveIntegration: async () => undefined, fetch: async () => { throw new Error('No external traffic allowed in destination approval E2E'); } }),
+      },
       tenantOperations:{jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,transact:(organizationId,operation)=>withOrganizationTransaction(appPool!,organizationId,operation)},
       messaging: { jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey, service: messagingFixture.service,
         resolveCurrentRole: createMessagingMembershipResolver(authPool) },

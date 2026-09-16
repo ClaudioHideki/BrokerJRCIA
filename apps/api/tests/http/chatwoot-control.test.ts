@@ -5,6 +5,7 @@ import type { ChatwootControlAuth } from '../../src/modules/integrations/chatwoo
 import type { InstanceService } from '../../src/modules/instances/service.js';
 import type { ChatwootService } from '../../src/modules/integrations/chatwoot-service.js';
 import type { OnboardingService } from '../../src/modules/integrations/chatwoot-onboarding.js';
+import { InstanceServiceError } from '../../src/modules/instances/service.js';
 const org = '4f2491a2-6853-4ac2-a7ef-c997813a9182', keyId = '81555d45-b1a2-4a3f-ab95-c1459b0df0d0';
 const secret = 'synthetic-control-jwt-secret-at-least-32';
 const apps: ReturnType<typeof buildApp>[] = [];
@@ -62,4 +63,8 @@ it('requires idempotency, validates onboarding input, attributes the service act
   expect((await h.app.inject({ method: 'GET', url: `${url}/${h.operation.operationId}`, headers: h.headers })).statusCode).toBe(200);
   expect((await h.app.inject({ method: 'POST', url: `${url}/${h.operation.operationId}/recover`, headers, payload: { action: 'RECONCILE' } })).statusCode).toBe(202);
   expect(h.recover).toHaveBeenCalledWith(expect.anything(), h.operation.operationId, 'RECONCILE', 'synthetic-onboarding');
+  h.start.mockRejectedValueOnce(new InstanceServiceError('IDEMPOTENCY_CONFLICT', 409));
+  const conflict = await h.app.inject({ method: 'POST', url, payload: { ...payload, name: 'Different' }, headers });
+  expect(conflict.statusCode).toBe(409);
+  expect(conflict.headers['cache-control']).toBe('no-store');
 });

@@ -11,6 +11,7 @@ export interface AccountRow {
   status: 'PENDING' | 'READY' | 'FAILED' | 'UNKNOWN' | 'DISABLED';
   last_error: string | null;
   credential_version: number;
+  capabilities?: unknown;
   destination: ChatwootDestination | undefined;
 }
 
@@ -22,7 +23,7 @@ export function mayUsePlatformToken(v: { mode: 'MANAGED' | 'EXTERNAL'; origin: s
 export async function resolveChatwootContext(tx: TenantTransaction, org: string, managedOrigin?: string) {
   const saved = await readChatwootDestination(tx, org);
   const row = (await tx.query<Omit<AccountRow, 'destination'>>(
-    'SELECT organization_id,base_url,account_id,encrypted_token,status,last_error,credential_version FROM chatwoot_accounts WHERE organization_id=$1', [org],
+    'SELECT organization_id,base_url,account_id,encrypted_token,status,last_error,credential_version,capabilities FROM chatwoot_accounts WHERE organization_id=$1', [org],
   )).rows[0];
   // Only an unbound legacy tenant may inherit the operator-configured origin.
   const destination = saved ?? (!row && managedOrigin ? {
