@@ -23,6 +23,8 @@ import { ProvidersPage } from '../pages/Providers.js';
 import { ProvisioningPage } from '../pages/Provisioning.js';
 import { HealthPage, ReportsPage, BrainPage } from '../pages/Operations.js';
 import { UsagePage } from '../pages/Usage.js';
+import { AuthorizePage } from '../embed/AuthorizePage.js';
+import '../embed/embed.css';
 import './console.css';
 import './broker.css';
 import './platform.css';
@@ -32,6 +34,7 @@ const browserClient = createApiClient();
 function AppRoutes() {
   return (
     <Routes>
+      <Route path="/embed/authorize" element={<AuthorizePage />} />
       <Route path="/jrc/*" element={<PlatformPage />} />
       <Route path="/" element={<HomeRedirect />} />
       <Route path="/login" element={<LoginPage />} />

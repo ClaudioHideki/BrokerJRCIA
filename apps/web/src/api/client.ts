@@ -243,7 +243,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     if (includeBearer && accessToken !== null) {
       headers.set("authorization", `Bearer ${accessToken}`);
     }
-    if (COOKIE_AUTH_PATHS.has(path)) {
+    if (COOKIE_AUTH_PATHS.has(path) || /^\/v1\/embed\/authorizations\/[0-9a-f-]{36}\/(approve|deny)$/u.test(path)) {
       const csrf = readCsrfCookie(cookieSource());
       if (csrf !== null) headers.set("x-csrf-token", csrf);
     }

@@ -40,6 +40,15 @@ function session(accessToken = ACCESS_TOKEN, activeIndex = 0) {
 }
 
 describe('createApiClient', () => {
+  it('adds signed CSRF cookie only to exact first-party embed decisions', async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse({ ok: true }));
+    const client = createApiClient({ fetchImpl, cookieSource: () => 'jrc_csrf=synthetic-csrf' });
+    for (const action of ['approve', 'deny', 'exchange']) {
+      await client.request(`/v1/embed/authorizations/${REQUEST_ID}/${action}`, { method: 'POST', body: '{}' });
+      const headers = new Headers(fetchImpl.mock.calls.at(-1)?.[1]?.headers);
+      expect(headers.get('x-csrf-token')).toBe(action === 'exchange' ? null : 'synthetic-csrf');
+    }
+  });
   it('usa URL relativa, same-origin, bearer em closure e CSRF somente nas rotas cookie-auth', async () => {
     document.cookie = 'jrc_csrf=csrf-cookie-value; Path=/';
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];

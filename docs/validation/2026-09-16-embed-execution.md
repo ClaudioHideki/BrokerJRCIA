@@ -93,3 +93,56 @@ Sem service worker no projeto. Nenhuma imagem/container foi publicado ou implant
 
 Gate E2: regressão completa **1.042 PASS / 143 arquivos**, 232,33s
 (`.sessions/e2-gate.log`), incluindo timeout de policy. Diff check PASS.
+
+## E3 — login próprio e sessão em memória
+
+`/embed/authorize?requestId=UUID` reaproveita SessionProvider, login e seleção de
+empresa existentes. Mostra usuário, empresa, origem/conta e caixas/ações antes
+do consentimento; seleção inicialmente vazia. Troca de empresa desmonta o
+formulário. Aprovação/negação enviam o CSRF assinado pela API first-party.
+
+Iframe cria prova WebCrypto somente após clique; abre popup no gesto do usuário
+e remove opener. Verifier/token ficam em campos privados do cliente, nunca no
+estado React/URL/storage/postMessage. Fetch do iframe usa `credentials: omit`
+e `cache: no-store`. Polling de autorização é de 1s, limitado à expiração;
+sessão de 5min consulta estado a cada 5s e remove desafio em expiração,
+revogação, pagehide ou mudança de contexto. Respostas antigas são descartadas.
+Popup bloqueado oferece link first-party normal com requestId público e portal.
+
+Contexto limitado a account_id/inbox_id/id da conversa, no máximo 64 KiB, origem
+exata e janela parent. Dados de contato, mensagens e currentAgent não persistem
+nem concedem acesso. Contexto de outra conta/caixa ou malformado nega sessão.
+Como o fork só envia contexto no carregamento/pedido, o iframe solicita nova
+leitura a cada 5s, com targetOrigin exato e sem conteúdo privado na mensagem.
+
+TDD e regressão focal `.sessions/e3-*`:
+
+- RED inicial: parser/cliente ausentes, CSRF da aprovação ausente e rota faltante.
+- Contexto nulo inicial mantinha desafio: RED real, corrigido para negar também
+  antes do primeiro contexto válido. Página exige ação explícita e mantém a
+  URL pública através de login/seleção. Teste de sincronização passou a aguardar
+  os dados da solicitação antes de procurar o botão.
+- Typecheck detectou import Node em teste web; teste passou a usar WebCrypto,
+  sem alterar a configuração TypeScript do frontend.
+- Chrome detectou `fetch` nativo invocado como método do cliente (`this` inválido),
+  antes de qualquer POST. Teste RED específico reproduziu a diferença dos mocks;
+  chamada corrigida, **47 testes focais PASS**, build PASS (203 módulos).
+- Fixture de auditoria de seleção corrigida para enviar o tipo do evento real;
+  alteração somente na fixture, não nos controles de produção.
+- Primeira rodada corrigida do Chrome: **6 PASS, 27,4s**. Auth/CSRF/handshake/RLS/
+  grants/expiração são código real com PostgreSQL descartável. Apenas facade de
+  estado/pareamento retorna código sintético; não há telefone/Chatwoot remoto.
+  Chrome ativa `Network.setCookieControls` restringindo cookies de terceiros.
+  Teste confirma ausência de cookie nos pedidos do iframe, consumo único e
+  limpeza na revogação. Popup recusado e contexto com falso administrator também
+  passaram. Traces/vídeos/screenshots permanecem desligados.
+
+Rodada ampliada Chrome: **8 PASS, 1,9min** (`.sessions/e3-browser-final.log`),
+incluindo expiração da sessão, empresa incorreta e request desconhecido/expirado.
+Scanner do bundle: 11 arquivos, nenhum finding.
+
+A regressão executada em paralelo com Chrome teve 1 timeout de Testing Library
+no teste existente de filtro de conexões (1.061 PASS, 1 FAIL). Repetição focal,
+sem alterar o teste: **14 PASS, 7,56s** (`e3-connections-recheck.log`). A repetição
+completa sem navegador concorrente: **1.062 PASS / 146 arquivos, 189,39s**
+(`.sessions/e3-gate-recheck.log`). Diff check PASS. E3 concluída localmente.
