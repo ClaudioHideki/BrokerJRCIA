@@ -84,7 +84,7 @@ com `--frozen-lockfile --ignore-scripts`, passou sem alterar o lockfile.
 
 ## Gates pendentes
 
-B2–B7, J1–J5 e E1–E5 ainda não foram implementados/validados.
+B4–B7, J1–J5 e E1–E5 ainda não foram implementados/validados.
 Nenhum piloto remoto ou telefone real foi usado. Ausência desses testes não é PASS.
 O resultado local não libera produção.
 
@@ -114,3 +114,38 @@ RED confirmou exceção assíncrona não tratada no adaptador; corrigido para re
 sanitizada `CHATWOOT_INVALID_RESPONSE`. Após essa correção, os dois arquivos de
 segurança de transporte passaram com 35 testes, incluindo o caso novo. Esse caso
 foi adicionado depois da coleta da suíte completa; não está incluído nos 994.
+
+## Tarefa B3 — resolução por empresa
+
+- `resolveChatwootContext` centraliza conta/destino para serviços, workers e anexos.
+- Uma instalação somente externa dispensa origem global; chave de cifra isolada
+  não habilita Chatwoot. Com chave e `PUBLIC_ORIGIN`, o transporte permanece ativo
+  mesmo ao desligar a flag de novos cadastros externos.
+- Token de plataforma exige MANAGED aprovado na origem global exata. Não é usado
+  no Chatwoot externo. O provisionador revalida o destino antes das etapas externas.
+- Rotação valida o novo token antes de substituir o ciphertext e usa revisão/versão
+  e lock tenant para impedir sobrescrita concorrente. Credencial rejeitada conserva a anterior.
+- Portal permite solicitar destino; administração aprova revisão e domínios de mídia.
+  Não há campo de token enquanto a aprovação estiver pendente. Status explicita UNVERIFIED.
+- Worker preserva a fila quando a aprovação é revogada. Alterar o destino enquanto
+  se inicia uma conexão usa o mesmo lock e confere novamente a revisão.
+
+RED unitário: resolvedor ausente. GREEN: 5 testes de contexto/runtime.
+RED de interface: 2 falhas específicas, controles ainda ausentes; GREEN: 8 testes.
+A primeira chamada `npm test` com caminhos de integração executou apenas os testes
+web; o include padrão não contém integração. Os testes de banco foram depois
+executados explicitamente com `npm run test:integration` — resultados abaixo.
+
+PostgreSQL e dois servidores HTTP em loopback: primeira execução encontrou uma
+fixture de conversa sem `phone_number`; corrigida para `null` conforme o contrato.
+Teste adicional RED provou que a revogação consumia tentativa/transformava a tarefa
+em FAILED; corrigido no claim e revalidado antes do consumo. GREEN: 22 testes em
+dois arquivos, incluindo os 17 testes preexistentes de QR/Chatwoot. Após adicionar
+rotação concorrente: arquivo novo PASS com 6 testes. Os dois servidores usam os
+mesmos IDs de conta/inbox/conversa e validam o token esperado; não são terceiros.
+O adaptador de teste redireciona somente suas duas origens ao HTTP local; DNS/TLS
+de produção são cobertos separadamente pelos testes de socket de B2.
+
+Typecheck, geração OpenAPI, contratos públicos e `git diff --check`: PASS.
+Suíte completa B3: PASS, 999 testes / 133 arquivos, exit 0. O teste RED de B4,
+criado depois da coleta desta suíte, fica fora do commit B3.

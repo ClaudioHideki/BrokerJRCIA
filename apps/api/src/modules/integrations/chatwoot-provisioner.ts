@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { requireActiveOrganization } from "../tenancy/operational-limits.js";
 import { ChatwootClient, ChatwootError } from "./chatwoot-client.js";
+import { resolveChatwootContext, requireApprovedDestination, mayUsePlatformToken } from './chatwoot-context.js';
+import { lockChatwootDestination } from './chatwoot-destination.js';
 import {
   chatwootEnvironment,
   IntegrationError,
@@ -34,9 +36,16 @@ interface ProvisionRow {
 export function createChatwootProvisioner(options: ChatwootOptions) {
   const env = chatwootEnvironment(options),
     tx = options.transact;
-  const platform = () => {
-    if (!options.platformToken)
+  const platform = async (org: string) => {
+    if (!options.platformToken || !env.origin)
       throw new IntegrationError("CHATWOOT_PLATFORM_NOT_CONFIGURED", 503);
+    const context = await tx(org, async t => {
+      await requireActiveOrganization(t, org);
+      return resolveChatwootContext(t, org, env.origin);
+    });
+    const destination = requireApprovedDestination(context.destination, org, env.origin);
+    if (!mayUsePlatformToken({ mode: destination.mode, origin: destination.baseUrl, managedOrigin: env.origin }))
+      throw new IntegrationError('CHATWOOT_PLATFORM_DESTINATION_FORBIDDEN', 403);
     return new ChatwootClient({
       baseUrl: env.origin,
       token: options.platformToken,
@@ -150,12 +159,16 @@ export function createChatwootProvisioner(options: ChatwootOptions) {
     });
   }
   async function execute(org: string, row: ProvisionRow) {
-    const client = platform(),
+    const client = await platform(org),
       lease = row.lease_token!;
     let externalPending = false;
     const beforeExternal = () =>
       tx(org, async (t) => {
         await requireActiveOrganization(t, org);
+        const context = await resolveChatwootContext(t, org, env.origin);
+        const destination = requireApprovedDestination(context.destination, org, env.origin);
+        if (!mayUsePlatformToken({ mode: destination.mode, origin: destination.baseUrl, managedOrigin: env.origin ?? null }))
+          throw new IntegrationError('CHATWOOT_PLATFORM_DESTINATION_FORBIDDEN', 403);
         if (
           !(
             await t.query(
@@ -217,7 +230,7 @@ export function createChatwootProvisioner(options: ChatwootOptions) {
         externalPending = false;
       }
       const tenant = new ChatwootClient({
-        baseUrl: env.origin,
+        baseUrl: a.base_url,
         token: env.vault.decrypt(`${org}:chatwoot-account`, a.encrypted_token),
         fetch: options.fetch,
         allowLocal: options.allowLocal,
@@ -243,14 +256,15 @@ export function createChatwootProvisioner(options: ChatwootOptions) {
         : null;
     },
     async start(org: string, value: Input, actorId?: string) {
-      platform();
+      await platform(org);
       const input = ProvisionChatwootInput.parse(value);
       await tx(org, async (t) => {
         await requireActiveOrganization(t, org);
-        await t.query(
-          "SELECT pg_advisory_xact_lock(hashtextextended('chatwoot-account:'||$1,0))",
-          [org],
-        );
+        await lockChatwootDestination(t, org);
+        const context = await resolveChatwootContext(t, org, env.origin);
+        const destination = requireApprovedDestination(context.destination, org, env.origin);
+        if (!mayUsePlatformToken({ mode: destination.mode, origin: destination.baseUrl, managedOrigin: env.origin ?? null }))
+          throw new IntegrationError('CHATWOOT_PLATFORM_DESTINATION_FORBIDDEN', 403);
         if (await readChatwootAccount(t, org))
           throw new IntegrationError("CHATWOOT_ACCOUNT_ALREADY_BOUND", 409);
         await t.query(
@@ -281,13 +295,13 @@ export function createChatwootProvisioner(options: ChatwootOptions) {
       return this.status(org);
     },
     async resume(org: string) {
-      platform();
+      await platform(org);
       const row = await claim(org, false);
       if (row) await execute(org, row);
       return this.status(org);
     },
     async reconcile(org: string, remoteId?: number) {
-      const client = platform(),
+      const client = await platform(org),
         row = await claim(org, true);
       if (!row) return this.status(org);
       const lease = row.lease_token!;

@@ -4935,6 +4935,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -5025,6 +5039,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -5032,6 +5099,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -5190,6 +5262,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -5280,6 +5366,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -5287,6 +5426,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -5421,6 +5565,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -5511,6 +5669,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -5518,6 +5729,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -5643,6 +5859,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -5733,6 +5963,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -5740,6 +6023,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -5957,6 +6245,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -6047,6 +6349,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -6054,6 +6409,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -6177,6 +6537,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -6267,6 +6641,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -6274,6 +6701,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -9368,6 +9800,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -9458,6 +9904,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -9465,6 +9964,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -9600,6 +10104,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -9690,6 +10208,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -9697,6 +10268,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -9844,6 +10420,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -9934,6 +10524,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -9941,6 +10584,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -10077,6 +10725,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -10167,6 +10829,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -10174,6 +10889,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -10423,6 +11143,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -10513,6 +11247,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -10520,6 +11307,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -10654,6 +11446,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -10744,6 +11550,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -10751,6 +11610,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -11380,6 +12244,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -11470,6 +12348,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -11477,6 +12408,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -11603,6 +12539,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -11693,6 +12643,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -11700,6 +12703,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,
@@ -11819,6 +12827,20 @@
                           "nullable": true,
                           "type": "integer"
                         },
+                        "compatibility": {
+                          "enum": [
+                            "SUPPORTED",
+                            "UNSUPPORTED",
+                            "UNVERIFIED"
+                          ],
+                          "type": "string"
+                        },
+                        "credentialVersion": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "hasCredential": {
                           "type": "boolean"
                         },
@@ -11909,6 +12931,59 @@
                       },
                       "type": "array"
                     },
+                    "destination": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "approvalStatus": {
+                          "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "baseUrl": {
+                          "type": "string"
+                        },
+                        "mediaOrigins": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "MANAGED",
+                            "EXTERNAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "baseUrl",
+                        "mode",
+                        "approvalStatus",
+                        "mediaOrigins",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "externalDestinationsEnabled": {
+                      "type": "boolean"
+                    },
                     "jobs": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -11916,6 +12991,11 @@
                         "type": "integer"
                       },
                       "type": "object"
+                    },
+                    "managedBaseUrl": {
+                      "format": "uri",
+                      "nullable": true,
+                      "type": "string"
                     },
                     "provisioning": {
                       "additionalProperties": false,

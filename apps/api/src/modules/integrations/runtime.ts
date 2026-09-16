@@ -51,21 +51,23 @@ export function loadIntegrationConfig(environment: NodeJS.ProcessEnv): {
       signingKey: z.string().min(32).parse(environment.QR_WEBHOOK_SIGNING_KEY),
     };
   }
+  const externalDestinationsEnabled = z.enum(['true', 'false']).default('false')
+    .parse(environment.CHATWOOT_EXTERNAL_DESTINATIONS_ENABLED) === 'true';
   if (
     environment.CHATWOOT_BASE_URL ||
     environment.CHATWOOT_PLATFORM_TOKEN ||
-    environment.INTEGRATION_ENCRYPTION_KEY
+    externalDestinationsEnabled ||
+    (environment.INTEGRATION_ENCRYPTION_KEY && environment.PUBLIC_ORIGIN)
   ) {
     const chatwoot: ChatwootConfig = {
-      baseUrl: z.url().parse(environment.CHATWOOT_BASE_URL),
+      ...(environment.CHATWOOT_BASE_URL ? { baseUrl: z.url().parse(environment.CHATWOOT_BASE_URL) } : {}),
       publicOrigin: z.url().parse(environment.PUBLIC_ORIGIN),
       encryptionKey: z
         .string()
         .min(1)
         .parse(environment.INTEGRATION_ENCRYPTION_KEY),
       allowLocal: environment.NODE_ENV !== "production",
-      externalDestinationsEnabled: z.enum(['true', 'false']).default('false')
-        .parse(environment.CHATWOOT_EXTERNAL_DESTINATIONS_ENABLED) === 'true',
+      externalDestinationsEnabled,
       ...(environment.CHATWOOT_PLATFORM_TOKEN
         ? {
             platformToken: z
