@@ -58,3 +58,38 @@ Sem chamadas a Chatwoot remoto, telefone, publicação ou implantação nesta et
 Gate E1: `npm test -- --maxWorkers=2` **1.028/1.028 PASS, 142 arquivos**, 192,38s
 (`.sessions/e1-gate.log`). Auditoria focal: 26 PASS. OpenAPI repetido sem diff
 contra o index revisado; `security:contracts`, typecheck e `git diff --check` PASS.
+
+## E2 — superfície incorporável isolada
+
+Header compartilhado entre API/helper e servidor web, restrito à origem HTTPS
+canônica aprovada (sem wildcard, caminho, credenciais ou porta alternativa).
+`frame-ancestors` permite apenas esse parent; `frame-src 'none'` impede subframes.
+Console, login, administração e `/embed/authorize` continuam com XFO DENY e
+`frame-ancestors 'none'`. Somente `/embed/chatwoot/:embedId` recebe exceção.
+
+Servidor consulta a API interna fixa, sem headers/cookies do navegador, sem
+redirect, com limite de 4 KiB e dois segundos. Não mantém cache entre clientes.
+Falha, revisão revogada, flag off ou ID inválido produzem 403 não incorporável.
+O HTML `embed.html` carrega somente sua entrada React/CSS e dependências comuns;
+não importa App/rotas da console nem restaura cookies de login dentro do iframe.
+Dockerfile copia explicitamente a entrada e o helper compartilhado.
+
+Evidências `.sessions/e2-*`:
+
+- RED: helper ausente, rota servindo console e falha de policy sem bloqueio correto.
+- GREEN: 15 testes de unidade/HTTP passaram. A primeira execução identificou
+  exceção de socket após destruir resposta excessiva; corrigida e repetida sem
+  erros não tratados. Acrescentado timeout ao teste final de regressão.
+- `npm run build`: PASS, 199 módulos; aviso de anotação upstream do Zod.
+- `npm run test:web:bundle`: dez arquivos, nenhum finding.
+- Chrome (`playwright.embed.config.ts`): três cenários PASS, 10,2s. Origem
+  permitida/negada, /jrc/login/dashboard/authorize bloqueados e revogação sem
+  cache. Confere ausência de bundle App e de restore da console no iframe.
+  O navegador recebe headers e HTML do servidor web real, através de interceptação
+  HTTPS local. A API de policy é fixture sintética; não é teste de Traefik/CDN
+  remoto. Esse proxy final continua BLOCKED até homologação autorizada.
+
+Sem service worker no projeto. Nenhuma imagem/container foi publicado ou implantado.
+
+Gate E2: regressão completa **1.042 PASS / 143 arquivos**, 232,33s
+(`.sessions/e2-gate.log`), incluindo timeout de policy. Diff check PASS.

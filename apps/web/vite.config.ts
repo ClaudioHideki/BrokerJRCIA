@@ -14,6 +14,10 @@ export default defineConfig(({ mode }) => {
   });
   return {
     plugins: [react()],
+    build: { rollupOptions: { input: {
+      main: fileURLToPath(new URL('./index.html', import.meta.url)),
+      embed: fileURLToPath(new URL('./embed.html', import.meta.url)),
+    } } },
     resolve: {
       alias: {
         '@jrc/contracts': fileURLToPath(new URL('../../packages/contracts/src/index.ts', import.meta.url)),
