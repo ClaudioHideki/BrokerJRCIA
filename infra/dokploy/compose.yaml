@@ -108,7 +108,7 @@ services:
     mem_limit: 1g
     cpus: 1
 
-  api-debug:
+    api-debug:
     image: ${JRC_API_IMAGE:?required}
     restart: "no"
     entrypoint:
@@ -116,63 +116,51 @@ services:
       - -c
     command:
       - |
-        echo "=== JRC API DEBUG V4 ==="
+        echo "=== JRC API DEBUG V5 ==="
         echo "PWD:"
         pwd
 
-        echo "=== PREPARANDO SERVER DEBUG ==="
+        echo "=== CRIANDO PATCH AUTOMATICO ==="
 
-        cp apps/api/dist/server.js apps/api/dist/server-debug.js
+        node -e "
+        const fs=require('node:fs');
+        const file='apps/api/dist/server.js';
+        const out='apps/api/dist/server-debug.js';
 
-        echo "=== ALTERANDO CATCH PARA EXIBIR ERRO REAL ==="
+        let s=fs.readFileSync(file,'utf8');
 
-        node - <<'NODE'
-        const fs = require('node:fs');
+        console.log('server.js bytes:', s.length);
 
-        const file = 'apps/api/dist/server-debug.js';
-        let source = fs.readFileSync(file, 'utf8');
+        const marker=\"process.stderr.write('JRC API failed to start\\\\n');\";
 
-        const oldCode = `catch {
-            process.stderr.write('JRC API failed to start\\n');
-            process.exitCode = 1;
-        }`;
-
-        const newCode = `catch (error) {
-            console.error('=== ERRO REAL DA API ===');
-            console.error(error);
-            console.error('NAME:', error?.name);
-            console.error('MESSAGE:', error?.message);
-            console.error('STACK:', error?.stack);
-            process.exitCode = 1;
-        }`;
-
-        if (!source.includes(oldCode)) {
-          console.error('ERRO: bloco catch esperado nao encontrado');
-          process.exit(2);
+        if (!s.includes(marker)) {
+          console.error('ERRO: marcador JRC API failed to start nao encontrado');
+          process.exit(10);
         }
 
-        source = source.replace(oldCode, newCode);
-        fs.writeFileSync(file, source);
+        s=s.replace(
+          marker,
+          \"console.error('=== ERRO REAL DA API ==='); console.error(error); console.error(error?.stack);\"
+        );
 
-        console.log('PATCH APLICADO COM SUCESSO');
-        NODE
+        s=s.replace(
+          /catch\\s*\\{/g,
+          'catch (error) {'
+        );
 
-        PATCH_CODE=$?
+        fs.writeFileSync(out,s);
+        console.log('PATCH V5 APLICADO');
+        "
 
-        if [ "$PATCH_CODE" -ne 0 ]; then
-          echo "=== PATCH FALHOU ==="
-          exit "$PATCH_CODE"
-        fi
+        echo "=== VALIDANDO PATCH ==="
 
-        echo "=== INICIANDO API DEBUG V4 ==="
+        grep -n "ERRO REAL DA API" apps/api/dist/server-debug.js || true
+
+        echo "=== INICIANDO API DEBUG V5 ==="
 
         node --trace-uncaught --trace-warnings apps/api/dist/server-debug.js
 
-        CODE=$?
-
-        echo "=== EXIT CODE: $CODE ==="
-
-        exit "$CODE"
+        echo "=== API DEBUG FINALIZADA ==="
     environment:
       <<: *a1
       PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
