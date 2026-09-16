@@ -18,15 +18,27 @@ function harness(enabled = true) {
   if (enabled) service.authorize = authorize;
   const operation = { operationId: '721d4277-c925-4873-85d6-0ce516873b62', state: 'PENDING', stage: 'INSTANCE', instanceId: null, integrationId: null, inboxId: null, lastError: null };
   const start = vi.fn().mockResolvedValue(operation), get = vi.fn().mockResolvedValue(operation), recover = vi.fn().mockResolvedValue(operation);
+  const resources = vi.fn().mockResolvedValue({ instances: [], providers: [] });
+  if (enabled) Object.assign(service, { resources });
+  const list = vi.fn().mockResolvedValue({ data: [operation] });
   const instance = vi.fn();
   const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ async verifyPasswordOrDummy() { return false; } }),
-    chatwootControl: { jwtSecret: secret, authenticateApiKey, service, onboarding: { start, get, recover } as unknown as OnboardingService },
+    chatwootControl: { jwtSecret: secret, authenticateApiKey, service, onboarding: { start, get, recover, list } as unknown as OnboardingService },
     integrations: { jwtSecret: secret, authenticateApiKey, resolveCurrentRole: async () => null, service: new Proxy({}, { get: () => instance }) as ChatwootService },
     instances: { jwtSecret: secret, authenticateApiKey, service: new Proxy({}, { get: () => instance }) as InstanceService } });
   apps.push(app);
-  return { app, context, instance, authorize, start, get, recover, operation, headers: { 'x-jrc-api-key': 'synthetic-control' } };
+  return { app, context, instance, authorize, start, get, recover, operation, resources, list, headers: { 'x-jrc-api-key': 'synthetic-control' } };
 }
 afterEach(async () => { await Promise.all(apps.splice(0).map(a => a.close())); });
+it('offers native onboarding resource selection and operation recovery through the restricted facade', async () => {
+  const h = harness();
+  const resources = await h.app.inject({ method: 'GET', url: '/v1/integrations/chatwoot/control/resources', headers: h.headers });
+  expect(resources.statusCode).toBe(200); expect(resources.headers['cache-control']).toBe('no-store');
+  expect(resources.json()).toEqual({ instances: [], providers: [] });
+  const operations = await h.app.inject({ method: 'GET', url: '/v1/integrations/chatwoot/control/onboarding', headers: h.headers });
+  expect(operations.statusCode).toBe(200); expect(operations.json()).toEqual({ data: [h.operation] });
+  expect(h.authorize).toHaveBeenCalledWith(expect.anything(), 'chatwoot:manage');
+});
 it('accepts a separately scoped key only on the control facade and strips secrets', async () => {
   const h = harness();
   const r = await h.app.inject({ method: 'GET', url: '/v1/integrations/chatwoot/control/context', headers: h.headers });

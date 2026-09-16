@@ -85,6 +85,7 @@ describe('durable Chatwoot onboarding with tenant PostgreSQL', () => {
     const value = input(), key = randomUUID();
     const [a, b] = await Promise.all([service.start(principal, value, key), service.start(principal, value, key)]);
     expect(a.operationId).toBe(b.operationId);
+    expect(await service.list(principal)).toMatchObject({ data: [{ operationId: a.operationId }] });
     await expect(service.start(principal, { ...value, name: 'Different' }, key)).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
     expect(provision).not.toHaveBeenCalled();
     for (const stage of ['ACTIVATE_CHANNEL', 'LINK_INBOX', 'ASSIGN_AGENTS', 'VERIFY', 'DONE']) {

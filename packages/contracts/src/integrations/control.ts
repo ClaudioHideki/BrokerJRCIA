@@ -40,6 +40,11 @@ export const OnboardingOperationSchema = z.strictObject({
   lastError: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/).nullable(),
 });
 export const OnboardingRecoverySchema = z.strictObject({ action: z.enum(['RETRY', 'RECONCILE', 'CANCEL']) });
+export const ControlResourcesSchema = z.strictObject({
+  providers: z.array(z.strictObject({ id: z.uuid(), name: z.string() })).max(500),
+  instances: z.array(z.strictObject({ id: z.uuid(), name: z.string(), status: InstanceStatusSchema })).max(500),
+});
+export const OnboardingListSchema = z.strictObject({ data: z.array(OnboardingOperationSchema).max(50) });
 export type OnboardingInput = z.infer<typeof OnboardingInputSchema>;
 export type OnboardingOperation = z.infer<typeof OnboardingOperationSchema>;
 export const ConnectionHealthSchema = z.strictObject({
@@ -49,6 +54,7 @@ export const ConnectionHealthSchema = z.strictObject({
   transportStatus: z.enum(['UNVERIFIED', 'OPERATIONAL', 'DEGRADED']), checkedAt: z.iso.datetime(), lastError: z.string().nullable(),
   allowedActions: z.array(z.enum(['status', 'pair', 'disconnect', 'manage'])),
   identityStatus: z.enum(['UNVERIFIED', 'CONFIRMED', 'CONFIRMATION_REQUIRED']), identityRevision: z.number().int().positive(),
+  identityApproved: z.boolean(),
   observedNumberSuffix: z.string().regex(/^\d{4}$/).nullable(),
 });
 export const ConfirmIdentitySchema = z.strictObject({ observedRevision: z.number().int().positive() });

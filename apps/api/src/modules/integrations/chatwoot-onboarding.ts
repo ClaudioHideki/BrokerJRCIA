@@ -171,6 +171,15 @@ export function createOnboardingService(options: OnboardingOptions) {
         return view(row);
       });
     },
+    async list(principal: ChatwootControlPrincipal) {
+      return tx(principal.organizationId, async t => {
+        await options.auth.revalidate(t, principal, 'chatwoot:manage');
+        const rows = (await t.query<Operation>(`SELECT * FROM chatwoot_onboarding_operations WHERE organization_id=$1
+          AND account_id=$2 AND destination_revision=$3 AND chatwoot_origin=$4 ORDER BY created_at DESC,id DESC LIMIT 50`,
+        [principal.organizationId, principal.accountId, principal.destinationRevision, principal.chatwootOrigin])).rows;
+        return { data: rows.map(view) };
+      });
+    },
     async recover(principal: ChatwootControlPrincipal, id: string, action: 'RETRY' | 'RECONCILE' | 'CANCEL', key: string) {
       return tx(principal.organizationId, async t => {
         await options.auth.revalidate(t, principal, 'chatwoot:manage');

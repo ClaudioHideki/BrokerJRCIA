@@ -106,6 +106,22 @@ export function createChatwootControlAuth(options: ChatwootControlAuthOptions) {
           chatwootOrigin: principal.chatwootOrigin, capabilities: publicChatwootCapabilities(account!) };
       });
     },
+    async resources(authentication: AuthenticationContext) {
+      return options.transact(authentication.organizationId, async tx => {
+        await authorizeInTransaction(tx, authentication, 'chatwoot:manage');
+        const org = authentication.organizationId;
+        const providers = (await tx.query<{ id: string; name: string }>(
+          "SELECT id,name FROM provider_accounts WHERE organization_id=$1 AND provider='BAILEYS' ORDER BY name,id LIMIT 500", [org])).rows;
+        const instances = (await tx.query<{ id: string; name: string; status: string }>(`SELECT i.id,i.name,i.status FROM instances i
+          JOIN provider_accounts p ON p.organization_id=i.organization_id AND p.id=i.provider_account_id
+          WHERE i.organization_id=$1 AND p.provider='BAILEYS' AND i.status NOT IN ('PROVISIONING','PROVISIONING_FAILED')
+          AND NOT EXISTS(SELECT 1 FROM messaging_channels ch JOIN chatwoot_connections c ON c.organization_id=ch.organization_id AND c.channel_id=ch.id
+            WHERE ch.organization_id=i.organization_id AND ch.instance_id=i.id)
+          AND NOT EXISTS(SELECT 1 FROM chatwoot_onboarding_operations op WHERE op.organization_id=i.organization_id AND op.instance_id=i.id
+            AND op.state<>'SUCCEEDED' AND NOT op.cancel_requested) ORDER BY i.name,i.id LIMIT 500`, [org])).rows;
+        return { providers, instances };
+      });
+    },
     delegate(principal: ChatwootControlPrincipal, request: { requestId: string; deadline: Date; signal: AbortSignal }, integrationId?: string): InstanceActorContext {
       const service = this;
       return { ...request, organizationId: principal.organizationId, credentialKind: 'CHATWOOT_CONTROL',

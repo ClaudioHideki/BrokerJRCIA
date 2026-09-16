@@ -323,3 +323,19 @@ Preparação isolada Rails: Docker não tinha mais blocos automáticos de rede. 
 rede interna própria 10.246.117.0/24, sem sobreposição às redes locais listadas,
 com PostgreSQL pgvector em 55434 e Redis em 16381, ambos descartáveis. Nenhum banco
 existente foi reutilizado ou alterado.
+
+## Adaptação do contrato para J2/J3
+
+O fluxo nativo precisa selecionar instâncias/canais da organização e retomar operações
+após recarga. Acrescentados GET `/control/resources` e GET `/control/onboarding`, ambos
+exigem `chatwoot:manage`, vínculo de conta/revisão vigente e RLS. Não devolvem segredos.
+Recursos limitados a BAILEYS elegíveis (até 500); operações mais recentes (até 50).
+`identityApproved` distingue reconexão de primeira vinculação quando desconectado.
+O estado UNVERIFIED sozinho não informa se a identidade já foi aprovada anteriormente.
+
+RED HTTP: rota ausente 404. GREEN HTTP/OpenAPI: 10 testes; DB recursos/onboarding: 12;
+identidade: 5. RED de identidade detectou campo ausente e uma falha subsequente da fixture
+dependente, sem alterar regras para passar. Typecheck, OpenAPI e contratos públicos PASS.
+Suíte completa inicial: 1011 PASS/1 FAIL por espera do botão em ConnectionDetail.
+Arquivo reexecutado: 19 PASS. Suíte completa reexecutada: **1012 PASS/140 arquivos**, exit 0.
+Logs `.sessions/j2-*.log`. Somente ambiente isolado, sem homologação remota.

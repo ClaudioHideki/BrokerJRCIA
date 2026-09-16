@@ -50,12 +50,20 @@ describe('scoped Chatwoot control credentials in PostgreSQL', () => {
   });
   afterAll(async () => { await pool?.end(); await authPool?.end(); await db?.dispose(); });
   const input = { name: 'Rails scoped key', scopes: ['chatwoot:read', 'chatwoot:pair'] as ('chatwoot:read' | 'chatwoot:pair')[], expiresAt: null };
+  it('offers only tenant QR resources to current administrators, never generic provider credentials', async () => {
+    const resources = await control.resources(jwt);
+    expect(resources.providers).toEqual([{ id: expect.any(String), name: 'Fixture' }]);
+    expect(resources.instances).toEqual([]); // The existing instance already has an inbox.
+    expect(await control.resources({ ...jwt, organizationId: other, actorId: outsider })).toEqual({ providers: [], instances: [] });
+    await expect(control.resources({ ...jwt, actorId: viewer, role: 'OWNER' })).rejects.toMatchObject({ status: 403 });
+  });
   it('issues only from a current owner/admin, persists HMAC and binding atomically, never replays the secret', async () => {
     await expect(control.issueCredential({ ...jwt, kind: 'JWT', actorId: viewer, role: 'OWNER' }, input, 'issue-fixture-001')).rejects.toMatchObject({ status: 403 });
     issued = await control.issueCredential(jwt, input, 'issue-fixture-001');
     expect(issued.binding).toEqual({ organizationId: org, accountId: 1, destinationRevision: 1 });
     const authenticated = await keys.authenticateApiKey(issued.secret); expect(authenticated?.apiKeyId).toBe(issued.id);
     key = { kind: 'API_KEY', organizationId: org, actorId: null, apiKeyId: issued.id, scopes: issued.scopes };
+    await expect(control.resources(key)).rejects.toMatchObject({ status: 403 });
     const saved = await withOrganizationTransaction(pool, org, tx => tx.query('SELECT * FROM api_keys WHERE organization_id=$1', [org]));
     expect(JSON.stringify(saved.rows)).not.toContain(issued.secret); expect(saved.rows[0].key_hmac).toBeTruthy();
     await expect(control.issueCredential(jwt, input, 'issue-fixture-001')).rejects.toMatchObject({ code: 'CONTROL_CREDENTIAL_ALREADY_ISSUED' });

@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { ControlResourcesSchema, OnboardingListSchema } from '@jrc/contracts';
 import { ControlContextSchema, ControlIdempotencyKeySchema, IssueControlCredentialSchema, IssuedControlCredentialSchema, OperatorGrantsSchema, PROBLEM_CONTENT_TYPE, OnboardingInputSchema, OnboardingOperationSchema, OnboardingRecoverySchema, ConnectionHealthSchema, ConnectionResponseSchema, InstanceMutationResponseSchema, ConfirmIdentitySchema, ControlAgentsSchema } from '@jrc/contracts';
 import { authenticateRequest, type AuthenticationOptions } from '../plugins/authentication.js';
 import type { ChatwootControlAuth } from '../../modules/integrations/chatwoot-control-auth.js';
@@ -35,6 +36,12 @@ export async function registerChatwootControlRoutes(app: FastifyInstance, option
     preHandler: read, schema: { querystring: empty, response: { 200: ControlContextSchema } },
   }, req => options.service.context(req.authentication!));
   const onboarding = () => { if (!options.onboarding) throw new IntegrationError('ONBOARDING_NOT_CONFIGURED', 503); return options.onboarding; };
+  app.get('/v1/integrations/chatwoot/control/resources', {
+    preHandler: read, schema: { querystring: empty, response: { 200: ControlResourcesSchema } },
+  }, req => options.service.resources(req.authentication!));
+  app.get('/v1/integrations/chatwoot/control/onboarding', {
+    preHandler: read, schema: { querystring: empty, response: { 200: OnboardingListSchema } },
+  }, async req => onboarding().list(await options.service.authorize(req.authentication!, 'chatwoot:manage')));
   const attributedActor = (req: FastifyRequest) => req.headers['x-jrc-external-actor'] === undefined ? undefined : z.string().regex(/^[A-Za-z0-9:_-]{1,80}$/).parse(req.headers['x-jrc-external-actor']);
   const facade = () => { if (!options.facade) throw new IntegrationError('CHATWOOT_CONTROL_NOT_CONFIGURED', 503); return options.facade; };
   const connectionParams = z.strictObject({ integrationId: z.uuid() });

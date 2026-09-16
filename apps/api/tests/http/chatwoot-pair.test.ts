@@ -13,7 +13,7 @@ it('uses the existing ephemeral connection contract, requires the scoped action 
   });
   const status = vi.fn().mockResolvedValue({ integrationId: id, inboxId: 31, instanceId: id, integrationStatus: 'READY', instanceStatus: 'DISCONNECTED',
     callbackVerifiedAt: null, lastSuccessfulInboundAt: null, lastSuccessfulOutboundAt: null, transportStatus: 'UNVERIFIED', checkedAt: new Date().toISOString(), lastError: null,
-    allowedActions: ['status', 'pair'], identityStatus: 'CONFIRMED', identityRevision: 1, observedNumberSuffix: '0100' });
+    allowedActions: ['status', 'pair'], identityStatus: 'CONFIRMED', identityApproved: true, identityRevision: 1, observedNumberSuffix: '0100' });
   app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ verifyPasswordOrDummy: async () => false }),
     chatwootControl: { jwtSecret: 'synthetic-at-least-32-characters-jwt', authenticateApiKey: async () => ({ apiKeyId: id, organizationId: org, scopes: ['chatwoot:pair', 'chatwoot:read'] }),
       service: { enabled: true, authorize } as unknown as ChatwootControlAuth, facade: { pair, status } as unknown as ChatwootControlService } });

@@ -70,7 +70,7 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
   });
   afterAll(async () => { await pool?.end(); await authPool?.end(); await db?.dispose(); });
   it('status never pairs and a delegated agent cannot perform the first pairing', async () => {
-    expect(await control.status(principal, integration)).toMatchObject({ transportStatus: 'UNVERIFIED', instanceStatus: 'DISCONNECTED' });
+    expect(await control.status(principal, integration)).toMatchObject({ transportStatus: 'UNVERIFIED', instanceStatus: 'DISCONNECTED', identityApproved: false });
     expect(pair).not.toHaveBeenCalled();
     await expect(control.pair(agent, integration, randomUUID())).rejects.toMatchObject({ status: 403 });
     expect(pair).not.toHaveBeenCalled();
@@ -98,7 +98,7 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
     await expect(control.confirmIdentity(agent, integration, status.identityRevision, randomUUID())).rejects.toMatchObject({ status: 403 });
     await control.confirmIdentity(principal, integration, status.identityRevision, randomUUID());
     status = await control.status(principal, integration);
-    expect(status.identityStatus).toBe('CONFIRMED'); expect(status.transportStatus).toBe('UNVERIFIED');
+    expect(status.identityStatus).toBe('CONFIRMED'); expect(status.identityApproved).toBe(true); expect(status.transportStatus).toBe('UNVERIFIED');
     const repo = createPostgresMessagingRepository();
     await transact(org, async t => {
       const contact = await repo.upsertContact(t, { id: randomUUID(), organizationId: org, externalId: '15555550199', displayName: null, consentStatus: 'UNKNOWN', consentUpdatedAt: null });

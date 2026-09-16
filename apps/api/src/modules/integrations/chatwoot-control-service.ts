@@ -97,7 +97,7 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
           callbackVerifiedAt: callback?.toISOString() ?? null, lastSuccessfulInboundAt: evidence.incoming?.toISOString() ?? null, lastSuccessfulOutboundAt: evidence.outgoing?.toISOString() ?? null,
           transportStatus: deriveTransportStatus({ integrationReady: c.status === 'READY', connected: instance.status === 'CONNECTED' && h.observed_connected && identity === 'CONFIRMED',
             callbackVerified: Boolean(callback), recentInbound: recent(evidence.incoming), recentOutbound: recent(evidence.outgoing), activeFailure: Boolean(lastError) || evidence.failure }),
-          checkedAt: new Date().toISOString(), lastError, allowedActions, identityStatus: identity, identityRevision: h.identity_revision, observedNumberSuffix: h.observed_last4 };
+          checkedAt: new Date().toISOString(), lastError, allowedActions, identityStatus: identity, identityApproved: Boolean(h.approved_fingerprint), identityRevision: h.identity_revision, observedNumberSuffix: h.observed_last4 };
       });
     },
     async pair(p: ChatwootControlPrincipal, id: string, key: string) {

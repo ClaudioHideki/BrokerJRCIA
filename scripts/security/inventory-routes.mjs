@@ -40,6 +40,14 @@ const ROUTE_POLICIES = Object.freeze({
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
     true, 'NOT_APPLICABLE', 'NONE', 'RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION',
   ),
+  'GET /v1/integrations/chatwoot/control/resources': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'NOT_APPLICABLE', 'NONE', 'RLS_SANITIZED_AVAILABLE_QR_RESOURCES',
+  ),
+  'GET /v1/integrations/chatwoot/control/onboarding': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'NOT_APPLICABLE', 'NONE', 'RLS_CURRENT_ACCOUNT_REVISION_OPERATIONS',
+  ),
   'POST /v1/integrations/chatwoot/control-credentials': policy(
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
     true, 'IDEMPOTENCY_KEY_NO_SECRET_REPLAY', 'NONE', 'RLS_ACTIVE_ORGANIZATION_APPROVED_ACCOUNT',
