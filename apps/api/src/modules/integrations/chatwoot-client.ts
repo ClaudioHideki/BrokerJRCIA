@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createChatwootSafeFetch } from './chatwoot-safe-http.js';
 import {
   MediaError,
   readMediaBytes,
@@ -60,7 +61,9 @@ export class ChatwootClient {
     )
       throw new Error("INVALID_CHATWOOT_ORIGIN");
     this.origin = url.origin;
-    this.fetch = options.fetch ?? globalThis.fetch;
+    this.fetch = options.fetch ?? (local ? globalThis.fetch : createChatwootSafeFetch({
+      origin: this.origin, mediaOrigins: options.mediaOrigins,
+    }));
   }
   private async request(
     method: "GET" | "POST" | "PATCH",

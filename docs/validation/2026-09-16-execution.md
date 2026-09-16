@@ -87,3 +87,30 @@ com `--frozen-lockfile --ignore-scripts`, passou sem alterar o lockfile.
 B2–B7, J1–J5 e E1–E5 ainda não foram implementados/validados.
 Nenhum piloto remoto ou telefone real foi usado. Ausência desses testes não é PASS.
 O resultado local não libera produção.
+
+## Tarefa B2 — transporte HTTPS com IP fixado
+
+Implementação e gate local concluídos. B1 foi registrado no commit local `c47aed4`.
+
+- O transporte padrão de `ChatwootClient` agora resolve todos os endereços A/AAAA,
+  bloqueia faixas especiais, fixa o lookup usado pelo socket e preserva hostname/SNI/TLS.
+- Não segue redirects autenticados; anexos só usam origens aprovadas, sem token de API.
+- A exceção HTTP local continua exclusivamente na configuração do servidor para testes.
+- Timeout cobre DNS/conexão/resposta; corpos têm limite. Multipart usa o encoder nativo.
+- Políticas de rede consultadas nos registros oficiais
+  [IPv4](https://www.iana.org/assignments/iana-ipv4-special-registry/) e
+  [IPv6](https://www.iana.org/assignments/iana-ipv6-special-registry/), além da
+  [orientação SSRF da OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).
+
+RED: módulo ausente. Typecheck inicial apontou uma opção de socket não declarada no tipo
+`https.RequestOptions`; removida, pois a família IPv4/IPv6 já é fixada explicitamente.
+GREEN inicial: 41 testes em quatro arquivos, incluindo servidor HTTPS local com
+certificado descartável, IP efetivamente conectado, hostname, certificado não confiável,
+limite de corpo chunked e cancelamento. Sem conexão a infraestrutura de terceiros.
+
+Suíte completa B2: PASS, 994 testes / 132 arquivos, exit 0. Regressão PostgreSQL de
+QR/Chatwoot: PASS, 17 testes. A revisão acrescentou um caso de status HTTP 700:
+RED confirmou exceção assíncrona não tratada no adaptador; corrigido para rejeição
+sanitizada `CHATWOOT_INVALID_RESPONSE`. Após essa correção, os dois arquivos de
+segurança de transporte passaram com 35 testes, incluindo o caso novo. Esse caso
+foi adicionado depois da coleta da suíte completa; não está incluído nos 994.
