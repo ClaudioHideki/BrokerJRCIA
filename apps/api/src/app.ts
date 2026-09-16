@@ -410,6 +410,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       facade: integrationRuntime.controlService,
       service: createEmbedService({ enabled: z.enum(['true', 'false']).default('false').parse(messagingEnvironment.CHATWOOT_EMBED_ENABLED) === 'true',
         pool: pools.appPool, transact: (org, work) => withOrganizationTransaction(pools.appPool, org, work), control: controlAuth,
+        publicOrigin: messagingEnvironment.PUBLIC_ORIGIN, dashboardClient: integrationRuntime.dashboardClient,
         managedOrigin: messagingEnvironment.CHATWOOT_BASE_URL ? new URL(messagingEnvironment.CHATWOOT_BASE_URL).origin : undefined,
         rateLimitStore, rateLimitSecret: config.ipRateLimitHmacSecret }),
     };

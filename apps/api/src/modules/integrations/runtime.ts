@@ -247,6 +247,7 @@ export function createIntegrationRuntime(
   return {
     qr,
     chatwoot,
+    dashboardClient: options ? chatwootEnvironment(options).client : undefined,
     identity,
     controlService: control && options && chatwoot && identity ? createChatwootControlService({ ...options, ...control, chatwoot, health: identity }) : undefined,
     onboarding: control && chatwoot && qr ? createOnboardingService({ transact, ...control, chatwoot, activateQr: qr.activate }) : undefined,

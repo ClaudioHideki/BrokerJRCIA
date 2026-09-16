@@ -146,3 +146,44 @@ no teste existente de filtro de conexões (1.061 PASS, 1 FAIL). Repetição foca
 sem alterar o teste: **14 PASS, 7,56s** (`e3-connections-recheck.log`). A repetição
 completa sem navegador concorrente: **1.062 PASS / 146 arquivos, 189,39s**
 (`.sessions/e3-gate-recheck.log`). Diff check PASS. E3 concluída localmente.
+
+## E4 — instalação opcional e controles do portal
+
+Migração aditiva `0023_chatwoot_dashboard_install`: estado, ID remoto e lease por
+app existente, preservando RLS. `UNKNOWN` persiste antes do POST; listagem por URL
+exata reconcilia, inclusive depois de restart. Sem transação aberta durante HTTP.
+403/404 oferecem nome/URL para cadastro manual. Se já havia incerteza, a perda de
+permissão para listar preserva UNKNOWN. Não altera transporte/inbox ao remover app.
+
+API usa métodos list/create Dashboard Apps do cliente seguro existente, verifica
+perfil de administrador e revalida destino/credencial antes de criar e retornar.
+O contrato foi conferido no controller e views do fork Rails local. A validação
+desta etapa usa fixtures remotas sintéticas; homologação de terceiros segue BLOCKED.
+
+Portal inclui preparação/instalação sob ação explícita, alternativa manual e
+controle de caixas sem conversa. Reutiliza ChallengePanel e contratos existentes,
+acrescentando confirmação de identidade e edição de grants por administrador.
+Leitor delegado usa apenas controle autorizado; não recebe papel OPERATOR legado.
+
+TDD/evidências `.sessions/e4-*`:
+
+- RED: funções/métodos de Dashboard Apps e componentes ausentes.
+- Fixture PG inicialmente recusada por e-mail em maiúsculas: normalizada sem mudar
+  constraint; falha de preparação, não contada como RED funcional.
+- RED real: perda de permissão apagava UNKNOWN; corrigido. Sete testes de instalação
+  PASS, incluindo concorrência, restart, app deletado e ausência de transação HTTP.
+- RED real de banco: `jrc_app` não pode ler users. Criada projeção SECURITY DEFINER
+  sem argumentos, restrita ao tenant corrente, somente ID/e-mail/papel. Mantida
+  a proibição de SELECT direto em users; teste de isolamento incluído.
+- UI inicial: 12 PASS. RED de resposta tardia reproduziu código de pareamento
+  reaparecendo após revogação; revisão de ação descarta o resultado. Focal final:
+  12 PASS em três arquivos, incluindo HTTP JWT-only, injeção de URL e no-store.
+- PostgreSQL final: **15 PASS / 2 arquivos, 11,65s**, incluindo projeção sem tenant
+  vazia, isolamento e SELECT em users negado (`e4-db-final.log`).
+- Build/typecheck PASS; OpenAPI atualizado e revisado (três rotas, schemas
+  estritos, JWT). Scanner de 11 arquivos sem findings; contratos públicos PASS.
+- Primeira regressão: 1.070 PASS, um FAIL no inventário esperado do teste OpenAPI:
+  faltavam as três rotas novas na lista explícita. Lista atualizada após revisão
+  do diff gerado; sem afrouxar a comparação de endpoints.
+- Gate final E4: **1.071 PASS / 149 arquivos, 183,43s** (`e4-gate-final.log`).
+  Geração OpenAPI repetida com SHA-256 idêntico. Diff check PASS. Commit local.

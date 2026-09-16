@@ -170,6 +170,16 @@ export function createChatwootControlAuth(options: ChatwootControlAuthOptions) {
           binding: { organizationId: principal.organizationId, accountId: principal.accountId, destinationRevision: principal.destinationRevision } };
       });
     },
+    async operatorGrants(authentication: AuthenticationContext, integrationId: string) {
+      enabled(); if (authentication.kind !== 'JWT') throw denied();
+      return options.transact(authentication.organizationId, async tx => {
+        await authorizeInTransaction(tx, authentication, 'chatwoot:manage', integrationId);
+        const org = authentication.organizationId;
+        const members = (await tx.query<{ userId: string; email: string; role: Role }>('SELECT user_id AS "userId",email,role FROM current_chatwoot_operator_members()')).rows;
+        const grants = (await tx.query<{ userId: string; canPair: boolean }>('SELECT user_id AS "userId",can_pair AS "canPair" FROM chatwoot_operator_grants WHERE organization_id=$1 AND integration_id=$2 ORDER BY user_id', [org, integrationId])).rows;
+        return { members, grants };
+      });
+    },
     async setOperatorGrants(authentication: AuthenticationContext, integrationId: string, value: z.infer<typeof OperatorGrantsSchema>, key: string) {
       enabled();
       if (authentication.kind !== 'JWT') throw denied();

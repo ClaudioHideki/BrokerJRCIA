@@ -62,6 +62,17 @@ it('registers once per current destination and exposes only approved public orig
   expect((await transact(outsider.organizationId, tx => tx.query('SELECT * FROM chatwoot_embed_apps'))).rows).toEqual([]);
   await expect(authPool.query('SELECT * FROM chatwoot_embed_sessions')).rejects.toMatchObject({ code: '42501' });
 });
+it('lists portal grants only for an administrator of the current connection', async () => {
+  await control.setOperatorGrants(owner, integration, { grants: [{ userId: agent.actorId!, canPair: false }] }, randomUUID());
+  expect(await control.operatorGrants(owner, integration)).toMatchObject({ grants: [{ userId: agent.actorId, canPair: false }],
+    members: expect.arrayContaining([expect.objectContaining({ userId: agent.actorId, role: 'OPERATOR' })]) });
+  await expect(control.operatorGrants(agent, integration)).rejects.toMatchObject({ status: 403 });
+  await expect(control.operatorGrants(owner, otherIntegration)).rejects.toMatchObject({ status: 404 });
+  expect((await transact(outsider.organizationId, tx => tx.query('SELECT user_id FROM current_chatwoot_operator_members()'))).rows).toEqual([{ user_id: outsider.actorId }]);
+  expect((await pool.query('SELECT * FROM current_chatwoot_operator_members()')).rows).toEqual([]);
+  await expect(pool.query('SELECT * FROM users')).rejects.toMatchObject({ code: '42501' });
+  await control.setOperatorGrants(owner, integration, { grants: [] }, randomUUID());
+});
 
 it('keeps an unapproved request pending and exchanges atomically exactly once', async () => {
   const p = proof(), started = await service.start(appId, p.challenge, '192.0.2.1');

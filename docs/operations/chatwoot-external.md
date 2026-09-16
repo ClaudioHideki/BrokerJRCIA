@@ -91,6 +91,45 @@ Nenhuma transação de banco deve ficar aberta enquanto um backend chama o outro
   admin deve conferir número observado. `CHATWOOT_REQUEST_REJECTED`: revisar token/permissões;
   a operação não faz logout do WhatsApp. `UNKNOWN`: conciliar antes de novo POST.
 
+## Dashboard App opcional e portal
+
+Com `CHATWOOT_CONTROL_ENABLED=true` e `CHATWOOT_EMBED_ENABLED=true` em laboratório,
+o administrador abre **JRC Conversas → Painel opcional no Chatwoot → Preparar painel**.
+O Broker gera um registro por empresa/revisão do destino, nome e URL HTTPS própria.
+O ID público da URL não autentica ninguém. A URL não contém credencial.
+
+**Instalar ou conferir aplicativo** verifica acesso administrativo à conta, lista
+`/api/v1/accounts/:accountId/dashboard_apps` e concilia pela URL exata. O payload
+confirmado no fork é `{dashboard_app:{title,content:[{type:'frame',url}]}}`.
+Essas chamadas usam a Application API com a credencial cifrada do destino aprovado.
+Não dependem do Platform App. 403/404 oferecem cadastro manual, quando a edição
+possuir Dashboard Apps. Nenhuma versão é considerada compatível só pelo número.
+
+Há lease persistente de 60s entre réplicas e `UNKNOWN` gravado **antes** do POST.
+Após resposta perdida/reinício, o botão só lista e reconcilia; ausência na lista
+não autoriza repetir uma criação incerta. Confira o destino manualmente nesse caso.
+Se um app previamente confirmado foi removido e a listagem atual não o encontra,
+o administrador pode instalá-lo novamente. Remover o app não altera inbox, webhook,
+mensagens, grants nem a sessão WhatsApp. Não há transação de banco aberta durante HTTP.
+
+Rotas autenticadas adicionais (JWT de OWNER/ADMIN, corpo vazio nas mutações):
+
+- POST `/v1/integrations/chatwoot/embed-apps`: registro estável.
+- GET `/v1/integrations/chatwoot/embed-apps/:id`: nome, URL e estado de instalação.
+- POST `/v1/integrations/chatwoot/embed-apps/:id/install`: instalar/conferir.
+- GET `/v1/integrations/chatwoot/connections/:id/operator-grants`: membros e concessões.
+  O PUT existente substitui as concessões e exige `Idempotency-Key`.
+
+Em **Controle das conexões**, selecione uma caixa para consultar sessão, transporte,
+QR temporário e identidade. A confirmação exige seleção explícita e a revisão
+observada pelo servidor. Administradores concedem consulta/reconexão por caixa;
+agentes não aprovam identidade nem fazem a primeira vinculação. Para usuário
+restrito, use **Leitor** e grants específicos: OPERATOR é um papel legado com
+permissões gerais de conexão e não deve ser utilizado como sinônimo de agente restrito.
+O portal permite criar a conexão e vinculá-la à caixa pelo fluxo já existente,
+independentemente de conversa, iframe ou Dashboard App. O painel na conversa não
+insere botões no assistente nativo de caixas de um produto externo.
+
 ## Homologação e rollback
 
 Executar os três níveis da matriz separadamente. O piloto precisa observar entrada,

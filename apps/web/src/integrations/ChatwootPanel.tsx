@@ -9,11 +9,14 @@ import { Metric } from "../broker/components.js";
 import { Icon } from "../broker/Icon.js";
 import "./integrations.css";
 import { ChatwootDestinationPanel } from './ChatwootDestinationPanel.js';
+import { DashboardAppSetup } from './DashboardAppSetup.js';
+import { ChatwootControlPanel } from './ChatwootControlPanel.js';
 
 export type IntegrationRequest = (
   path: string,
   method?: string,
   body?: unknown,
+  options?: { idempotencyKey: string },
 ) => Promise<unknown>;
 interface Source {
   id: string;
@@ -287,6 +290,8 @@ export function ChatwootPanel({
         <>
           {data.externalDestinationsEnabled && <ChatwootDestinationPanel key={`${data.destination?.baseUrl}:${data.destination?.revision}`}
             data={data} platform={platform} canManage={canManage} blocked={blocked} action={action} />}
+          {!platform && accountReady && <ChatwootControlPanel request={request} canManage={canManage} connections={data.connections} />}
+          {!platform && accountReady && canManage && <DashboardAppSetup request={request} />}
           <div className="metric-grid metric-grid--four">
             <Metric
               label="Conta de atendimento"

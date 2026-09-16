@@ -11,6 +11,7 @@ import { IdempotencyConflictError } from '../../modules/instances/idempotency.js
 import type { OnboardingService } from '../../modules/integrations/chatwoot-onboarding.js';
 import type { ChatwootControlService } from '../../modules/integrations/chatwoot-control-service.js';
 import { InstanceServiceError } from '../../modules/instances/service.js';
+import { OperatorGrantViewSchema } from '@jrc/contracts';
 
 export interface ChatwootControlRouteOptions extends AuthenticationOptions { service: ChatwootControlAuth; onboarding?: OnboardingService | undefined; facade?: ChatwootControlService | undefined }
 export async function registerChatwootControlRoutes(app: FastifyInstance, options: ChatwootControlRouteOptions) {
@@ -87,6 +88,9 @@ export async function registerChatwootControlRoutes(app: FastifyInstance, option
   app.post('/v1/integrations/chatwoot/control-credentials', {
     preHandler: manage, schema: { querystring: empty, headers: mutationHeaders, body: IssueControlCredentialSchema, response: { 201: IssuedControlCredentialSchema } },
   }, async (req, reply) => reply.code(201).send(await options.service.issueCredential(req.authentication!, IssueControlCredentialSchema.parse(req.body), String(req.headers['idempotency-key']))));
+  app.get('/v1/integrations/chatwoot/connections/:id/operator-grants', {
+    preHandler: manage, schema: { querystring: empty, params: z.strictObject({ id: z.uuid() }), response: { 200: OperatorGrantViewSchema } },
+  }, req => options.service.operatorGrants(req.authentication!, (req.params as { id: string }).id));
   app.put('/v1/integrations/chatwoot/connections/:id/operator-grants', {
     preHandler: manage, schema: { querystring: empty, headers: mutationHeaders, params: z.strictObject({ id: z.uuid() }), body: OperatorGrantsSchema, response: { 200: z.strictObject({ ok: z.literal(true) }) } },
   }, req => options.service.setOperatorGrants(req.authentication!, (req.params as { id: string }).id, OperatorGrantsSchema.parse(req.body), String(req.headers['idempotency-key'])));

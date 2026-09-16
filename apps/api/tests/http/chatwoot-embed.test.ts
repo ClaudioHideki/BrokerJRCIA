@@ -17,8 +17,10 @@ async function harness(enabled = true) {
   const authorize = vi.fn(async (token: string) => { if (token !== 's'.repeat(43)) throw new IntegrationError('EMBED_AUTHORIZATION_DENIED', 403); return { organizationId: org }; });
   const status = vi.fn().mockResolvedValue(health), pair = vi.fn().mockRejectedValue(new IntegrationError('EMBED_AUTHORIZATION_DENIED', 403));
   const instance = vi.fn();
+  const describe = vi.fn().mockResolvedValue({ embedId: id, title: 'JRC', url: `${origin}/embed/chatwoot/${id}`, state: 'UNCONFIGURED', remoteAppId: null });
+  const install = vi.fn().mockResolvedValue({ embedId: id, title: 'JRC', url: `${origin}/embed/chatwoot/${id}`, state: 'MANUAL', remoteAppId: null });
   const service = { repository: { enabled() { if (!enabled) throw new IntegrationError('CHATWOOT_EMBED_DISABLED', 404); } }, start, approve,
-    sessions: { authorize }, apps: { policy: vi.fn().mockResolvedValue({ origin: 'https://chatwoot.example.test' }), register: vi.fn().mockResolvedValue({ embedId: id }) } } as unknown as EmbedAuthorizationService;
+    sessions: { authorize }, apps: { describe, install, policy: vi.fn().mockResolvedValue({ origin: 'https://chatwoot.example.test' }), register: vi.fn().mockResolvedValue({ embedId: id }) } } as unknown as EmbedAuthorizationService;
   const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ async verifyPasswordOrDummy() { return false; } }),
     chatwootEmbed: { nodeEnv: 'test', jwtSecret: secret, authenticateApiKey: async () => ({ organizationId: org, apiKeyId: id, scopes: [] }),
       service, facade: { status, pair } as unknown as ChatwootControlService, browserCsrfSecret: secret, browserCookieSecure: true,
@@ -26,10 +28,21 @@ async function harness(enabled = true) {
     instances: { jwtSecret: secret, authenticateApiKey: async () => null, service: new Proxy({}, { get: () => instance }) as InstanceService } });
   running.push(app);
   const token = await issueAccessToken({ userId: user, organizationId: org, role: 'OWNER' }, secret), csrf = createBrowserCsrfToken(secret);
-  return { app, start, approve, authorize, status, pair, instance,
+  return { app, start, approve, authorize, status, pair, instance, describe, install,
     headers: { authorization: `Bearer ${token}`, origin, cookie: `__Host-jrc_csrf=${csrf}`, 'x-csrf-token': csrf } };
 }
 afterEach(async () => { await Promise.all(running.splice(0).map(app => app.close())); });
+it('keeps setup JWT-only, no-store, and refuses client-selected URL or tenant', async () => {
+  const h = await harness(), url = `/v1/integrations/chatwoot/embed-apps/${id}`;
+  for (const headers of [{}, { 'x-jrc-api-key': 'synthetic' }, { authorization: `Bearer ${'s'.repeat(43)}` }])
+    expect([401, 403]).toContain((await h.app.inject({ method: 'POST', url: url + '/install', headers, payload: {} })).statusCode);
+  expect(h.install).not.toHaveBeenCalled();
+  const read = await h.app.inject({ method: 'GET', url, headers: h.headers });
+  expect(read.statusCode).toBe(200); expect(read.headers['cache-control']).toBe('no-store');
+  expect((await h.app.inject({ method: 'POST', url: url + '/install', headers: h.headers, payload: { url: 'https://evil.example' } })).statusCode).toBe(400);
+  expect((await h.app.inject({ method: 'POST', url: url + '/install', headers: h.headers, payload: {} })).statusCode).toBe(200);
+  expect(h.install).toHaveBeenCalledOnce();
+});
 it('starts only a proof request, uses no-store, and rejects tenant injection', async () => {
   const h = await harness(), url = '/v1/embed/authorizations', payload = { embedId: id, challenge: 'A'.repeat(43) };
   const response = await h.app.inject({ method: 'POST', url, payload });

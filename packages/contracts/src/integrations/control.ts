@@ -20,6 +20,10 @@ export const ControlContextSchema = ControlBindingSchema.extend({
 export const OperatorGrantsSchema = z.strictObject({
   grants: z.array(z.strictObject({ userId: z.uuid(), canPair: z.boolean() })).max(100),
 }).refine(v => new Set(v.grants.map(x => x.userId)).size === v.grants.length, 'Duplicate user');
+export const OperatorGrantViewSchema = z.strictObject({
+  members: z.array(z.strictObject({ userId: z.uuid(), email: z.email(), role: z.enum(['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER']) })).max(1000),
+  grants: z.array(z.strictObject({ userId: z.uuid(), canPair: z.boolean() })).max(100),
+});
 export const ControlIdempotencyKeySchema = z.string().min(8).max(128).regex(/^[A-Za-z0-9:_-]+$/);
 export const ControlAgentIdsSchema = z.array(z.number().int().positive().max(Number.MAX_SAFE_INTEGER)).max(100)
   .refine(v => new Set(v).size === v.length, 'Duplicate agent');

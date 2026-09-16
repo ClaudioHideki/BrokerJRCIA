@@ -4,11 +4,15 @@ import type { OrganizationTransaction, TenantTransaction } from '../../../db/ten
 import type { ChatwootControlAuth } from '../chatwoot-control-auth.js';
 import type { RateLimitStore } from '../../auth/rate-limit/store.js';
 import { IntegrationError } from '../integration-error.js';
+import type { ChatwootClient } from '../chatwoot-client.js';
+import type { AccountRow } from '../chatwoot-context.js';
 
 export const embedDenied = () => new IntegrationError('EMBED_AUTHORIZATION_DENIED', 403);
 export interface EmbedOptions {
   enabled: boolean; pool: Pool; control: ChatwootControlAuth; managedOrigin?: string | undefined;
   rateLimitStore: RateLimitStore; rateLimitSecret: string;
+  publicOrigin?: string | undefined;
+  dashboardClient?: ((account: AccountRow) => ChatwootClient) | undefined;
   transact<T>(org: string, work: OrganizationTransaction<T>): Promise<T>;
 }
 export interface EmbedAppRow { id: string; organization_id: string; account_id: string; destination_revision: number; active: boolean }

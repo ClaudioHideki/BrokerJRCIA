@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { EmbedStartSchema, EmbedStartedSchema, EmbedExchangeSchema, EmbedExchangeResultSchema, EmbedApproveSchema,
-  EmbedAppSchema, EmbedPolicySchema, EmbedApprovalViewSchema, ConnectionHealthSchema, ConnectionResponseSchema,
+  EmbedAppSchema, EmbedAppSetupSchema, EmbedPolicySchema, EmbedApprovalViewSchema, ConnectionHealthSchema, ConnectionResponseSchema,
   ControlIdempotencyKeySchema, PROBLEM_CONTENT_TYPE } from '@jrc/contracts';
 import { isConsoleOriginAllowed, parseBrowserCookieHeader, resolveBrowserCookiePolicy, verifyBrowserCsrfToken } from '@jrc/security';
 import { authenticateRequest, type AuthenticationOptions } from '../plugins/authentication.js';
@@ -48,6 +48,12 @@ export async function registerChatwootEmbedRoutes(app: FastifyInstance, options:
   app.post('/v1/integrations/chatwoot/embed-apps', { preHandler: portal,
     schema: { querystring: empty, body: empty, response: { 201: EmbedAppSchema }, security: bearer } },
   async (req, reply) => reply.code(201).send(await options.service.apps.register(req.authentication!)));
+  app.get('/v1/integrations/chatwoot/embed-apps/:id', { preHandler: portal,
+    schema: { params, querystring: empty, response: { 200: EmbedAppSetupSchema }, security: bearer } },
+  req => options.service.apps.describe(req.authentication!, id(req)));
+  app.post('/v1/integrations/chatwoot/embed-apps/:id/install', { preHandler: portal,
+    schema: { params, querystring: empty, body: empty, response: { 200: EmbedAppSetupSchema }, security: bearer } },
+  req => options.service.apps.install(req.authentication!, id(req)));
   app.get('/v1/embed/apps/:id/policy', { preHandler: [feature],
     schema: { params, querystring: empty, response: { 200: EmbedPolicySchema }, security: [] } }, req => options.service.apps.policy(id(req)));
   app.post('/v1/embed/authorizations', { preHandler: [feature],

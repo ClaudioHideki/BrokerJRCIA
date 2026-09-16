@@ -7,6 +7,8 @@ export const EmbedExchangeSchema = z.strictObject({ verifier: EmbedVerifierSchem
 export const EmbedApproveSchema = z.strictObject({ integrationIds: z.array(z.uuid()).min(1).max(100)
   .refine(ids => new Set(ids).size === ids.length, 'Duplicate integration') });
 export const EmbedAppSchema = z.strictObject({ embedId: z.uuid() });
+export const EmbedAppSetupSchema = EmbedAppSchema.extend({ title: z.string(), url: z.url(),
+  state: z.enum(['UNCONFIGURED', 'INSTALLED', 'MANUAL', 'UNKNOWN']), remoteAppId: z.number().int().positive().nullable() });
 export const EmbedPolicySchema = z.strictObject({ origin: z.url() });
 export const EmbedStartedSchema = z.strictObject({ requestId: z.uuid(), expiresAt: z.iso.datetime() });
 export const EmbedConnectionSchema = z.strictObject({ integrationId: z.uuid(), inboxId: z.number().int().positive(), name: z.string(), canPair: z.boolean() });

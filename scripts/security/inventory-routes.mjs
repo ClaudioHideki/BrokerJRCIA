@@ -4,6 +4,18 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/integrations/chatwoot/embed-apps/{id}': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'READ_ONLY', 'NONE', 'RLS_APPROVED_CURRENT_ACCOUNT_DESTINATION',
+  ),
+  'POST /v1/integrations/chatwoot/embed-apps/{id}/install': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'PERSISTED_LEASE_UNKNOWN_RECONCILE_EXACT_URL', 'NONE', 'RLS_ACCOUNT_DESTINATION_CREDENTIAL_REVISION_BEFORE_POST',
+  ),
+  'GET /v1/integrations/chatwoot/connections/{id}/operator-grants': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'READ_ONLY', 'NONE', 'RLS_CURRENT_ORGANIZATION_CONNECTION_MEMBERS_PROJECTION',
+  ),
   'POST /v1/integrations/chatwoot/embed-apps': policy(
     'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
     true, 'UNIQUE_ORGANIZATION_DESTINATION_REVISION', 'NONE', 'RLS_APPROVED_CURRENT_ACCOUNT_DESTINATION',
