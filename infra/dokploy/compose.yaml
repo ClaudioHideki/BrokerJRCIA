@@ -1,6 +1,6 @@
 name: jrc-broker
 
-x-runtime: &a1
+x-runtime: &runtime
   NODE_ENV: production
   DATABASE_URL: postgresql://jrc_app:${JRC_APP_PASSWORD:?required}@postgres:5432/jrc_broker
   AUTH_DATABASE_URL: postgresql://jrc_auth:${JRC_AUTH_PASSWORD:?required}@postgres:5432/jrc_broker
@@ -35,7 +35,6 @@ x-runtime: &a1
   TYPEBOT_ORIGINS_JSON: ${TYPEBOT_ORIGINS_JSON:?required-json-object}
 
 services:
-
   web:
     image: ${JRC_WEB_IMAGE:?required}
     restart: unless-stopped
@@ -76,7 +75,7 @@ services:
     image: ${JRC_API_IMAGE:?required}
     restart: unless-stopped
     environment:
-      <<: *a1
+      <<: *runtime
       PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
       PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
       PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
@@ -96,7 +95,7 @@ services:
         - CMD
         - node
         - -e
-        - fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+        - "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
       interval: 15s
       timeout: 5s
       retries: 5
@@ -108,7 +107,7 @@ services:
     mem_limit: 1g
     cpus: 1
 
-    api-debug:
+  api-debug:
     image: ${JRC_API_IMAGE:?required}
     restart: "no"
     entrypoint:
@@ -162,7 +161,7 @@ services:
 
         echo "=== API DEBUG FINALIZADA ==="
     environment:
-      <<: *a1
+      <<: *runtime
       PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
       PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
       PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
@@ -184,7 +183,7 @@ services:
       - --watch
     restart: unless-stopped
     environment:
-      <<: *a1
+      <<: *runtime
       MESSAGING_WORKER_MODE: automatic
       MESSAGING_WORKER_SHARDS: ${MESSAGING_WORKER_SHARDS:-1}
       MESSAGING_WORKER_SHARD: ${MESSAGING_WORKER_SHARD:-0}
@@ -203,7 +202,7 @@ services:
         - CMD
         - node
         - -e
-        - const fs=require('node:fs');try{const t=Number(fs.readFileSync('/tmp/jrc-worker-heartbeat','utf8'));process.exit(Date.now()-t<180000?0:1)}catch{process.exit(1)}
+        - "const fs=require('node:fs');try{const t=Number(fs.readFileSync('/tmp/jrc-worker-heartbeat','utf8'));process.exit(Date.now()-t<180000?0:1)}catch{process.exit(1)}"
       interval: 30s
       timeout: 5s
       start_period: 30s
@@ -259,7 +258,7 @@ services:
     command:
       - redis-server
       - --appendonly
-      - yes
+      - "yes"
       - --requirepass
       - ${REDIS_PASSWORD:?required}
       - --maxmemory
