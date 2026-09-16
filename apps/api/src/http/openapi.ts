@@ -39,6 +39,11 @@ function documentationOptions() {
     },
   ) as ProviderAccountService;
   return {
+    chatwootEmbed: {
+      nodeEnv: 'test' as const, jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
+      browserCsrfSecret: DOCUMENTATION_SECRET, browserCookieSecure: true, consoleAllowedOrigins: ['https://console.example.test'], trustedProxyCidrs: [],
+      service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/integrations/embed/authorization.js').EmbedAuthorizationService,
+    },
     chatwootControl: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
       service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/integrations/chatwoot-control-auth.js').ChatwootControlAuth,

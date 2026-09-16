@@ -4,6 +4,38 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'POST /v1/integrations/chatwoot/embed-apps': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'UNIQUE_ORGANIZATION_DESTINATION_REVISION', 'NONE', 'RLS_APPROVED_CURRENT_ACCOUNT_DESTINATION',
+  ),
+  'GET /v1/embed/apps/{id}/policy': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'PUBLIC_OPAQUE_APP_ID', 'APPROVED_ORIGIN_ONLY',
+    true, 'READ_ONLY', 'NONE', 'SERVER_LOOKUP_RLS_ACTIVE_APP_ACCOUNT_DESTINATION',
+  ),
+  'POST /v1/embed/authorizations': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'PUBLIC_CHALLENGE_RATE_LIMITED', 'START_WITHOUT_AUTHENTICATION_GRANT',
+    true, 'NEW_REQUEST_120_SECONDS', 'PUBLIC_REQUEST_ID_ONLY', 'SERVER_LOOKUP_RLS_ACTIVE_APP_ACCOUNT_DESTINATION',
+  ),
+  'GET /v1/embed/authorizations/{id}': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_CONNECTION_GRANTS',
+    true, 'READ_ONLY', 'NONE', 'RLS_PENDING_REQUEST_CURRENT_ACCOUNT_DESTINATION_GRANTS',
+  ),
+  ...Object.fromEntries(['approve', 'deny'].map(action => [`POST /v1/embed/authorizations/{id}/${action}`, policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CSRF_EXACT_ORIGIN', 'CURRENT_CONNECTION_GRANTS',
+    true, 'PENDING_REQUEST_ROW_LOCK', 'NONE', 'RLS_PENDING_REQUEST_CURRENT_ACCOUNT_DESTINATION_GRANTS',
+  )])),
+  'POST /v1/embed/authorizations/{id}/exchange': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'SHA256_VERIFIER_TIMING_SAFE_RATE_LIMITED', 'EXPLICIT_APPROVAL_CURRENT_GRANTS',
+    true, 'ATOMIC_SINGLE_CONSUMPTION', 'OPAQUE_FIVE_MINUTE_SESSION_NO_STORE', 'RLS_APPROVED_UNEXPIRED_REQUEST_USER_GRANTS_IDENTITY',
+  ),
+  'GET /v1/embed/connections/{id}/status': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'OPAQUE_SHORT_SESSION_HASH_LOOKUP', 'SESSION_READ_GRANT_CURRENT_MEMBERSHIP',
+    true, 'READ_ONLY_PROVIDER_STATUS', 'NONE', 'RLS_SESSION_ACCOUNT_DESTINATION_CREDENTIAL_IDENTITY_REVISION',
+  ),
+  'POST /v1/embed/connections/{id}/pair': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'OPAQUE_SHORT_SESSION_HASH_LOOKUP', 'SESSION_PAIR_GRANT_APPROVED_IDENTITY',
+    true, 'IDEMPOTENCY_KEY_AND_SHARED_PAIR_WINDOW', 'TEMPORARY_PAIRING_ACTION_NO_STORE', 'RLS_CURRENT_SESSION_GRANT_BEFORE_DISPATCH_AFTER_RESPONSE',
+  ),
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/status': policy(
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
     true, 'READ_ONLY_PROVIDER_STATUS', 'NONE', 'RLS_ACCOUNT_REVISION_CONNECTION_GRANT',

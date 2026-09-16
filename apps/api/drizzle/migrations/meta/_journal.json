@@ -148,6 +148,13 @@
       "when": 1789560003000,
       "tag": "0021_chatwoot_connection_health",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789560004000,
+      "tag": "0022_chatwoot_embed",
+      "breakpoints": true
     }
   ]
 }

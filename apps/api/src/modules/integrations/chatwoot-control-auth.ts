@@ -29,6 +29,8 @@ export interface ChatwootControlPrincipal {
   readonly chatwootOrigin: string;
   readonly authentication: AuthenticationContext;
   readonly externalActorId?: string;
+  /** Server-created restrictions (e.g. short embed session), rechecked at each delegated action. */
+  readonly restriction?: (tx: TenantTransaction, scope: ChatwootControlScope, integrationId?: string) => Promise<void>;
 }
 
 export interface ChatwootControlAuthOptions {
@@ -92,6 +94,7 @@ export function createChatwootControlAuth(options: ChatwootControlAuthOptions) {
       return options.transact(authentication.organizationId, tx => authorizeInTransaction(tx, authentication, scope, integrationId, externalActorId));
     },
     async revalidate(tx: TenantTransaction, principal: ChatwootControlPrincipal, scope: ChatwootControlScope, integrationId?: string) {
+      await principal.restriction?.(tx, scope, integrationId);
       const current = await authorizeInTransaction(tx, principal.authentication, scope, integrationId, principal.externalActorId);
       if (current.accountId !== principal.accountId || current.destinationRevision !== principal.destinationRevision || current.chatwootOrigin !== principal.chatwootOrigin)
         throw denied();

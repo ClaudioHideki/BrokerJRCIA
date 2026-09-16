@@ -11,6 +11,10 @@ import {
 
 const EXPECTED_OPERATIONS = [
   'GET /v1/integrations/chatwoot/control/resources', 'GET /v1/integrations/chatwoot/control/onboarding',
+  'POST /v1/integrations/chatwoot/embed-apps', 'GET /v1/embed/apps/{id}/policy',
+  'POST /v1/embed/authorizations', 'GET /v1/embed/authorizations/{id}',
+  'POST /v1/embed/authorizations/{id}/approve', 'POST /v1/embed/authorizations/{id}/deny', 'POST /v1/embed/authorizations/{id}/exchange',
+  'GET /v1/embed/connections/{id}/status', 'POST /v1/embed/connections/{id}/pair',
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/status',
   'POST /v1/integrations/chatwoot/control/connections/{integrationId}/pair',
   'POST /v1/integrations/chatwoot/control/connections/{integrationId}/disconnect',

@@ -26,6 +26,8 @@ const SENSITIVE_KEYS = new Set([
   'phonenumber',
   'providercredential',
   'qrcode',
+  'qr',
+  'verifier',
   'response',
   'refreshtoken',
   'refreshtokenhashsecret',
