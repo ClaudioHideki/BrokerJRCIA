@@ -10,5 +10,7 @@ coverage
 !.env.example
 *.log
 .sessions
+test-results
+playwright-report
 upstream
 docs/security

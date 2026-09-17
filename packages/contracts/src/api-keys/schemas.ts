@@ -6,11 +6,16 @@ export const ApiKeyScopeSchema = z.enum([
   'instances:read',
   'instances:write',
   'api_keys:manage',
+  'chatwoot:read',
+  'chatwoot:manage',
+  'chatwoot:pair',
+  'chatwoot:disconnect',
 ]);
 
 export const IssueApiKeyRequestSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  scopes: z.array(ApiKeyScopeSchema).min(1).max(3),
+  // Control keys require an account binding and their dedicated issuer.
+  scopes: z.array(z.enum(['instances:read', 'instances:write', 'api_keys:manage'])).min(1).max(3),
   expiresAt: z.iso.datetime({ offset: true }).nullable().default(null),
 }).strict();
 

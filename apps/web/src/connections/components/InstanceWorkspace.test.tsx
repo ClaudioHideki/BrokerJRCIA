@@ -73,7 +73,7 @@ describe('instance workspace', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Eventos' }));
     expect(await screen.findByText('Conectar')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Integrações' }));
-    expect(screen.getByRole('link', { name: 'Abrir mensagens e automações' })).toHaveAttribute('href', '/mensagens');
-    expect(screen.getByText(/Typebot está disponível nos canais Meta/)).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Configurar integração com JRC Conversas' })).toHaveAttribute('href', '/integracoes');
+    expect(screen.getByText(/Crie e ative os fluxos no módulo Flows do JRC Conversas/)).toBeVisible();
   });
 });

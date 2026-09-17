@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createPostgresMessagingRepository } from "../messaging/repository.js";
 import { isOrganizationActive } from "../tenancy/operational-limits.js";
 import { ChatwootError } from "./chatwoot-client.js";
+import { requireApprovedDestination } from './chatwoot-context.js';
 import {
   chatwootEnvironment,
   IntegrationError,
@@ -69,7 +70,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
         await t.query<{ id: string }>(
           `SELECT c.id FROM chatwoot_connections c
         JOIN chatwoot_accounts a ON a.organization_id=c.organization_id
+        JOIN chatwoot_destinations d ON d.organization_id=a.organization_id AND d.base_url=a.base_url
         WHERE c.organization_id=$1 AND c.status='READY' AND a.status='READY'
+          AND d.approval_status='APPROVED'
+          AND chatwoot_channel_identity_ready(c.organization_id,c.channel_id)
           AND EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND j.status='PENDING' AND j.available_at<=now())
           AND NOT EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND j.status IN ('RUNNING','UNKNOWN'))
         ORDER BY c.updated_at,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1`,
@@ -114,6 +118,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
     });
   }
   async function beforeExternal(job: Job, operation: string) {
+    const connection = await tx(job.organization_id, t => readChatwootConnection(t, job.organization_id, job.integration_id));
+    if (connection) await options.assertIdentity?.(job.organization_id, connection.channel_id);
     await tx(job.organization_id, async (t) => {
       if (!(await isOrganizationActive(t, job.organization_id)))
         throw new IntegrationError("INTEGRATION_PAUSED", 409);
@@ -121,7 +127,9 @@ export function createChatwootWorker(options: ChatwootOptions) {
         `UPDATE integration_jobs j SET payload=payload||jsonb_build_object('operation',$4::text),updated_at=now()
        WHERE j.organization_id=$1 AND j.id=$2 AND j.lease_token=$3 AND j.status='RUNNING' AND j.lease_expires_at>now()+interval '20 seconds'
        AND EXISTS(SELECT 1 FROM chatwoot_connections c JOIN chatwoot_accounts a ON a.organization_id=c.organization_id
-        WHERE c.organization_id=j.organization_id AND c.id=j.integration_id AND c.status='READY' AND a.status='READY') RETURNING j.id`,
+        JOIN chatwoot_destinations d ON d.organization_id=a.organization_id AND d.base_url=a.base_url
+        WHERE c.organization_id=j.organization_id AND c.id=j.integration_id AND c.status='READY' AND a.status='READY'
+          AND d.approval_status='APPROVED' AND chatwoot_channel_identity_ready(c.organization_id,c.channel_id)) RETURNING j.id`,
         [job.organization_id, job.id, job.lease_token, operation],
       );
       if (!result.rowCount)
@@ -200,6 +208,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
       );
       if (!lease.rowCount)
         throw new IntegrationError("INTEGRATION_LEASE_LOST", 409);
+      const currentAccount = await readChatwootAccount(t, job.organization_id);
+      requireApprovedDestination(currentAccount?.destination, job.organization_id, env.origin);
       const connection = await readChatwootConnection(
         t,
         job.organization_id,
@@ -211,6 +221,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
         !(await isOrganizationActive(t, job.organization_id))
       )
         throw new IntegrationError("INTEGRATION_PAUSED", 409);
+      if (!(await t.query<{ ready: boolean }>('SELECT chatwoot_channel_identity_ready($1,$2) AS ready', [job.organization_id, connection.channel_id])).rows[0]?.ready)
+        throw new IntegrationError('INTEGRATION_PAUSED', 409);
       let map = (
         await t.query<{ conversation_id: string }>(
           "SELECT conversation_id FROM chatwoot_conversations WHERE organization_id=$1 AND integration_id=$2 AND remote_conversation_id=$3",
@@ -558,7 +570,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
           (!(error instanceof ChatwootError) || error.uncertain);
         const retry =
           (error instanceof IntegrationError &&
-            error.code === "INTEGRATION_PAUSED") ||
+              ['INTEGRATION_PAUSED', 'IDENTITY_UNVERIFIED', 'IDENTITY_CONFIRMATION_REQUIRED'].includes(error.code)) ||
           ((error instanceof ChatwootError || error instanceof MediaError) &&
             error.retrySafe &&
             job.attempts < 6);

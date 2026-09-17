@@ -19,6 +19,33 @@ const status = {
   jobs: {},
 };
 afterEach(cleanup);
+it('keeps new control/embed surfaces hidden when flags are off without hiding the integration', async () => {
+  const request = vi.fn(async (path: string) => path === '' ? { ...status, controlEnabled: false, embedEnabled: false,
+    account: { accountId: 1, status: 'READY', lastError: null, hasCredential: true } } : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform={false} />);
+  expect(await screen.findByText(/Conta 1 vinculada/)).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Preparar painel do Chatwoot' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Abrir controle de conexões' })).not.toBeInTheDocument();
+});
+it('requests an external destination without collecting a token before approval', async () => {
+  const request = vi.fn(async (path: string) => path === '' ? { ...status, managedBaseUrl: 'https://conversas.test', externalDestinationsEnabled: true,
+    destination: { organizationId: id, baseUrl: 'https://customer.example.com', mode: 'EXTERNAL', approvalStatus: 'PENDING', revision: 2, mediaOrigins: [] } } : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform={false} />);
+  expect(await screen.findByText(/Aguardando aprovação da equipe JRC/)).toBeVisible();
+  expect(screen.queryByLabelText(/^Token de acesso/)).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Instalação de atendimento'), { target: { value: 'EXTERNAL' } });
+  fireEvent.change(screen.getByLabelText('Endereço do Chatwoot'), { target: { value: 'https://next.example.com' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Solicitar destino' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/destination', 'PUT', { mode: 'EXTERNAL', baseUrl: 'https://next.example.com' }));
+});
+it('lets the platform review an exact destination revision and media origins', async () => {
+  const request = vi.fn(async (path: string) => path === '' ? { ...status, externalDestinationsEnabled: true,
+    destination: { organizationId: id, baseUrl: 'https://customer.example.com', mode: 'EXTERNAL', approvalStatus: 'PENDING', revision: 2, mediaOrigins: [] } } : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform />);
+  fireEvent.change(await screen.findByLabelText('Domínios de anexos autorizados'), { target: { value: 'https://cdn.example.com' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Aprovar destino revisado' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/destination/approve', 'POST', { revision: 2, mediaOrigins: ['https://cdn.example.com'] }));
+});
 it("loads inbox agents after the StrictMode mount cycle", async () => {
   const request = vi.fn(async (path: string) => path === "" ? {
     ...status,

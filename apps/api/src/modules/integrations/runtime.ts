@@ -18,8 +18,14 @@ import {
   readChatwootAccount,
   readChatwootConnection,
 } from "./chatwoot-service.js";
-import { MediaError, type MetaCloudClient } from "@jrc/providers";
+import { MediaError, EvolutionWorkspaceClient, type MetaCloudClient } from "@jrc/providers";
+import { randomUUID } from 'node:crypto';
+import { createChatwootHealth } from './chatwoot-health.js';
+import { createChatwootControlService } from './chatwoot-control-service.js';
 import type { MessagingChannel, OutboxClaim } from "../messaging/types.js";
+import { createOnboardingService } from './chatwoot-onboarding.js';
+import type { ChatwootControlAuth } from './chatwoot-control-auth.js';
+import type { InstanceService } from '../instances/service.js';
 
 type QrConfig = Pick<
   QrServiceOptions,
@@ -27,7 +33,7 @@ type QrConfig = Pick<
 >;
 type ChatwootConfig = Pick<
   ChatwootOptions,
-  "baseUrl" | "publicOrigin" | "encryptionKey" | "platformToken" | "allowLocal"
+  "baseUrl" | "publicOrigin" | "encryptionKey" | "platformToken" | "allowLocal" | "externalDestinationsEnabled" | "controlEnabled" | "embedEnabled"
 >;
 export function loadIntegrationConfig(environment: NodeJS.ProcessEnv): {
   qr?: QrConfig;
@@ -51,19 +57,26 @@ export function loadIntegrationConfig(environment: NodeJS.ProcessEnv): {
       signingKey: z.string().min(32).parse(environment.QR_WEBHOOK_SIGNING_KEY),
     };
   }
+  const externalDestinationsEnabled = z.enum(['true', 'false']).default('false')
+    .parse(environment.CHATWOOT_EXTERNAL_DESTINATIONS_ENABLED) === 'true';
+  const controlEnabled = z.enum(['true', 'false']).default('false').parse(environment.CHATWOOT_CONTROL_ENABLED) === 'true';
+  const embedEnabled = z.enum(['true', 'false']).default('false').parse(environment.CHATWOOT_EMBED_ENABLED) === 'true' && controlEnabled;
   if (
     environment.CHATWOOT_BASE_URL ||
     environment.CHATWOOT_PLATFORM_TOKEN ||
-    environment.INTEGRATION_ENCRYPTION_KEY
+    externalDestinationsEnabled ||
+    (environment.INTEGRATION_ENCRYPTION_KEY && environment.PUBLIC_ORIGIN)
   ) {
     const chatwoot: ChatwootConfig = {
-      baseUrl: z.url().parse(environment.CHATWOOT_BASE_URL),
+      ...(environment.CHATWOOT_BASE_URL ? { baseUrl: z.url().parse(environment.CHATWOOT_BASE_URL) } : {}),
       publicOrigin: z.url().parse(environment.PUBLIC_ORIGIN),
       encryptionKey: z
         .string()
         .min(1)
         .parse(environment.INTEGRATION_ENCRYPTION_KEY),
       allowLocal: environment.NODE_ENV !== "production",
+      externalDestinationsEnabled,
+      controlEnabled, embedEnabled,
       ...(environment.CHATWOOT_PLATFORM_TOKEN
         ? {
             platformToken: z
@@ -90,14 +103,25 @@ export function createIntegrationRuntime(
   environment: NodeJS.ProcessEnv,
   pool: Pool,
   resolveMetaClient?: (channel: MessagingChannel) => Promise<MetaCloudClient>,
+  control?: { auth: ChatwootControlAuth; instances: InstanceService },
 ) {
   const config = loadIntegrationConfig(environment);
   const transact: ChatwootOptions["transact"] = (org, operation) =>
     withOrganizationTransaction(pool, org, operation);
+  const identity = config.qr && config.chatwoot ? createChatwootHealth({ transact, encryptionKey: config.chatwoot.encryptionKey,
+    async readIdentity(org, instanceId) {
+      const row = await transact(org, async t => (await t.query<{ upstream_instance_key: string }>('SELECT upstream_instance_key FROM instances WHERE organization_id=$1 AND id=$2', [org, instanceId])).rows[0]);
+      if (!row) throw new Error('INSTANCE_NOT_FOUND');
+      const snapshot = await new EvolutionWorkspaceClient({ baseUrl: config.qr!.baseUrl, apiKey: config.qr!.apiKey }).read({ organizationId: org,
+        requestId: randomUUID(), deadline: new Date(Date.now() + 10000), signal: AbortSignal.timeout(10000) }, row.upstream_instance_key);
+      return { connected: snapshot.profile.state === 'open', phone: snapshot.profile.phone };
+    },
+  }) : undefined;
   const qr = config.qr
     ? createQrMessagingService({
         ...config.qr,
         transact,
+        identity,
         async resolveChannel(id) {
           const row = (
             await pool.query<{ organization_id: string; instance_id: string }>(
@@ -129,6 +153,7 @@ export function createIntegrationRuntime(
             return value;
           }),
         ...(qr ? { activateQr: qr.activate } : {}),
+        ...(identity ? { assertIdentity: identity.assertReady } : {}),
         async resolveIntegration(id) {
           return (
             await pool.query<{ organization_id: string }>(
@@ -221,9 +246,14 @@ export function createIntegrationRuntime(
         ...(file.caption ? { caption: file.caption } : {}),
       });
   }
+  const chatwoot = options ? createChatwootService(options) : undefined;
   return {
     qr,
-    chatwoot: options ? createChatwootService(options) : undefined,
+    chatwoot,
+    dashboardClient: options ? chatwootEnvironment(options).client : undefined,
+    identity,
+    controlService: control && options && chatwoot && identity ? createChatwootControlService({ ...options, ...control, chatwoot, health: identity }) : undefined,
+    onboarding: control && chatwoot && qr ? createOnboardingService({ transact, ...control, chatwoot, activateQr: qr.activate }) : undefined,
     chatwootWorker: options ? createChatwootWorker(options) : undefined,
     provisioner: options ? createChatwootProvisioner(options) : undefined,
     media,

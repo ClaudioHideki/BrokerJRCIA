@@ -107,6 +107,7 @@ export interface OutboxClaim {
 }
 
 export type ClaimIneligibilityReason =
+  | "IDENTITY_CONFIRMATION_REQUIRED"
   | "ORGANIZATION_NOT_ACTIVE"
   | "META_CHANNEL_NOT_READY"
   | "QR_CHANNEL_DISCONNECTED"

@@ -4,6 +4,12 @@ import { normalizeQrEvent } from '../../src/modules/messaging/qr-events.js';
 const envelope = (data: unknown, event = 'messages.upsert') => ({ event, instance: 'jrc-private-instance', data });
 const message = { key: { id: 'qr-message-1', remoteJid: '15550000001@s.whatsapp.net', fromMe: false }, messageTimestamp: 1789470000, pushName: 'Contato de teste', message: { conversation: 'Olá JRC' } };
 describe('eventos QR canônicos', () => {
+  it('uses only the authenticated instance owner identifier for identity observations', () => {
+    expect(normalizeQrEvent(envelope({ state: 'open', wuid: '15555550100:9@s.whatsapp.net', phone: '15555550199' }, 'connection.update'), 'jrc-private-instance'))
+      .toEqual([{ kind: 'connection', state: 'CONNECTED', identity: '15555550100' }]);
+    expect(normalizeQrEvent(envelope({ state: 'open', wuid: '123@lid', phone: '15555550199' }, 'connection.update'), 'jrc-private-instance'))
+      .toEqual([{ kind: 'connection', state: 'CONNECTED' }]);
+  });
   it('normaliza conexão e desconexão do canal',()=>{
     expect(normalizeQrEvent(envelope({state:'open'},'connection.update'),'jrc-private-instance')).toEqual([{kind:'connection',state:'CONNECTED'}]);
     expect(normalizeQrEvent(envelope({state:'close'},'connection.update'),'jrc-private-instance')).toEqual([{kind:'connection',state:'DISCONNECTED'}]);

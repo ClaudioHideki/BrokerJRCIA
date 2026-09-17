@@ -1,0 +1,17 @@
+.jrc-embed { color: #15354b; font: 15px/1.55 system-ui, sans-serif; margin: 0 auto; max-width: 720px; padding: 18px; }
+body:has(.jrc-embed) { margin: 0; background: #f5f8fc; }
+.jrc-embed header { display: flex; align-items: center; gap: 16px; font-weight: 650; margin-bottom: 18px; }
+.embed-card { background: white; border: 1px solid #dbe5ed; border-radius: 14px; padding: 22px; }
+.jrc-embed h1 { font-size: 23px; margin: 0 0 10px; }
+.jrc-embed p { margin: 12px 0; }
+.embed-button { display: inline-block; background: #007392; color: white; padding: 11px 16px; border: 0; border-radius: 8px; text-decoration: none; font: inherit; cursor: pointer; }
+.embed-button:focus-visible, .jrc-embed a:focus-visible { outline: 3px solid #f5c400; outline-offset: 3px; }
+.embed-button:disabled { opacity: .55; cursor: wait; }
+.embed-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.embed-button--secondary { background: #e9f0f6; color: #15354b; }
+.jrc-embed select { display: block; box-sizing: border-box; width: 100%; margin: 8px 0 16px; padding: 10px; border: 1px solid #bbcbd8; border-radius: 6px; font: inherit; }
+.jrc-embed .challenge-card img { max-width: 100%; height: auto; }
+.embed-grant { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0; }
+.embed-grant input { width: auto; margin-top: 6px; }
+.embed-grant small { display: block; }
+@media (max-width: 400px) { .jrc-embed { padding: 12px; } .embed-card { padding: 16px; } }

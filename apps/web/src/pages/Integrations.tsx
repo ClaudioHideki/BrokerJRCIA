@@ -7,5 +7,6 @@ export function IntegrationsPage(){
  return <><PageHeading title="JRC Conversas" description="Conecte os canais da sua empresa à sua central de atendimento."/>
   <ChatwootPanel key={session.activeOrganization.id+':'+tenantRevision} companyName={session.activeOrganization.name}
    canManage={['OWNER','ADMIN'].includes(session.activeOrganization.role)} platform={false}
-   request={(path,method='GET',body)=>client.request('/v1/integrations/chatwoot'+path,{method,...(body===undefined?{}:{body:JSON.stringify(body)})})}/></>;
+   request={(path,method='GET',body,options)=>client.request('/v1/integrations/chatwoot'+path,{method,
+    ...(options ? {headers:{'Idempotency-Key':options.idempotencyKey}} : {}),...(body===undefined?{}:{body:JSON.stringify(body)})})}/></>;
 }

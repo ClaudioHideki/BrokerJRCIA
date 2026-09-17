@@ -7,7 +7,10 @@ import {
   ConnectChatwootSchema,
   IntegrationJobsSchema,
   ReconcileIntegrationJobSchema,
+  ApproveDestinationSchema,
+  ChatwootDestinationSchema,
 } from "@jrc/contracts";
+import { ChatwootDestinationError } from '../../modules/integrations/chatwoot-destination.js';
 import {
   IntegrationError,
   type ChatwootService,
@@ -131,7 +134,7 @@ export async function registerPlatformRoutes(
         const status =
           error instanceof PlatformError
             ? error.statusCode
-            : error instanceof IntegrationError
+            : error instanceof IntegrationError || error instanceof ChatwootDestinationError
               ? error.status
               : error instanceof ChatwootError
                 ? 502
@@ -144,6 +147,7 @@ export async function registerPlatformRoutes(
         const code =
           error instanceof PlatformError ||
           error instanceof IntegrationError ||
+          error instanceof ChatwootDestinationError ||
           error instanceof ChatwootError
             ? error.code
             : status === 400
@@ -343,6 +347,16 @@ export async function registerPlatformRoutes(
       const base = "/organizations/:id/chatwoot";
       const empty = z.strictObject({});
       const schema = { params: idParams, querystring: empty };
+      scoped.post(base + '/destination/approve', {
+        schema: { ...schema, body: ApproveDestinationSchema, response: { 200: ChatwootDestinationSchema } },
+      }, async req => {
+        const token = await mutation(req);
+        if (!options.chatwoot?.destinations.enabled)
+          throw new IntegrationError('CHATWOOT_EXTERNAL_DESTINATIONS_DISABLED', 404);
+        return options.service.approveChatwootDestination(token, String(req.headers['x-csrf-token']),
+          z.string().trim().min(5).max(500).parse(req.headers['x-platform-reason']), idParams.parse(req.params).id,
+          ApproveDestinationSchema.parse(req.body));
+      });
       scoped.get(
         base,
         { schema: { ...schema, response: { 200: ChatwootStatusSchema } } },

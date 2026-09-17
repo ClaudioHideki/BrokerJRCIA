@@ -1,5 +1,10 @@
 import swagger from "@fastify/swagger";
 import { createIntegrationRuntime } from "./modules/integrations/runtime.js";
+import { z } from 'zod';
+import { createChatwootControlAuth } from './modules/integrations/chatwoot-control-auth.js';
+import { createEmbedService } from './modules/integrations/embed/authorization.js';
+import { registerChatwootEmbedRoutes, type ChatwootEmbedRouteOptions } from './http/routes/chatwoot-embed.js';
+import { registerChatwootControlRoutes, type ChatwootControlRouteOptions } from './http/routes/chatwoot-control.js';
 import {
   registerIntegrationRoutes,
   type IntegrationRouteOptions,
@@ -126,6 +131,8 @@ export interface BuildAppOptions {
   metaOnboarding?: MetaOnboardingRouteOptions;
   tenantOperations?: TenantOperationsOptions;
   integrations?: IntegrationRouteOptions;
+  chatwootControl?: ChatwootControlRouteOptions;
+  chatwootEmbed?: ChatwootEmbedRouteOptions;
   environment?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 }
 
@@ -184,7 +191,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       options.platform !== undefined ||
       options.metaOnboarding !== undefined ||
       options.tenantOperations !== undefined ||
-      options.integrations !== undefined)
+      options.integrations !== undefined || options.chatwootControl !== undefined || options.chatwootEmbed !== undefined)
   ) {
     throw new Error("Runtime authentication dependency injection is forbidden");
   }
@@ -208,6 +215,8 @@ export function buildApp(options: BuildAppOptions = {}) {
   let tenantOperations =
     nodeEnv === "test" ? options.tenantOperations : undefined;
   let integrations = nodeEnv === "test" ? options.integrations : undefined;
+  let chatwootControl = nodeEnv === 'test' ? options.chatwootControl : undefined;
+  let chatwootEmbed = nodeEnv === 'test' ? options.chatwootEmbed : undefined;
   let readinessCheck = nodeEnv === "test" ? options.readinessCheck : undefined;
   if (
     (!auth || !consoleAuth || !apiKeys || !providerAccounts || !instances) &&
@@ -369,6 +378,11 @@ export function buildApp(options: BuildAppOptions = {}) {
       transact: (organizationId, operation) =>
         withOrganizationTransaction(pools.appPool, organizationId, operation),
     });
+    const controlAuth = createChatwootControlAuth({ enabled: z.enum(['true', 'false']).default('false').parse(messagingEnvironment.CHATWOOT_CONTROL_ENABLED) === 'true',
+      hmacSecret: config.apiKeyHmacSecret,
+      managedOrigin: messagingEnvironment.CHATWOOT_BASE_URL ? new URL(messagingEnvironment.CHATWOOT_BASE_URL).origin : undefined,
+      transact: (org, work) => withOrganizationTransaction(pools.appPool, org, work),
+      resolveCurrentRole: createMessagingMembershipResolver(pools.authPool) });
     const integrationRuntime = createIntegrationRuntime(
       { ...messagingEnvironment, NODE_ENV: nodeEnv },
       pools.appPool,
@@ -376,6 +390,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         messagingEnvironment,
         metaOnboardingService.resolveCredential,
       ),
+      { auth: controlAuth, instances: instances.service },
     );
     integrations = {
       jwtSecret: config.jwtSecret,
@@ -383,6 +398,21 @@ export function buildApp(options: BuildAppOptions = {}) {
       resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
       service: integrationRuntime.chatwoot,
       qr: integrationRuntime.qr,
+    };
+    chatwootControl = {
+      jwtSecret: config.jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey,
+      service: controlAuth, onboarding: integrationRuntime.onboarding, facade: integrationRuntime.controlService,
+    };
+    chatwootEmbed = {
+      nodeEnv, jwtSecret: config.jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey,
+      browserCsrfSecret: config.browserCsrfSecret, browserCookieSecure: config.consoleCookieSecure,
+      consoleAllowedOrigins: config.consoleAllowedOrigins, trustedProxyCidrs: config.trustedProxyCidrs,
+      facade: integrationRuntime.controlService,
+      service: createEmbedService({ enabled: z.enum(['true', 'false']).default('false').parse(messagingEnvironment.CHATWOOT_EMBED_ENABLED) === 'true',
+        pool: pools.appPool, transact: (org, work) => withOrganizationTransaction(pools.appPool, org, work), control: controlAuth,
+        publicOrigin: messagingEnvironment.PUBLIC_ORIGIN, dashboardClient: integrationRuntime.dashboardClient,
+        managedOrigin: messagingEnvironment.CHATWOOT_BASE_URL ? new URL(messagingEnvironment.CHATWOOT_BASE_URL).origin : undefined,
+        rateLimitStore, rateLimitSecret: config.ipRateLimitHmacSecret }),
     };
     metaOnboarding = {
       service: metaOnboardingService,
@@ -586,6 +616,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       components: {
         securitySchemes: {
           bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+          embedSessionAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'Opaque', description: 'Sessão temporária do embed: apenas estado e pareamento das caixas concedidas.' },
           csrfHeaderAuth: {
             type: "apiKey",
             in: "header",
@@ -706,6 +737,14 @@ export function buildApp(options: BuildAppOptions = {}) {
     void app.register(async (scope) =>
       registerIntegrationRoutes(scope, configured),
     );
+  }
+  if (chatwootControl) {
+    const configured = chatwootControl;
+    void app.register(scope => registerChatwootControlRoutes(scope, configured));
+  }
+  if (chatwootEmbed) {
+    const configured = chatwootEmbed;
+    void app.register(scope => registerChatwootEmbedRoutes(scope, configured));
   }
 
   app.get("/health", { schema: { hide: true } }, async () => ({

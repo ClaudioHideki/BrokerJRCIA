@@ -4,6 +4,114 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/integrations/chatwoot/embed-apps/{id}': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'READ_ONLY', 'NONE', 'RLS_APPROVED_CURRENT_ACCOUNT_DESTINATION',
+  ),
+  'POST /v1/integrations/chatwoot/embed-apps/{id}/install': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'PERSISTED_LEASE_UNKNOWN_RECONCILE_EXACT_URL', 'NONE', 'RLS_ACCOUNT_DESTINATION_CREDENTIAL_REVISION_BEFORE_POST',
+  ),
+  'GET /v1/integrations/chatwoot/connections/{id}/operator-grants': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'READ_ONLY', 'NONE', 'RLS_CURRENT_ORGANIZATION_CONNECTION_MEMBERS_PROJECTION',
+  ),
+  'POST /v1/integrations/chatwoot/embed-apps': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'UNIQUE_ORGANIZATION_DESTINATION_REVISION', 'NONE', 'RLS_APPROVED_CURRENT_ACCOUNT_DESTINATION',
+  ),
+  'GET /v1/embed/apps/{id}/policy': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'PUBLIC_OPAQUE_APP_ID', 'APPROVED_ORIGIN_ONLY',
+    true, 'READ_ONLY', 'NONE', 'SERVER_LOOKUP_RLS_ACTIVE_APP_ACCOUNT_DESTINATION',
+  ),
+  'POST /v1/embed/authorizations': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'PUBLIC_CHALLENGE_RATE_LIMITED', 'START_WITHOUT_AUTHENTICATION_GRANT',
+    true, 'NEW_REQUEST_120_SECONDS', 'PUBLIC_REQUEST_ID_ONLY', 'SERVER_LOOKUP_RLS_ACTIVE_APP_ACCOUNT_DESTINATION',
+  ),
+  'GET /v1/embed/authorizations/{id}': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_CONNECTION_GRANTS',
+    true, 'READ_ONLY', 'NONE', 'RLS_PENDING_REQUEST_CURRENT_ACCOUNT_DESTINATION_GRANTS',
+  ),
+  ...Object.fromEntries(['approve', 'deny'].map(action => [`POST /v1/embed/authorizations/{id}/${action}`, policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CSRF_EXACT_ORIGIN', 'CURRENT_CONNECTION_GRANTS',
+    true, 'PENDING_REQUEST_ROW_LOCK', 'NONE', 'RLS_PENDING_REQUEST_CURRENT_ACCOUNT_DESTINATION_GRANTS',
+  )])),
+  'POST /v1/embed/authorizations/{id}/exchange': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'SHA256_VERIFIER_TIMING_SAFE_RATE_LIMITED', 'EXPLICIT_APPROVAL_CURRENT_GRANTS',
+    true, 'ATOMIC_SINGLE_CONSUMPTION', 'OPAQUE_FIVE_MINUTE_SESSION_NO_STORE', 'RLS_APPROVED_UNEXPIRED_REQUEST_USER_GRANTS_IDENTITY',
+  ),
+  'GET /v1/embed/connections/{id}/status': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'OPAQUE_SHORT_SESSION_HASH_LOOKUP', 'SESSION_READ_GRANT_CURRENT_MEMBERSHIP',
+    true, 'READ_ONLY_PROVIDER_STATUS', 'NONE', 'RLS_SESSION_ACCOUNT_DESTINATION_CREDENTIAL_IDENTITY_REVISION',
+  ),
+  'POST /v1/embed/connections/{id}/pair': policy(
+    'apps/api/src/http/routes/chatwoot-embed.ts', 'OPAQUE_SHORT_SESSION_HASH_LOOKUP', 'SESSION_PAIR_GRANT_APPROVED_IDENTITY',
+    true, 'IDEMPOTENCY_KEY_AND_SHARED_PAIR_WINDOW', 'TEMPORARY_PAIRING_ACTION_NO_STORE', 'RLS_CURRENT_SESSION_GRANT_BEFORE_DISPATCH_AFTER_RESPONSE',
+  ),
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/status': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
+    true, 'READ_ONLY_PROVIDER_STATUS', 'NONE', 'RLS_ACCOUNT_REVISION_CONNECTION_GRANT',
+  ),
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/pair': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CHATWOOT_PAIR_AND_FIRST_BINDING_ADMIN',
+    true, 'IDEMPOTENCY_KEY_AND_SHARED_PAIR_WINDOW', 'NONE', 'RLS_CURRENT_CONNECTION_GRANT_AND_PROVIDER_IDENTITY',
+  ),
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/disconnect': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_DISCONNECT',
+    true, 'IDEMPOTENCY_KEY', 'NONE', 'RLS_CURRENT_CONNECTION_ADMIN_OR_SERVICE',
+  ),
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/confirm-identity': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'IDEMPOTENCY_KEY_AND_OBSERVATION_REVISION', 'NONE', 'RLS_ADMIN_PROVIDER_OBSERVED_IDENTITY',
+  ),
+  'PUT /v1/integrations/chatwoot/control/connections/{integrationId}/agents': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'IDEMPOTENCY_KEY_NO_UNCERTAIN_WRITE_REPLAY', 'NONE', 'RLS_VALIDATED_ACCOUNT_AGENTS',
+  ),
+  'POST /v1/integrations/chatwoot/control/onboarding': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'PERSISTENT_IDEMPOTENCY_KEY_CANONICAL_HASH', 'NONE', 'RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION',
+  ),
+  'GET /v1/integrations/chatwoot/control/onboarding/{operationId}': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
+    true, 'NOT_APPLICABLE', 'NONE', 'RLS_ACTIVE_ORGANIZATION_OPERATION_AND_INTEGRATION_GRANT',
+  ),
+  'POST /v1/integrations/chatwoot/control/onboarding/{operationId}/recover': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'IDEMPOTENCY_KEY_CANONICAL_HASH', 'NONE', 'RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION',
+  ),
+  'GET /v1/integrations/chatwoot/control/context': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
+    true, 'NOT_APPLICABLE', 'NONE', 'RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION',
+  ),
+  'GET /v1/integrations/chatwoot/control/resources': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'NOT_APPLICABLE', 'NONE', 'RLS_SANITIZED_AVAILABLE_QR_RESOURCES',
+  ),
+  'GET /v1/integrations/chatwoot/control/onboarding': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
+    true, 'NOT_APPLICABLE', 'NONE', 'RLS_CURRENT_ACCOUNT_REVISION_OPERATIONS',
+  ),
+  'POST /v1/integrations/chatwoot/control-credentials': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'IDEMPOTENCY_KEY_NO_SECRET_REPLAY', 'NONE', 'RLS_ACTIVE_ORGANIZATION_APPROVED_ACCOUNT',
+  ),
+  'PUT /v1/integrations/chatwoot/connections/{id}/operator-grants': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'IDEMPOTENCY_KEY_CANONICAL_HASH', 'NONE', 'RLS_ACTIVE_ORGANIZATION_CURRENT_MEMBERSHIP_AND_CONNECTION',
+  ),
+  'GET /v1/integrations/chatwoot/destination': policy(
+    'apps/api/src/http/routes/integrations.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN_OPERATOR_VIEWER',
+    true, 'NOT_APPLICABLE', 'NONE', 'RLS_ORGANIZATION_ONLY',
+  ),
+  'PUT /v1/integrations/chatwoot/destination': policy(
+    'apps/api/src/http/routes/integrations.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'SAME_ORIGIN_AND_MODE_NO_CHANGE', 'NONE', 'RLS_ORGANIZATION_AND_DESTINATION_NOT_IN_USE',
+  ),
+  'POST /v1/platform/organizations/{id}/chatwoot/destination/approve': policy(
+    'apps/api/src/http/routes/platform.ts', 'PLATFORM_COOKIE_CSRF_EXACT_ORIGIN', 'SUPER_ADMIN_AUDITED',
+    true, 'REVIEWED_DESTINATION_REVISION', 'NONE', 'DEDICATED_PLATFORM_ROLE_AND_DESTINATION_REVISION',
+  ),
   ...Object.fromEntries(
     ["GET /v1/integrations/chatwoot", "GET /v1/integrations/chatwoot/jobs"].map(
       (route) => [

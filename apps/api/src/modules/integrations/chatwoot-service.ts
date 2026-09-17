@@ -17,37 +17,30 @@ import {
 } from "./secrets.js";
 import { parseChatwootReply } from "./chatwoot-events.js";
 import type { MediaStore } from "../messaging/media-store.js";
-
-export class IntegrationError extends Error {
-  constructor(
-    readonly code: string,
-    readonly status = 422,
-  ) {
-    super(code);
-  }
-}
+import { createChatwootDestinationService, lockChatwootDestination } from './chatwoot-destination.js';
+import { IntegrationError } from './integration-error.js';
+import { accountCompatibility, observeChatwootCapabilities } from './chatwoot-compatibility.js';
+import { readChatwootAccount, resolveChatwootContext, requireApprovedDestination, mayUsePlatformToken, type AccountRow } from './chatwoot-context.js';
+export { IntegrationError } from './integration-error.js';
+export { readChatwootAccount, type AccountRow } from './chatwoot-context.js';
 export interface ChatwootOptions {
-  baseUrl: string;
+  baseUrl?: string;
   publicOrigin: string;
   encryptionKey: string;
   platformToken?: string;
   allowLocal?: boolean;
+  externalDestinationsEnabled?: boolean;
+  controlEnabled?: boolean;
+  embedEnabled?: boolean;
   fetch?: typeof globalThis.fetch;
   mediaOrigins?: readonly string[];
   media?: MediaStore;
   transact<T>(org: string, operation: OrganizationTransaction<T>): Promise<T>;
   resolveIntegration(id: string): Promise<string | undefined>;
   activateQr?(org: string, instanceId: string): Promise<{ id: string }>;
+  assertIdentity?(org: string, channelId: string): Promise<void>;
 }
 type IntegrationState = "PENDING" | "READY" | "FAILED" | "UNKNOWN" | "DISABLED";
-export interface AccountRow {
-  organization_id: string;
-  base_url: string;
-  account_id: string | null;
-  encrypted_token: string | null;
-  status: IntegrationState;
-  last_error: string | null;
-}
 export interface ConnectionRow {
   id: string;
   organization_id: string;
@@ -57,17 +50,6 @@ export interface ConnectionRow {
   encrypted_webhook_secret: string | null;
   status: IntegrationState;
   last_error: string | null;
-}
-export async function readChatwootAccount(
-  tx: TenantTransaction,
-  org: string,
-): Promise<AccountRow | undefined> {
-  return (
-    await tx.query<AccountRow>(
-      "SELECT organization_id,base_url,account_id,encrypted_token,status,last_error FROM chatwoot_accounts WHERE organization_id=$1",
-      [org],
-    )
-  ).rows[0];
 }
 export async function readChatwootConnection(
   tx: TenantTransaction,
@@ -96,9 +78,10 @@ export async function integrationAudit(
 }
 export function chatwootEnvironment(options: ChatwootOptions) {
   const vault = createIntegrationSecrets(options.encryptionKey);
-  const origin = new URL(options.baseUrl).origin;
+  const origin = options.baseUrl ? new URL(options.baseUrl).origin : undefined;
+  if (options.platformToken && !origin) throw new Error('CHATWOOT_MANAGED_ORIGIN_REQUIRED');
   // Validate configured origins before any credential is sent. Clients cannot choose an arbitrary server.
-  new ChatwootClient({
+  if (options.baseUrl) new ChatwootClient({
     baseUrl: options.baseUrl,
     token: "configuration-validation",
     allowLocal: options.allowLocal,
@@ -120,22 +103,23 @@ export function chatwootEnvironment(options: ChatwootOptions) {
     callback: (id: string) =>
       `${options.publicOrigin}/v1/integrations/chatwoot/${id}/events`,
     client(account: AccountRow) {
+      const destination = requireApprovedDestination(account.destination, account.organization_id, origin);
       if (
-        account.base_url !== origin ||
+        account.base_url !== destination.baseUrl ||
         !account.encrypted_token ||
         !account.account_id ||
         account.status !== "READY"
       )
         throw new IntegrationError("CHATWOOT_ACCOUNT_NOT_READY", 409);
       return new ChatwootClient({
-        baseUrl: origin,
+        baseUrl: destination.baseUrl,
         token: vault.decrypt(
           `${account.organization_id}:chatwoot-account`,
           account.encrypted_token,
         ),
-        allowLocal: options.allowLocal,
+        allowLocal: destination.mode === 'MANAGED' && options.allowLocal === true,
         fetch: options.fetch,
-        mediaOrigins: options.mediaOrigins,
+        mediaOrigins: [...destination.mediaOrigins, ...(destination.mode === 'MANAGED' ? options.mediaOrigins ?? [] : [])],
       });
     },
   };
@@ -144,6 +128,8 @@ export function createChatwootService(options: ChatwootOptions) {
   const env = chatwootEnvironment(options);
   const repo = createPostgresMessagingRepository();
   const tx = options.transact;
+  const destinations = createChatwootDestinationService({ enabled: options.externalDestinationsEnabled === true,
+    managedOrigin: env.origin, transact: tx });
   function connectionView(row: ConnectionRow) {
     return {
       id: row.id,
@@ -161,7 +147,8 @@ export function createChatwootService(options: ChatwootOptions) {
       throw new IntegrationError("CHATWOOT_ACCOUNT_NOT_CONFIGURED", 409);
     return row;
   }
-  async function rememberInbox(org: string, id: string, remote: ChatwootInbox) {
+  async function rememberInbox(org: string, id: string, remote: ChatwootInbox, snapshot: AccountRow) {
+    await tx(org, t => observeChatwootCapabilities(t, snapshot, { apiInbox: remote.channel_type === 'Channel::Api', webhookSecret: Boolean(remote.secret) }));
     // Keep a successful creation ID even when a later verification needs repair.
     await tx(org, (t) =>
       t.query(
@@ -181,6 +168,9 @@ export function createChatwootService(options: ChatwootOptions) {
     );
     await tx(org, async (t) => {
       await requireActiveOrganization(t, org);
+      const current = await readChatwootAccount(t, org);
+      if (current?.credential_version !== snapshot.credential_version || current.destination?.revision !== snapshot.destination?.revision)
+        throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
       await t.query(
         "UPDATE chatwoot_connections SET inbox_id=$3,encrypted_webhook_secret=$4,status='READY',last_error=NULL,updated_at=now() WHERE organization_id=$1 AND id=$2",
         [org, id, remote.id, encryptedSecret],
@@ -195,9 +185,10 @@ export function createChatwootService(options: ChatwootOptions) {
     });
   }
   return {
+    destinations,
     async status(org: string) {
       return tx(org, async (t) => {
-        const a = await readChatwootAccount(t, org);
+        const { account: a, destination } = await resolveChatwootContext(t, org, env.origin);
         const connections = (
           await t.query<ConnectionRow>(
             "SELECT id,channel_id,inbox_id,name,status,last_error FROM chatwoot_connections WHERE organization_id=$1 ORDER BY created_at DESC",
@@ -219,8 +210,14 @@ export function createChatwootService(options: ChatwootOptions) {
           ).rows[0] ?? null;
         return {
           configured: true,
-          baseUrl: env.origin,
-          provisioningAvailable: Boolean(options.platformToken),
+          baseUrl: destination?.baseUrl ?? null,
+          managedBaseUrl: env.origin ?? null,
+          destination: destination ?? null,
+          externalDestinationsEnabled: destinations.enabled,
+          controlEnabled: options.controlEnabled === true,
+          embedEnabled: options.controlEnabled === true && options.embedEnabled === true,
+          provisioningAvailable: Boolean(options.platformToken && destination?.approvalStatus === 'APPROVED' &&
+            mayUsePlatformToken({ mode: destination.mode, origin: destination.baseUrl, managedOrigin: env.origin ?? null })),
           provisioning,
           account: a
             ? {
@@ -228,6 +225,8 @@ export function createChatwootService(options: ChatwootOptions) {
                 status: a.status,
                 lastError: a.last_error,
                 hasCredential: Boolean(a.encrypted_token),
+                credentialVersion: a.credential_version,
+                compatibility: accountCompatibility(a).state === 'READY' ? 'SUPPORTED' as const : accountCompatibility(a).state === 'UNSUPPORTED' ? 'UNSUPPORTED' as const : 'UNVERIFIED' as const,
               }
             : null,
           connections: connections.map(connectionView),
@@ -242,24 +241,30 @@ export function createChatwootService(options: ChatwootOptions) {
       input: { accountId: number; token: string },
       actorId?: string,
     ) {
-      await tx(org, (t) => requireActiveOrganization(t, org));
+      const snapshot = await tx(org, async t => {
+        await requireActiveOrganization(t, org);
+        const context = await resolveChatwootContext(t, org, env.origin);
+        return { ...context, destination: requireApprovedDestination(context.destination, org, env.origin) };
+      });
       const client = new ChatwootClient({
-        baseUrl: env.origin,
+        baseUrl: snapshot.destination.baseUrl,
         token: input.token,
-        allowLocal: options.allowLocal,
+        allowLocal: snapshot.destination.mode === 'MANAGED' && options.allowLocal === true,
         fetch: options.fetch,
       });
       await client.verifyAccount(input.accountId);
       await tx(org, async (t) => {
         await requireActiveOrganization(t, org);
-        await t.query(
-          "SELECT pg_advisory_xact_lock(hashtextextended('chatwoot-account:'||$1,0))",
-          [org],
-        );
-        const current = await readChatwootAccount(t, org);
+        await lockChatwootDestination(t, org);
+        const context = await resolveChatwootContext(t, org, env.origin);
+        const destination = requireApprovedDestination(context.destination, org, env.origin);
+        const current = context.account;
+        if (destination.revision !== snapshot.destination.revision || destination.baseUrl !== snapshot.destination.baseUrl || destination.mode !== snapshot.destination.mode ||
+          (current?.credential_version ?? 0) !== (snapshot.account?.credential_version ?? 0))
+          throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
         if (
           current &&
-          (current.base_url !== env.origin ||
+          (current.base_url !== destination.baseUrl ||
             (current.account_id &&
               Number(current.account_id) !== input.accountId))
         )
@@ -275,14 +280,16 @@ export function createChatwootService(options: ChatwootOptions) {
           );
         await t.query(
           `INSERT INTO chatwoot_accounts(organization_id,base_url,account_id,encrypted_token,status) VALUES($1,$2,$3,$4,'READY')
-          ON CONFLICT(organization_id) DO UPDATE SET account_id=$3,encrypted_token=$4,status='READY',last_error=NULL,updated_at=now()`,
+          ON CONFLICT(organization_id) DO UPDATE SET account_id=$3,encrypted_token=$4,status='READY',last_error=NULL,
+            credential_version=chatwoot_accounts.credential_version+1,capabilities='{}',capabilities_verified_at=NULL,updated_at=now()`,
           [
             org,
-            env.origin,
+            destination.baseUrl,
             input.accountId,
             env.vault.encrypt(`${org}:chatwoot-account`, input.token),
           ],
         );
+        await observeChatwootCapabilities(t, (await readChatwootAccount(t, org))!, { adminAccount: true, apiAccess: true });
         await integrationAudit(
           t,
           org,
@@ -381,6 +388,7 @@ export function createChatwootService(options: ChatwootOptions) {
         inboxId?: number | undefined;
         name: string;
         replaceExistingWebhook?: boolean | undefined;
+        requireIdentity?: boolean | undefined;
       },
       actorId?: string,
     ) {
@@ -396,6 +404,11 @@ export function createChatwootService(options: ChatwootOptions) {
       const id = randomUUID();
       const connection = await tx(org, async (t) => {
         await requireActiveOrganization(t, org);
+        await lockChatwootDestination(t, org);
+        const current = await readChatwootAccount(t, org);
+        const destination = requireApprovedDestination(current?.destination, org, env.origin);
+        if (destination.revision !== a.destination?.revision || destination.baseUrl !== a.base_url || current?.credential_version !== a.credential_version)
+          throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
         if (!(await repo.findChannel(t, org, channelId!)))
           throw new IntegrationError("CHANNEL_NOT_FOUND", 404);
         const row = (
@@ -406,6 +419,7 @@ export function createChatwootService(options: ChatwootOptions) {
           )
         ).rows[0];
         if (!row) throw new IntegrationError("CONNECTION_ALREADY_EXISTS", 409);
+        if (input.requireIdentity) await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id,identity_enforced) VALUES($1,$2,$3,true)`, [org, id, channelId]);
         await integrationAudit(
           t,
           org,
@@ -450,7 +464,7 @@ export function createChatwootService(options: ChatwootOptions) {
             input.name,
             env.callback(connection.id),
           );
-        await rememberInbox(org, connection.id, remote);
+        await rememberInbox(org, connection.id, remote, a);
       } catch (failure) {
         const uncertain =
           !(failure instanceof IntegrationError) &&
@@ -489,6 +503,7 @@ export function createChatwootService(options: ChatwootOptions) {
         org,
         id,
         await client.getInbox(Number(a.account_id), matches[0]!.id),
+        a,
       );
       return this.status(org);
     },
@@ -552,7 +567,7 @@ export function createChatwootService(options: ChatwootOptions) {
             c.name,
             env.callback(id),
           );
-        await rememberInbox(org, id, remote);
+        await rememberInbox(org, id, remote, a);
       } catch (failure) {
         const uncertain =
           !(failure instanceof IntegrationError) &&
@@ -636,6 +651,10 @@ export function createChatwootService(options: ChatwootOptions) {
           inboxId: Number(c.inbox_id),
         });
         if (!reply) return;
+        await observeChatwootCapabilities(t, a, { signedCallback: true });
+        await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id,callback_verified_at,callback_destination_revision,callback_credential_version)
+          VALUES($1,$2,$3,now(),$4,$5) ON CONFLICT(organization_id,integration_id) DO UPDATE SET
+          callback_verified_at=now(),callback_destination_revision=$4,callback_credential_version=$5`, [org, id, c.channel_id, a.destination?.revision ?? null, a.credential_version]);
         await t.query(
           `INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,payload)
           VALUES($1,$2,'CHATWOOT_REPLY',$3,$4::jsonb) ON CONFLICT(organization_id,integration_id,dedupe_key) DO NOTHING`,

@@ -7,11 +7,6 @@ x-runtime: &runtime
   DATABASE_URL: postgresql://jrc_app:${JRC_APP_PASSWORD:?required}@postgres:5432/jrc_broker
   AUTH_DATABASE_URL: postgresql://jrc_auth:${JRC_AUTH_PASSWORD:?required}@postgres:5432/jrc_broker
 
-  # Administração da plataforma
-  PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
-  PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
-  PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
-  PLATFORM_LOGIN_MODE: ${PLATFORM_LOGIN_MODE:-password}
 
   # Redis / Evolution
   REDIS_URL: redis://:${REDIS_PASSWORD:?required}@redis:6379/0
@@ -31,9 +26,11 @@ x-runtime: &runtime
   CONSOLE_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:?required}
   CONSOLE_COOKIE_SECURE: "true"
   PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?required}
-
   # Chatwoot / JRC Conversas
   CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:?required}
+  CHATWOOT_EXTERNAL_DESTINATIONS_ENABLED: ${CHATWOOT_EXTERNAL_DESTINATIONS_ENABLED:-false}
+  CHATWOOT_CONTROL_ENABLED: ${CHATWOOT_CONTROL_ENABLED:-false}
+  CHATWOOT_EMBED_ENABLED: ${CHATWOOT_EMBED_ENABLED:-false}
   INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:?required}
   CHATWOOT_PLATFORM_TOKEN: ${CHATWOOT_PLATFORM_TOKEN:-}
   CHATWOOT_MEDIA_ORIGINS: ${CHATWOOT_MEDIA_ORIGINS:-}
@@ -112,6 +109,10 @@ services:
 
     environment:
       <<: *runtime
+      PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
+      PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
+      PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
+      PLATFORM_LOGIN_MODE: ${PLATFORM_LOGIN_MODE:-password}
 
     expose:
       - "3000"

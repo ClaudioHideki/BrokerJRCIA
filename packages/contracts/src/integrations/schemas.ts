@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ChatwootDestinationSchema } from './destinations.js';
 export const IntegrationStateSchema = z.enum([
   "PENDING",
   "READY",
@@ -18,6 +19,11 @@ export const IntegrationConnectionSchema = z.object({
 export const ChatwootStatusSchema = z.object({
   configured: z.boolean(),
   baseUrl: z.url().nullable(),
+  managedBaseUrl: z.url().nullable().optional(),
+  destination: ChatwootDestinationSchema.nullable().optional(),
+  externalDestinationsEnabled: z.boolean().optional(),
+  controlEnabled: z.boolean().optional(),
+  embedEnabled: z.boolean().optional(),
   provisioningAvailable: z.boolean(),
   provisioning: z
     .object({
@@ -33,6 +39,8 @@ export const ChatwootStatusSchema = z.object({
       status: IntegrationStateSchema,
       lastError: z.string().nullable(),
       hasCredential: z.boolean(),
+      credentialVersion: z.number().int().positive().optional(),
+      compatibility: z.enum(['SUPPORTED', 'UNSUPPORTED', 'UNVERIFIED']).optional(),
     })
     .nullable(),
   connections: z.array(IntegrationConnectionSchema),

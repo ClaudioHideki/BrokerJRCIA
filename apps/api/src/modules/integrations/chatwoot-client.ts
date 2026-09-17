@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createChatwootSafeFetch } from './chatwoot-safe-http.js';
 import {
   MediaError,
   readMediaBytes,
@@ -9,6 +10,10 @@ import {
 } from "@jrc/providers";
 
 const integer = z.number().int().positive();
+const dashboardApp = z.object({ id: integer, title: z.string().max(1000),
+  content: z.array(z.object({ type: z.string().max(100), url: z.string().max(4096) })).max(100) });
+export type DashboardApp = z.infer<typeof dashboardApp>;
+export type DashboardAppPayload = { dashboard_app: { title: string; content: { type: 'frame'; url: string }[] } };
 const inbox = z.object({
   id: integer,
   name: z.string(),
@@ -60,7 +65,9 @@ export class ChatwootClient {
     )
       throw new Error("INVALID_CHATWOOT_ORIGIN");
     this.origin = url.origin;
-    this.fetch = options.fetch ?? globalThis.fetch;
+    this.fetch = options.fetch ?? (local ? globalThis.fetch : createChatwootSafeFetch({
+      origin: this.origin, mediaOrigins: options.mediaOrigins,
+    }));
   }
   private async request(
     method: "GET" | "POST" | "PATCH",
@@ -145,6 +152,12 @@ export class ChatwootClient {
       await this.request("GET", this.account(accountId) + "/inboxes"),
     );
     return z.array(inbox).max(10000).parse(data.payload);
+  }
+  async listDashboardApps(accountId: number): Promise<DashboardApp[]> {
+    return z.array(dashboardApp).max(1000).parse(await this.request('GET', this.account(accountId) + '/dashboard_apps'));
+  }
+  async createDashboardApp(accountId: number, input: DashboardAppPayload): Promise<DashboardApp> {
+    return dashboardApp.parse(await this.request('POST', this.account(accountId) + '/dashboard_apps', input));
   }
   async getInbox(accountId: number, inboxId: number): Promise<ChatwootInbox> {
     return inbox.parse(

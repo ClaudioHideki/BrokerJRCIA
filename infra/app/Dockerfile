@@ -13,7 +13,8 @@ RUN npm ci
 COPY tsconfig.json tsconfig.base.json ./
 COPY apps/api/tsconfig.json apps/api/tsconfig.json
 COPY apps/api/src apps/api/src
-COPY apps/web/tsconfig.json apps/web/vite.config.ts apps/web/index.html apps/web/
+COPY apps/web/tsconfig.json apps/web/vite.config.ts apps/web/index.html apps/web/embed.html apps/web/
+COPY infra/web/frame-policy.mjs infra/web/frame-policy.d.mts infra/web/
 COPY apps/web/src apps/web/src
 COPY apps/web/public apps/web/public
 COPY packages/contracts/tsconfig.json packages/contracts/tsconfig.json
@@ -44,6 +45,7 @@ COPY --chown=node:node --from=build /app/packages/security/node_modules ./packag
 COPY --chown=node:node apps/api/drizzle ./apps/api/drizzle
 COPY --chown=node:node infra/app/postgres ./infra/app/postgres
 COPY --chown=node:node infra/app/provision.mjs ./infra/app/provision.mjs
+COPY --chown=node:node infra/web/frame-policy.mjs ./infra/web/frame-policy.mjs
 
 USER node
 EXPOSE 3000
@@ -54,6 +56,7 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY --chown=node:node --from=build /app/apps/web/dist ./public
 COPY --chown=node:node infra/web/server.mjs ./server.mjs
+COPY --chown=node:node infra/web/frame-policy.mjs ./frame-policy.mjs
 USER node
 EXPOSE 8080
 ENTRYPOINT ["node", "server.mjs"]

@@ -8,11 +8,15 @@ import {
 import { Metric } from "../broker/components.js";
 import { Icon } from "../broker/Icon.js";
 import "./integrations.css";
+import { ChatwootDestinationPanel } from './ChatwootDestinationPanel.js';
+import { DashboardAppSetup } from './DashboardAppSetup.js';
+import { ChatwootControlPanel } from './ChatwootControlPanel.js';
 
 export type IntegrationRequest = (
   path: string,
   method?: string,
   body?: unknown,
+  options?: { idempotencyKey: string },
 ) => Promise<unknown>;
 interface Source {
   id: string;
@@ -42,6 +46,10 @@ const stages: Record<string, string> = {
   DONE: "Concluído",
 };
 const errors: Record<string, string> = {
+  CHATWOOT_DESTINATION_REQUIRED: 'Escolha uma instalação e solicite a aprovação da equipe JRC.',
+  CHATWOOT_DESTINATION_NOT_APPROVED: 'O destino precisa ser aprovado pela equipe JRC antes de vincular a conta.',
+  CHATWOOT_CONTEXT_CHANGED: 'A configuração mudou durante a validação. Atualize os dados e tente novamente.',
+  DESTINATION_IN_USE: 'Existem caixas ou um cadastro em andamento neste destino. Conclua a migração antes de alterá-lo.',
   CHATWOOT_MESSAGE_NOT_CONFIRMED:
     "A mensagem ainda não foi localizada. Informe seu ID no JRC Conversas ou confira o destino antes de continuar.",
   CHATWOOT_CONVERSATION_ID_REQUIRED:
@@ -280,6 +288,10 @@ export function ChatwootPanel({
       )}
       {data?.configured && (
         <>
+          {data.externalDestinationsEnabled && <ChatwootDestinationPanel key={`${data.destination?.baseUrl}:${data.destination?.revision}`}
+            data={data} platform={platform} canManage={canManage} blocked={blocked} action={action} />}
+          {!platform && accountReady && data.controlEnabled && <ChatwootControlPanel request={request} canManage={canManage} connections={data.connections} />}
+          {!platform && accountReady && data.controlEnabled && data.embedEnabled && canManage && <DashboardAppSetup request={request} />}
           <div className="metric-grid metric-grid--four">
             <Metric
               label="Conta de atendimento"
@@ -354,6 +366,7 @@ export function ChatwootPanel({
                 </p>
               )}
               {canManage &&
+                (!data.externalDestinationsEnabled || data.destination?.approvalStatus === 'APPROVED') &&
                 (!data.provisioning || data.provisioning.state === "READY") && (
                   <details open={!accountReady}>
                     <summary>

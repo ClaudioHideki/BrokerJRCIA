@@ -39,6 +39,15 @@ function documentationOptions() {
     },
   ) as ProviderAccountService;
   return {
+    chatwootEmbed: {
+      nodeEnv: 'test' as const, jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
+      browserCsrfSecret: DOCUMENTATION_SECRET, browserCookieSecure: true, consoleAllowedOrigins: ['https://console.example.test'], trustedProxyCidrs: [],
+      service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/integrations/embed/authorization.js').EmbedAuthorizationService,
+    },
+    chatwootControl: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
+      service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/integrations/chatwoot-control-auth.js').ChatwootControlAuth,
+    },
     integrations: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`,
       authenticateApiKey: unavailable,
@@ -259,8 +268,10 @@ function normalizeDocument(document: JsonObject): JsonObject {
         operation.security = [{ bearerAuth: [] }];
       if (path.startsWith("/v1/integrations/"))
         operation.security = path.endsWith("/events")
-          ? [{ chatwootSignature: [] }]
-          : [{ bearerAuth: [] }];
+            ? [{ chatwootSignature: [] }]
+            : [{ bearerAuth: [] }];
+      if (path.startsWith('/v1/integrations/chatwoot/control/'))
+        operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
       if (
         path.startsWith("/v1/meta-onboarding") ||
         path === "/v1/organization/operations"

@@ -15,6 +15,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Initial lazy imports/PDF checks share resources with local and CI builds.
+    testTimeout: 15000,
     exclude: [
       'tests/compiled-workspace-resolution.test.mjs',
       'tests/compiled-entrypoint.test.mjs',

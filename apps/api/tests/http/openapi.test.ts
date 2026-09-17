@@ -10,6 +10,24 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/integrations/chatwoot/embed-apps/{id}', 'POST /v1/integrations/chatwoot/embed-apps/{id}/install',
+  'GET /v1/integrations/chatwoot/connections/{id}/operator-grants',
+  'GET /v1/integrations/chatwoot/control/resources', 'GET /v1/integrations/chatwoot/control/onboarding',
+  'POST /v1/integrations/chatwoot/embed-apps', 'GET /v1/embed/apps/{id}/policy',
+  'POST /v1/embed/authorizations', 'GET /v1/embed/authorizations/{id}',
+  'POST /v1/embed/authorizations/{id}/approve', 'POST /v1/embed/authorizations/{id}/deny', 'POST /v1/embed/authorizations/{id}/exchange',
+  'GET /v1/embed/connections/{id}/status', 'POST /v1/embed/connections/{id}/pair',
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/status',
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/pair',
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/disconnect',
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/confirm-identity',
+  'PUT /v1/integrations/chatwoot/control/connections/{integrationId}/agents',
+  'POST /v1/integrations/chatwoot/control/onboarding', 'GET /v1/integrations/chatwoot/control/onboarding/{operationId}',
+  'POST /v1/integrations/chatwoot/control/onboarding/{operationId}/recover',
+  'GET /v1/integrations/chatwoot/control/context', 'POST /v1/integrations/chatwoot/control-credentials',
+  'PUT /v1/integrations/chatwoot/connections/{id}/operator-grants',
+  'GET /v1/integrations/chatwoot/destination', 'PUT /v1/integrations/chatwoot/destination',
+  'POST /v1/platform/organizations/{id}/chatwoot/destination/approve',
   'GET /v1/integrations/chatwoot', 'POST /v1/integrations/chatwoot/{id}/events',
   'PUT /v1/integrations/chatwoot/account', 'POST /v1/integrations/chatwoot/connections', 'PATCH /v1/integrations/chatwoot/connections/{id}',
   'GET /v1/integrations/chatwoot/connections/{id}/agents','POST /v1/integrations/chatwoot/connections/{id}/agents',
@@ -188,6 +206,12 @@ describe('OpenAPI público da JRC', () => {
 
     expect(second).toBe(first);
     expect(committed).toBe(first);
+  });
+  it('documents the scoped control key without broadening legacy integration authentication', async () => {
+    const document = await createOpenApiDocument();
+    expect(document.paths['/v1/integrations/chatwoot/control/context']?.get?.security).toEqual([{ bearerAuth: [] }, { jrcApiKeyAuth: [] }]);
+    expect(document.paths['/v1/integrations/chatwoot/control-credentials']?.post?.security).toEqual([{ bearerAuth: [] }]);
+    expect(document.paths['/v1/integrations/chatwoot']?.get?.security).toEqual([{ bearerAuth: [] }]);
   });
 
   it('mantém a Swagger UI desabilitada por padrão', async () => {
