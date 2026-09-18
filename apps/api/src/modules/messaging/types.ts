@@ -107,6 +107,7 @@ export interface OutboxClaim {
 }
 
 export type ClaimIneligibilityReason =
+  | "FLOW_REVOKED"
   | "IDENTITY_CONFIRMATION_REQUIRED"
   | "ORGANIZATION_NOT_ACTIVE"
   | "META_CHANNEL_NOT_READY"

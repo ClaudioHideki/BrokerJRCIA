@@ -1,5 +1,15 @@
 # JRC WhatsApp Broker
 
+## Candidato atual: Flows e múltiplas instalações de atendimento
+
+O candidato de 18/09/2026 acrescenta Flows no Broker, com editor de nós, JSON,
+simulador e execução persistente por empresa. Pode atender canais WhatsApp do
+próprio Broker ou caixas de instalações JRC/Chatwoot compatíveis via Agent Bot.
+Confira [configuração, limites e atualização](docs/operations/broker-omnichannel.md)
+e [os testes realmente executados](docs/validation/2026-09-18-broker-omnichannel.md).
+As imagens desta tarefa são locais; a publicação e a homologação no servidor
+continuam separadas.
+
 ## Repositório e imagens
 
 Repositório de entrega: [ClaudioHideki/BrokerJRCIA](https://github.com/ClaudioHideki/BrokerJRCIA).

@@ -15,6 +15,7 @@ export interface Company {
   slug: string;
   status: "ACTIVE" | "SUSPENDED" | "DISABLED";
   plan: string;
+  flowsEnabled?: boolean;
   limits?: Limits;
 }
 export interface Member {

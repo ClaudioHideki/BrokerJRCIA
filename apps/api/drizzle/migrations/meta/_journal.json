@@ -162,6 +162,20 @@
       "when": 1789560005000,
       "tag": "0023_chatwoot_dashboard_install",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789660800000,
+      "tag": "0024_flows",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789720000000,
+      "tag": "0025_flow_chatwoot",
+      "breakpoints": true
     }
   ]
 }

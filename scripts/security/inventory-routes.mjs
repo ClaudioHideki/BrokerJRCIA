@@ -4,6 +4,20 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  ...Object.fromEntries([
+    'GET /v1/flows', 'GET /v1/flows/status', 'GET /v1/flows/channels', 'GET /v1/flows/library',
+    'GET /v1/flows/{id}', 'GET /v1/flows/{id}/export', 'GET /v1/flows/{id}/runs',
+    'GET /v1/flows/chatwoot/inboxes', 'GET /v1/flows/{id}/chatwoot/runs', 'POST /v1/flows/{id}/validate',
+  ].map(route => [route, policy('apps/api/src/http/routes/flows.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_MEMBER',
+    true, 'READ_ONLY', 'NONE', 'RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION')])),
+  ...Object.fromEntries([
+    'POST /v1/flows', 'PUT /v1/flows/{id}', 'POST /v1/flows/{id}/publish',
+    'POST /v1/flows/{id}/bind', 'POST /v1/flows/{id}/unbind', 'POST /v1/flows/import-preview',
+    'POST /v1/flows/{id}/simulate', 'POST /v1/flows/{id}/chatwoot/bind', 'POST /v1/flows/chatwoot/{id}/disable',
+  ].map(route => [route, policy('apps/api/src/http/routes/flows.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, 'NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION', 'NONE', 'RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING')])),
+  'POST /v1/flows/chatwoot/{id}/events': policy('apps/api/src/http/routes/flows.ts', 'HMAC_TIMESTAMP_RAW_BODY', 'BOUND_AGENT_BOT',
+    true, 'UNIQUE_BINDING_MESSAGE_ID', 'NONE', 'RLS_ACCOUNT_INBOX_DESTINATION_CREDENTIAL_FEATURE_REVISION'),
   'GET /v1/integrations/chatwoot/embed-apps/{id}': policy(
     'apps/api/src/http/routes/chatwoot-embed.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
     true, 'READ_ONLY', 'NONE', 'RLS_APPROVED_CURRENT_ACCOUNT_DESTINATION',

@@ -1,5 +1,9 @@
 # Broker para o JRC Conversas — release 17/09/2026
 
+> Histórico da release de 17/09. O escopo foi ampliado em 18/09 para Flows no
+> Broker e caixas Chatwoot externas. Para o candidato atual, consulte
+> [Broker independente e Flows](broker-omnichannel.md).
+
 A interface de Flows e o motor de execução desta versão pertencem ao JRC Conversas. O Broker cuida da empresa, instância, pareamento, vínculo à caixa e transporte. O experimento de editor Flows no Broker não faz parte deste candidato. Embed em Chatwoot de terceiros permanece beta desligado.
 
 Esta consolidação parte de `origin/main` a16c1cd e integra ce878f8 (controle, destinos por organização, saúde, QR delegado e integração com JRC). Preserva os nove commits remotos de ajustes de Compose e reúne os treze commits locais de integração. O conflito foi no Compose; as credenciais de administração da plataforma ficaram somente na API, conforme o isolamento já exigido pelo projeto.

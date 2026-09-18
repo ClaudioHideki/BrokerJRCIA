@@ -11,6 +11,7 @@ import "./integrations.css";
 import { ChatwootDestinationPanel } from './ChatwootDestinationPanel.js';
 import { DashboardAppSetup } from './DashboardAppSetup.js';
 import { ChatwootControlPanel } from './ChatwootControlPanel.js';
+import { NativeJrcSetup } from './NativeJrcSetup.js';
 
 export type IntegrationRequest = (
   path: string,
@@ -291,6 +292,7 @@ export function ChatwootPanel({
           {data.externalDestinationsEnabled && <ChatwootDestinationPanel key={`${data.destination?.baseUrl}:${data.destination?.revision}`}
             data={data} platform={platform} canManage={canManage} blocked={blocked} action={action} />}
           {!platform && accountReady && data.controlEnabled && <ChatwootControlPanel request={request} canManage={canManage} connections={data.connections} />}
+          {!platform && canManage && accountReady && data.controlEnabled && data.baseUrl && data.destination?.mode !== 'EXTERNAL' && <NativeJrcSetup key={`${data.account!.accountId}:${data.destination?.revision}:${data.baseUrl}`} request={request} accountId={data.account!.accountId!} baseUrl={data.baseUrl} />}
           {!platform && accountReady && data.controlEnabled && data.embedEnabled && canManage && <DashboardAppSetup request={request} />}
           <div className="metric-grid metric-grid--four">
             <Metric
@@ -674,6 +676,9 @@ export function ChatwootPanel({
                       {states[c.status]}
                     </span>
                   </header>
+                  {canManage && data.controlEnabled && <label>ID da integração
+                    <input readOnly value={c.id} onFocus={event => event.currentTarget.select()} />
+                  </label>}
                   <label>
                     Webhook desta caixa
                     <div className="integration-copy">

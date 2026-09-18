@@ -339,6 +339,7 @@ it("loads company management and saves the existing limits through the admin API
           status: "ACTIVE",
           plan: "Teste",
           limits: { ...organization.limits, maxInstances: 4 },
+          flowsEnabled: false,
         }),
       }),
     ),
@@ -504,6 +505,7 @@ it("creates a company with its owner and limits using the audited admin endpoint
         slug: "nova-empresa",
         ownerEmail: "new-owner@example.test",
         ownerPassword: "synthetic-test-password",
+        flowsEnabled: false,
         plan: "Inicial",
         limits: {
           maxInstances: 5,

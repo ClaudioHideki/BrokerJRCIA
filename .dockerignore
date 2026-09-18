@@ -1,6 +1,7 @@
 .git
 .github
 .superpowers
+.codex
 node_modules
 **/node_modules
 **/dist

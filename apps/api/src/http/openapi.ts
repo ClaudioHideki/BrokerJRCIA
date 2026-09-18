@@ -39,6 +39,11 @@ function documentationOptions() {
     },
   ) as ProviderAccountService;
   return {
+    flows: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
+      service: new Proxy({}, { get() { return unavailable; } }) as ReturnType<typeof import('../modules/flows/service.js').createFlowService>,
+      chatwoot: new Proxy({}, { get() { return unavailable; } }) as ReturnType<typeof import('../modules/flows/chatwoot-service.js').createFlowChatwootService>,
+    },
     chatwootEmbed: {
       nodeEnv: 'test' as const, jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
       browserCsrfSecret: DOCUMENTATION_SECRET, browserCookieSecure: true, consoleAllowedOrigins: ['https://console.example.test'], trustedProxyCidrs: [],
@@ -266,6 +271,8 @@ function normalizeDocument(document: JsonObject): JsonObject {
       }
       if (path.startsWith("/v1/messaging/"))
         operation.security = [{ bearerAuth: [] }];
+      if (path.startsWith('/v1/flows'))
+        operation.security = path.endsWith('/events') ? [{ chatwootSignature: [] }] : [{ bearerAuth: [] }];
       if (path.startsWith("/v1/integrations/"))
         operation.security = path.endsWith("/events")
             ? [{ chatwootSignature: [] }]

@@ -10,6 +10,13 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/flows', 'GET /v1/flows/status', 'GET /v1/flows/channels', 'GET /v1/flows/library',
+  'GET /v1/flows/{id}', 'GET /v1/flows/{id}/export', 'GET /v1/flows/{id}/runs',
+  'GET /v1/flows/chatwoot/inboxes', 'GET /v1/flows/{id}/chatwoot/runs', 'POST /v1/flows/{id}/validate',
+  'POST /v1/flows', 'PUT /v1/flows/{id}', 'POST /v1/flows/{id}/publish',
+  'POST /v1/flows/{id}/bind', 'POST /v1/flows/{id}/unbind', 'POST /v1/flows/import-preview',
+  'POST /v1/flows/{id}/simulate', 'POST /v1/flows/{id}/chatwoot/bind', 'POST /v1/flows/chatwoot/{id}/disable',
+  'POST /v1/flows/chatwoot/{id}/events',
   'GET /v1/integrations/chatwoot/embed-apps/{id}', 'POST /v1/integrations/chatwoot/embed-apps/{id}/install',
   'GET /v1/integrations/chatwoot/connections/{id}/operator-grants',
   'GET /v1/integrations/chatwoot/control/resources', 'GET /v1/integrations/chatwoot/control/onboarding',

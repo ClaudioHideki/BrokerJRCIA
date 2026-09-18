@@ -28,7 +28,8 @@ function session(role: 'OWNER' | 'VIEWER' = 'OWNER') {
 
 function client(request: ApiClient['request'], role: 'OWNER' | 'VIEWER' = 'OWNER'): ApiClient {
   return {
-    restore: vi.fn(async () => session(role)), request,
+    restore: vi.fn(async () => session(role)),
+    request: ((path, init) => path === '/v1/flows/status' ? Promise.resolve({ enabled: false }) : request(path, init)) as ApiClient['request'],
     login: vi.fn(), selectOrganization: vi.fn(), switchOrganization: vi.fn(), logout: vi.fn(),
     registerTenantPurge: vi.fn(() => () => undefined),
     subscribeToSessionExpiration: vi.fn(() => () => undefined),

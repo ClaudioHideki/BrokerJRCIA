@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import { createFlowService } from '../modules/flows/service.js';
 import { createHash } from "node:crypto";
 import { createIntegrationRuntime } from "../modules/integrations/runtime.js";
 import { setTimeout } from "node:timers/promises";
@@ -121,6 +122,7 @@ export async function runMessagingWorker(
   process.once("SIGTERM", stop);
   try {
     const worker = createMessagingWorker({
+      flows:createFlowService({transact:(org,work)=>withOrganizationTransaction(pool,org,work)}),
       repository: createPostgresMessagingRepository(),
       transact: (organizationId, operation) =>
         withOrganizationTransaction(pool, organizationId, operation),
@@ -161,6 +163,7 @@ export async function runMessagingWorker(
             await integrations.media?.runOnce(organizationId);
             await worker.runOnce(organizationId);
             await integrations.chatwootWorker?.runOnce(organizationId);
+            await integrations.flowChatwoot?.runOnce(organizationId);
             await integrations.onboarding?.runOnce(organizationId);
             if (environment.WORKER_HEARTBEAT_FILE)
               await writeFile(

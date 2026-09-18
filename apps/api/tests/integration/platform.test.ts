@@ -37,6 +37,21 @@ it('updates existing memberships at the user limit and while suspended',async()=
 it('isolates platform credentials from both runtime roles',async()=>{
  for(const role of ['jrc_auth','jrc_app']) {const c=await db.pool.connect(); try {await c.query('begin');await c.query(`set local role ${role}`);await expect(c.query('select * from platform_users')).rejects.toThrow();} finally{await c.query('rollback');c.release();}}
 });
+it('allows only platform administration to grant Flows, preserving the epoch on unrelated updates',async()=>{
+ await db.pool.query("update platform_users set last_totp_step=-1 where email='admin@example.test'");
+ const s=await service.login('admin@example.test','long-test-password',totp(seed,Math.floor(Date.now()/30000)),'127.0.0.9');
+ const result=await service.execute(s.token,'Enable Flows for test tenant','create',undefined,{name:'Flows',slug:'flows-platform-test',ownerEmail:'flows-owner@example.test',ownerPassword:'owner-password-strong',flowsEnabled:true}) as {organization:{id:string}};
+ const id=result.organization.id;
+ const flag=async()=> (await db.pool.query('select enabled,revision from flow_features where organization_id=$1',[id])).rows[0];
+ expect(await flag()).toEqual({enabled:true,revision:1});
+ await service.execute(s.token,'Update plan without revoking sessions','update',id,{plan:'FLOWS',flowsEnabled:true});
+ expect(await flag()).toEqual({enabled:true,revision:1});
+ await service.execute(s.token,'Disable Flows for this tenant','update',id,{flowsEnabled:false});
+ expect(await flag()).toEqual({enabled:false,revision:2});
+ expect(await service.execute(s.token,'Inspect feature authorization','list')).toMatchObject({organizations:expect.arrayContaining([expect.objectContaining({id,flowsEnabled:false})])});
+ await service.logout(s.token);
+ await db.pool.query("update platform_users set last_totp_step=-1 where email='admin@example.test'");
+});
 it('requires password and fresh MFA; hashes and revokes sessions',async()=>{
  const session=await service.login('admin@example.test','long-test-password',totp(seed,Math.floor(Date.now()/30000)),'127.0.0.1');
  expect(session.user.role).toBe('SUPER_ADMIN');expect(await service.session(session.token)).toMatchObject({user:{email:'admin@example.test'}});
@@ -49,7 +64,7 @@ it('audits support reads and denies support mutations',async()=>{
  await service.execute(s.token,'Investigation ticket 1','list');
  await service.execute(s.token,'Acknowledged investigation ticket 1','acknowledge');
  await expect(service.execute(s.token,'Investigation ticket 1','update','00000000-0000-4000-8000-000000000001',{status:'SUSPENDED'})).rejects.toThrow();
- expect((await db.pool.query("select * from platform_audit_logs where action='list'")).rowCount).toBe(1);
+ expect((await db.pool.query("select * from platform_audit_logs where action='list' and reason='Investigation ticket 1'")).rowCount).toBe(1);
  expect((await db.pool.query("select * from platform_audit_logs where action='acknowledge'")).rowCount).toBe(1);
 });
 it('manages two organizations without exposing content and rolls back changes when audit fails',async()=>{

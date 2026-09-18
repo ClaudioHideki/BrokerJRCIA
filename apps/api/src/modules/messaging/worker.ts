@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { FLOW_ORIGIN } from '@jrc/contracts';
+import type { createFlowService } from '../flows/service.js';
 import type { MetaCloudClient, TypebotClient } from "@jrc/providers";
 import type { OrganizationTransaction } from "../../db/tenant-transaction.js";
 import type { MessagingRepository } from "./repository.js";
@@ -7,6 +9,7 @@ import { dispatchClaim, type DispatchPorts } from "./dispatcher.js";
 import { runBotTurn } from "./bot-runner.js";
 
 export interface MessagingWorkerOptions {
+  flows?: Pick<ReturnType<typeof createFlowService>,'runTurn'|'settleHandoffs'>;
   prepareMedia?: DispatchPorts["prepareMedia"];
   repository: MessagingRepository;
   transact<T>(
@@ -32,6 +35,7 @@ export function createMessagingWorker(options: MessagingWorkerOptions) {
   const { repository, transact } = options;
   return {
     async runOnce(organizationId: string): Promise<void> {
+      await options.flows?.settleHandoffs(organizationId);
       const botClaim = await transact(organizationId, (tx) =>
         repository.claimBotTurn(tx, {
           organizationId,
@@ -47,7 +51,10 @@ export function createMessagingWorker(options: MessagingWorkerOptions) {
           leaseToken: botClaim.leaseToken,
         };
         const conversation = botClaim.conversation;
-        if (
+        if (conversation.botOriginReference === FLOW_ORIGIN) {
+          if(options.flows && botClaim.message.content.type==='TEXT') await options.flows.runTurn(botClaim);
+          else await transact(organizationId,tx=>repository.failBotTurn(tx,{...key,canonicalErrorCode:'FLOWS_UNAVAILABLE',uncertain:false}));
+        } else if (
           conversation.botPublicId &&
           conversation.botOriginReference &&
           botClaim.message.content.type === "TEXT"

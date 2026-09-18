@@ -381,6 +381,7 @@ export function PlatformPage() {
         slug: data.get("slug"),
         ownerEmail: data.get("ownerEmail"),
         ownerPassword: data.get("ownerPassword"),
+        flowsEnabled: data.has("flowsEnabled"),
         plan: data.get("plan"),
         limits,
       });
@@ -395,6 +396,7 @@ export function PlatformPage() {
     await action(async () => {
       const status = data.get("status") as Company["status"];
       const plan = String(data.get("plan"));
+      const feature = data.has("flowsConfigPresent") ? { flowsEnabled: data.has("flowsEnabled") } : {};
       const values = limitKeys.map((key) => String(data.get(key) ?? "").trim());
       if (
         values.some(Boolean) &&
@@ -417,10 +419,11 @@ export function PlatformPage() {
         status,
         plan,
         ...(limits ? { limits } : {}),
+        ...feature,
       });
       setSelected((current) =>
         current?.id === company.id
-          ? { ...current, status, plan, ...(limits ? { limits } : {}) }
+          ? { ...current, status, plan, ...feature, ...(limits ? { limits } : {}) }
           : current,
       );
       await loadCompanies();

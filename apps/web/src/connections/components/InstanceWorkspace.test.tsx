@@ -74,6 +74,6 @@ describe('instance workspace', () => {
     expect(await screen.findByText('Conectar')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Integrações' }));
     expect(screen.getByRole('link', { name: 'Configurar integração com JRC Conversas' })).toHaveAttribute('href', '/integracoes');
-    expect(screen.getByText(/Crie e ative os fluxos no módulo Flows do JRC Conversas/)).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Criar automação no Broker' })).toHaveAttribute('href', '/flows');
   });
 });

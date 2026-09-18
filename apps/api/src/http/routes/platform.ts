@@ -66,6 +66,7 @@ const create = z
       .max(80),
     ownerEmail: email,
     ownerPassword: password,
+    flowsEnabled: z.boolean().optional(),
     plan: z.string().trim().min(1).max(80).optional(),
     limits: limits.optional(),
   })
@@ -73,6 +74,7 @@ const create = z
 const update = z
   .object({
     status: z.enum(["ACTIVE", "SUSPENDED", "DISABLED"]).optional(),
+    flowsEnabled: z.boolean().optional(),
     plan: z.string().trim().min(1).max(80).optional(),
     limits: limits.optional(),
   })
@@ -102,6 +104,7 @@ const organizationDto = z.object({
   slug: z.string(),
   status: z.enum(["ACTIVE", "SUSPENDED", "DISABLED"]),
   plan: z.string(),
+  flowsEnabled: z.boolean().optional(),
   limits: limits.optional(),
 });
 const okDto = z.object({ ok: z.literal(true) });

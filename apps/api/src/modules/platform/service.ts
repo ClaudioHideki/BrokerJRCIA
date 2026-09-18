@@ -9,7 +9,7 @@ export class PlatformError extends Error { constructor(public statusCode:number,
 export type PlatformAction = 'list'|'create'|'update'|'memberships'|'membership'|'monitor'|'acknowledge';
 export interface PlatformSession { user:{id:string;email:string;role:'SUPER_ADMIN'|'SUPPORT'};csrfToken:string;expiresAt:string }
 export interface Limits {maxInstances:number;maxUsers:number;messagesPerDay:number;maxPendingMessages:number}
-export interface PlatformInput {name?:string;slug?:string;ownerEmail?:string;ownerPassword?:string;plan?:string;status?:string;limits?:Limits;email?:string;password?:string;role?:string}
+export interface PlatformInput {name?:string;slug?:string;ownerEmail?:string;ownerPassword?:string;plan?:string;status?:string;limits?:Limits;email?:string;password?:string;role?:string;flowsEnabled?:boolean}
 export class PlatformService {
  private verifier=initializePasswordVerifier();
  readonly mfaRequired:boolean;
@@ -99,9 +99,9 @@ export class PlatformService {
    let result:unknown;
    switch(action) {
     case 'acknowledge':result={ok:true};break;
-    case 'list':result={organizations:(await c.query(`select o.id,o.name,o.slug,o.status,o.plan,
+    case 'list':result={organizations:(await c.query(`select o.id,o.name,o.slug,o.status,o.plan,coalesce(f.enabled,false) AS "flowsEnabled",
       json_build_object('maxInstances',l.max_instances,'maxUsers',l.max_users,'messagesPerDay',l.messages_per_day,'maxPendingMessages',l.max_pending_messages) as limits
-      from organizations o left join organization_limits l on l.organization_id=o.id order by o.created_at desc limit 200`)).rows};break;
+      from organizations o left join organization_limits l on l.organization_id=o.id left join flow_features f on f.organization_id=o.id order by o.created_at desc limit 200`)).rows};break;
     case 'create': {
      const org=(await c.query('insert into organizations(name,slug,plan) values($1,$2,$3) returning id,name,slug,status,plan',[input.name,input.slug,input.plan??'STANDARD'])).rows[0];id=org.id;
      // Creating a new organization never changes an existing user's password.
@@ -126,6 +126,11 @@ export class PlatformService {
      (select count(*)::int from messaging_messages where organization_id=$1 and state='FAILED') as failures,
      (select count(*)::int from messaging_inbox_events where organization_id=$1) as webhooks`,[id])).rows[0];break;
     default:throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+   }
+   if((action==='create'||action==='update')&&typeof input.flowsEnabled==='boolean') {
+    await c.query(`insert into flow_features(organization_id,enabled) values($1,$2)
+      on conflict(organization_id) do update set enabled=excluded.enabled,revision=flow_features.revision+1,updated_at=now()
+      where flow_features.enabled is distinct from excluded.enabled`,[id,input.flowsEnabled]);
    }
    await this.audit(c,s.user.id,id??null,action,reason);return result;
   });

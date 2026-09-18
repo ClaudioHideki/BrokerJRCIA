@@ -285,6 +285,12 @@ export function CompanyWorkspace({
                   eventos recebidos são preservados.
                 </p>
                 <fieldset>
+                  <legend>Módulos da empresa</legend>
+                  <input type="hidden" name="flowsConfigPresent" value="1" />
+                  <label><input type="checkbox" name="flowsEnabled" defaultChecked={company.flowsEnabled === true} /> Liberar JRC Flows</label>
+                  <p className="admin-form-hint">Habilita o canvas e os chatbots desta empresa. Desativar bloqueia novas execuções e envios pendentes dos flows.</p>
+                </fieldset>
+                <fieldset>
                   <legend>Limites da empresa</legend>
                   <div className="admin-form-grid">
                     {limitKeys.map((key) => (
@@ -506,6 +512,7 @@ export function NewCompany({
         </fieldset>
         <fieldset>
           <legend>Plano e capacidade</legend>
+          <label><input type="checkbox" name="flowsEnabled" /> Liberar JRC Flows para esta empresa</label>
           <div className="admin-form-grid">
             <label>
               Plano

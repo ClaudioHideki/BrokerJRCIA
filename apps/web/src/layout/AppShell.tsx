@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router';
 
-import { useSession } from '../auth/SessionProvider.js';
+import { useApiClient, useSession } from '../auth/SessionProvider.js';
 import { Icon } from '../broker/Icon.js';
 
 const navigation = [
@@ -10,6 +10,7 @@ const navigation = [
   ['/providers', 'Canais JRC', 'providers'],
   ['/provisionamento', 'Provisionamento', 'upload'],
   ['/mensagens', 'Mensagens e automações', 'messages'],
+  ['/flows', 'JRC Flows', 'brain'],
   ['/uso-custos', 'Uso e custos', 'costs'],
   ['/relatorios', 'Relatórios', 'reports'],
   ['/health', 'Health Center', 'health'],
@@ -28,7 +29,23 @@ const roleLabels = {
 } as const;
 
 export function AppShell() {
+  const client = useApiClient();
   const { session, switchOrganization, switchPending, logout, notice } = useSession();
+  const [flowsEnabled, setFlowsEnabled] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setFlowsEnabled(false);
+    const refresh = async () => {
+      if (!session) return;
+      try {
+        const result = await client.request<{enabled:boolean}>('/v1/flows/status', {signal:controller.signal});
+        if (!controller.signal.aborted) setFlowsEnabled(result.enabled);
+      } catch { if (!controller.signal.aborted) setFlowsEnabled(false); }
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
+    return () => {controller.abort();window.removeEventListener('focus', refresh);};
+  }, [client, session?.activeOrganization.id]);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const firstNavigationLink = useRef<HTMLAnchorElement>(null);
@@ -91,7 +108,7 @@ export function AppShell() {
           </div>
         </div>
         <nav aria-label="Navegação principal">
-          {navigation.map(([path, label, icon], index) => (
+          {navigation.filter(([path]) => path !== '/flows' || flowsEnabled).map(([path, label, icon], index) => (
             <NavLink
               key={path}
               ref={index === 0 ? firstNavigationLink : undefined}

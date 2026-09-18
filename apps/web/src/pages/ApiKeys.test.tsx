@@ -67,7 +67,7 @@ function client(
 ): ApiClient {
   return {
     restore: vi.fn(async () => session(role)),
-    request,
+    request: ((path, init) => path === '/v1/flows/status' ? Promise.resolve({ enabled: false }) : request(path, init)) as ApiClient['request'],
     login: vi.fn(),
     selectOrganization: vi.fn(),
     switchOrganization: vi.fn(),

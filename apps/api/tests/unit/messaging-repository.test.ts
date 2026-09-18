@@ -395,7 +395,7 @@ describe('PostgresMessagingRepository panel and provisioning operations', () => 
 
   it('rebinds a channel bot and returns the updated channel', async () => {
     const rebound = { ...CHANNEL, botPublicId: 'bot-b', botOriginReference: 'origin-b' };
-    const transaction = transactionReturning([CHANNEL], [rebound], [], []);
+    const transaction = transactionReturning([], [], [CHANNEL], [rebound], [], []);
     await expect(createPostgresMessagingRepository().setChannelBot(transaction, {
       organizationId: ORGANIZATION_ID,
       channelId: CHANNEL_ID,

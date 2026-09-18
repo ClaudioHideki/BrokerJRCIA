@@ -15,6 +15,7 @@ import { LoginPage } from '../pages/Login.js';
 import { NewConnectionPage } from '../pages/NewConnection.js';
 import { OrganizationSelectPage } from '../pages/OrganizationSelect.js';
 import { MessagingPage } from '../pages/Messaging.js';
+import { FlowsPage } from '../pages/Flows.js';
 import { PlatformPage } from '../pages/Platform.js';
 import { MetaConnectPage } from '../pages/MetaConnect.js';
 import { CompanyPage } from '../pages/Company.js';
@@ -59,6 +60,7 @@ function AppRoutes() {
         <Route path="/chaves-api" element={<ApiKeysPage />} />
         <Route path="/integracoes" element={<IntegrationsPage />} />
         <Route path="/mensagens" element={<MessagingPage />} />
+        <Route path="/flows" element={<FlowsPage />} />
         <Route path="/whatsapp-oficial" element={<MetaConnectPage />} />
         <Route path="/minha-empresa" element={<CompanyPage />} />
       </Route>

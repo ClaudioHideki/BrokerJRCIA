@@ -1,4 +1,6 @@
 import swagger from "@fastify/swagger";
+import { registerFlowRoutes, type FlowRouteOptions } from './http/routes/flows.js';
+import { createFlowService } from './modules/flows/service.js';
 import { createIntegrationRuntime } from "./modules/integrations/runtime.js";
 import { z } from 'zod';
 import { createChatwootControlAuth } from './modules/integrations/chatwoot-control-auth.js';
@@ -126,6 +128,7 @@ export interface BuildAppOptions {
   instances?: InstanceRouteOptions;
   instanceWorkspace?: InstanceWorkspaceRouteOptions;
   messaging?: MessagingRouteOptions;
+  flows?: FlowRouteOptions;
   metaWebhooks?: MetaWebhookRouteOptions;
   platform?: PlatformRouteOptions;
   metaOnboarding?: MetaOnboardingRouteOptions;
@@ -187,6 +190,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       options.instances !== undefined ||
       options.instanceWorkspace !== undefined ||
       options.messaging !== undefined ||
+      options.flows !== undefined ||
       options.metaWebhooks !== undefined ||
       options.platform !== undefined ||
       options.metaOnboarding !== undefined ||
@@ -207,6 +211,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     nodeEnv === "test" ? options.providerAccounts : undefined;
   let instances = nodeEnv === "test" ? options.instances : undefined;
   let messaging = nodeEnv === "test" ? options.messaging : undefined;
+  let flows = nodeEnv === "test" ? options.flows : undefined;
   let instanceWorkspace =
     nodeEnv === "test" ? options.instanceWorkspace : undefined;
   let metaWebhooks = nodeEnv === "test" ? options.metaWebhooks : undefined;
@@ -467,6 +472,13 @@ export function buildApp(options: BuildAppOptions = {}) {
       };
       app.addHook("onClose", async () => platformPool.end());
     }
+    flows = {
+      jwtSecret: config.jwtSecret,
+      authenticateApiKey: apiKeys.authenticateApiKey,
+      resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
+      service: createFlowService({transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work)}),
+      ...(integrationRuntime.flowChatwoot ? { chatwoot: integrationRuntime.flowChatwoot } : {}),
+    };
     messaging = {
       resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
       jwtSecret: config.jwtSecret,
@@ -701,6 +713,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     void app.register(async (scope) =>
       registerInstanceWorkspaceRoutes(scope, configured),
     );
+  }
+  if (flows) {
+    const configuredFlows=flows;
+    app.register(scope=>registerFlowRoutes(scope,configuredFlows));
   }
   if (messaging) {
     const configuredMessaging = messaging;

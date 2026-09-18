@@ -13,6 +13,21 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     environment: ghcr-release
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7.4.0-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     permissions:
       contents: read
       packages: write
@@ -30,6 +45,11 @@ jobs:
       - name: Install PDF verification tools required by the unit suite
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends poppler-utils
       - run: npm run build && npm test && npm run test:web:bundle && npm run security:submodule && npm audit --audit-level=high
+      - name: Verify tenant storage and durable automation before building images
+        env:
+          TEST_DATABASE_ADMIN_URL: postgresql://postgres@127.0.0.1:5432/postgres
+          TEST_REDIS_URL: redis://127.0.0.1:6379/15
+        run: npm run test:integration -- --maxWorkers=1
       - name: Build API and web without publication
         env:
           REPOSITORY: ${{ github.repository }}

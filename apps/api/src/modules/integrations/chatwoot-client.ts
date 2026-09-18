@@ -22,6 +22,9 @@ const inbox = z.object({
   secret: z.string().optional(),
 });
 export type ChatwootInbox = z.infer<typeof inbox>;
+const flowBot = z.object({ id: integer, name: z.string(), outgoing_url: z.string().nullable().optional(),
+  secret: z.string().optional(), access_token: z.union([z.string(), z.object({ token: z.string() })]).optional(),
+}).transform(({ access_token, ...bot }) => ({ ...bot, token: typeof access_token === 'string' ? access_token : access_token?.token }));
 export class ChatwootError extends Error {
   constructor(
     readonly code: string,
@@ -155,6 +158,34 @@ export class ChatwootClient {
   }
   async listDashboardApps(accountId: number): Promise<DashboardApp[]> {
     return z.array(dashboardApp).max(1000).parse(await this.request('GET', this.account(accountId) + '/dashboard_apps'));
+  }
+  async listFlowBots(accountId: number) {
+    return z.array(flowBot).max(1000).parse(await this.request('GET', this.account(accountId) + '/agent_bots'));
+  }
+  async createFlowBot(accountId: number, name: string, outgoingUrl: string) {
+    return flowBot.parse(await this.request('POST', this.account(accountId) + '/agent_bots',
+      { name, description: 'Automação JRC Broker', outgoing_url: outgoingUrl, bot_type: 'webhook' }));
+  }
+  async inboxFlowBot(accountId: number, inboxId: number) {
+    const data = record(await this.request('GET', this.account(accountId) + `/inboxes/${integer.parse(inboxId)}/agent_bot`));
+    return data.agent_bot == null ? null : flowBot.parse(data.agent_bot);
+  }
+  async setInboxFlowBot(accountId: number, inboxId: number, botId: number | null) {
+    await this.request('POST', this.account(accountId) + `/inboxes/${integer.parse(inboxId)}/set_agent_bot`,
+      { agent_bot: botId === null ? null : integer.parse(botId) });
+  }
+  async flowConversation(accountId: number, conversationId: number) {
+    return z.object({ id: integer, account_id: integer, inbox_id: integer, status: z.string(),
+      meta: z.object({ assignee: z.object({ id: integer, type: z.string().optional() }).nullable().optional(),
+        sender: z.object({ id: integer, name: z.string().optional() }) }),
+    }).parse(await this.request('GET', this.account(accountId) + `/conversations/${integer.parse(conversationId)}`));
+  }
+  async sendFlowMessage(accountId: number, conversationId: number, text: string, deliveryId: string) {
+    return integer.parse(record(await this.request('POST', this.account(accountId) + `/conversations/${integer.parse(conversationId)}/messages`,
+      { content: text, message_type: 'outgoing', private: false, content_attributes: { jrc_flow_delivery_id: deliveryId } })).id);
+  }
+  async handoffFlowConversation(accountId: number, conversationId: number) {
+    await this.request('POST', this.account(accountId) + `/conversations/${integer.parse(conversationId)}/toggle_status`, { status: 'open' });
   }
   async createDashboardApp(accountId: number, input: DashboardAppPayload): Promise<DashboardApp> {
     return dashboardApp.parse(await this.request('POST', this.account(accountId) + '/dashboard_apps', input));
@@ -358,14 +389,14 @@ export class ChatwootClient {
   }
   async createConversation(
     accountId: number,
-    input: { inboxId: number; contactId: number; sourceId: string },
+    input: { inboxId: number; contactId: number; sourceId: string; status?: 'open' | 'pending' },
   ): Promise<number> {
     const data = record(
       await this.request("POST", this.account(accountId) + "/conversations", {
         inbox_id: input.inboxId,
         contact_id: input.contactId,
         source_id: input.sourceId,
-        status: "open",
+        status: input.status ?? "open",
       }),
     );
     return integer.parse(data.id);

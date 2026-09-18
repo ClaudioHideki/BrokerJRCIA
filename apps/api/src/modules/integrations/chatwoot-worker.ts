@@ -439,6 +439,11 @@ export function createChatwootWorker(options: ChatwootOptions) {
       await progress(job, { sourceId });
       if (typeof job.payload.conversationId !== "number")
         await beforeExternal(job, "CREATE_CONVERSATION");
+      const flowOwnsInbox = await tx(org, async t => Boolean((await t.query(`select 1 from flow_chatwoot_bindings b
+        join flow_features f on f.organization_id=b.organization_id and f.enabled and f.revision=b.feature_revision
+        join chatwoot_accounts a on a.organization_id=b.organization_id and a.status='READY' and a.account_id=b.account_id and a.credential_version=b.credential_version
+        join chatwoot_destinations d on d.organization_id=b.organization_id and d.approval_status='APPROVED' and d.revision=b.destination_revision
+        where b.organization_id=$1 and b.inbox_id=$2 and b.status='READY'`, [org, inboxId])).rowCount));
       const conversationId =
         typeof job.payload.conversationId === "number"
           ? job.payload.conversationId
@@ -446,6 +451,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
               inboxId,
               contactId,
               sourceId,
+              ...(flowOwnsInbox ? { status: 'pending' as const } : {}),
             });
       await progress(job, { conversationId });
       await tx(org, (t) =>

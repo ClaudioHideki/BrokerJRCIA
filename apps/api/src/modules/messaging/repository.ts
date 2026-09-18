@@ -24,6 +24,7 @@ import type {
 export type MessagingRepositoryErrorCode =
   | "PROVIDER_ACCOUNT_NOT_FOUND"
   | "INVALID_BOT_CONFIGURATION"
+  | "FLOW_INBOX_HAS_AUTOMATION"
   | "TYPEBOT_NOT_CONFIGURED"
   | "CHANNEL_NOT_FOUND"
   | "CONVERSATION_NOT_FOUND"
@@ -611,6 +612,13 @@ export function createPostgresMessagingRepository(): MessagingRepository {
     },
 
     async setChannelBot(transaction, input) {
+      if (input.botPublicId !== null) {
+        await transaction.query("select pg_advisory_xact_lock(hashtextextended('flow-inbox:'||$1,0))", [input.organizationId]);
+        const conflict = await transaction.query(`select 1 from flow_chatwoot_bindings b join chatwoot_connections c
+          on c.organization_id=b.organization_id and c.inbox_id=b.inbox_id
+          where c.organization_id=$1 and c.channel_id=$2 and c.status<>'DISABLED' and b.status<>'DISABLED'`, [input.organizationId, input.channelId]);
+        if (conflict.rowCount) throw new MessagingRepositoryError('FLOW_INBOX_HAS_AUTOMATION', 409);
+      }
       if (
         (input.botPublicId === null) !==
         (input.botOriginReference === null)
@@ -1345,6 +1353,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                 )) AS "metaChannelReady",
                 (channel.provider <> 'BAILEYS' OR EXISTS(SELECT 1 FROM instances i WHERE i.organization_id=channel.organization_id AND i.id=channel.instance_id AND i.status='CONNECTED')) AS "qrChannelReady",
                 chatwoot_channel_identity_ready(channel.organization_id,channel.id) AS "identityReady",
+                flow_output_allowed(message.organization_id,message.id) AS "flowAllowed",
                 conversation.mode,
                 (channel.provider = 'BAILEYS' OR message.content->>'type' = 'TEMPLATE' OR EXISTS (
                   SELECT 1 FROM messaging_messages inbound
@@ -1403,6 +1412,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
         selected.mode === "HUMAN"
       )
         reason = "CONVERSATION_PAUSED";
+      else if ((selected as ClaimDatabaseRow & {flowAllowed?:boolean}).flowAllowed===false)
+        reason = "FLOW_REVOKED";
       else {
         const updated = first(
           await transaction.query<MessageDatabaseRow>(

@@ -362,6 +362,9 @@ describe('migrations PostgreSQL', () => {
     );
 
     expect(result.rows).toEqual([
+      ...Array.from({length:10},()=>({policyname:'flow_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      {policyname:'flow_platform',roles:['jrc_platform'],cmd:'ALL'},
+      {policyname:'flow_ingress_resolution',roles:['jrc_migrator'],cmd:'SELECT'},
       { policyname:'limits_tenant_read',roles:['jrc_app'],cmd:'SELECT' },
       { policyname:'limits_platform',roles:['jrc_platform'],cmd:'ALL' },
       { policyname:'limits_integrity',roles:['jrc_migrator'],cmd:'ALL' },

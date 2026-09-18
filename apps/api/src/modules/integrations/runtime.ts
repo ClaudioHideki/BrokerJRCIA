@@ -26,6 +26,7 @@ import type { MessagingChannel, OutboxClaim } from "../messaging/types.js";
 import { createOnboardingService } from './chatwoot-onboarding.js';
 import type { ChatwootControlAuth } from './chatwoot-control-auth.js';
 import type { InstanceService } from '../instances/service.js';
+import { createFlowChatwootService } from '../flows/chatwoot-service.js';
 
 type QrConfig = Pick<
   QrServiceOptions,
@@ -250,6 +251,9 @@ export function createIntegrationRuntime(
   return {
     qr,
     chatwoot,
+    flowChatwoot: options ? createFlowChatwootService({ ...options, async resolveBinding(id) {
+      return (await pool.query<{ organization_id: string }>('SELECT * FROM resolve_flow_chatwoot_binding($1)', [id])).rows[0]?.organization_id;
+    } }) : undefined,
     dashboardClient: options ? chatwootEnvironment(options).client : undefined,
     identity,
     controlService: control && options && chatwoot && identity ? createChatwootControlService({ ...options, ...control, chatwoot, health: identity }) : undefined,
