@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { FLOW_NODE_CATALOG, flowPorts, type FlowGraph, type FlowNode } from '@jrc/contracts';
 
-const portName=(port:string)=>port==='yes'?'Sim':port==='no'?'Não':'Continuar';
+const portName=(port:string)=>port==='yes'?'Sim':port==='no'?'Não':port.startsWith('option-')?'Opção '+port.slice(7):'Continuar';
 export function FlowCanvas({graph,onChange,editable}:{graph:FlowGraph;onChange:(graph:FlowGraph)=>void;editable:boolean}){
  const [selected,setSelected]=useState(graph.nodes[0]?.id??'');
  const [zoom,setZoom]=useState(1);
@@ -18,7 +18,7 @@ export function FlowCanvas({graph,onChange,editable}:{graph:FlowGraph;onChange:(
  const add=(type:string)=>{
   const definition=FLOW_NODE_CATALOG.find(n=>n.type===type)!;
   const id=crypto.randomUUID();
-  const defaults:Record<string,unknown>=type==='message'?{text:'Nova mensagem'}:type==='input'?{text:'Qual é sua resposta?',variable:'resposta'}:type==='variable'?{variable:'variavel',value:''}:type==='condition'?{field:'message',operator:'equals',value:''}:{};
+  const defaults:Record<string,unknown>=type==='message'?{text:'Nova mensagem'}:type==='input'?{text:'Qual é sua resposta?',variable:'resposta'}:type==='menu'?{text:'Escolha uma opção:',variable:'menu.choice',options:[{value:'1',label:'Comercial'},{value:'2',label:'Suporte'}]}:type==='variable'?{variable:'variavel',value:''}:type==='condition'?{field:'message',operator:'equals',value:''}:{};
   onChange({...graph,nodes:[...graph.nodes,{id,type,label:definition.label,position:{x:80+(graph.nodes.length%4)*270,y:80+Math.floor(graph.nodes.length/4)*190},data:defaults}]});
   setSelected(id);
  };
@@ -60,8 +60,9 @@ export function FlowCanvas({graph,onChange,editable}:{graph:FlowGraph;onChange:(
   </section>
   <aside className="flows-inspector"><h3>Configurar bloco</h3>{node?<fieldset disabled={!editable}>
    <label>Nome do bloco<input value={node.label} maxLength={160} onChange={e=>patch({label:e.target.value})}/></label>
-   {['message','input'].includes(node.type)&&<label>{node.type==='message'?'Mensagem':'Pergunta'}<textarea rows={5} maxLength={4096} value={String(node.data.text??'')} onChange={e=>data('text',e.target.value)}/></label>}
-   {['input','variable'].includes(node.type)&&<label>Variável<input value={String(node.data.variable??'')} maxLength={100} onChange={e=>data('variable',e.target.value)}/></label>}
+   {['message','input','menu'].includes(node.type)&&<label>{node.type==='message'?'Mensagem':node.type==='menu'?'Mensagem do menu':'Pergunta'}<textarea rows={5} maxLength={4096} value={String(node.data.text??'')} onChange={e=>data('text',e.target.value)}/></label>}
+   {['input','variable','menu'].includes(node.type)&&<label>Variável<input value={String(node.data.variable??'')} maxLength={100} onChange={e=>data('variable',e.target.value)}/></label>}
+   {node.type==='menu'&&<label>Opções, uma por linha<textarea rows={6} value={(Array.isArray(node.data.options)?node.data.options:[]).map(raw=>{const option=raw as {value?:unknown;label?:unknown};return String(option.value??'')+'|'+String(option.label??'');}).join('\n')} onChange={e=>patch({data:{...node.data,options:e.target.value.split(/\r?\n/).filter(Boolean).map(line=>{const [optionValue,...label]=line.split('|');return {value:(optionValue??'').trim(),label:label.join('|').trim()};})}})} /></label>}
    {node.type==='condition'&&<><label>Campo<input value={String(node.data.field??'message')} onChange={e=>data('field',e.target.value)}/></label><label>Comparação<select value={String(node.data.operator??'equals')} onChange={e=>data('operator',e.target.value)}><option value="equals">Igual a</option><option value="not_equals">Diferente de</option><option value="contains">Contém</option><option value="starts_with">Começa com</option><option value="present">Está preenchido</option></select></label></>}
    {['variable','condition'].includes(node.type)&&<label>Valor<input value={String(node.data.value??'')} maxLength={4096} onChange={e=>data('value',e.target.value)}/></label>}
    {node.type==='unsupported'&&<p role="note">Este nó importado ainda não tem executor no Broker. Substitua-o por um bloco compatível. Origem: {String(node.data.sourceType??node.type)}</p>}

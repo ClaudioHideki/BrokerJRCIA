@@ -57,6 +57,19 @@ describe('Native Flows workspace',()=>{
   await waitFor(()=>expect(request).toHaveBeenCalledWith(expect.stringContaining(savedId()),expect.objectContaining({method:'PUT',body:expect.stringContaining('Olá da empresa')})));
   await waitFor(()=>expect(screen.getByRole('button',{name:'Publicar versão'})).not.toBeDisabled());
  });
+ it('adds and configures a menu block with one output for each option',async()=>{
+  const request=mount();
+  fireEvent.click(await screen.findByRole('button',{name:'Novo flow'}));
+  fireEvent.click(screen.getByRole('button',{name:'Criar flow'}));
+  fireEvent.click(await screen.findByRole('button',{name:'Menu de opções'}));
+  expect(screen.getByLabelText('Mensagem do menu')).toHaveValue('Escolha uma opção:');
+  fireEvent.change(screen.getByLabelText('Opções, uma por linha'),{target:{value:'1|Financeiro\n2|Suporte\n3|Comercial'}});
+  expect(screen.getByLabelText('Destino Opção 1')).toBeInTheDocument();
+  expect(screen.getByLabelText('Destino Opção 2')).toBeInTheDocument();
+  expect(screen.getByLabelText('Destino Opção 3')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Salvar'}));
+  await waitFor(()=>expect(request).toHaveBeenCalledWith(expect.stringContaining(savedId()),expect.objectContaining({method:'PUT',body:expect.stringContaining('Financeiro')})));
+ });
  it('keeps creation controls unavailable for a reader',async()=>{
   mount(true,'VIEWER');
   await screen.findByText('Seus flows');

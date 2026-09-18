@@ -29,6 +29,26 @@ describe('native JRC Flows', () => {
     const next = executeFlow(graph, {text:'1', state:first});
     expect(next).toMatchObject({status:'completed', texts:['Comercial: 1'], variables:{setor:'1'}});
   });
+  it('renders a WhatsApp menu, retries invalid choices and follows the selected option', () => {
+    const graph = { nodes: [
+      {id:'s',type:'start',label:'Início',position:{x:0,y:0},data:{}},
+      {id:'m',type:'menu',label:'Menu',position:{x:200,y:0},data:{text:'Escolha um setor:',variable:'setor',options:[{value:'1',label:'Comercial'},{value:'2',label:'Suporte'}]}},
+      {id:'a',type:'message',label:'Comercial',position:{x:400,y:0},data:{text:'Você escolheu Comercial'}},
+      {id:'b',type:'handoff',label:'Suporte humano',position:{x:400,y:200},data:{}},
+      {id:'e',type:'end',label:'Fim',position:{x:600,y:0},data:{}},
+    ], edges: [
+      {id:'1',source:'s',target:'m',port:'next'}, {id:'2',source:'m',target:'a',port:'option-1'},
+      {id:'3',source:'m',target:'b',port:'option-2'}, {id:'4',source:'a',target:'e',port:'next'},
+    ]};
+    expect(validateFlow(graph)).toEqual([]);
+    const first=executeFlow(graph,{text:'oi'});
+    expect(first).toMatchObject({status:'waiting',nodeId:'m',texts:['Escolha um setor:\n1 - Comercial\n2 - Suporte']});
+    const retry=executeFlow(graph,{text:'x',state:first});
+    expect(retry).toMatchObject({status:'waiting',nodeId:'m'});
+    expect(retry.texts[0]).toContain('Responda com o número');
+    const selected=executeFlow(graph,{text:'1',state:first});
+    expect(selected).toMatchObject({status:'completed',variables:{setor:'1'},texts:['Você escolheu Comercial']});
+  });
   it('rejects bad edges, unsupported nodes and infinite paths at publication', () => {
     const graph=welcomeFlow();
     graph.edges[0]!.target='missing';

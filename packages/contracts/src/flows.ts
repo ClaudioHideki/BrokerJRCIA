@@ -18,6 +18,7 @@ export const FLOW_NODE_CATALOG = [
   {type:'start', label:'Início', description:'Recebe uma mensagem do canal vinculado.'},
   {type:'message', label:'Enviar mensagem', description:'Envia texto com as variáveis da conversa.'},
   {type:'input', label:'Capturar resposta', description:'Faz uma pergunta e aguarda a próxima mensagem.'},
+  {type:'menu', label:'Menu de opções', description:'Mostra opções numeradas e segue pelo caminho escolhido.'},
   {type:'condition', label:'Condição', description:'Escolhe entre os caminhos Sim e Não.'},
   {type:'variable', label:'Salvar variável', description:'Guarda um valor para usar nos próximos blocos.'},
   {type:'handoff', label:'Atendimento humano', description:'Pausa o bot e entrega a conversa ao atendente.'},
@@ -28,7 +29,17 @@ const safeKey = (value:unknown):value is string => typeof value==='string' && /^
 const value = (x:unknown) => typeof x==='string' ? x : typeof x==='number' || typeof x==='boolean' ? String(x) : '';
 export function flowPorts(node:FlowNode):string[] {
   if (node.type==='condition') return ['yes','no'];
+  if (node.type==='menu') return menuOptions(node).map(option=>'option-'+option.value);
   return ['end','handoff'].includes(node.type) ? [] : ['next'];
+}
+export interface FlowMenuOption { value:string; label:string }
+export function menuOptions(node:FlowNode):FlowMenuOption[]{
+  if(node.type!=='menu'||!Array.isArray(node.data.options))return [];
+  return node.data.options.flatMap(raw=>{
+    if(!raw||typeof raw!=='object'||Array.isArray(raw))return [];
+    const option=raw as Record<string,unknown>, optionValue=value(option.value).trim(), label=value(option.label).trim();
+    return /^[1-9][0-9]{0,1}$/.test(optionValue)&&label&&label.length<=120?[{value:optionValue,label}]:[];
+  });
 }
 export function validateFlow(input:unknown):string[] {
   const parsed=FlowGraphSchema.safeParse(input);
@@ -55,6 +66,11 @@ export function validateFlow(input:unknown):string[] {
     if(['input','variable'].includes(n.type)&&!safeKey(n.data.variable)) errors.push(n.label+': nome de variável inválido.');
     if(n.type==='input'&&value(n.data.text).length>4096) errors.push(n.label+': pergunta muito longa.');
     if(n.type==='input'&&Number(n.data.timeout??0)>0) errors.push(n.label+': timeout importado ainda não suportado.');
+    if(n.type==='menu'){
+      const options=menuOptions(n), raw=Array.isArray(n.data.options)?n.data.options:[];
+      if(!value(n.data.text).trim()||value(n.data.text).length>4096)errors.push(n.label+': informe a mensagem do menu.');
+      if(options.length<2||options.length>10||options.length!==raw.length||new Set(options.map(option=>option.value)).size!==options.length)errors.push(n.label+': configure de 2 a 10 opções numeradas e únicas.');
+    }
     if(n.type==='condition'&&(!safeKey(n.data.field)||!['equals','not_equals','contains','starts_with','present'].includes(value(n.data.operator)))) errors.push(n.label+': configure o campo e a comparação.');
   }
   const reachable=new Set<string>(), active=new Set<string>(), visited=new Set<string>();
@@ -85,8 +101,19 @@ export function executeFlow(graph:FlowGraph,input:{text:string;variables?:Record
   if(input.state?.status==='completed'||input.state?.status==='handoff')return result(input.state.status,null,steps);
   if(input.state?.status==='waiting'){
     const waiting=graph.nodes.find(n=>n.id===current);
-    if(!waiting||waiting.type!=='input')throw new Error('Sessão de captura inválida.');
-    variables[value(waiting.data.variable)]=input.text.slice(0,4096);current=next(waiting.id);
+    if(!waiting||!['input','menu'].includes(waiting.type))throw new Error('Sessão de captura inválida.');
+    if(waiting.type==='input'){
+      variables[value(waiting.data.variable)]=input.text.slice(0,4096);current=next(waiting.id);
+    }else{
+      const selected=input.text.trim(), options=menuOptions(waiting), option=options.find(item=>item.value===selected);
+      if(!option){
+        const prompt=renderFlowText(waiting.data.text,variables), list=options.map(item=>item.value+' - '+item.label).join('\n');
+        texts.push([prompt,list,'Responda com o número da opção.'].filter(Boolean).join('\n'));
+        return result('waiting',waiting.id,steps);
+      }
+      variables[value(waiting.data.variable)||'menu.choice']=selected;
+      current=next(waiting.id,'option-'+option.value);
+    }
   }
   for(let turn=0;turn<100;turn++){
     if(++steps>1000)throw new Error('Limite de etapas desta conversa atingido.');
@@ -97,6 +124,11 @@ export function executeFlow(graph:FlowGraph,input:{text:string;variables?:Record
     if(node.type==='message')texts.push(renderFlowText(node.data.text,variables));
     if(node.type==='input'){
       const prompt=renderFlowText(node.data.text,variables);if(prompt.trim())texts.push(prompt);
+      return result('waiting',node.id,steps);
+    }
+    if(node.type==='menu'){
+      const prompt=renderFlowText(node.data.text,variables), list=menuOptions(node).map(item=>item.value+' - '+item.label).join('\n');
+      texts.push([prompt,list].filter(Boolean).join('\n'));
       return result('waiting',node.id,steps);
     }
     if(node.type==='variable')variables[value(node.data.variable)]=renderFlowText(node.data.value,variables);

@@ -114,6 +114,26 @@ correção foi validada no runtime Rails de testes.
 
 ## Limites e próximos passos de liberação
 
+### Incremento posterior: menu conversacional nativo
+
+O escopo foi ampliado para permitir chatbots com menus no próprio canvas do
+Broker. O catálogo agora inclui `Menu de opções`, com duas a dez alternativas
+numeradas, uma saída visual por alternativa, variável para a escolha e nova
+tentativa quando o cliente responde com um valor inválido. O mesmo executor é
+usado pelo WhatsApp direto e pelo Agent Bot associado a uma caixa Chatwoot/JRC.
+
+Validação em 18/09/2026: testes focados do motor e da interface passaram (12
+casos), TypeScript passou e a suíte completa passou em 1.108 de 1.109 casos. O
+único caso excedeu o limite de 30 segundos ao rasterizar um PDF de auditoria;
+repetido isoladamente com limite de 120 segundos, passou em 24,56 segundos. O
+incremento não altera banco de dados nem exige nova migração.
+
+JSON n8n/Typebot continua sendo importado apenas quando os nós possuem tradução
+segura para o motor JRC. Paridade ampla deve ser entregue por adaptadores para
+os runtimes correspondentes, com credenciais por empresa e lista explícita de
+capacidades; nós arbitrários não devem ser executados implicitamente dentro da
+API do Broker.
+
 O candidato está construído e testado localmente. Ainda é necessário revisar e
 publicar as revisões autorizadas, aplicar as migrações no ambiente de homologação
 e validar números/canais de teste reais. Não se executou a totalidade da CI de
