@@ -1,0 +1,247 @@
+{
+  "repository": "ClaudioHideki/BrokerJRCIA",
+  "branch": "codex/jrc-platform-v2-complete-exec",
+  "baseSha": "a16c1cdbb00aac593fc0db2149e904b47fb723f6",
+  "headSha": "628218cf902096cdbdada37b4e7210b3e10cfee5",
+  "generatedAt": "2026-09-22T18:00:00-03:00",
+  "capabilities": [
+    {
+      "wave": "B1",
+      "domain": "platform",
+      "capability": "control plane",
+      "codeStatus": "IMPLEMENTED",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/02-PLATFORM-CONTROL-PLANE.md",
+          "symbol": "control plane"
+        }
+      ],
+      "gap": "Remote homologation remains",
+      "developmentRequired": false,
+      "priority": "P1"
+    },
+    {
+      "wave": "B2",
+      "domain": "channel",
+      "capability": "canonical facade",
+      "codeStatus": "PARTIAL",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/03-CHANNEL-DOMAIN.md",
+          "symbol": "canonical facade"
+        }
+      ],
+      "gap": "Missing canonical patch/status/reconnect/disconnect/automation endpoints",
+      "developmentRequired": true,
+      "priority": "P1"
+    },
+    {
+      "wave": "B2",
+      "domain": "events",
+      "capability": "canonical router",
+      "codeStatus": "PARTIAL",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/03-CHANNEL-DOMAIN.md",
+          "symbol": "canonical router"
+        }
+      ],
+      "gap": "Lifecycle events are not exposed through one public envelope",
+      "developmentRequired": true,
+      "priority": "P1"
+    },
+    {
+      "wave": "B3",
+      "domain": "provider",
+      "capability": "QR/Evolution",
+      "codeStatus": "IMPLEMENTED",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/06-MESSAGING-CORE.md",
+          "symbol": "QR/Evolution"
+        }
+      ],
+      "gap": "Real device homologation blocked",
+      "developmentRequired": true,
+      "priority": "P1"
+    },
+    {
+      "wave": "B3",
+      "domain": "provider",
+      "capability": "Meta Cloud API",
+      "codeStatus": "PARTIAL",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/06-MESSAGING-CORE.md",
+          "symbol": "Meta Cloud API"
+        }
+      ],
+      "gap": "Real app/WABA and complete template authoring blocked",
+      "developmentRequired": true,
+      "priority": "P1"
+    },
+    {
+      "wave": "B3",
+      "domain": "messaging",
+      "capability": "messaging core",
+      "codeStatus": "IMPLEMENTED",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/06-MESSAGING-CORE.md",
+          "symbol": "messaging core"
+        }
+      ],
+      "gap": "Production load not measured",
+      "developmentRequired": false,
+      "priority": "P1"
+    },
+    {
+      "wave": "B4",
+      "domain": "destination",
+      "capability": "Chatwoot/JRC",
+      "codeStatus": "PARTIAL",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/08-DESTINATIONS.md",
+          "symbol": "Chatwoot/JRC"
+        }
+      ],
+      "gap": "Generic destination CRUD absent",
+      "developmentRequired": true,
+      "priority": "P1"
+    },
+    {
+      "wave": "B5",
+      "domain": "automation",
+      "capability": "runtime v2",
+      "codeStatus": "IMPLEMENTED",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/10-AUTOMATION-RUNTIME-V2.md",
+          "symbol": "runtime v2"
+        }
+      ],
+      "gap": "Production soak test blocked",
+      "developmentRequired": true,
+      "priority": "P1"
+    },
+    {
+      "wave": "B6",
+      "domain": "automation",
+      "capability": "studio",
+      "codeStatus": "IMPLEMENTED",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/11-AUTOMATION-STUDIO.md",
+          "symbol": "studio"
+        }
+      ],
+      "gap": "Extended visual/touch QA missing",
+      "developmentRequired": false,
+      "priority": "P2"
+    },
+    {
+      "wave": "B7",
+      "domain": "security",
+      "capability": "credential vault",
+      "codeStatus": "PARTIAL",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/13-GENERIC-INTEGRATIONS.md",
+          "symbol": "credential vault"
+        }
+      ],
+      "gap": "Legacy secret stores require gradual consolidation",
+      "developmentRequired": true,
+      "priority": "P1"
+    },
+    {
+      "wave": "B7",
+      "domain": "integration",
+      "capability": "generic nodes",
+      "codeStatus": "IMPLEMENTED",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/13-GENERIC-INTEGRATIONS.md",
+          "symbol": "generic nodes"
+        }
+      ],
+      "gap": "External connectors require homologation",
+      "developmentRequired": false,
+      "priority": "P1"
+    },
+    {
+      "wave": "B8",
+      "domain": "operations",
+      "capability": "workers",
+      "codeStatus": "IMPLEMENTED",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/14-INFRASTRUCTURE-WORKERS.md",
+          "symbol": "workers"
+        }
+      ],
+      "gap": "Target-server capacity test blocked",
+      "developmentRequired": true,
+      "priority": "P1"
+    },
+    {
+      "wave": "B8",
+      "domain": "operations",
+      "capability": "observability",
+      "codeStatus": "PARTIAL",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/14-INFRASTRUCTURE-WORKERS.md",
+          "symbol": "observability"
+        }
+      ],
+      "gap": "External traces and alerting incomplete",
+      "developmentRequired": true,
+      "priority": "P1"
+    },
+    {
+      "wave": "B8",
+      "domain": "operations",
+      "capability": "backup restore",
+      "codeStatus": "IMPLEMENTED",
+      "testStatus": "PASS",
+      "deployStatus": "UNKNOWN",
+      "evidence": [
+        {
+          "file": "docs/analysis/broker-structure-validation/14-INFRASTRUCTURE-WORKERS.md",
+          "symbol": "backup restore"
+        }
+      ],
+      "gap": "Offsite DR not verified",
+      "developmentRequired": false,
+      "priority": "P1"
+    }
+  ]
+}
