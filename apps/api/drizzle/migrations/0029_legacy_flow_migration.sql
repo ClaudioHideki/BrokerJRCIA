@@ -2,7 +2,7 @@ ALTER TABLE automation_definitions ADD COLUMN origin text NOT NULL DEFAULT 'NATI
  CHECK(origin IN ('NATIVE','BROKER_FLOW_V1','JRC_CONVERSAS'));
 ALTER TABLE automation_definitions ADD COLUMN external_id text;
 ALTER TABLE automation_definitions ADD COLUMN migration_status text NOT NULL DEFAULT 'NATIVE'
- CHECK(migration_status IN ('NATIVE','CONVERTED','WAITING_FOR_DRAIN','MANAGED','LEGACY','ROLLED_BACK'));
+ CHECK(migration_status IN ('NATIVE','CONVERTED','WAITING_FOR_DRAIN','MANAGED','LEGACY','CONFLICT','ROLLED_BACK'));
 CREATE UNIQUE INDEX automation_definition_external_origin ON automation_definitions(organization_id,origin,external_id) WHERE external_id IS NOT NULL;
 CREATE TABLE automation_legacy_migrations (
  organization_id uuid NOT NULL, id uuid NOT NULL DEFAULT gen_random_uuid(),
