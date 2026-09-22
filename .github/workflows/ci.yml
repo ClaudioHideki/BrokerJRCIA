@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 60
     services:
       postgres:
-        image: postgres:16.4-alpine
+        image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
         env:
           POSTGRES_DB: postgres
           POSTGRES_USER: postgres
@@ -27,7 +27,7 @@ jobs:
           --health-timeout 3s
           --health-retries 20
       redis:
-        image: redis:7.4.0-alpine
+        image: redis:7.4.0-alpine@sha256:c35af3bbcef51a62c8bae5a9a563c6f1b60d7ebaea4cb5a3ccbcc157580ae098
         ports:
           - 6379:6379
         options: >-
@@ -46,14 +46,14 @@ jobs:
 
     steps:
       - name: Check out the repository and pinned submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
           submodules: recursive
 
       - name: Use the pinned Node.js runtime
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.19.0
           cache: npm
@@ -111,6 +111,9 @@ jobs:
       - name: Test the real container entrypoint
         run: npm run test:container
 
+      - name: Exercise encrypted backup and isolated restore
+        run: npm run test:restore-drill
+
       - name: Audit production dependency severity
         run: npm audit --audit-level=high
 
@@ -132,7 +135,7 @@ jobs:
 
       - name: Retain sanitized current verification evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: broker-security-verification
           path: .sessions/security-release.json

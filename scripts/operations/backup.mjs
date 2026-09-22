@@ -147,6 +147,9 @@ async function main() {
       "Usage: backup compose-file runtime-env-file new-backup-directory",
     );
   const [compose, envFile, directory] = args.map((value) => resolve(value));
+  const composeProject = process.env.JRC_BACKUP_COMPOSE_PROJECT;
+  if (composeProject && !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(composeProject))
+    throw new Error("INVALID_BACKUP_COMPOSE_PROJECT");
   await mkdir(directory, { mode: 0o700 });
   const files = [];
   for (const [name, service, command] of [
@@ -175,6 +178,7 @@ async function main() {
       "docker",
       [
         "compose",
+        ...(composeProject ? ["-p", composeProject] : []),
         "--env-file",
         envFile,
         "-f",

@@ -116,7 +116,7 @@ services:
       PLATFORM_DATABASE_URL: postgresql://jrc_platform:${JRC_PLATFORM_PASSWORD:?required}@postgres:5432/jrc_broker
       PLATFORM_MFA_KEY: ${PLATFORM_MFA_KEY:?required}
       PLATFORM_ORIGIN: ${PUBLIC_ORIGIN:?required}
-      PLATFORM_LOGIN_MODE: ${PLATFORM_LOGIN_MODE:-password}
+      PLATFORM_LOGIN_MODE: ${PLATFORM_LOGIN_MODE:-password_totp}
 
     expose:
       - "3000"
@@ -342,7 +342,7 @@ services:
 
 
   postgres:
-    image: postgres:16.4-alpine
+    image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
     restart: unless-stopped
 
     environment:
@@ -368,7 +368,7 @@ services:
 
 
   redis:
-    image: redis:7.4.0-alpine
+    image: redis:7.4.0-alpine@sha256:c35af3bbcef51a62c8bae5a9a563c6f1b60d7ebaea4cb5a3ccbcc157580ae098
     restart: unless-stopped
 
     command:

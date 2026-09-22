@@ -15,7 +15,7 @@ jobs:
     environment: ghcr-release
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
         ports: ['5432:5432']
@@ -23,7 +23,7 @@ jobs:
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
-        image: redis:7.4.0-alpine
+        image: redis:7.4.0-alpine@sha256:c35af3bbcef51a62c8bae5a9a563c6f1b60d7ebaea4cb5a3ccbcc157580ae098
         ports: ['6379:6379']
         options: >-
           --health-cmd "redis-cli ping"
@@ -31,13 +31,14 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
           submodules: recursive
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.19.0
           cache: npm
@@ -50,21 +51,65 @@ jobs:
           TEST_DATABASE_ADMIN_URL: postgresql://postgres@127.0.0.1:5432/postgres
           TEST_REDIS_URL: redis://127.0.0.1:6379/15
         run: npm run test:integration -- --maxWorkers=1
-      - name: Build API and web without publication
+      - name: Prepare BuildKit
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Authenticate to GHCR only for an approved publication
+        if: ${{ inputs.publish }}
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Define immutable image names
         env:
           REPOSITORY: ${{ github.repository }}
         run: |
           image="ghcr.io/${REPOSITORY,,}"
-          docker build --target runtime -f infra/app/Dockerfile -t "$image-api:$GITHUB_SHA" .
-          docker build --target web -f infra/app/Dockerfile -t "$image-web:$GITHUB_SHA" .
           echo "IMAGE_BASE=$image" >> "$GITHUB_ENV"
-      - name: Publish explicitly approved immutable revision tags
+      - name: Build API with SBOM and provenance
+        id: api
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: infra/app/Dockerfile
+          target: runtime
+          tags: ${{ env.IMAGE_BASE }}-api:${{ github.sha }}
+          push: ${{ inputs.publish }}
+          load: ${{ !inputs.publish }}
+          sbom: true
+          provenance: mode=max
+      - name: Build web with SBOM and provenance
+        id: web
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: infra/app/Dockerfile
+          target: web
+          tags: ${{ env.IMAGE_BASE }}-web:${{ github.sha }}
+          push: ${{ inputs.publish }}
+          load: ${{ !inputs.publish }}
+          sbom: true
+          provenance: mode=max
+      - name: Install the pinned Cosign client
         if: ${{ inputs.publish }}
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_USER: ${{ github.actor }}
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9 # v3
+      - name: Sign the published image digests with GitHub OIDC
+        if: ${{ inputs.publish }}
         run: |
-          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-          docker push "$IMAGE_BASE-api:$GITHUB_SHA"
-          docker push "$IMAGE_BASE-web:$GITHUB_SHA"
-          docker logout ghcr.io
+          cosign sign --yes "$IMAGE_BASE-api@${{ steps.api.outputs.digest }}"
+          cosign sign --yes "$IMAGE_BASE-web@${{ steps.web.outputs.digest }}"
+      - name: Record sanitized immutable image evidence
+        shell: bash
+        run: |
+          mkdir -p .sessions
+          jq -n --arg revision "$GITHUB_SHA" --arg api "${{ steps.api.outputs.digest }}" --arg web "${{ steps.web.outputs.digest }}" --argjson published '${{ inputs.publish }}' \
+            '{revision:$revision,published:$published,apiDigest:$api,webDigest:$web,sbom:true,provenance:"mode=max",signature:(if $published then "github-oidc" else "not-published" end)}' \
+            > .sessions/image-release.json
+      - name: Retain sanitized image evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jrc-image-release-${{ github.sha }}
+          path: .sessions/image-release.json
+          if-no-files-found: error
+          retention-days: 30
