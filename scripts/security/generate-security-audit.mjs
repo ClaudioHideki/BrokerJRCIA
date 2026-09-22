@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -56,6 +56,7 @@ export function buildAuditSourceReference({
   const root = resolve(rootDirectory);
   const safeRoot = root.replaceAll('\\', '/');
   let listedFiles;
+  let manifestHashes = null;
   try {
     listedFiles = execFileSync('git', [
       '-c', `safe.directory=${safeRoot}`,
@@ -64,7 +65,18 @@ export function buildAuditSourceReference({
       cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000,
     }).split(/\r?\n/u).filter(Boolean);
   } catch {
-    throw new Error('Could not enumerate the audited source snapshot');
+    const manifestPath = resolve(root, 'MANIFESTO_ARQUIVOS_SHA256.txt');
+    if (!existsSync(manifestPath)) throw new Error('Could not enumerate the audited source snapshot');
+    manifestHashes = new Map();
+    for (const line of readFileSync(manifestPath, 'utf8').split(/\r?\n/u)) {
+      if (!line.trim()) continue;
+      const match = /^([a-f0-9]{64})\s{2}(.+)$/iu.exec(line);
+      if (!match) throw new Error('Packaged source manifest has an invalid entry');
+      const path = match[2].replaceAll('\\', '/');
+      if (path.startsWith('/') || path.split('/').includes('..')) throw new Error('Packaged source manifest has an unsafe path');
+      manifestHashes.set(path, match[1].toLowerCase());
+    }
+    listedFiles = [...manifestHashes.keys()];
   }
   const outputPrefix = `${profile.outputDirectory.replaceAll('\\', '/').replace(/\/$/u, '')}/`;
   const files = [...new Set(listedFiles)]
@@ -72,25 +84,14 @@ export function buildAuditSourceReference({
     .filter((path) => !path.startsWith(outputPrefix) && !path.startsWith('upstream/'))
     .filter((path) => existsSync(resolve(root, path)))
     .sort();
-  let blobs;
-  try {
-    blobs = execFileSync('git', [
-      '-c', `safe.directory=${safeRoot}`,
-      'hash-object', '--stdin-paths',
-    ], {
-      cwd: root,
-      encoding: 'utf8',
-      input: `${files.join('\n')}\n`,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 10_000,
-    }).split(/\r?\n/u).filter(Boolean);
-  } catch {
-    throw new Error('Could not hash the audited source snapshot');
-  }
-  if (blobs.length !== files.length) throw new Error('Audited source snapshot is incomplete');
   const digest = createHash('sha256');
-  for (const [index, path] of files.entries()) {
-    digest.update(path).update('\0').update(blobs[index]).update('\n');
+  for (const path of files) {
+    const content = readFileSync(resolve(root, path));
+    const contentHash = createHash('sha256').update(content).digest('hex');
+    if (manifestHashes?.get(path) !== undefined && manifestHashes.get(path) !== contentHash) {
+      throw new Error(`Packaged source manifest checksum mismatch: ${path}`);
+    }
+    digest.update(path).update('\0').update(contentHash).update('\n');
   }
   return `sha256:${digest.digest('hex')}`;
 }

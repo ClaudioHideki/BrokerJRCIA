@@ -42,6 +42,7 @@
     "security:audit:generate": "node scripts/security/generate-security-audit.mjs",
     "security:audit:verify-pdf": "node scripts/security/verify-pdf-artifact.mjs",
     "security:audit:gate": "node scripts/security/gate-security-audit.mjs",
+    "source:manifest": "node scripts/security/generate-source-manifest.mjs",
     "ci:verify": "npm run clean && npm run build && npm run test:web:bundle && npm run typecheck && npm run test:compiled && npm test && npm run test:web && npm run test:integration && npm run test:e2e && npm run openapi:generate && git diff --exit-code -- docs/api/openapi.json && npm run security:contracts && npm run security:notices && npm run security:submodule && npm audit --audit-level=high && docker build --file infra/app/Dockerfile --tag jrc-whatsapp-broker:phase-1-increment-2 . && npm run test:container && npm run security:release && npm run security:audit:verify-pdf && npm run security:audit:gate && git diff --exit-code -- docs/security/phase-1-increment-2 && git diff --check",
     "test:baseline": "vitest run tests/repository-baseline.test.mjs",
     "test:compose": "vitest run tests/compose-pins.test.mjs",

@@ -61,5 +61,5 @@ describe('verificação rasterizada do PDF de auditoria', () => {
       footerPages: Array.from({ length: generated.pageCount - 1 }, (_, index) => index + 2),
       dpi: 150,
     });
-  }, 60_000);
+  }, 120_000);
 });

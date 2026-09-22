@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -60,6 +60,32 @@ describe('artefatos reproduzíveis da auditoria de segurança', () => {
     await writeFile(resolve(directory, 'apps/api/src/app.ts'), 'export const app = false;\n');
     expect(buildAuditSourceReference({ rootDirectory: directory })).not.toBe(beforeReport);
   }, 15_000);
+
+  it('produz a mesma referência em checkout Git e pacote verificado por manifesto', async () => {
+    const checkout = await mkdtemp(join(tmpdir(), 'jrc-audit-checkout-'));
+    const packaged = await mkdtemp(join(tmpdir(), 'jrc-audit-package-'));
+    temporaryDirectories.push(checkout, packaged);
+    await mkdir(resolve(checkout, 'apps/api/src'), { recursive: true });
+    await mkdir(resolve(checkout, 'docs/api'), { recursive: true });
+    await writeFile(resolve(checkout, 'apps/api/src/app.ts'), 'export const app = true;\n');
+    await writeFile(resolve(checkout, 'docs/api/openapi.json'), '{}\n');
+    execFileSync('git', ['init', '--quiet'], { cwd: checkout });
+    execFileSync('git', ['add', '.'], { cwd: checkout });
+    const gitReference = buildAuditSourceReference({ rootDirectory: checkout });
+
+    await cp(resolve(checkout, 'apps'), resolve(packaged, 'apps'), { recursive: true });
+    await cp(resolve(checkout, 'docs'), resolve(packaged, 'docs'), { recursive: true });
+    const entries = ['apps/api/src/app.ts', 'docs/api/openapi.json'];
+    const manifest = [];
+    for (const path of entries) {
+      manifest.push(`${createHash('sha256').update(await readFile(resolve(packaged, path))).digest('hex').toUpperCase()}  ${path}`);
+    }
+    await writeFile(resolve(packaged, 'MANIFESTO_ARQUIVOS_SHA256.txt'), `${manifest.join('\n')}\n`);
+
+    expect(buildAuditSourceReference({ rootDirectory: packaged })).toBe(gitReference);
+    await writeFile(resolve(packaged, entries[0]), 'export const app = false;\n');
+    expect(() => buildAuditSourceReference({ rootDirectory: packaged })).toThrow(/checksum mismatch/iu);
+  });
 
   it('gera duas vezes os mesmos JSON, Markdown, issues e PDF', async () => {
     const first = await outputDirectory();

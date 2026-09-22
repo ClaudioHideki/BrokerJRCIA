@@ -1,5 +1,32 @@
 [
   {
+    "method": "POST",
+    "path": "/hooks/{token}",
+    "authentication": "OPAQUE_TOKEN_OPTIONAL_HMAC_TIMESTAMP",
+    "permission": "ACTIVE_BOUND_AUTOMATION",
+    "tenantRls": true,
+    "idempotency": "UNIQUE_EVENT_ID_AND_AUTOMATION_EVENT_KEY",
+    "requestSchemas": [
+      "body:application/json",
+      "header:x-jrc-event-id",
+      "header:x-jrc-signature",
+      "header:x-jrc-timestamp",
+      "path:token"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "TOKEN_PATH_REDACTED_NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/automation-webhooks.ts",
+    "handlerLine": 17,
+    "ownershipCheck": "SECURITY_DEFINER_HASH_LOOKUP_THEN_RLS_ORGANIZATION"
+  },
+  {
     "method": "GET",
     "path": "/v1/api-keys",
     "authentication": "JWT_OR_JRC_API_KEY",
@@ -24,7 +51,7 @@
     ],
     "challengeExposure": "NOT_APPLICABLE",
     "handlerFile": "apps/api/src/http/routes/api-keys.ts",
-    "handlerLine": 133,
+    "handlerLine": 136,
     "ownershipCheck": "RLS_ORGANIZATION_FILTER"
   },
   {
@@ -52,7 +79,7 @@
     ],
     "challengeExposure": "NOT_APPLICABLE",
     "handlerFile": "apps/api/src/http/routes/api-keys.ts",
-    "handlerLine": 115,
+    "handlerLine": 118,
     "ownershipCheck": "ACTIVE_ORGANIZATION_CONTEXT"
   },
   {
@@ -79,7 +106,7 @@
     ],
     "challengeExposure": "NOT_APPLICABLE",
     "handlerFile": "apps/api/src/http/routes/api-keys.ts",
-    "handlerLine": 150,
+    "handlerLine": 153,
     "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID"
   },
   {
@@ -184,6 +211,582 @@
     "handlerFile": "apps/api/src/http/routes/auth.ts",
     "handlerLine": 192,
     "ownershipCheck": "SELECTION_TOKEN_MEMBERSHIP_REVALIDATED"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/automation-imports",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_DRAFT_ONLY",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "ENCRYPTED_ORIGINAL_CREDENTIALS_STRIPPED",
+    "handlerFile": "apps/api/src/http/routes/automation-imports.ts",
+    "handlerLine": 12,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMPORT_ARTIFACT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/automation-nodes",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 27,
+    "ownershipCheck": "STATIC_EXECUTABLE_NODE_CATALOG"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/automations",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 28,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/automations",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 35,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/automations/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 36,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/automations/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 37,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/automations/{id}/bindings",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 42,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/automations/{id}/bindings",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 43,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/automations/{id}/bindings/{bindingId}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:bindingId",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 44,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/automations/{id}/publish",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 40,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/automations/{id}/simulate",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_EXTERNAL_EFFECT",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 39,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/automations/{id}/validate",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_EXTERNAL_EFFECT",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 38,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/automations/{id}/versions",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 41,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/automations/migrations/legacy",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY",
+      "400:application/problem+json",
+      "403:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 30,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/automations/migrations/legacy",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY",
+      "400:application/problem+json",
+      "403:application/problem+json",
+      "409:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 31,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/automations/migrations/legacy/{id}/cutover",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY",
+      "400:application/problem+json",
+      "403:application/problem+json",
+      "409:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 32,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/automations/migrations/legacy/{id}/rollback",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY",
+      "400:application/problem+json",
+      "403:application/problem+json",
+      "409:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 33,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/automations/status",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 26,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 52,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_DELEGATED_TO_PROVIDER_WORKFLOW",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key"
+    ],
+    "responseSchemas": [
+      "201:application/json",
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 57,
+    "ownershipCheck": "RLS_ORGANIZATION_PROVIDER_ACCOUNT_AND_CHANNEL"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 54,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/channels/{id}/destination",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "DESTINATION_RECONCILIATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 72,
+    "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_ACCOUNT_AND_INBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/{id}/pair",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_AND_SHARED_PAIR_WINDOW",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 64,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER"
   },
   {
     "method": "POST",
@@ -294,6 +897,939 @@
   },
   {
     "method": "GET",
+    "path": "/v1/credentials",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "METADATA_ONLY_NO_SECRET_READ",
+    "handlerFile": "apps/api/src/http/routes/credentials.ts",
+    "handlerLine": 17,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CREDENTIAL"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/credentials",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "ENVELOPE_ENCRYPTED_NO_SECRET_RESPONSE",
+    "handlerFile": "apps/api/src/http/routes/credentials.ts",
+    "handlerLine": 18,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CREDENTIAL"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/credentials/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "ENVELOPE_ENCRYPTED_NO_SECRET_RESPONSE",
+    "handlerFile": "apps/api/src/http/routes/credentials.ts",
+    "handlerLine": 21,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CREDENTIAL"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/credentials/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "METADATA_ONLY_NO_SECRET_READ",
+    "handlerFile": "apps/api/src/http/routes/credentials.ts",
+    "handlerLine": 19,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CREDENTIAL"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/credentials/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "ENVELOPE_ENCRYPTED_NO_SECRET_RESPONSE",
+    "handlerFile": "apps/api/src/http/routes/credentials.ts",
+    "handlerLine": 20,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CREDENTIAL"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/credentials/{id}/test",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "ENVELOPE_ENCRYPTED_NO_SECRET_RESPONSE",
+    "handlerFile": "apps/api/src/http/routes/credentials.ts",
+    "handlerLine": 22,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CREDENTIAL"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/embed/apps/{id}/policy",
+    "authentication": "PUBLIC_OPAQUE_APP_ID",
+    "permission": "APPROVED_ORIGIN_ONLY",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-embed.ts",
+    "handlerLine": 57,
+    "ownershipCheck": "SERVER_LOOKUP_RLS_ACTIVE_APP_ACCOUNT_DESTINATION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/embed/authorizations",
+    "authentication": "PUBLIC_CHALLENGE_RATE_LIMITED",
+    "permission": "START_WITHOUT_AUTHENTICATION_GRANT",
+    "tenantRls": true,
+    "idempotency": "NEW_REQUEST_120_SECONDS",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "201:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "PUBLIC_REQUEST_ID_ONLY",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-embed.ts",
+    "handlerLine": 59,
+    "ownershipCheck": "SERVER_LOOKUP_RLS_ACTIVE_APP_ACCOUNT_DESTINATION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/embed/authorizations/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_CONNECTION_GRANTS",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-embed.ts",
+    "handlerLine": 66,
+    "ownershipCheck": "RLS_PENDING_REQUEST_CURRENT_ACCOUNT_DESTINATION_GRANTS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/embed/authorizations/{id}/approve",
+    "authentication": "JWT_CSRF_EXACT_ORIGIN",
+    "permission": "CURRENT_CONNECTION_GRANTS",
+    "tenantRls": true,
+    "idempotency": "PENDING_REQUEST_ROW_LOCK",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-embed.ts",
+    "handlerLine": 68,
+    "ownershipCheck": "RLS_PENDING_REQUEST_CURRENT_ACCOUNT_DESTINATION_GRANTS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/embed/authorizations/{id}/deny",
+    "authentication": "JWT_CSRF_EXACT_ORIGIN",
+    "permission": "CURRENT_CONNECTION_GRANTS",
+    "tenantRls": true,
+    "idempotency": "PENDING_REQUEST_ROW_LOCK",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-embed.ts",
+    "handlerLine": 71,
+    "ownershipCheck": "RLS_PENDING_REQUEST_CURRENT_ACCOUNT_DESTINATION_GRANTS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/embed/authorizations/{id}/exchange",
+    "authentication": "SHA256_VERIFIER_TIMING_SAFE_RATE_LIMITED",
+    "permission": "EXPLICIT_APPROVAL_CURRENT_GRANTS",
+    "tenantRls": true,
+    "idempotency": "ATOMIC_SINGLE_CONSUMPTION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "OPAQUE_FIVE_MINUTE_SESSION_NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-embed.ts",
+    "handlerLine": 74,
+    "ownershipCheck": "RLS_APPROVED_UNEXPIRED_REQUEST_USER_GRANTS_IDENTITY"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/embed/connections/{id}/pair",
+    "authentication": "OPAQUE_SHORT_SESSION_HASH_LOOKUP",
+    "permission": "SESSION_PAIR_GRANT_APPROVED_IDENTITY",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_AND_SHARED_PAIR_WINDOW",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "TEMPORARY_PAIRING_ACTION_NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-embed.ts",
+    "handlerLine": 89,
+    "ownershipCheck": "RLS_CURRENT_SESSION_GRANT_BEFORE_DISPATCH_AFTER_RESPONSE"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/embed/connections/{id}/status",
+    "authentication": "OPAQUE_SHORT_SESSION_HASH_LOOKUP",
+    "permission": "SESSION_READ_GRANT_CURRENT_MEMBERSHIP",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY_PROVIDER_STATUS",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-embed.ts",
+    "handlerLine": 82,
+    "ownershipCheck": "RLS_SESSION_ACCOUNT_DESTINATION_CREDENTIAL_IDENTITY_REVISION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/executions",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "query:automationId"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 45,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/executions/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 46,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/executions/{id}/cancel",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 47,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/executions/{id}/reconcile",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 49,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/executions/{id}/resume",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 50,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/executions/{id}/retry",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 48,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/flows",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 54,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/flows",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 62,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/flows/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 65,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/flows/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 66,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/flows/{id}/bind",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 74,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/flows/{id}/chatwoot/bind",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 38,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/flows/{id}/chatwoot/runs",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 40,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/flows/{id}/export",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 67,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/flows/{id}/publish",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 73,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/flows/{id}/runs",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 76,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/flows/{id}/simulate",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 77,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/flows/{id}/unbind",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 75,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/flows/{id}/validate",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 70,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/flows/channels",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 55,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/flows/chatwoot/{id}/disable",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 39,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/flows/chatwoot/{id}/events",
+    "authentication": "HMAC_TIMESTAMP_RAW_BODY",
+    "permission": "BOUND_AGENT_BOT",
+    "tenantRls": true,
+    "idempotency": "UNIQUE_BINDING_MESSAGE_ID",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 44,
+    "ownershipCheck": "RLS_ACCOUNT_INBOX_DESTINATION_CREDENTIAL_FEATURE_REVISION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/flows/chatwoot/inboxes",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 37,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/flows/import-preview",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 59,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/flows/library",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 56,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/flows/status",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 53,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
+  },
+  {
+    "method": "GET",
     "path": "/v1/instances",
     "authentication": "JWT_OR_JRC_API_KEY",
     "permission": "instances:read",
@@ -317,7 +1853,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/instances.ts",
-    "handlerLine": 149,
+    "handlerLine": 152,
     "ownershipCheck": "RLS_ORGANIZATION_FILTER_AND_TENANT_CURSOR"
   },
   {
@@ -350,7 +1886,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/instances.ts",
-    "handlerLine": 123,
+    "handlerLine": 126,
     "ownershipCheck": "RLS_PROVIDER_ACCOUNT_AND_ORGANIZATION"
   },
   {
@@ -377,7 +1913,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/instances.ts",
-    "handlerLine": 166,
+    "handlerLine": 169,
     "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID"
   },
   {
@@ -410,7 +1946,7 @@
     ],
     "challengeExposure": "EPHEMERAL_FIRST_RESPONSE_ONLY",
     "handlerFile": "apps/api/src/http/routes/instances.ts",
-    "handlerLine": 180,
+    "handlerLine": 183,
     "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID_BEFORE_PROVIDER"
   },
   {
@@ -443,7 +1979,32 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/instances.ts",
-    "handlerLine": 226,
+    "handlerLine": 229,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID_BEFORE_PROVIDER"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/instances/{id}/settings",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_ACTIVE_ORGANIZATION_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "403:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/instance-workspace.ts",
+    "handlerLine": 27,
     "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID_BEFORE_PROVIDER"
   },
   {
@@ -471,8 +2032,1920 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/instances.ts",
-    "handlerLine": 211,
+    "handlerLine": 214,
     "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID_BEFORE_PROVIDER"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/instances/{id}/workspace",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "403:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/instance-workspace.ts",
+    "handlerLine": 23,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_RESOURCE_ID_BEFORE_PROVIDER"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 166,
+    "ownershipCheck": "RLS_ORGANIZATION_ONLY"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/{id}/events",
+    "authentication": "CHATWOOT_HMAC_TIMESTAMP_RAW_BODY",
+    "permission": "NOT_APPLICABLE_WEBHOOK",
+    "tenantRls": true,
+    "idempotency": "UPSTREAM_EVENT_ID_DEDUPE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 352,
+    "ownershipCheck": "STORED_BINDING_SIGNATURE_ACCOUNT_INBOX_AND_RLS"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/integrations/chatwoot/account",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 184,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/connections",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 218,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/integrations/chatwoot/connections/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 268,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/connections/{id}/agents",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 230,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/connections/{id}/agents",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 235,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/connections/{id}/operator-grants",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 91,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CONNECTION_MEMBERS_PROJECTION"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/integrations/chatwoot/connections/{id}/operator-grants",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_CANONICAL_HASH",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 94,
+    "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_CURRENT_MEMBERSHIP_AND_CONNECTION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/connections/{id}/reconcile",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 255,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/connections/{id}/retry",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 120,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/control-credentials",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_NO_SECRET_REPLAY",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key"
+    ],
+    "responseSchemas": [
+      "201:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 88,
+    "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_APPROVED_ACCOUNT"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/integrations/chatwoot/control/connections/{integrationId}/agents",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_NO_UNCERTAIN_WRITE_REPLAY",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:integrationId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 70,
+    "ownershipCheck": "RLS_VALIDATED_ACCOUNT_AGENTS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/control/connections/{integrationId}/confirm-identity",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_AND_OBSERVATION_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:integrationId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 67,
+    "ownershipCheck": "RLS_ADMIN_PROVIDER_OBSERVED_IDENTITY"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/control/connections/{integrationId}/disconnect",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CURRENT_MEMBERSHIP_OR_CHATWOOT_DISCONNECT",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:integrationId"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 60,
+    "ownershipCheck": "RLS_CURRENT_CONNECTION_ADMIN_OR_SERVICE"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/control/connections/{integrationId}/pair",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CHATWOOT_PAIR_AND_FIRST_BINDING_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_AND_SHARED_PAIR_WINDOW",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:integrationId"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 53,
+    "ownershipCheck": "RLS_CURRENT_CONNECTION_GRANT_AND_PROVIDER_IDENTITY"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/control/connections/{integrationId}/status",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CURRENT_MEMBERSHIP_OR_CHATWOOT_READ",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY_PROVIDER_STATUS",
+    "requestSchemas": [
+      "path:integrationId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 50,
+    "ownershipCheck": "RLS_ACCOUNT_REVISION_CONNECTION_GRANT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/control/context",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CURRENT_MEMBERSHIP_OR_CHATWOOT_READ",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 36,
+    "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/control/onboarding",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 43,
+    "ownershipCheck": "RLS_CURRENT_ACCOUNT_REVISION_OPERATIONS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/control/onboarding",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE",
+    "tenantRls": true,
+    "idempotency": "PERSISTENT_IDEMPOTENCY_KEY_CANONICAL_HASH",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key"
+    ],
+    "responseSchemas": [
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 73,
+    "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/control/onboarding/{operationId}",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CURRENT_MEMBERSHIP_OR_CHATWOOT_READ",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 79,
+    "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_OPERATION_AND_INTEGRATION_GRANT"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/control/onboarding/{operationId}/recover",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_CANONICAL_HASH",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 82,
+    "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/control/resources",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 40,
+    "ownershipCheck": "RLS_SANITIZED_AVAILABLE_QR_RESOURCES"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/destination",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 114,
+    "ownershipCheck": "RLS_ORGANIZATION_ONLY"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/integrations/chatwoot/destination",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "SAME_ORIGIN_AND_MODE_NO_CHANGE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 117,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_DESTINATION_NOT_IN_USE"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/embed-apps",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "UNIQUE_ORGANIZATION_DESTINATION_REVISION",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "201:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-embed.ts",
+    "handlerLine": 48,
+    "ownershipCheck": "RLS_APPROVED_CURRENT_ACCOUNT_DESTINATION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/embed-apps/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-embed.ts",
+    "handlerLine": 51,
+    "ownershipCheck": "RLS_APPROVED_CURRENT_ACCOUNT_DESTINATION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/embed-apps/{id}/install",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_LEASE_UNKNOWN_RECONCILE_EXACT_URL",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-embed.ts",
+    "handlerLine": 54,
+    "ownershipCheck": "RLS_ACCOUNT_DESTINATION_CREDENTIAL_REVISION_BEFORE_POST"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/inboxes",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 197,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/jobs",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 287,
+    "ownershipCheck": "RLS_ORGANIZATION_ONLY"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/jobs/{id}/reconcile",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 141,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/integrations/chatwoot/jobs/{id}/retry",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 295,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/sources",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 161,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/messaging/channels",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 312,
+    "ownershipCheck": "RLS_ORGANIZATION_FILTER"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/messaging/channels/{id}/automation",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 392,
+    "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_AND_SERVER_ORIGIN_ALLOWLIST"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/messaging/channels/{id}/conversations",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 336,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CHANNEL_ID"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/messaging/channels/{id}/messages",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "REQUIRED",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 362,
+    "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_CONVERSATION_AND_CONTACT_POLICY_BEFORE_OUTBOX"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/messaging/channels/{id}/templates",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 323,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CHANNEL_ID_BEFORE_META"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/messaging/channels/{id}/text",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "REQUIRED",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 277,
+    "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_CONVERSATION_AND_CONTACT_POLICY_BEFORE_OUTBOX"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/messaging/conversations/{id}/messages",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 349,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CONVERSATION_ID"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/messaging/conversations/{id}/mode",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 410,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CONVERSATION_ID"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/messaging/instances/{id}/activate",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 314,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/messaging/media/{id}",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 256,
+    "ownershipCheck": "RLS_ORGANIZATION_ENCRYPTED_MEDIA_ATTACHMENT_ONLY"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/messaging/messages/{id}/retry",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "SAFE_FAILURE_STATE_ONLY",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 232,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_SAFE_OUTBOX_STATE"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/meta-onboarding",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/meta-onboarding.ts",
+    "handlerLine": 28,
+    "ownershipCheck": "RLS_ORGANIZATION_ASSETS_VERIFIED_BY_META"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/meta-onboarding/{id}/refresh",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/meta-onboarding.ts",
+    "handlerLine": 32,
+    "ownershipCheck": "RLS_ORGANIZATION_ASSETS_VERIFIED_BY_META"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/meta-onboarding/{id}/register",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/meta-onboarding.ts",
+    "handlerLine": 33,
+    "ownershipCheck": "RLS_ORGANIZATION_ASSETS_VERIFIED_BY_META"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/meta-onboarding/{id}/revoke",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/meta-onboarding.ts",
+    "handlerLine": 31,
+    "ownershipCheck": "RLS_ORGANIZATION_ASSETS_VERIFIED_BY_META"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/meta-onboarding/complete",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "ONE_TIME_TENANT_USER_STATE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/meta-onboarding.ts",
+    "handlerLine": 30,
+    "ownershipCheck": "RLS_ORGANIZATION_ASSETS_VERIFIED_BY_META"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/meta-onboarding/start",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/meta-onboarding.ts",
+    "handlerLine": 29,
+    "ownershipCheck": "RLS_ORGANIZATION_ASSETS_VERIFIED_BY_META"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/operations/health",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "SANITIZED_OPERATIONAL_CODES_ONLY",
+    "handlerFile": "apps/api/src/http/routes/observability.ts",
+    "handlerLine": 12,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_HEALTH_AND_QUEUES"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/organization/operations",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/tenant-operations.ts",
+    "handlerLine": 50,
+    "ownershipCheck": "RLS_ORGANIZATION_LIMITS"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/organization/overview",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "query:days"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "403:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/tenant-operations.ts",
+    "handlerLine": 27,
+    "ownershipCheck": "RLS_ORGANIZATION_AGGREGATES_NO_CONTENT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/auth/config",
+    "authentication": "NONE",
+    "permission": "NOT_APPLICABLE_PRE_AUTH",
+    "tenantRls": false,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 176,
+    "ownershipCheck": "PUBLIC_MFA_POLICY_ONLY"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/auth/login",
+    "authentication": "CONFIGURED_PASSWORD_MODE_EXACT_ORIGIN",
+    "permission": "PLATFORM_IDENTITY",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 183,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/auth/logout",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "PLATFORM_IDENTITY",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 210,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/auth/session",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "PLATFORM_IDENTITY",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 198,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 243,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 254,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/platform/organizations/{id}",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 264,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/chatwoot",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 363,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/platform/organizations/{id}/chatwoot/account",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 392,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/chatwoot/connections",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 426,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/platform/organizations/{id}/chatwoot/connections/{resourceId}",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id",
+      "path:resourceId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 544,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/chatwoot/connections/{resourceId}/agents",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "path:id",
+      "path:resourceId"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 448,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/chatwoot/connections/{resourceId}/agents",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id",
+      "path:resourceId"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 459,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/chatwoot/connections/{resourceId}/reconcile",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id",
+      "path:resourceId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 527,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/chatwoot/connections/{resourceId}/retry",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id",
+      "path:resourceId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 483,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/chatwoot/destination/approve",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "REVIEWED_DESTINATION_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 353,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_AND_DESTINATION_REVISION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/chatwoot/inboxes",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 414,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/chatwoot/jobs",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 418,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/chatwoot/jobs/{resourceId}/reconcile",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id",
+      "path:resourceId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 506,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/chatwoot/jobs/{resourceId}/retry",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id",
+      "path:resourceId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 563,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/chatwoot/provision",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 582,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/chatwoot/provision/reconcile",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 623,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/chatwoot/provision/resume",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 603,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/chatwoot/sources",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 410,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/memberships",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 271,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/platform/organizations/{id}/memberships",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 292,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/monitor",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 303,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/support-acknowledgment",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 320,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
   },
   {
     "method": "GET",
@@ -500,7 +3973,129 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/provider-accounts.ts",
-    "handlerLine": 71,
+    "handlerLine": 74,
     "ownershipCheck": "RLS_ORGANIZATION_FILTER_AND_TENANT_CURSOR"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/webhooks",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "TOKEN_RETURNED_ON_CREATE_ONLY",
+    "handlerFile": "apps/api/src/http/routes/automation-webhooks.ts",
+    "handlerLine": 14,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_BINDING_CREDENTIAL"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/webhooks",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_REVOCATION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "TOKEN_RETURNED_ON_CREATE_ONLY",
+    "handlerFile": "apps/api/src/http/routes/automation-webhooks.ts",
+    "handlerLine": 15,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_BINDING_CREDENTIAL"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/webhooks/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_OR_REVOCATION",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "TOKEN_RETURNED_ON_CREATE_ONLY",
+    "handlerFile": "apps/api/src/http/routes/automation-webhooks.ts",
+    "handlerLine": 16,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_BINDING_CREDENTIAL"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/webhooks/meta",
+    "authentication": "META_VERIFY_TOKEN_QUERY",
+    "permission": "NOT_APPLICABLE_WEBHOOK",
+    "tenantRls": false,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "query:hub.challenge",
+      "query:hub.mode",
+      "query:hub.verify_token"
+    ],
+    "responseSchemas": [
+      "200:text/plain",
+      "403:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "VERIFIED_META_CHALLENGE_PLAINTEXT",
+    "handlerFile": "apps/api/src/http/routes/meta-webhooks.ts",
+    "handlerLine": 64,
+    "ownershipCheck": "SERVER_VERIFY_TOKEN_MATCH"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/webhooks/meta",
+    "authentication": "META_HMAC_SHA256_RAW_BODY",
+    "permission": "NOT_APPLICABLE_WEBHOOK",
+    "tenantRls": true,
+    "idempotency": "UPSTREAM_EVENT_ID_DEDUPE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/json",
+      "401:application/json",
+      "413:application/json",
+      "415:application/json",
+      "503:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/meta-webhooks.ts",
+    "handlerLine": 78,
+    "ownershipCheck": "SERVER_ASSET_BINDING_AND_RLS_CHANNEL_MATCH"
   }
 ]

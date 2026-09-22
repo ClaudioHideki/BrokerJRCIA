@@ -23,12 +23,15 @@ const ROUTE_POLICIES = Object.freeze({
     true, 'READ_ONLY', 'NONE', 'STATIC_EXECUTABLE_NODE_CATALOG'),
   ...Object.fromEntries([
     'GET /v1/automations/status', 'GET /v1/automations', 'GET /v1/automations/{id}',
+    'GET /v1/automations/migrations/legacy',
     'GET /v1/automations/{id}/versions', 'GET /v1/automations/{id}/bindings',
     'GET /v1/executions', 'GET /v1/executions/{id}',
   ].map(route => [route, policy('apps/api/src/http/routes/automations.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_MEMBER',
     true, 'READ_ONLY', 'NONE', 'RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION')])) ,
   ...Object.fromEntries([
     'POST /v1/automations', 'PUT /v1/automations/{id}', 'POST /v1/automations/{id}/validate',
+    'POST /v1/automations/migrations/legacy', 'POST /v1/automations/migrations/legacy/{id}/cutover',
+    'POST /v1/automations/migrations/legacy/{id}/rollback',
     'POST /v1/automations/{id}/simulate', 'POST /v1/automations/{id}/publish',
     'POST /v1/automations/{id}/bindings', 'PATCH /v1/automations/{id}/bindings/{bindingId}',
     'POST /v1/executions/{id}/cancel', 'POST /v1/executions/{id}/retry', 'POST /v1/executions/{id}/resume', 'POST /v1/executions/{id}/reconcile',

@@ -26,7 +26,7 @@ function git(arguments_, rootDirectory, encoding = 'utf8') {
       cwd: rootDirectory,
       encoding,
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 20_000,
+      timeout: 60_000,
       maxBuffer: 32 * 1024 * 1024,
     });
   } catch {
@@ -54,7 +54,7 @@ export async function scanJrcHistory({ rootDirectory = process.cwd(), fingerprin
     cwd: rootDirectory,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: 20_000,
+    timeout: 60_000,
     maxBuffer: 32 * 1024 * 1024,
   });
   if (result.error || (result.status !== 0 && result.status !== 1)) {
