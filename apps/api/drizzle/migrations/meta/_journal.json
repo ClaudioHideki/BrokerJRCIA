@@ -176,6 +176,34 @@
       "when": 1789720000000,
       "tag": "0025_flow_chatwoot",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790016000000,
+      "tag": "0026_automation_runtime_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790023200000,
+      "tag": "0027_automation_integrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790026800000,
+      "tag": "0028_operational_observability",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790030400000,
+      "tag": "0029_legacy_flow_migration",
+      "breakpoints": true
     }
   ]
 }

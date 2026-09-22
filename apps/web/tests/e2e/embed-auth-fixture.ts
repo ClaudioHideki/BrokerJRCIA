@@ -55,7 +55,8 @@ export async function createEmbedAuthFixture() {
     const secret = () => randomBytes(48).toString('base64url');
     const jwtSecret = secret(), browserCsrfSecret = secret(), rateLimitStore = new MemoryRateLimitStore();
     const control = createChatwootControlAuth({ enabled: true, transact, managedOrigin: embedParentOrigin, hmacSecret: secret(), resolveCurrentRole: createMessagingMembershipResolver(authPool) });
-    const service = createEmbedService({ enabled: true, pool: appPool, transact, control, managedOrigin: embedParentOrigin, rateLimitStore, rateLimitSecret: secret() });
+    const service = createEmbedService({ enabled: true, pool: appPool, transact, control, managedOrigin: embedParentOrigin,
+      rateLimitStore, rateLimitSecret: secret(), sessionSigningSecret: jwtSecret });
     const principal: AuthenticationContext = { kind: 'JWT', actorId: owner, organizationId: org, role: 'OWNER' };
     await control.setOperatorGrants(principal, connection.id, { grants: [{ userId: agent, canPair: true }] }, randomUUID());
     const { embedId } = await service.apps.register(principal);

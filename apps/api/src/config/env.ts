@@ -47,6 +47,7 @@ const EnvironmentSchema = z.object({
   CONSOLE_COOKIE_SECURE: z.enum(['true', 'false'])
     .optional()
     .transform((value) => value === undefined ? undefined : value === 'true'),
+  AUTOMATION_RUNTIME_V2_ENABLED: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
 }).superRefine((environment, context) => {
   if (environment.AUTH_PROGRESSIVE_DELAY_MAX_MS < environment.AUTH_PROGRESSIVE_DELAY_BASE_MS) {
     context.addIssue({
@@ -164,6 +165,7 @@ export interface AppConfig {
   browserCsrfSecret: string;
   consoleAllowedOrigins: string[];
   consoleCookieSecure: boolean;
+  automationRuntimeV2Enabled: boolean;
 }
 
 export function loadAppConfig(
@@ -229,5 +231,6 @@ export function loadAppConfig(
       .map((entry) => entry.trim())
       .filter((entry) => entry.length > 0),
     consoleCookieSecure: parsed.CONSOLE_COOKIE_SECURE ?? parsed.NODE_ENV === 'production',
+    automationRuntimeV2Enabled: parsed.AUTOMATION_RUNTIME_V2_ENABLED,
   };
 }

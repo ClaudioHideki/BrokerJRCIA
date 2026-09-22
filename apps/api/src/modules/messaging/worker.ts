@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { FLOW_ORIGIN } from '@jrc/contracts';
+import { AUTOMATION_ORIGIN, FLOW_ORIGIN } from '@jrc/contracts';
 import type { createFlowService } from '../flows/service.js';
 import type { MetaCloudClient, TypebotClient } from "@jrc/providers";
 import type { OrganizationTransaction } from "../../db/tenant-transaction.js";
@@ -9,6 +9,7 @@ import { dispatchClaim, type DispatchPorts } from "./dispatcher.js";
 import { runBotTurn } from "./bot-runner.js";
 
 export interface MessagingWorkerOptions {
+  automations?:{route(organizationId:string,event:{channelId:string;conversationId:string;eventKey:string;text:string;payload?:Record<string,unknown>}):Promise<unknown>};
   flows?: Pick<ReturnType<typeof createFlowService>,'runTurn'|'settleHandoffs'>;
   prepareMedia?: DispatchPorts["prepareMedia"];
   repository: MessagingRepository;
@@ -51,7 +52,13 @@ export function createMessagingWorker(options: MessagingWorkerOptions) {
           leaseToken: botClaim.leaseToken,
         };
         const conversation = botClaim.conversation;
-        if (conversation.botOriginReference === FLOW_ORIGIN) {
+        if(conversation.botOriginReference===AUTOMATION_ORIGIN){
+          if(options.automations&&botClaim.message.content.type==='TEXT')try{
+            await options.automations.route(organizationId,{channelId:botClaim.channel.id,conversationId:conversation.id,eventKey:`message:${botClaim.message.id}`,text:botClaim.message.content.text,payload:{messageId:botClaim.message.id}});
+            await transact(organizationId,tx=>repository.completeBotTurn(tx,{...key,sessionId:`automation:${conversation.botPublicId}`,texts:[]}));
+          }catch{await transact(organizationId,tx=>repository.failBotTurn(tx,{...key,canonicalErrorCode:'FLOWS_UNAVAILABLE',uncertain:false}));}
+          else await transact(organizationId,tx=>repository.failBotTurn(tx,{...key,canonicalErrorCode:'FLOWS_UNAVAILABLE',uncertain:false}));
+        }else if (conversation.botOriginReference === FLOW_ORIGIN) {
           if(options.flows && botClaim.message.content.type==='TEXT') await options.flows.runTurn(botClaim);
           else await transact(organizationId,tx=>repository.failBotTurn(tx,{...key,canonicalErrorCode:'FLOWS_UNAVAILABLE',uncertain:false}));
         } else if (

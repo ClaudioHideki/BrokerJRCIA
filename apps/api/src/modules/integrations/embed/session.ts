@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ChatwootControlScope } from '@jrc/contracts';
+import { verifyEmbedSessionToken } from '@jrc/security';
 import type { TenantTransaction } from '../../../db/tenant-transaction.js';
 import type { AuthenticationContext } from '../../../http/plugins/authorization.js';
 import type { ChatwootControlPrincipal } from '../chatwoot-control-auth.js';
@@ -18,10 +19,10 @@ export class EmbedSessions {
       'SELECT identity_revision,approved_fingerprint FROM chatwoot_connection_health WHERE organization_id=$1 AND integration_id=$2', [principal.organizationId, id])).rows[0];
     if ((current?.identity_revision ?? 1) !== grant.identityRevision || (current?.approved_fingerprint ?? null) !== grant.approvedFingerprint) throw embedDenied();
   }
-  async validate(tx: TenantTransaction, tokenHash: string, id: string, scope: ChatwootControlScope) {
+  async validate(tx: TenantTransaction, tokenHash: string, id: string, scope: ChatwootControlScope, expectedNonce?: string) {
     this.repository.enabled();
     const session = (await tx.query<EmbedSessionRow>('SELECT *,expires_at<=clock_timestamp() AS expired FROM chatwoot_embed_sessions WHERE token_hash=$1', [tokenHash])).rows[0];
-    if (!session || session.expired || session.revoked_at) throw embedDenied();
+    if (!session || session.expired || session.revoked_at || (expectedNonce && session.id !== expectedNonce)) throw embedDenied();
     const app = await this.repository.app(tx, session.app_id), current = await this.apps.current(tx, app);
     if (current.account.credential_version !== session.credential_version) throw embedDenied();
     // Role is resolved afresh by control auth; the placeholder never grants authority.
@@ -32,12 +33,25 @@ export class EmbedSessions {
     return principal;
   }
   async authorize(token: string, id: string, scope: ChatwootControlScope): Promise<ChatwootControlPrincipal> {
-    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw embedDenied();
+    let claims;
+    try { claims = await verifyEmbedSessionToken(token, this.repository.options.sessionSigningSecret); }
+    catch { throw embedDenied(); }
+    if (!claims.scopes.includes(scope as 'chatwoot:read' | 'chatwoot:pair')) throw embedDenied();
     const hash = hashEmbedToken(token), org = await this.repository.resolve('session', hash);
-    const principal = await this.repository.options.transact(org, tx => this.validate(tx, hash, id, scope));
+    if (claims.tenantId !== org) throw embedDenied();
+    const principal = await this.repository.options.transact(org, async tx => {
+      const checked = await this.validate(tx, hash, id, scope, claims.nonce);
+      const connection = (await tx.query<{ inbox_id: string }>('SELECT inbox_id FROM chatwoot_connections WHERE organization_id=$1 AND id=$2', [org, id])).rows[0];
+      if (!connection || !claims.inboxIds.includes(Number(connection.inbox_id))) throw embedDenied();
+      return checked;
+    });
+    if (claims.destinationRevision !== principal.destinationRevision || claims.accountId !== principal.accountId ||
+      claims.externalUserId !== principal.authentication.actorId) throw embedDenied();
     return Object.freeze({ ...principal, restriction: async (tx: TenantTransaction, action: ChatwootControlScope, integrationId?: string) => {
       if (!integrationId) throw embedDenied();
-      await this.validate(tx, hash, integrationId, action);
+      const checked = await this.validate(tx, hash, integrationId, action, claims.nonce);
+      const grant = (await tx.query<{ inbox_id: string }>('SELECT inbox_id FROM chatwoot_connections WHERE organization_id=$1 AND id=$2', [org, integrationId])).rows[0];
+      if (!grant || !claims.inboxIds.includes(Number(grant.inbox_id)) || checked.destinationRevision !== claims.destinationRevision) throw embedDenied();
     } });
   }
 }

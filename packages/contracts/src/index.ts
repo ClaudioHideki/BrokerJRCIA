@@ -12,3 +12,5 @@ export * from './integrations/destinations.js';
 export * from './integrations/control.js';
 export * from './integrations/embed.js';
 export * from './flows.js';
+export * from './channels-v1.js';
+export * from './automations-v1.js';

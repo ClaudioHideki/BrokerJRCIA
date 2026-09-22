@@ -1,5 +1,4 @@
 node_modules/
-.worktrees/
 .npm-cache/
 .codex/
 *.tsbuildinfo

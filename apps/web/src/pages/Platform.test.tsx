@@ -208,6 +208,29 @@ it("support can inspect companies but cannot edit or create them", async () => {
   );
 });
 
+it("shows the sanitized correlation reference when the company list fails", async () => {
+  const correlationId = "2cbb143f-7ee3-448b-8041-9be6bcb94aac";
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+    if (url.endsWith("/auth/config")) return { ok: true, status: 200, json: async () => ({ mfaRequired: false }) };
+    if (url.endsWith("/auth/session")) return {
+      ok: true,
+      status: 200,
+      json: async () => ({ user: { id: "staff", email: "admin@example.test", role: "SUPER_ADMIN" }, csrfToken: "nonce", expiresAt: "2026-09-21" }),
+    };
+    return {
+      ok: false,
+      status: 503,
+      headers: { get: () => "application/problem+json" },
+      json: async () => ({ code: "PLATFORM_UNAVAILABLE", requestId: correlationId, correlationId }),
+    };
+  }));
+
+  render(<MemoryRouter><PlatformPage /></MemoryRouter>);
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(correlationId);
+  expect(screen.getByRole("alert")).not.toHaveTextContent("stack");
+});
+
 const organization = {
   id: "company-a",
   name: "Empresa A",

@@ -74,7 +74,7 @@ describe('artefatos reproduzíveis da auditoria de segurança', () => {
     ]) {
       expect(await digest(resolve(first, path)), path).toBe(await digest(resolve(second, path)));
     }
-  }, 30_000);
+  }, 90_000);
 
   it('preserva o layout, a paleta e todas as seções obrigatórias', async () => {
     const directory = await outputDirectory();

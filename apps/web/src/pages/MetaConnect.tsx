@@ -17,6 +17,7 @@ interface Signup {
   configId: string;
   graphVersion: string;
 }
+interface CanonicalMetaSetup { provider: "META"; action: Signup & { type: "EMBEDDED_SIGNUP" } }
 interface FacebookSdk {
   init(options: {
     appId: string;
@@ -282,13 +283,15 @@ export function MetaConnectPage() {
                 disabled={busy}
                 onClick={() =>
                   void action(async (current) => {
-                    const [ready, sdk] = await Promise.all([
-                      client.request<Signup>("/v1/meta-onboarding/start", {
+                    const [setup, sdk] = await Promise.all([
+                      client.request<CanonicalMetaSetup>("/v1/channels", {
                         method: "POST",
-                        body: "{}",
+                        headers: { "Idempotency-Key": crypto.randomUUID() },
+                        body: JSON.stringify({ provider: "META" }),
                       }),
                       loadFacebookSdk(),
                     ]);
+                    const ready = 'action' in setup ? setup.action : setup as unknown as Signup;
                     if (current !== version.current) return;
                     sdk.init({
                       appId: ready.appId,

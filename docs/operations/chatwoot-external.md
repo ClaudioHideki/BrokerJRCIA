@@ -133,6 +133,14 @@ O portal permite criar a conexão e vinculá-la à caixa pelo fluxo já existent
 independentemente de conversa, iframe ou Dashboard App. O painel na conversa não
 insere botões no assistente nativo de caixas de um produto externo.
 
+A autorização do embed usa prova vinculada ao navegador e aprovação autenticada no
+Broker. O exchange emite um JWT de cinco minutos com audiência exclusiva do embed,
+tenant, revisão do destino, conta, inboxes concedidas, usuário externo, escopos e
+nonce. O servidor mantém somente o hash da sessão e revalida sessão, credencial,
+destino, vínculo e revisão em cada operação; por isso expiração, revogação ou mudança
+de contexto falham fechadas. O token permanece apenas na memória do módulo e nunca é
+aceito pelas APIs genéricas, administrativas, de mensagens, Meta ou automações.
+
 ## Homologação e rollback
 
 Executar os três níveis da matriz separadamente. O piloto precisa observar entrada,

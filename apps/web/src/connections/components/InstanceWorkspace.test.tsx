@@ -14,7 +14,7 @@ function setup(options: { role?: string; response?: unknown; request?: ApiClient
   const purges = new Set<() => void>();
   const request = options.request ?? vi.fn(async (path: string) => path.endsWith('/workspace') ? options.response ?? workspace : instance) as ApiClient['request'];
   const client = { request, restore: vi.fn(async () => ({ user: { id: 'u', email: 'a@example.test' }, activeOrganization: { ...org, role: options.role ?? 'OWNER' }, organizations: [org] })), registerTenantPurge: (fn: () => void) => { purges.add(fn); return () => purges.delete(fn); }, subscribeToSessionExpiration: () => () => undefined } as unknown as ApiClient;
-  render(<App client={client} initialEntries={[`/conexoes/${id}`]} />);
+  render(<App client={client} initialEntries={[`/legacy/conexoes/${id}`]} />);
   return { request, purges };
 }
 describe('instance workspace', () => {

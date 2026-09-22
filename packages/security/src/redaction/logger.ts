@@ -69,7 +69,9 @@ function errorForLog(error: unknown): Record<string, unknown> {
 }
 
 function pathWithoutQuery(url: unknown): string | undefined {
-  return typeof url === 'string' ? url.split('?', 1)[0] : undefined;
+  if (typeof url !== 'string') return undefined;
+  const path=url.split('?',1)[0]!;
+  return path.startsWith('/hooks/')?'/hooks/[REDACTED]':path;
 }
 
 function requestForLog(request: unknown): Record<string, unknown> {

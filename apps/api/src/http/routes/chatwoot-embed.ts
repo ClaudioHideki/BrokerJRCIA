@@ -75,7 +75,7 @@ export async function registerChatwootEmbedRoutes(app: FastifyInstance, options:
     schema: { params, querystring: empty, body: EmbedExchangeSchema, response: { 200: EmbedExchangeResultSchema }, security: [] } },
   req => options.service.exchange(id(req), EmbedExchangeSchema.parse(req.body).verifier));
   const token = (req: FastifyRequest) => {
-    const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(header(req, 'authorization') ?? '');
+    const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(header(req, 'authorization') ?? '');
     if (!match || req.headers['x-jrc-api-key'] !== undefined) throw embedDenied(); return match[1]!;
   };
   const facade = () => { if (!options.facade) throw new IntegrationError('EMBED_UNAVAILABLE', 503); return options.facade; };

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { redactSensitive } from '../src/index.js';
 
 describe('redaction estrutural', () => {
+  it('remove o token do webhook presente na URL',()=>{expect(redactSensitive({req:{method:'POST',url:'/hooks/super-secret-token?debug=true'}})).toEqual({req:{method:'POST',url:'/hooks/[REDACTED]'}});});
   it('remove campos sensíveis recursivamente e preserva metadados seguros', () => {
     const redacted = redactSensitive({
       requestId: 'safe-request-id',

@@ -13,6 +13,14 @@ type JsonObject = Record<string, unknown>;
 const DOCUMENTATION_SECRET = "documentation-secret-with-at-least-32-bytes";
 const PROTECTED_PATH_PREFIXES = [
   "/v1/api-keys",
+  "/v1/automations",
+  "/v1/automation-nodes",
+  "/v1/automation-imports",
+  "/v1/credentials",
+  "/v1/webhooks",
+  "/v1/channels",
+  "/v1/executions",
+  "/v1/operations",
   "/v1/instances",
   "/v1/provider-accounts",
 ];
@@ -39,10 +47,38 @@ function documentationOptions() {
     },
   ) as ProviderAccountService;
   return {
+    channels: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`,
+      authenticateApiKey: unavailable,
+      resolveCurrentRole: unavailable,
+      service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/channels/facade.js').ChannelFacade,
+    },
     flows: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
       service: new Proxy({}, { get() { return unavailable; } }) as ReturnType<typeof import('../modules/flows/service.js').createFlowService>,
       chatwoot: new Proxy({}, { get() { return unavailable; } }) as ReturnType<typeof import('../modules/flows/chatwoot-service.js').createFlowChatwootService>,
+    },
+    automations: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
+      service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/automations/service.js').AutomationService,
+      executions: new Proxy({}, { get() { return unavailable; } }) as ReturnType<typeof import('../modules/automations/service.js').createExecutionService>,
+      migration: new Proxy({}, { get() { return unavailable; } }) as import('../modules/automations/legacy-migration.js').LegacyFlowMigrationService,
+    },
+    observability: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
+      service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/observability/service.js').ObservabilityService,
+    },
+    credentials: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
+      service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/automation-integrations/credentials.js').CredentialService,
+    },
+    automationWebhooks: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
+      service: new Proxy({}, { get() { return unavailable; } }) as ReturnType<typeof import('../modules/automation-integrations/webhooks.js').createWebhookService>,
+    },
+    automationImports: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
+      service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/automation-integrations/importer.js').AutomationImporter,
     },
     chatwootEmbed: {
       nodeEnv: 'test' as const, jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,

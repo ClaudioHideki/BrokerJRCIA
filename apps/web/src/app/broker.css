@@ -3,6 +3,14 @@
 .meta-connection-guide {
   margin-bottom: 22px;
 }
+
+.channel-cards { display: grid; gap: 18px; margin-top: 20px; }
+.channel-cards .metric strong { font-size: 14px; }
+.channel-qr { display: block; width: min(280px, 100%); margin: 18px 0; border-radius: 12px; }
+.pairing-code { font-size: 20px; letter-spacing: .08em; }
+.provider-card { cursor: pointer; text-align: left; display: grid; gap: 8px; color: inherit; }
+.provider-card strong { font-size: 18px; }
+.provider-card span { color: var(--muted, #667085); }
 .api-key-guide details {
   padding: 12px 15px;
   border: 1px solid #e5eaf2;
@@ -1351,6 +1359,7 @@
     padding: 13px 20px;
   }
 }
+.health-overall{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;margin-bottom:18px;background:#fff;border:1px solid #dfe7f0;border-radius:12px}.health-component-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:22px}.health-component-grid article{background:#fff;border:1px solid #dfe7f0;border-radius:11px;padding:17px}.health-component-grid header{display:flex;justify-content:space-between;gap:10px;align-items:start}.health-component-grid h2{font-size:14px;margin:0}.health-component-grid article>strong{display:block;font-size:24px;margin:18px 0 7px}.health-component-grid article>code{font-size:10px;overflow-wrap:anywhere;color:#60778c}.health-component-grid article>p{font-size:11px;margin-bottom:0}.health-state{font-size:10px;font-weight:800;padding:5px 7px;border-radius:999px}.health-state--up{color:#087a54;background:#e6f8f0}.health-state--degraded,.health-state--unknown{color:#8a5c00;background:#fff4d8}.health-state--down{color:#ad2f2f;background:#feeaea}
 @media (max-width: 760px) {
   .console-shell {
     display: block;

@@ -107,6 +107,7 @@ describe('sessões HTTP de autenticação', () => {
       status: 401,
       code: 'INVALID_SESSION',
       requestId: REQUEST_ID,
+      correlationId: REQUEST_ID,
     });
   });
 
@@ -175,6 +176,7 @@ describe('sessões HTTP de autenticação', () => {
       status: statusCode,
       code: 'INVALID_REQUEST',
       requestId: REQUEST_ID,
+      correlationId: REQUEST_ID,
     });
     expect(response.body).not.toContain('FST_ERR');
     expect(response.body).not.toContain(payload);

@@ -20,6 +20,9 @@ import { createPostgresInstanceRepository } from '../modules/instances/repositor
 import { writeTenantAudit } from '../modules/audit/audit.js';
 import { createChatwootControlAuth } from '../modules/integrations/chatwoot-control-auth.js';
 import { createMessagingMembershipResolver } from '../modules/messaging/membership.js';
+import { createEventRouter } from '../modules/automations/service.js';
+import { createPostgresAutomationRepository } from '../modules/automations/repository.js';
+import { recordHeartbeat, workerInstanceId } from '../modules/observability/service.js';
 
 export function loadWorkerConfig(environment: NodeJS.ProcessEnv) {
   const databaseUrl = z.string().url().parse(environment.DATABASE_URL);
@@ -76,6 +79,7 @@ export async function runMessagingWorker(
   watch = false,
 ): Promise<void> {
   const config = loadWorkerConfig(environment);
+  const heartbeatInstanceId=workerInstanceId();
   const controlEnabled = z.enum(['true', 'false']).default('false').parse(environment.CHATWOOT_CONTROL_ENABLED) === 'true';
   const controlConfig = controlEnabled ? {
     authUrl: z.url().parse(environment.AUTH_DATABASE_URL), hmacSecret: z.string().min(32).parse(environment.API_KEY_HMAC_SECRET),
@@ -122,6 +126,7 @@ export async function runMessagingWorker(
   process.once("SIGTERM", stop);
   try {
     const worker = createMessagingWorker({
+      automations:createEventRouter({repository:createPostgresAutomationRepository(),transact:(org,work)=>withOrganizationTransaction(pool,org,work)}),
       flows:createFlowService({transact:(org,work)=>withOrganizationTransaction(pool,org,work)}),
       repository: createPostgresMessagingRepository(),
       transact: (organizationId, operation) =>
@@ -159,6 +164,7 @@ export async function runMessagingWorker(
           )
             continue;
           try {
+            await withOrganizationTransaction(pool,organizationId,tx=>recordHeartbeat(tx,organizationId,'MESSAGING_WORKER',heartbeatInstanceId));
             await integrations.identity?.runOnce(organizationId);
             await integrations.media?.runOnce(organizationId);
             await worker.runOnce(organizationId);

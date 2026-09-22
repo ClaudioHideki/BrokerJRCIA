@@ -53,9 +53,9 @@ describe('Console JRC', () => {
     expect(await screen.findByRole('link', { name: 'Acessar administração JRC' })).toHaveAttribute('href', '/jrc');
   });
   it('renderiza shell, identidade, organização e papel ativos', async () => {
-    const { container } = render(<App client={client()} initialEntries={['/conexoes']} />);
+    const { container } = render(<App client={client()} initialEntries={['/channels']} />);
 
-    expect(await screen.findByRole('heading', { name: 'Conexões' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Canais' })).toBeVisible();
     expect(screen.getByRole('img', { name: 'JRC PABX' })).toHaveAttribute(
       'src',
       '/brand/logo-jrc-2024.png',
@@ -75,8 +75,8 @@ describe('Console JRC', () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     const removeItem = vi.spyOn(Storage.prototype, 'removeItem');
     const clear = vi.spyOn(Storage.prototype, 'clear');
-    render(<App client={client()} initialEntries={['/conexoes']} />);
-    await screen.findByRole('heading', { name: 'Conexões' });
+    render(<App client={client()} initialEntries={['/channels']} />);
+    await screen.findByRole('heading', { name: 'Canais' });
 
     // React Router may read its own view-transition preference. The console
     // must never write authentication state or use a sensitive storage key.
@@ -92,15 +92,15 @@ describe('Console JRC', () => {
   });
 
   it('não apresenta violações automáticas de acessibilidade no shell desktop', async () => {
-    const { container } = render(<App client={client()} initialEntries={['/conexoes']} />);
-    await screen.findByRole('heading', { name: 'Conexões' });
+    const { container } = render(<App client={client()} initialEntries={['/channels']} />);
+    await screen.findByRole('heading', { name: 'Canais' });
     const results = await axe.run(container);
     expect(results.violations).toEqual([]);
   });
 
   it('mantém o controle mobile semanticamente expansível', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
-    render(<App client={client()} initialEntries={['/conexoes']} />);
+    render(<App client={client()} initialEntries={['/channels']} />);
     const menu = await screen.findByRole('button', { name: 'Abrir navegação' });
     expect(menu).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('navigation', { name: 'Navegação principal' })).not.toBeInTheDocument();

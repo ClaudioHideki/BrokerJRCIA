@@ -95,14 +95,14 @@ describe('ConnectionDetailPage', () => {
       };
       return instance('CONNECTING');
     }) as ApiClient['request'];
-    render(<App client={client(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Tentar conexão novamente' }));
     expect(await screen.findByRole('img', { name: 'QR Code para conectar o WhatsApp' })).toBeVisible();
   });
 
   it('explica a falha de provisionamento sem oferecer pareamento indisponível', async () => {
     const request = vi.fn(async () => instance('PROVISIONING_FAILED')) as ApiClient['request'];
-    render(<App client={client(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('O QR Code ainda não pode ser gerado');
     expect(screen.queryByRole('button', { name: /^Conectar$/ })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Voltar à lista de conexões' })).toHaveAttribute('href', '/conexoes');
@@ -121,7 +121,7 @@ describe('ConnectionDetailPage', () => {
       }
       return instance('CREATED');
     }) as ApiClient['request'];
-    render(<App client={client(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     fireEvent.click(await screen.findByRole('radio', { name: 'Código de pareamento' }));
     fireEvent.click(screen.getByRole('button', { name: 'Conectar' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/número.*código do país/i);
@@ -139,7 +139,7 @@ describe('ConnectionDetailPage', () => {
 
   it('consulta manualmente o provider mesmo quando o estado local é terminal', async () => {
     const request = vi.fn(async (path: string) => instance(path.endsWith('/status') ? 'DISCONNECTED' : 'CONNECTED')) as ApiClient['request'];
-    render(<App client={client(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     expect(await screen.findByText('Conectada')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Atualizar status' }));
     expect(await screen.findByText('Desconectada')).toBeVisible();
@@ -154,7 +154,7 @@ describe('ConnectionDetailPage', () => {
       ? instance(terminal)
       : instance(initial)) as ApiClient['request'];
 
-    render(<App client={client(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
 
     expect(await screen.findByText(label)).toBeVisible();
     expect(request).toHaveBeenCalledWith(`/v1/instances/${INSTANCE}/status`, expect.objectContaining({
@@ -174,7 +174,7 @@ describe('ConnectionDetailPage', () => {
         }
         return instance('CONNECTED');
       }) as ApiClient['request'];
-      render(<App client={client(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+      render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
 
       expect(await screen.findByRole('alert')).toHaveTextContent('temporariamente indisponível');
       await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
@@ -195,7 +195,7 @@ describe('ConnectionDetailPage', () => {
       };
       return instance('CREATED');
     }) as ApiClient['request'];
-    render(<App client={client(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Conectar' }));
     const image = await screen.findByRole('img', { name: 'QR Code para conectar o WhatsApp' });
     expect(image.getAttribute('src')).toBe(`data:image/png;base64,${PNG}`);
@@ -219,7 +219,7 @@ describe('ConnectionDetailPage', () => {
       }
       return instance('AWAITING_ACTION');
     }) as ApiClient['request'];
-    render(<App client={client(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Gerar novo desafio' }));
     expect(await screen.findByText('<b>123-456</b>')).toBeVisible();
     expect(document.querySelector('b')).toBeNull();
@@ -236,7 +236,7 @@ describe('ConnectionDetailPage', () => {
           action: { type: 'REDIRECT', url: 'https://attacker.example/', expiresAt: '2099-01-01T00:00:00.000Z' },
         }
       : instance('CREATED')) as ApiClient['request'];
-    render(<App client={client(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Conectar' }));
     expect(await screen.findByText('Este fluxo ainda não está disponível neste incremento.')).toBeVisible();
     expect(screen.queryByRole('link', { name: /attacker/i })).not.toBeInTheDocument();
@@ -245,7 +245,7 @@ describe('ConnectionDetailPage', () => {
 
   it('explica desafio perdido após reload e mantém VIEWER somente leitura', async () => {
     const request = vi.fn(async () => instance('AWAITING_ACTION')) as ApiClient['request'];
-    render(<App client={client(request, 'VIEWER')} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(request, 'VIEWER')} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     expect(await screen.findByText(/desafio anterior não fica armazenado/i)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Gerar novo desafio' })).not.toBeInTheDocument();
     expect(screen.getByText('Seu acesso é somente leitura.')).toBeVisible();
@@ -256,7 +256,7 @@ describe('ConnectionDetailPage', () => {
     const request = vi.fn(async () => {
       throw new ApiClientError('O recurso solicitado não foi encontrado.', 404, requestId);
     }) as ApiClient['request'];
-    render(<App client={client(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     expect(await screen.findByRole('heading', { name: 'Conexão indisponível' })).toBeVisible();
     expect(screen.getByRole('alert')).toHaveTextContent('não foi encontrado');
     expect(screen.getByRole('alert')).toHaveTextContent(requestId);
@@ -267,7 +267,7 @@ describe('ConnectionDetailPage', () => {
     const request = vi.fn(async (path: string) => path.endsWith('/disconnect')
       ? { instance: instance('DISCONNECTED'), operationId: OPERATION, replayed: false, pending: false, reconciliationRequired: false }
       : instance('CONNECTED')) as ApiClient['request'];
-    render(<App client={client(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Desconectar' }));
     expect(await screen.findByText('Desconectada')).toBeVisible();
     expect(window.confirm).toHaveBeenCalled();
@@ -288,7 +288,7 @@ describe('ConnectionDetailPage', () => {
         ? instance('CREATED')
         : { ...instance('CREATED'), organizationId: ORG_B, name: 'Atendimento filial' };
     }) as ApiClient['request'];
-    render(<App client={switchingClient(request)} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={switchingClient(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     fireEvent.click(await screen.findByRole('radio', { name: 'Código de pareamento' }));
     fireEvent.change(screen.getByLabelText('Número do WhatsApp'), {
       target: { value: '5511999999999' },
@@ -313,7 +313,7 @@ describe('ConnectionDetailPage', () => {
       detailReads += 1;
       return instance('CREATED');
     }) as ApiClient['request'];
-    render(<App client={switchingClient(request, { rejectSwitch: true })} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={switchingClient(request, { rejectSwitch: true })} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     expect(await screen.findByRole('heading', { name: 'Atendimento' })).toBeVisible();
 
     fireEvent.change(screen.getByLabelText('Organização ativa'), { target: { value: ORG_B } });
@@ -339,7 +339,7 @@ describe('ConnectionDetailPage', () => {
       }
       return instance('CREATED');
     });
-    render(<App client={client(requestMock as unknown as ApiClient['request'])} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(requestMock as unknown as ApiClient['request'])} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Conectar' }));
     await screen.findByRole('button', { name: 'Tentar conexão novamente' });
@@ -374,7 +374,7 @@ describe('ConnectionDetailPage', () => {
       if (path.endsWith('/status')) return instance('DISCONNECTED');
       return instance('CREATED');
     });
-    render(<App client={client(requestMock as unknown as ApiClient['request'])} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(requestMock as unknown as ApiClient['request'])} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Conectar' }));
     await screen.findByRole('button', { name: 'Tentar conexão novamente' });
@@ -403,7 +403,7 @@ describe('ConnectionDetailPage', () => {
       }
       return instance('CONNECTED');
     });
-    render(<App client={client(requestMock as unknown as ApiClient['request'])} initialEntries={[`/conexoes/${INSTANCE}`]} />);
+    render(<App client={client(requestMock as unknown as ApiClient['request'])} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Desconectar' }));
     await screen.findByRole('alert');

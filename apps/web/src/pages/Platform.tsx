@@ -23,6 +23,17 @@ import {
   type StaffSession,
 } from "../platform/model.js";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+function platformErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return "Não foi possível concluir. Tente novamente.";
+  if (error instanceof ApiClientError && error.status >= 500) {
+    const reference = error.correlationId ?? error.requestId;
+    return reference ? `${error.message} Referência: ${reference}` : error.message;
+  }
+  return error.message;
+}
+
 export function PlatformPage() {
   const [session, setSession] = useState<StaffSession | null>(null);
   const [mfaRequired, setMfaRequired] = useState(true);
@@ -111,11 +122,20 @@ export function PlatformPage() {
     if (current !== generation.current) throw new Error("");
     if (!response.ok) {
       if (response.status === 401) clearSession();
-      if(path.includes('/chatwoot')) {
-        const problem=await response.json().catch(()=>({})) as {code?:string;requestId?:string};
-        throw new ApiClientError('Falha na integração',response.status,problem.requestId,problem.code);
-      }
-      throw new Error(
+      const problem = await response.json().catch(() => ({})) as { code?: unknown; requestId?: unknown; correlationId?: unknown };
+      const requestId = typeof problem.requestId === "string" && UUID_PATTERN.test(problem.requestId)
+        ? problem.requestId
+        : undefined;
+      const reportedCorrelationId = typeof problem.correlationId === "string" && UUID_PATTERN.test(problem.correlationId)
+        ? problem.correlationId
+        : undefined;
+      const correlationId = reportedCorrelationId === requestId ? reportedCorrelationId : requestId;
+      const code = typeof problem.code === "string" && /^[A-Z][A-Z0-9_]*$/.test(problem.code)
+        ? problem.code
+        : undefined;
+      const message = path.includes('/chatwoot')
+        ? 'Falha na integração'
+        :
         response.status === 401
           ? mfaRequired
             ? "Sessão expirada ou credenciais inválidas. Entre novamente com seu autenticador."
@@ -124,8 +144,10 @@ export function PlatformPage() {
             ? "Esta ação não é permitida para o seu acesso JRC."
             : response.status === 429
               ? "Limite de tentativas atingido. Aguarde antes de tentar novamente."
-              : "Não foi possível concluir. Revise os dados e tente novamente.",
-      );
+              : response.status >= 500
+                ? "Serviço temporariamente indisponível. Tente novamente."
+                : "Não foi possível concluir. Revise os dados e tente novamente.";
+      throw new ApiClientError(message, response.status, requestId, code, correlationId);
     }
     const result =
       response.status === 204
@@ -195,7 +217,7 @@ export function PlatformPage() {
   useEffect(() => {
     if (session)
       void loadCompanies().catch((e) => {
-        if ((e as Error).message) setError((e as Error).message);
+        if ((e as Error).message) setError(platformErrorMessage(e));
       });
   }, [session]);
   async function action(operation: () => Promise<void>) {
@@ -206,7 +228,7 @@ export function PlatformPage() {
     try {
       await operation();
     } catch (e) {
-      if ((e as Error).message) setError((e as Error).message);
+      if ((e as Error).message) setError(platformErrorMessage(e));
     } finally {
       if (current === generation.current) setBusy(false);
     }
@@ -232,7 +254,7 @@ export function PlatformPage() {
         setMonitor(stats);
       }
     } catch (e) {
-      if (version === inspection.current) setError((e as Error).message);
+      if (version === inspection.current) setError(platformErrorMessage(e));
     } finally {
       if (version === inspection.current) setInspecting(false);
     }

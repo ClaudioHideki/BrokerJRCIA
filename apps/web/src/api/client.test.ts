@@ -322,6 +322,7 @@ describe('createApiClient', () => {
       status: 503,
       code: 'INTERNAL_ERROR',
       requestId: REQUEST_ID,
+      correlationId: REQUEST_ID,
     }), {
       status: 503,
       headers: { 'content-type': 'application/problem+json' },
@@ -334,6 +335,7 @@ describe('createApiClient', () => {
     expect(error).toMatchObject({
       message: 'Serviço temporariamente indisponível. Tente novamente.',
       requestId: REQUEST_ID,
+      correlationId: REQUEST_ID,
       status: 503,
     });
     expect(String(error)).not.toContain('database password');

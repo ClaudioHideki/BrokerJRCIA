@@ -17,7 +17,7 @@ export function OrganizationSelectPage() {
     notice,
     selectOrganization,
   } = useSession();
-  if (status === 'authenticated') return <Navigate replace to="/conexoes" />;
+  if (status === 'authenticated') return <Navigate replace to="/channels" />;
   if (status !== 'selecting') return <Navigate replace to="/login" />;
 
   return (
