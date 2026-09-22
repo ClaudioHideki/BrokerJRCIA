@@ -197,6 +197,19 @@ describe('legacy flow owner transition', () => {
         reason_code: 'ROLLBACK_TO_LEGACY_FLOW',
       },
     ]);
+    const audit = await database.pool.query<{ event_type: string; actor_id: string | null }>(
+      `select event_type, actor_id from audit_logs
+        where organization_id=$1
+          and event_type in ('LEGACY_FLOW_MIGRATION_BATCH','LEGACY_FLOW_CUTOVER','LEGACY_FLOW_ROLLBACK')`,
+      [organizationId],
+    );
+    expect(new Set(audit.rows.map((row) => row.event_type))).toEqual(new Set([
+      'LEGACY_FLOW_MIGRATION_BATCH',
+      'LEGACY_FLOW_CUTOVER',
+      'LEGACY_FLOW_ROLLBACK',
+    ]));
+    expect(audit.rows.filter((row) => row.event_type !== 'LEGACY_FLOW_MIGRATION_BATCH'))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ actor_id: actorId })]));
   });
 
   it('does not take over a channel whose owner changed before cutover', async () => {
