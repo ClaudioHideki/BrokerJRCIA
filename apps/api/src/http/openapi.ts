@@ -307,6 +307,17 @@ function normalizeDocument(document: JsonObject): JsonObject {
       }
       if (path.startsWith("/v1/messaging/"))
         operation.security = [{ bearerAuth: [] }];
+      if (path.startsWith('/v1/automations/migrations/legacy')) {
+        operation.security = [{ bearerAuth: [] }];
+        operation.description = method === 'get'
+          ? 'Lista o estado da reconciliação legada somente para a organização autenticada.'
+          : 'Executa uma transição auditada para a organização autenticada. Requer papel OWNER ou ADMIN e Idempotency-Key.';
+        const migrationResponses = (operation.responses ?? {}) as Record<string, JsonObject>;
+        migrationResponses['400'] ??= { description: 'Requisição ou Idempotency-Key inválida' };
+        migrationResponses['403'] ??= { description: 'Papel da organização sem permissão' };
+        if (method === 'post') migrationResponses['409'] ??= { description: 'Conflito, execução viva ou transição insegura' };
+        operation.responses = migrationResponses;
+      }
       if (path.startsWith('/v1/flows'))
         operation.security = path.endsWith('/events') ? [{ chatwootSignature: [] }] : [{ bearerAuth: [] }];
       if (path.startsWith("/v1/integrations/"))
