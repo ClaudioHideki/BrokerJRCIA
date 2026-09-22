@@ -9,6 +9,7 @@ import type { MessagingService } from '../../src/http/routes/messaging.js';
 import { PlatformError, type PlatformService } from '../../src/modules/platform/service.js';
 const org = 'd2e5b0ac-1387-40b9-a722-743f2e061220', id = 'dc938cef-b6e6-4e0c-b9bd-47c8858a14ed', user = 'c3c028f0-f0f9-48e0-99f5-5cedb283de2d';
 const secret = 'synthetic-embed-jwt-at-least-32-characters', origin = 'https://broker.example.test';
+const embedToken = 'synthetic-header.synthetic-payload.synthetic-signature';
 const running: ReturnType<typeof buildApp>[] = [];
 const health = { integrationId: id, inboxId: 31, instanceId: id, integrationStatus: 'READY', instanceStatus: 'DISCONNECTED',
   transportStatus: 'UNVERIFIED', checkedAt: new Date().toISOString(), lastError: null, identityStatus: 'CONFIRMED', identityApproved: true,
@@ -16,7 +17,7 @@ const health = { integrationId: id, inboxId: 31, instanceId: id, integrationStat
 async function harness(enabled = true) {
   const start = vi.fn().mockResolvedValue({ requestId: id, expiresAt: new Date(Date.now() + 120000).toISOString() });
   const approve = vi.fn().mockResolvedValue({ ok: true });
-  const authorize = vi.fn(async (token: string) => { if (token !== 's'.repeat(43)) throw new IntegrationError('EMBED_AUTHORIZATION_DENIED', 403); return { organizationId: org }; });
+  const authorize = vi.fn(async (token: string) => { if (token !== embedToken) throw new IntegrationError('EMBED_AUTHORIZATION_DENIED', 403); return { organizationId: org }; });
   const status = vi.fn().mockResolvedValue(health), pair = vi.fn().mockRejectedValue(new IntegrationError('EMBED_AUTHORIZATION_DENIED', 403));
   const instance = vi.fn(), sendMessage = vi.fn(), createUser = vi.fn();
   const describe = vi.fn().mockResolvedValue({ embedId: id, title: 'JRC', url: `${origin}/embed/chatwoot/${id}`, state: 'UNCONFIGURED', remoteAppId: null });
@@ -68,7 +69,7 @@ it('requires Broker JWT, exact origin and signed matching CSRF for approval', as
   expect(h.approve).toHaveBeenCalledOnce();
 });
 it('limits bearer session to state/pair, checks it after HTTP and refuses generic instance access', async () => {
-  const h = await harness(), headers = { authorization: `Bearer ${'s'.repeat(43)}` };
+  const h = await harness(), headers = { authorization: `Bearer ${embedToken}` };
   const response = await h.app.inject({ method: 'GET', url: `/v1/embed/connections/${id}/status`, headers });
   expect(response.statusCode).toBe(200); expect(response.json().allowedActions).toEqual(['status', 'pair']);
   expect(h.authorize).toHaveBeenCalledTimes(2);
@@ -88,7 +89,7 @@ it('redacts proof material even when passed as a diagnostic field', () => {
 });
 
 it('suppresses provider output when the grant expires while the request is in flight', async () => {
-  const h = await harness(), headers = { authorization: `Bearer ${'s'.repeat(43)}`, 'idempotency-key': 'synthetic-pair' };
+  const h = await harness(), headers = { authorization: `Bearer ${embedToken}`, 'idempotency-key': 'synthetic-pair' };
   h.pair.mockResolvedValueOnce({ action: { type: 'QR_CODE', qr: 'synthetic-secret-qr' } });
   h.authorize.mockResolvedValueOnce({ organizationId: org }).mockRejectedValueOnce(new IntegrationError('EMBED_AUTHORIZATION_DENIED', 403));
   const response = await h.app.inject({ method: 'POST', url: `/v1/embed/connections/${id}/pair`, headers, payload: {} });

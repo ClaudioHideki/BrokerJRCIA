@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react';
-import { FLOW_NODE_CATALOG, flowPorts, type FlowGraph, type FlowNode } from '@jrc/contracts';
+import { AUTOMATION_NODE_CATALOG_V1, FLOW_NODE_CATALOG, automationNodePorts, type FlowGraph, type FlowNode } from '@jrc/contracts';
 
 const portName=(port:string)=>port==='yes'?'Sim':port==='no'?'Não':port.startsWith('option-')?'Opção '+port.slice(7):'Continuar';
-export function FlowCanvas({graph,onChange,editable}:{graph:FlowGraph;onChange:(graph:FlowGraph)=>void;editable:boolean}){
+const ioTypes=['http','sql','code','ai-generate','ai-classify','ai-extract','ai-summarize','ai-agent'];
+type CatalogItem={type:string;label:string;description:string;category?:string};
+export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as readonly CatalogItem[]}:{graph:FlowGraph;onChange:(graph:FlowGraph)=>void;editable:boolean;catalog?:readonly CatalogItem[]}){
  const [selected,setSelected]=useState(graph.nodes[0]?.id??'');
  const [zoom,setZoom]=useState(1);
  const [connecting,setConnecting]=useState<{source:string;port:string}|null>(null);
+ const [search,setSearch]=useState('');
  const drag=useRef<{id:string;x:number;y:number;originX:number;originY:number}|null>(null);
  const node=graph.nodes.find(n=>n.id===selected);
  const patch=(value:Partial<FlowNode>)=>{if(node)onChange({...graph,nodes:graph.nodes.map(n=>n.id===node.id?{...n,...value}:n)});};
@@ -15,43 +18,44 @@ export function FlowCanvas({graph,onChange,editable}:{graph:FlowGraph;onChange:(
   if(target)edges.push({id:crypto.randomUUID(),source,port,target});
   onChange({...graph,edges});setConnecting(null);
  };
- const add=(type:string)=>{
-  const definition=FLOW_NODE_CATALOG.find(n=>n.type===type)!;
+ const ports=(current:FlowNode)=>catalog===AUTOMATION_NODE_CATALOG_V1?automationNodePorts(current):['delay','subflow'].includes(current.type)?['next']:automationNodePorts(current);
+ const add=(type:string,position?:{x:number;y:number})=>{
+  const definition=catalog.find(n=>n.type===type)!;
   const id=crypto.randomUUID();
-  const defaults:Record<string,unknown>=type==='message'?{text:'Nova mensagem'}:type==='input'?{text:'Qual é sua resposta?',variable:'resposta'}:type==='menu'?{text:'Escolha uma opção:',variable:'menu.choice',options:[{value:'1',label:'Comercial'},{value:'2',label:'Suporte'}]}:type==='variable'?{variable:'variavel',value:''}:type==='condition'?{field:'message',operator:'equals',value:''}:{};
-  onChange({...graph,nodes:[...graph.nodes,{id,type,label:definition.label,position:{x:80+(graph.nodes.length%4)*270,y:80+Math.floor(graph.nodes.length/4)*190},data:defaults}]});
+  const defaults:Record<string,unknown>=type==='message'?{text:'Nova mensagem'}:type==='input'?{text:'Qual é sua resposta?',variable:'resposta'}:type==='menu'?{text:'Escolha uma opção:',variable:'menu.choice',options:[{value:'1',label:'Comercial'},{value:'2',label:'Suporte'}]}:type==='variable'?{variable:'variavel',value:''}:type==='condition'?{field:'message',operator:'equals',value:''}:type==='delay'?{seconds:60}:type==='subflow'?{automationId:'',version:1,timeoutMs:10000}:type==='http'?{method:'GET',url:'https://',credentialId:'',target:'http.result',timeoutMs:15000}:type==='sql'?{credentialId:'',query:'SELECT 1',parameters:[],target:'sql.result',timeoutMs:5000,maxRows:100}:type==='code'?{code:'return input;',input:{},target:'code.result'}:type.startsWith('ai-')?{credentialId:'',model:'',content:'{{message}}',target:'ai.result',tools:[],allowedTools:[]}:type.startsWith('data-')||['json-parse','json-stringify','expression'].includes(type)?{target:'resultado'}:{};
+  onChange({...graph,nodes:[...graph.nodes,{id,type,label:definition.label,position:position??{x:80+(graph.nodes.length%4)*270,y:80+Math.floor(graph.nodes.length/4)*190},data:defaults}]});
   setSelected(id);
  };
  const width=Math.max(1200,...graph.nodes.map(n=>n.position.x+300));
  const height=Math.max(650,...graph.nodes.map(n=>n.position.y+230));
  return <div className="flows-builder">
-  <aside className="flows-palette"><h3>Blocos</h3><p>Construa o caminho da conversa.</p>
-   {FLOW_NODE_CATALOG.map(c=><button type="button" key={c.type} disabled={!editable||graph.nodes.length>=150||(c.type==='start'&&graph.nodes.some(n=>n.type==='start'))} onClick={()=>add(c.type)} title={c.description}><span className={'flow-dot flow-dot--'+c.type}/>{c.label}</button>)}
+  <aside className="flows-palette"><h3>Blocos</h3><p>Construa o caminho da conversa.</p><label>Buscar bloco<input aria-label="Buscar bloco" value={search} onChange={event=>setSearch(event.target.value)}/></label>
+   {catalog.filter(item=>(item.label+' '+item.category).toLowerCase().includes(search.toLowerCase())).map(c=><button type="button" draggable={editable} onDragStart={event=>event.dataTransfer.setData('application/x-jrc-node',c.type)} key={c.type} disabled={!editable||graph.nodes.length>=150||(c.type==='start'&&graph.nodes.some(n=>n.type==='start'))} onClick={()=>add(c.type)} title={c.description}><span className={'flow-dot flow-dot--'+c.type}/><span>{c.label}{c.category&&<small>{c.category}</small>}</span></button>)}
    <small>Arraste os blocos. Clique em uma saída e depois no bloco de destino, ou use “Próximos passos”.</small>
   </aside>
   <section className="flows-canvas-wrap" aria-label="Canvas do flow">
    <div className="flows-canvas-tools"><button type="button" onClick={()=>setZoom(z=>Math.max(.3,z-.1))} aria-label="Diminuir zoom">−</button><span>{Math.round(zoom*100)}%</span><button type="button" onClick={()=>setZoom(z=>Math.min(1.5,z+.1))} aria-label="Aumentar zoom">+</button><button type="button" onClick={()=>setZoom(.75)}>Visão geral</button>{connecting&&<button type="button" onClick={()=>setConnecting(null)}>Cancelar conexão</button>}</div>
-   <div className="flows-canvas-scroll">
+   <div className="flows-canvas-scroll" onDragOver={event=>{if(editable)event.preventDefault();}} onDrop={event=>{event.preventDefault();const type=event.dataTransfer.getData('application/x-jrc-node');if(!catalog.some(item=>item.type===type))return;const rect=event.currentTarget.getBoundingClientRect();add(type,{x:(event.clientX-rect.left+event.currentTarget.scrollLeft)/zoom,y:(event.clientY-rect.top+event.currentTarget.scrollTop)/zoom});}}>
     <div style={{width:width*zoom,height:height*zoom}}>
      <div className="flows-canvas" style={{width,height,transform:'scale('+zoom+')',transformOrigin:'top left'}}>
       <svg width={width} height={height} className="flows-wires" aria-label="Conexões entre blocos">
        {graph.edges.map(edge=>{
         const a=graph.nodes.find(n=>n.id===edge.source),b=graph.nodes.find(n=>n.id===edge.target);
         if(!a||!b)return null;
-        const x=a.position.x+220,y=a.position.y+72+Math.max(0,flowPorts(a).indexOf(edge.port))*25;
+        const x=a.position.x+220,y=a.position.y+72+Math.max(0,ports(a).indexOf(edge.port))*25;
         return <path key={edge.id} d={'M '+x+' '+y+' C '+(x+70)+' '+y+', '+(b.position.x-70)+' '+(b.position.y+45)+', '+b.position.x+' '+(b.position.y+45)}><title>{a.label+' → '+b.label}</title></path>;
        })}
       </svg>
-      {graph.nodes.map(n=><div key={n.id} className={'flow-node '+(selected===n.id?'flow-node--selected ':'')+(!FLOW_NODE_CATALOG.some(c=>c.type===n.type)?'flow-node--unsupported':'')} style={{left:n.position.x,top:n.position.y}}>
+      {graph.nodes.map(n=><div key={n.id} className={'flow-node '+(selected===n.id?'flow-node--selected ':'')+(!catalog.some(c=>c.type===n.type)?'flow-node--unsupported':'')} style={{left:n.position.x,top:n.position.y}}>
        <button type="button" className="flow-node-heading" aria-label={'Configurar '+n.label}
         onClick={()=>{if(connecting&&editable&&n.type!=='start'&&connecting.source!==n.id)connect(connecting.source,connecting.port,n.id);else setSelected(n.id);}}
         onPointerDown={event=>{if(!editable||connecting)return;drag.current={id:n.id,x:event.clientX,y:event.clientY,originX:n.position.x,originY:n.position.y};event.currentTarget.setPointerCapture(event.pointerId);}}
         onPointerMove={event=>{const d=drag.current;if(d?.id!==n.id||!editable)return;const x=Math.min(100000,Math.max(0,d.originX+(event.clientX-d.x)/zoom)),y=Math.min(100000,Math.max(0,d.originY+(event.clientY-d.y)/zoom));if(Math.abs(event.clientX-d.x)+Math.abs(event.clientY-d.y)>3)onChange({...graph,nodes:graph.nodes.map(item=>item.id===n.id?{...item,position:{x,y}}:item)});}}
-        onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}>
+        onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}} onKeyDown={event=>{if(!editable)return;const delta=event.shiftKey?20:5;if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const dx=event.key==='ArrowLeft'?-delta:event.key==='ArrowRight'?delta:0,dy=event.key==='ArrowUp'?-delta:event.key==='ArrowDown'?delta:0;onChange({...graph,nodes:graph.nodes.map(item=>item.id===n.id?{...item,position:{x:Math.max(0,item.position.x+dx),y:Math.max(0,item.position.y+dy)}}:item)});}}}>
         <span className={'flow-dot flow-dot--'+n.type}/><strong>{n.label}</strong>
        </button>
-       <small>{FLOW_NODE_CATALOG.find(c=>c.type===n.type)?.label??'Requer adaptação'}</small>
-       <div className="flow-node-ports">{flowPorts(n).map(port=><button type="button" key={port} disabled={!editable} aria-label={'Conectar '+n.label+' '+portName(port)} onClick={()=>{setSelected(n.id);setConnecting({source:n.id,port});}}>{portName(port)}<span/></button>)}</div>
+       <small>{catalog.find(c=>c.type===n.type)?.label??'Requer adaptação'}</small>
+       <div className="flow-node-ports">{ports(n).map(port=><button type="button" key={port} disabled={!editable} aria-label={'Conectar '+n.label+' '+portName(port)} onClick={()=>{setSelected(n.id);setConnecting({source:n.id,port});}}>{portName(port)}<span/></button>)}</div>
       </div>)}
      </div>
     </div>
@@ -65,9 +69,17 @@ export function FlowCanvas({graph,onChange,editable}:{graph:FlowGraph;onChange:(
    {node.type==='menu'&&<label>Opções, uma por linha<textarea rows={6} value={(Array.isArray(node.data.options)?node.data.options:[]).map(raw=>{const option=raw as {value?:unknown;label?:unknown};return String(option.value??'')+'|'+String(option.label??'');}).join('\n')} onChange={e=>patch({data:{...node.data,options:e.target.value.split(/\r?\n/).filter(Boolean).map(line=>{const [optionValue,...label]=line.split('|');return {value:(optionValue??'').trim(),label:label.join('|').trim()};})}})} /></label>}
    {node.type==='condition'&&<><label>Campo<input value={String(node.data.field??'message')} onChange={e=>data('field',e.target.value)}/></label><label>Comparação<select value={String(node.data.operator??'equals')} onChange={e=>data('operator',e.target.value)}><option value="equals">Igual a</option><option value="not_equals">Diferente de</option><option value="contains">Contém</option><option value="starts_with">Começa com</option><option value="present">Está preenchido</option></select></label></>}
    {['variable','condition'].includes(node.type)&&<label>Valor<input value={String(node.data.value??'')} maxLength={4096} onChange={e=>data('value',e.target.value)}/></label>}
+   {node.type==='delay'&&<label>Segundos<input type="number" min="1" max="604800" value={String(node.data.seconds??60)} onChange={e=>data('seconds',e.target.value)}/></label>}
+   {node.type==='subflow'&&<><label>ID da automação<input value={String(node.data.automationId??'')} onChange={e=>data('automationId',e.target.value)}/></label><label>Versão<input type="number" min="1" value={String(node.data.version??1)} onChange={e=>data('version',e.target.value)}/></label></>}
+   {(ioTypes.includes(node.type)||node.type.startsWith('data-')||['json-parse','json-stringify','expression'].includes(node.type))&&<label>Variável de destino<input value={String(node.data.target??'')} onChange={e=>data('target',e.target.value)}/></label>}
+   {ioTypes.includes(node.type)&&node.type!=='code'&&<label>ID da credencial<input value={String(node.data.credentialId??'')} onChange={e=>data('credentialId',e.target.value)} placeholder="UUID do cofre"/></label>}
+   {node.type==='http'&&<><label>Método<select value={String(node.data.method??'GET')} onChange={e=>data('method',e.target.value)}>{['GET','POST','PUT','PATCH','DELETE'].map(method=><option key={method}>{method}</option>)}</select></label><label>URL HTTPS<input value={String(node.data.url??'')} onChange={e=>data('url',e.target.value)}/></label></>}
+   {node.type==='sql'&&<label>Consulta somente leitura<textarea rows={6} value={String(node.data.query??'')} onChange={e=>data('query',e.target.value)}/></label>}
+   {node.type==='code'&&<label>JavaScript isolado<textarea rows={8} value={String(node.data.code??'')} onChange={e=>data('code',e.target.value)}/></label>}
+   {node.type.startsWith('ai-')&&<><label>Modelo<input value={String(node.data.model??'')} onChange={e=>data('model',e.target.value)}/></label><label>Conteúdo<textarea rows={6} value={String(node.data.content??'')} onChange={e=>data('content',e.target.value)}/></label></>}
    {node.type==='unsupported'&&<p role="note">Este nó importado ainda não tem executor no Broker. Substitua-o por um bloco compatível. Origem: {String(node.data.sourceType??node.type)}</p>}
    {node.type==='handoff'&&<p>Ao chegar aqui, o chatbot pausa para o atendente. Retome em “Mensagens e automações”.</p>}
-   <h4>Próximos passos</h4>{flowPorts(node).map(port=><label key={port}>{portName(port)}<select aria-label={'Destino '+portName(port)} value={graph.edges.find(e=>e.source===node.id&&e.port===port)?.target??''} onChange={e=>connect(node.id,port,e.target.value)}><option value="">Sem conexão</option>{graph.nodes.filter(n=>n.id!==node.id&&n.type!=='start').map(n=><option key={n.id} value={n.id}>{n.label}</option>)}</select></label>)}
+   <h4>Próximos passos</h4>{ports(node).map(port=><label key={port}>{portName(port)}<select aria-label={'Destino '+portName(port)} value={graph.edges.find(e=>e.source===node.id&&e.port===port)?.target??''} onChange={e=>connect(node.id,port,e.target.value)}><option value="">Sem conexão</option>{graph.nodes.filter(n=>n.id!==node.id&&n.type!=='start').map(n=><option key={n.id} value={n.id}>{n.label}</option>)}</select></label>)}
    <p className="flows-help">Use {'{{contact.name}}'}, {'{{message}}'} ou a variável capturada, como {'{{nome}}'}.</p>
    {node.type!=='start'&&<button type="button" className="flows-delete" onClick={()=>{onChange({...graph,nodes:graph.nodes.filter(n=>n.id!==node.id),edges:graph.edges.filter(e=>e.source!==node.id&&e.target!==node.id)});setSelected(graph.nodes[0]?.id??'');}}>Remover bloco</button>}
   </fieldset>:<p>Selecione um bloco no canvas.</p>}</aside>

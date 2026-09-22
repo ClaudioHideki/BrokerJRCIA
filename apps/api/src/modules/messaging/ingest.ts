@@ -16,6 +16,11 @@ const mediaSchema = z.object({
   caption: z.string().max(1024).optional(),
   filename: z.string().max(256).optional(),
 });
+const replySchema = z.object({ id: z.string().min(1).max(256), title: z.string().min(1).max(1024) });
+const contactSchema = z.object({
+  name: z.object({ formatted_name: z.string().min(1).max(512) }),
+  phones: z.array(z.object({ phone: z.string().min(1).max(64) })).max(20).default([]),
+});
 const incomingSchema = z.discriminatedUnion("type", [
   incomingBase.extend({
     type: z.literal("text"),
@@ -26,6 +31,16 @@ const incomingSchema = z.discriminatedUnion("type", [
   incomingBase.extend({ type: z.literal("video"), video: mediaSchema }),
   incomingBase.extend({ type: z.literal("document"), document: mediaSchema }),
   incomingBase.extend({ type: z.literal("sticker"), sticker: mediaSchema }),
+  incomingBase.extend({ type: z.literal("button"), button: z.object({ text: z.string().min(1).max(1024), payload: z.string().max(1024).optional() }) }),
+  incomingBase.extend({ type: z.literal("interactive"), interactive: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("button_reply"), button_reply: replySchema }),
+    z.object({ type: z.literal("list_reply"), list_reply: replySchema.extend({ description: z.string().max(1024).optional() }) }),
+  ]) }),
+  incomingBase.extend({ type: z.literal("contacts"), contacts: z.array(contactSchema).min(1).max(20) }),
+  incomingBase.extend({ type: z.literal("location"), location: z.object({
+    latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180),
+    name: z.string().max(512).optional(), address: z.string().max(1024).optional(),
+  }) }),
 ]);
 const envelopeSchema = z.object({
   object: z.literal("whatsapp_business_account"),
@@ -142,6 +157,21 @@ export function createMetaIngestor(options: MetaIngestOptions) {
             let content: MessageContent;
             if (message.type === "text")
               content = { type: "TEXT", text: message.text.body };
+            else if (message.type === "button")
+              content = { type: "TEXT", text: message.button.text };
+            else if (message.type === "interactive") {
+              const reply = message.interactive.type === "button_reply"
+                ? message.interactive.button_reply : message.interactive.list_reply;
+              content = { type: "TEXT", text: reply.title };
+            } else if (message.type === "contacts") {
+              content = { type: "TEXT", text: message.contacts.map(contact => {
+                const phones = contact.phones.map(phone => phone.phone).join(", ");
+                return phones ? `${contact.name.formatted_name}: ${phones}` : contact.name.formatted_name;
+              }).join("\n") };
+            } else if (message.type === "location") {
+              const label = [message.location.name, message.location.address].filter(Boolean).join(" — ");
+              content = { type: "TEXT", text: `${label ? `${label}\n` : ""}${message.location.latitude}, ${message.location.longitude}` };
+            }
             else {
               const media =
                 message.type === "image"

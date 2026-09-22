@@ -5,4 +5,5 @@ export * from './challenges/aes-gcm.js';
 export * from './passwords/argon2id.js';
 export * from './redaction/logger.js';
 export * from './tokens/jwt.js';
+export * from './tokens/embed-session.js';
 export * from './tokens/opaque.js';

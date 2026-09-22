@@ -1,0 +1,3 @@
+import {describe,expect,it} from 'vitest';
+import {assertReadOnlySql} from '../../src/modules/automation-integrations/sql.js';
+describe('SQL read-only enforcement',()=>{it.each(['UPDATE users SET admin=true','DELETE FROM users','SELECT 1; DROP TABLE users','COPY users TO PROGRAM \'whoami\'','WITH changed AS (DELETE FROM users RETURNING *) SELECT * FROM changed','CALL payout()'])("rejects %s",query=>expect(()=>assertReadOnlySql(query)).toThrow('AUTOMATION_SQL_READ_ONLY_REQUIRED'));it.each(['SELECT id FROM customers WHERE id=$1','WITH active AS (SELECT id FROM users WHERE active=$1) SELECT * FROM active'])("allows parameterized read %s",query=>expect(assertReadOnlySql(query)).toBe(query));});

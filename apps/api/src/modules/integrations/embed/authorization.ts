@@ -1,6 +1,7 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { EmbedApproveSchema, EmbedChallengeSchema, EmbedVerifierSchema, type EmbedConnection, type EmbedExchangeResult } from '@jrc/contracts';
+import { issueEmbedSessionToken } from '@jrc/security';
 import type { AuthenticationContext } from '../../../http/plugins/authorization.js';
 import type { TenantTransaction } from '../../../db/tenant-transaction.js';
 import type { ChatwootControlPrincipal } from '../chatwoot-control-auth.js';
@@ -118,11 +119,20 @@ export class EmbedAuthorizationService {
       await this.apps.current(tx, await this.repository.app(tx, request.app_id));
       await tx.query("UPDATE chatwoot_embed_authorizations SET next_exchange_at=clock_timestamp()+interval '1 second' WHERE id=$1", [requestId]);
       if (request.state === 'PENDING') return { status: 'PENDING' as const };
-      const principal = await this.approvedPrincipal(tx, request), token = randomBytes(32).toString('base64url');
+      const principal = await this.approvedPrincipal(tx, request), sessionId = randomUUID();
+      const token = await issueEmbedSessionToken({
+        tenantId: principal.organizationId,
+        destinationRevision: principal.destinationRevision,
+        accountId: principal.accountId,
+        inboxIds: [...new Set(request.grants!.map(grant => grant.inboxId))],
+        externalUserId: request.approved_by!,
+        scopes: request.grants!.some(grant => grant.canPair) ? ['chatwoot:read', 'chatwoot:pair'] : ['chatwoot:read'],
+        nonce: sessionId,
+      }, this.options.sessionSigningSecret);
       const consumed = await tx.query("UPDATE chatwoot_embed_authorizations SET state='CONSUMED',consumed_at=clock_timestamp() WHERE id=$1 AND state='APPROVED' AND expires_at>clock_timestamp()", [requestId]);
       if (consumed.rowCount !== 1) throw embedDenied();
-      const session = (await tx.query<{ expires_at: Date }>(`INSERT INTO chatwoot_embed_sessions(organization_id,app_id,authorization_id,user_id,token_hash,credential_version,grants)
-        VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING expires_at`, [org, request.app_id, requestId, request.approved_by, hashEmbedToken(token), request.credential_version, JSON.stringify(request.grants)])).rows[0]!;
+      const session = (await tx.query<{ expires_at: Date }>(`INSERT INTO chatwoot_embed_sessions(id,organization_id,app_id,authorization_id,user_id,token_hash,credential_version,grants)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb) RETURNING expires_at`, [sessionId, org, request.app_id, requestId, request.approved_by, hashEmbedToken(token), request.credential_version, JSON.stringify(request.grants)])).rows[0]!;
       await this.options.control.audit(tx, principal, 'EMBED_SESSION_ISSUED', requestId);
       return { status: 'AUTHORIZED' as const, token, expiresAt: session.expires_at.toISOString(), accountId: principal.accountId,
         connections: request.grants!.map(publicGrant) };

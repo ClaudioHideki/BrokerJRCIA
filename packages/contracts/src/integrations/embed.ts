@@ -16,7 +16,8 @@ export const EmbedApprovalViewSchema = EmbedStartedSchema.extend({ accountId: z.
   connections: z.array(EmbedConnectionSchema).max(100) });
 export const EmbedExchangeResultSchema = z.discriminatedUnion('status', [
   z.strictObject({ status: z.literal('PENDING') }),
-  z.strictObject({ status: z.literal('AUTHORIZED'), token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), expiresAt: z.iso.datetime(),
+  z.strictObject({ status: z.literal('AUTHORIZED'), token: z.string().max(4096)
+    .regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/), expiresAt: z.iso.datetime(),
     accountId: z.number().int().positive(), connections: z.array(EmbedConnectionSchema).max(100) }),
 ]);
 export type EmbedConnection = z.infer<typeof EmbedConnectionSchema>;

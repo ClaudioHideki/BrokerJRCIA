@@ -91,7 +91,7 @@ it("limpa indicadores na troca de empresa e ignora resposta antiga atrasada", as
   );
 });
 it("apresenta os dois canais JRC sem expor os motores técnicos ao cliente", async () => {
-  render(<App client={createDemoClient()} initialEntries={["/providers"]} />);
+  render(<App client={createDemoClient()} initialEntries={["/legacy/providers"]} />);
   await screen.findByRole("heading", { name: "Canais JRC" });
   expect(
     screen.getByRole("heading", { name: "WhatsApp Business por QR Code" }),

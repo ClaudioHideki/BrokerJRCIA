@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { verifyEmbedSessionToken } from '@jrc/security';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { createIsolatedPostgresDatabase, requireTestDatabaseAdminUrl, type IsolatedPostgresDatabase } from './helpers/postgres.js';
 import { connectionStringForRole } from './helpers/task7.js';
@@ -50,7 +51,8 @@ beforeAll(async () => {
   [integration, otherIntegration] = ids;
   control = createChatwootControlAuth({ enabled: true, transact, managedOrigin: 'https://managed.example.com', hmacSecret: 'synthetic-hmac-at-least-32-characters', resolveCurrentRole: createMessagingMembershipResolver(authPool) });
   service = createEmbedService({ enabled: true, pool, transact, control, managedOrigin: 'https://managed.example.com',
-    rateLimitStore: new MemoryRateLimitStore(), rateLimitSecret: 'synthetic-hmac-at-least-32-characters' });
+    rateLimitStore: new MemoryRateLimitStore(), rateLimitSecret: 'synthetic-hmac-at-least-32-characters',
+    sessionSigningSecret: 'synthetic-session-secret-at-least-32-characters' });
   appId = (await service.apps.register(owner)).embedId;
 });
 afterAll(async () => { await pool?.end(); await authPool?.end(); await db?.dispose(); });
@@ -82,7 +84,11 @@ it('keeps an unapproved request pending and exchanges atomically exactly once', 
   const results = await Promise.allSettled([service.exchange(started.requestId, p.verifier), service.exchange(started.requestId, p.verifier)]);
   const successes = results.filter(r => r.status === 'fulfilled'); expect(successes).toHaveLength(1);
   const issued = (successes[0] as PromiseFulfilledResult<{ token: string; expiresAt: string }>).value;
-  expect(issued.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  expect(issued.token.split('.')).toHaveLength(3);
+  await expect(verifyEmbedSessionToken(issued.token, 'synthetic-session-secret-at-least-32-characters')).resolves.toMatchObject({
+    tenantId: owner.organizationId, accountId: 1, inboxIds: [31], externalUserId: owner.actorId,
+    scopes: ['chatwoot:read', 'chatwoot:pair'],
+  });
   const rows = (await transact(owner.organizationId, tx => tx.query('SELECT * FROM chatwoot_embed_sessions'))).rows;
   expect(rows).toHaveLength(1); expect(JSON.stringify(rows)).not.toContain(issued.token);
   const principal = await service.sessions.authorize(issued.token, integration, 'chatwoot:pair');

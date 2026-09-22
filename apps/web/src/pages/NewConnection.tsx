@@ -7,9 +7,10 @@ import { ApiClientError } from '../api/client.js';
 import { useApiClient, useSession } from '../auth/SessionProvider.js';
 import { connectionAccountLabel } from '../broker/labels.js';
 import { createConnection, listBaileysProviderAccounts } from '../connections/api.js';
+import { createChannel } from '../channels/api.js';
 import { useVolatileIntent } from '../connections/use-volatile-intent.js';
 
-export function NewConnectionPage() {
+export function NewConnectionPage({ canonical = false }: { canonical?: boolean }) {
   const client = useApiClient();
   const { session, tenantRevision } = useSession();
   const navigate = useNavigate();
@@ -65,7 +66,7 @@ export function NewConnectionPage() {
     };
   }, [client, intent, tenantId, tenantRevision]);
 
-  if (session?.activeOrganization.role === 'VIEWER') return <Navigate replace to="/conexoes" />;
+  if (session?.activeOrganization.role === 'VIEWER') return <Navigate replace to="/channels" />;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -74,13 +75,20 @@ export function NewConnectionPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const result = await createConnection(client, {
-        name: name.trim(), providerAccountId,
-      }, intent.acquire({ forceNew: !retrying }));
+      const key = intent.acquire({ forceNew: !retrying });
+      const result = canonical
+        ? await createChannel(client, { provider: 'QR', name: name.trim(), providerAccountId }, key)
+        : await createConnection(client, { name: name.trim(), providerAccountId }, key);
       if (generation !== tenantGeneration.current) return;
       intent.complete();
       setRetrying(false);
-      navigate(`/conexoes/${result.instance.id}`, { replace: true });
+      if (canonical) {
+        if (!('provider' in result) || result.provider !== 'QR') throw new Error('INVALID_CHANNEL_PROVIDER');
+        navigate(`/channels/${result.channel.id}`, { replace: true });
+      } else {
+        if (!('instance' in result)) throw new Error('INVALID_INSTANCE_RESPONSE');
+        navigate(`/legacy/conexoes/${result.instance.id}`, { replace: true });
+      }
     } catch (caught) {
       if (generation !== tenantGeneration.current) return;
       const apiError = caught instanceof ApiClientError ? caught : null;
@@ -94,7 +102,7 @@ export function NewConnectionPage() {
   const resetIntent = () => { intent.clear(); setRetrying(false); };
   return (
     <section className="form-page" aria-labelledby="new-connection-title">
-      <Link className="back-link" to="/conexoes">← Voltar para conexões</Link>
+      <Link className="back-link" to="/channels">← Voltar para canais</Link>
       <p className="eyebrow">Nova conexão</p>
       <h1 id="new-connection-title">Conectar um WhatsApp</h1>
       <p>Crie sua conexão JRC e leia o QR Code no WhatsApp Business do celular.</p>

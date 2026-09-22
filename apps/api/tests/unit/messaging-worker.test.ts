@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createMessagingWorker } from '../../src/modules/messaging/worker.js';
 import type { MessagingRepository } from '../../src/modules/messaging/repository.js';
 import type { TenantTransaction } from '../../src/db/tenant-transaction.js';
+import { AUTOMATION_ORIGIN } from '@jrc/contracts';
 
 describe('composição do worker durável', () => {
   it('bounds each organization turn to one bot claim and one outbound claim', async () => {
@@ -38,5 +39,12 @@ describe('composição do worker durável', () => {
     });
     await worker.runOnce('tenant');
     expect(events).toEqual(['Resposta', 'outbox']);
+  });
+  it('encaminha mensagens do binding v2 uma única vez e conclui o lease do bot',async()=>{const events:string[]=[];const repository={
+    async claimBotTurn(){return {message:{id:'message',organizationId:'tenant',content:{type:'TEXT',text:'Oi'}},channel:{id:'channel'},conversation:{id:'conversation',botPublicId:'automation',botOriginReference:AUTOMATION_ORIGIN,typebotSessionId:null}};},
+    async completeBotTurn(){events.push('completed');return {kind:'completed',messages:[]};},async claimOutgoing(){return []},
+  } as unknown as MessagingRepository;
+    const worker=createMessagingWorker({repository,automations:{async route(_org,event){events.push(event.eventKey);}},transact:(_org,operation)=>operation({} as TenantTransaction),async resolveMetaClient(){throw new Error('unexpected')},async resolveTypebotClient(){throw new Error('unexpected')}});
+    await worker.runOnce('tenant');expect(events).toEqual(['message:message','completed']);
   });
 });

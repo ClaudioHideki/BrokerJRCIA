@@ -83,7 +83,7 @@ const first = {
 describe('ConnectionsPage', () => {
   it('filters loaded connections by name and status without claiming a global search', async () => {
     const request = vi.fn(async () => ({ data: [first, { ...first, id: INSTANCE_B, name: 'Comercial', status: 'DISCONNECTED' }], pageInfo: { hasNextPage: true, nextCursor: 'next' } })) as ApiClient['request'];
-    render(<App client={appClient(request)} initialEntries={['/conexoes']} />);
+    render(<App client={appClient(request)} initialEntries={['/legacy/conexoes']} />);
     await screen.findByRole('link', { name: /Atendimento/ });
     fireEvent.change(screen.getByLabelText('Buscar conexão'), { target: { value: 'Comercial' } });
     expect(screen.queryByRole('link', { name: /Atendimento/ })).not.toBeInTheDocument();
@@ -99,7 +99,7 @@ describe('ConnectionsPage', () => {
       if (path.startsWith('/v1/instances?')) return new Promise((resolve) => { resolveList = resolve; });
       throw new Error(`unexpected ${path}`);
     }) as ApiClient['request'];
-    render(<App client={appClient(request)} initialEntries={['/conexoes']} />);
+    render(<App client={appClient(request)} initialEntries={['/legacy/conexoes']} />);
     expect(await screen.findByText('Carregando conexões…')).toBeVisible();
     await waitFor(() => expect(request).toHaveBeenCalledWith('/v1/instances?limit=20'));
     expect(resolveList).toBeTypeOf('function');
@@ -112,7 +112,7 @@ describe('ConnectionsPage', () => {
     const request = vi.fn(async (path: string) => path.includes('cursor=opaque')
       ? { data: [{ ...first, name: 'Comercial', id: '9b3bb2cd-2b53-48cb-a758-bf72a85eb257' }], pageInfo: { hasNextPage: false, nextCursor: null } }
       : { data: [first], pageInfo: { hasNextPage: true, nextCursor: 'opaque' } }) as ApiClient['request'];
-    render(<App client={appClient(request)} initialEntries={['/conexoes']} />);
+    render(<App client={appClient(request)} initialEntries={['/legacy/conexoes']} />);
     expect(await screen.findByRole('link', { name: /Atendimento/ })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Carregar mais' }));
     expect(await screen.findByRole('link', { name: /Comercial/ })).toBeVisible();
@@ -123,7 +123,7 @@ describe('ConnectionsPage', () => {
     const request = vi.fn(async () => {
       throw new ApiClientError('Serviço temporariamente indisponível. Tente novamente.', 502, '85a17103-9f0d-4d86-b55d-4184597e17a8');
     }) as ApiClient['request'];
-    render(<App client={appClient(request)} initialEntries={['/conexoes']} />);
+    render(<App client={appClient(request)} initialEntries={['/legacy/conexoes']} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('Serviço temporariamente indisponível');
     expect(screen.getByRole('alert')).toHaveTextContent('85a17103-9f0d-4d86-b55d-4184597e17a8');
   });
@@ -132,13 +132,13 @@ describe('ConnectionsPage', () => {
     const request = vi.fn(async () => {
       throw new ApiClientError('Você não tem permissão para realizar esta ação.', 403);
     }) as ApiClient['request'];
-    render(<App client={appClient(request)} initialEntries={['/conexoes']} />);
+    render(<App client={appClient(request)} initialEntries={['/legacy/conexoes']} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('Você não tem permissão');
   });
 
   it('remove mutações para VIEWER', async () => {
     const request = vi.fn(async () => ({ data: [], pageInfo: { hasNextPage: false, nextCursor: null } })) as ApiClient['request'];
-    render(<App client={appClient(request, 'VIEWER')} initialEntries={['/conexoes']} />);
+    render(<App client={appClient(request, 'VIEWER')} initialEntries={['/legacy/conexoes']} />);
     await screen.findByText('Nenhuma conexão criada');
     expect(screen.queryByRole('link', { name: 'Nova conexão' })).not.toBeInTheDocument();
     expect(screen.getByText('Seu acesso é somente leitura.')).toBeVisible();
@@ -156,7 +156,7 @@ describe('ConnectionsPage', () => {
         pageInfo: { hasNextPage: false, nextCursor: null },
       };
     }) as ApiClient['request'];
-    render(<App client={switchingAppClient(request)} initialEntries={['/conexoes']} />);
+    render(<App client={switchingAppClient(request)} initialEntries={['/legacy/conexoes']} />);
     expect(await screen.findByRole('link', { name: /Atendimento/ })).toBeVisible();
 
     fireEvent.change(screen.getByLabelText('Organização ativa'), { target: { value: ORG_B } });
@@ -173,7 +173,7 @@ describe('ConnectionsPage', () => {
       lists += 1;
       return { data: [first], pageInfo: { hasNextPage: false, nextCursor: null } };
     }) as ApiClient['request'];
-    render(<App client={switchingAppClient(request, { rejectSwitch: true })} initialEntries={['/conexoes']} />);
+    render(<App client={switchingAppClient(request, { rejectSwitch: true })} initialEntries={['/legacy/conexoes']} />);
     expect(await screen.findByRole('link', { name: /Atendimento/ })).toBeVisible();
 
     fireEvent.change(screen.getByLabelText('Organização ativa'), { target: { value: ORG_B } });
@@ -201,7 +201,7 @@ describe('NewConnectionPage', () => {
       throw new Error(`unexpected ${path}`);
     });
     const request = requestMock as unknown as ApiClient['request'];
-    render(<App client={appClient(request)} initialEntries={['/conexoes/nova']} />);
+    render(<App client={appClient(request)} initialEntries={['/legacy/conexoes/nova']} />);
     expect(await screen.findByText('JRC QR Code principal')).toBeVisible();
     fireEvent.change(screen.getByLabelText('Nome da conexão'), { target: { value: 'Atendimento' } });
     fireEvent.click(screen.getByRole('button', { name: 'Criar conexão' }));
@@ -215,7 +215,7 @@ describe('NewConnectionPage', () => {
 
   it('bloqueia criação sem provider account', async () => {
     const request = vi.fn(async () => ({ data: [], pageInfo: { hasNextPage: false, nextCursor: null } })) as ApiClient['request'];
-    render(<App client={appClient(request)} initialEntries={['/conexoes/nova']} />);
+    render(<App client={appClient(request)} initialEntries={['/legacy/conexoes/nova']} />);
     expect(await screen.findByText('Nenhuma conta JRC disponível')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Criar conexão' })).toBeDisabled();
   });
@@ -235,7 +235,7 @@ describe('NewConnectionPage', () => {
         pageInfo: { hasNextPage: false, nextCursor: null },
       };
     }) as ApiClient['request'];
-    render(<App client={switchingAppClient(request)} initialEntries={['/conexoes/nova']} />);
+    render(<App client={switchingAppClient(request)} initialEntries={['/legacy/conexoes/nova']} />);
     expect(await screen.findByText('JRC QR Code matriz')).toBeVisible();
     fireEvent.change(screen.getByLabelText('Nome da conexão'), { target: { value: 'Não pode vazar' } });
 
@@ -258,7 +258,7 @@ describe('NewConnectionPage', () => {
         pageInfo: { hasNextPage: false, nextCursor: null },
       };
     }) as ApiClient['request'];
-    render(<App client={switchingAppClient(request, { rejectSwitch: true })} initialEntries={['/conexoes/nova']} />);
+    render(<App client={switchingAppClient(request, { rejectSwitch: true })} initialEntries={['/legacy/conexoes/nova']} />);
     expect(await screen.findByText('JRC QR Code matriz')).toBeVisible();
     fireEvent.change(screen.getByLabelText('Nome da conexão'), { target: { value: 'Não pode vazar' } });
 
@@ -276,7 +276,7 @@ describe('NewConnectionPage', () => {
     const request = vi.fn(async () => {
       throw new ApiClientError('Não foi possível acessar o serviço. Tente novamente.', 0);
     }) as ApiClient['request'];
-    render(<App client={appClient(request)} initialEntries={['/conexoes/nova']} />);
+    render(<App client={appClient(request)} initialEntries={['/legacy/conexoes/nova']} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível acessar o serviço');
   });
 
@@ -298,7 +298,7 @@ describe('NewConnectionPage', () => {
       if (path === `/v1/instances/${INSTANCE}`) return { ...first, status: 'CREATED' };
       throw new Error(`unexpected ${path}`);
     });
-    render(<App client={appClient(requestMock as unknown as ApiClient['request'])} initialEntries={['/conexoes/nova']} />);
+    render(<App client={appClient(requestMock as unknown as ApiClient['request'])} initialEntries={['/legacy/conexoes/nova']} />);
     await screen.findByText('JRC QR Code principal');
     fireEvent.change(screen.getByLabelText('Nome da conexão'), { target: { value: 'Atendimento' } });
 

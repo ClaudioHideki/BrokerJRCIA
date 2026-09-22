@@ -9,7 +9,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  if (status === 'authenticated') return <Navigate replace to="/conexoes" />;
+  if (status === 'authenticated') return <Navigate replace to="/channels" />;
   if (status === 'selecting') return <Navigate replace to="/selecionar-organizacao" />;
 
   async function submit(event: FormEvent) {

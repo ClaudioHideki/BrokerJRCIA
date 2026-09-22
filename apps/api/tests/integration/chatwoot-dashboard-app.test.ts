@@ -37,7 +37,8 @@ beforeAll(async () => {
   await transact(owner.organizationId, tx => tx.query("INSERT INTO chatwoot_accounts(organization_id,base_url,account_id,encrypted_token,status) VALUES($1,'https://chatwoot.example.test',1,'synthetic','READY')", [owner.organizationId]));
   const control = createChatwootControlAuth({ enabled: true, transact, managedOrigin: 'https://chatwoot.example.test', hmacSecret: 'synthetic-hmac-at-least-32-characters', resolveCurrentRole: createMessagingMembershipResolver(authPool) });
   service = createEmbedService({ enabled: true, pool, transact, control, managedOrigin: 'https://chatwoot.example.test', publicOrigin: 'https://broker.example.test', dashboardClient: () => remote,
-    rateLimitStore: new MemoryRateLimitStore(), rateLimitSecret: 'synthetic-hmac-at-least-32-characters' });
+    rateLimitStore: new MemoryRateLimitStore(), rateLimitSecret: 'synthetic-hmac-at-least-32-characters',
+    sessionSigningSecret: 'synthetic-session-secret-at-least-32-characters' });
   appId = (await service.apps.register(owner)).embedId;
 });
 beforeEach(async () => {

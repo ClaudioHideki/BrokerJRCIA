@@ -1,0 +1,4 @@
+import {createHmac} from 'node:crypto';
+import {describe,expect,it} from 'vitest';
+import {verifyAutomationHook} from '../../src/modules/automation-integrations/webhooks.js';
+describe('automation webhook signature',()=>{it('accepts a fresh exact payload signature',()=>{const secret='hook-secret',body=Buffer.from('{"text":"oi"}'),timestamp='1790016000',signature='sha256='+createHmac('sha256',secret).update(timestamp+'.').update(body).digest('hex');expect(verifyAutomationHook(secret,body,timestamp,signature,1790016000000)).toBe(true);expect(verifyAutomationHook(secret,Buffer.from('{}'),timestamp,signature,1790016000000)).toBe(false);});it('rejects replay timestamps outside five minutes',()=>{const timestamp='1790016000',signature='sha256='+createHmac('sha256','secret').update(timestamp+'.{}').digest('hex');expect(verifyAutomationHook('secret',Buffer.from('{}'),timestamp,signature,1790017000000)).toBe(false);});});

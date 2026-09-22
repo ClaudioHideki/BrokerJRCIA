@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { EmbedSessionClient } from './session-client.js';
 
 const id = '00000000-0000-4000-8000-000000000001', other = '00000000-0000-4000-8000-000000000002';
-const token = 's'.repeat(43);
+const token = 'synthetic-header.synthetic-payload.synthetic-signature';
 const health = { integrationId: id, inboxId: 31, instanceId: id, integrationStatus: 'READY', instanceStatus: 'DISCONNECTED',
   transportStatus: 'UNVERIFIED', checkedAt: '2030-01-01T00:00:00Z', lastError: null, identityStatus: 'CONFIRMED', identityApproved: true,
   identityRevision: 1, observedNumberSuffix: null, callbackVerifiedAt: null, lastSuccessfulInboundAt: null, lastSuccessfulOutboundAt: null, allowedActions: ['status', 'pair'] };

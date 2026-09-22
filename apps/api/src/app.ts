@@ -1,6 +1,19 @@
 import swagger from "@fastify/swagger";
 import { registerFlowRoutes, type FlowRouteOptions } from './http/routes/flows.js';
 import { createFlowService } from './modules/flows/service.js';
+import { registerAutomationRoutes, type AutomationRouteOptions } from './http/routes/automations.js';
+import { registerObservabilityRoutes, type ObservabilityRouteOptions } from './http/routes/observability.js';
+import { createAutomationService, createEventRouter, createExecutionService } from './modules/automations/service.js';
+import { createPostgresAutomationRepository } from './modules/automations/repository.js';
+import { createLegacyFlowMigrationService } from './modules/automations/legacy-migration.js';
+import { createObservabilityService } from './modules/observability/service.js';
+import { registerCredentialRoutes, type CredentialRouteOptions } from './http/routes/credentials.js';
+import { createCredentialService, createCredentialVault } from './modules/automation-integrations/credentials.js';
+import { createCredentialTester } from './modules/automation-integrations/credential-tester.js';
+import { registerAutomationWebhookRoutes, type AutomationWebhookRouteOptions } from './http/routes/automation-webhooks.js';
+import { createWebhookService } from './modules/automation-integrations/webhooks.js';
+import { registerAutomationImportRoutes, type AutomationImportRouteOptions } from './http/routes/automation-imports.js';
+import { createAutomationImporter } from './modules/automation-integrations/importer.js';
 import { createIntegrationRuntime } from "./modules/integrations/runtime.js";
 import { z } from 'zod';
 import { createChatwootControlAuth } from './modules/integrations/chatwoot-control-auth.js';
@@ -30,6 +43,11 @@ import {
 } from "./http/routes/meta-onboarding.js";
 import { createMetaOnboardingService } from "./modules/meta-onboarding/service.js";
 import { createMetaOnboardingWebhook } from "./modules/meta-onboarding/webhook.js";
+import {
+  registerChannelRoutes,
+  type ChannelRouteOptions,
+} from "./http/routes/channels.js";
+import { createChannelFacade } from "./modules/channels/facade.js";
 import {
   registerTenantOperationsRoutes,
   type TenantOperationsOptions,
@@ -126,9 +144,15 @@ export interface BuildAppOptions {
   apiKeys?: ApiKeyRouteOptions;
   providerAccounts?: ProviderAccountRouteOptions;
   instances?: InstanceRouteOptions;
+  channels?: ChannelRouteOptions;
   instanceWorkspace?: InstanceWorkspaceRouteOptions;
   messaging?: MessagingRouteOptions;
   flows?: FlowRouteOptions;
+  automations?: AutomationRouteOptions;
+  observability?: ObservabilityRouteOptions;
+  credentials?: CredentialRouteOptions;
+  automationWebhooks?: AutomationWebhookRouteOptions;
+  automationImports?: AutomationImportRouteOptions;
   metaWebhooks?: MetaWebhookRouteOptions;
   platform?: PlatformRouteOptions;
   metaOnboarding?: MetaOnboardingRouteOptions;
@@ -188,9 +212,15 @@ export function buildApp(options: BuildAppOptions = {}) {
       options.apiKeys !== undefined ||
       options.providerAccounts !== undefined ||
       options.instances !== undefined ||
+      options.channels !== undefined ||
       options.instanceWorkspace !== undefined ||
       options.messaging !== undefined ||
       options.flows !== undefined ||
+      options.automations !== undefined ||
+      options.observability !== undefined ||
+      options.credentials !== undefined ||
+      options.automationWebhooks !== undefined ||
+      options.automationImports !== undefined ||
       options.metaWebhooks !== undefined ||
       options.platform !== undefined ||
       options.metaOnboarding !== undefined ||
@@ -210,8 +240,14 @@ export function buildApp(options: BuildAppOptions = {}) {
   let providerAccounts =
     nodeEnv === "test" ? options.providerAccounts : undefined;
   let instances = nodeEnv === "test" ? options.instances : undefined;
+  let channels = nodeEnv === "test" ? options.channels : undefined;
   let messaging = nodeEnv === "test" ? options.messaging : undefined;
   let flows = nodeEnv === "test" ? options.flows : undefined;
+  let automations = nodeEnv === "test" ? options.automations : undefined;
+  let observability = nodeEnv === "test" ? options.observability : undefined;
+  let credentials = nodeEnv === "test" ? options.credentials : undefined;
+  let automationWebhooks = nodeEnv === "test" ? options.automationWebhooks : undefined;
+  let automationImports = nodeEnv === "test" ? options.automationImports : undefined;
   let instanceWorkspace =
     nodeEnv === "test" ? options.instanceWorkspace : undefined;
   let metaWebhooks = nodeEnv === "test" ? options.metaWebhooks : undefined;
@@ -397,6 +433,18 @@ export function buildApp(options: BuildAppOptions = {}) {
       ),
       { auth: controlAuth, instances: instances.service },
     );
+    channels = {
+      jwtSecret: config.jwtSecret,
+      authenticateApiKey: apiKeys.authenticateApiKey,
+      resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
+      service: createChannelFacade({
+        instances: instances.service,
+        meta: metaOnboardingService,
+        chatwoot: integrationRuntime.chatwoot,
+        transact: (organizationId, operation) =>
+          withOrganizationTransaction(pools.appPool, organizationId, operation),
+      }),
+    };
     integrations = {
       jwtSecret: config.jwtSecret,
       authenticateApiKey: apiKeys.authenticateApiKey,
@@ -417,7 +465,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         pool: pools.appPool, transact: (org, work) => withOrganizationTransaction(pools.appPool, org, work), control: controlAuth,
         publicOrigin: messagingEnvironment.PUBLIC_ORIGIN, dashboardClient: integrationRuntime.dashboardClient,
         managedOrigin: messagingEnvironment.CHATWOOT_BASE_URL ? new URL(messagingEnvironment.CHATWOOT_BASE_URL).origin : undefined,
-        rateLimitStore, rateLimitSecret: config.ipRateLimitHmacSecret }),
+        rateLimitStore, rateLimitSecret: config.ipRateLimitHmacSecret, sessionSigningSecret: config.jwtSecret }),
     };
     metaOnboarding = {
       service: metaOnboardingService,
@@ -479,6 +527,24 @@ export function buildApp(options: BuildAppOptions = {}) {
       service: createFlowService({transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work)}),
       ...(integrationRuntime.flowChatwoot ? { chatwoot: integrationRuntime.flowChatwoot } : {}),
     };
+    const automationRepository=createPostgresAutomationRepository();
+    const automationOptions={transact:<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pools.appPool,org,work),repository:automationRepository,enabled:config.automationRuntimeV2Enabled};
+    automations={
+      jwtSecret:config.jwtSecret,
+      authenticateApiKey:apiKeys.authenticateApiKey,
+      resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),
+      service:createAutomationService(automationOptions),
+      executions:createExecutionService(automationOptions),
+      migration:createLegacyFlowMigrationService(automationOptions),
+    };
+    observability={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createObservabilityService({transact:automationOptions.transact,probeRedis:async()=>redisClient.isReady&&(await redisClient.ping())==='PONG',schemaCurrent:async()=>Boolean((await pools.appPool.query("select to_regclass('public.operational_heartbeats') is not null as ready")).rows[0]?.ready)})};
+    const vaultKeys=messagingEnvironment.CREDENTIAL_VAULT_KEYS_JSON??(messagingEnvironment.INTEGRATION_ENCRYPTION_KEY?JSON.stringify({1:messagingEnvironment.INTEGRATION_ENCRYPTION_KEY}):undefined);
+    if(config.automationRuntimeV2Enabled&&!vaultKeys)throw new Error('CREDENTIAL_VAULT_KEYS_REQUIRED');
+    if(vaultKeys){const credentialService=createCredentialService({transact:automationOptions.transact,vault:createCredentialVault(vaultKeys),tester:createCredentialTester()}),membership=createMessagingMembershipResolver(pools.authPool),authentication={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:membership};
+      credentials={...authentication,service:credentialService};
+      automationWebhooks={...authentication,service:createWebhookService({pool:pools.appPool,transact:automationOptions.transact,credentials:credentialService,router:createEventRouter(automationOptions)})};
+      automationImports={...authentication,service:createAutomationImporter({transact:automationOptions.transact,keyring:vaultKeys})};
+    }
     messaging = {
       resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
       jwtSecret: config.jwtSecret,
@@ -611,10 +677,33 @@ export function buildApp(options: BuildAppOptions = {}) {
     reply.header("X-Frame-Options", "DENY");
   });
   app.addHook("onResponse", async (request, reply) => {
-    request.log.info({ res: reply }, "request completed");
+    const identity=request.authentication;
+    request.log.info({ res: reply, correlationId: request.id, ...(identity?.organizationId?{organizationId:identity.organizationId}:{}) }, "request completed");
   });
   app.addHook("onError", async (request, reply, error) => {
-    request.log.error({ err: error, res: reply }, "request failed");
+    const identity=request.authentication;
+    request.log.error({ err: error, res: reply, correlationId: request.id, ...(identity?.organizationId?{organizationId:identity.organizationId}:{}) }, "request failed");
+  });
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (
+      reply.statusCode < 400
+      || typeof payload !== "string"
+      || !String(reply.getHeader("content-type") ?? "").toLowerCase().includes("json")
+    ) {
+      return payload;
+    }
+    try {
+      const parsed = JSON.parse(payload) as unknown;
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return payload;
+      reply.removeHeader("content-length");
+      return JSON.stringify({
+        ...(parsed as Record<string, unknown>),
+        requestId: request.id,
+        correlationId: request.id,
+      });
+    } catch {
+      return payload;
+    }
   });
 
   app.setValidatorCompiler(validatorCompiler);
@@ -628,7 +717,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       components: {
         securitySchemes: {
           bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
-          embedSessionAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'Opaque', description: 'Sessão temporária do embed: apenas estado e pareamento das caixas concedidas.' },
+          embedSessionAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Sessão assinada de 5 minutos: tenant, destino, conta, inboxes, usuário externo, escopos, audiência e nonce; limitada a estado e pareamento.' },
           csrfHeaderAuth: {
             type: "apiKey",
             in: "header",
@@ -708,6 +797,13 @@ export function buildApp(options: BuildAppOptions = {}) {
     );
   }
 
+  if (channels) {
+    const configuredChannels = channels;
+    void app.register(async (scope) =>
+      registerChannelRoutes(scope, configuredChannels),
+    );
+  }
+
   if (instanceWorkspace) {
     const configured = instanceWorkspace;
     void app.register(async (scope) =>
@@ -717,6 +813,26 @@ export function buildApp(options: BuildAppOptions = {}) {
   if (flows) {
     const configuredFlows=flows;
     app.register(scope=>registerFlowRoutes(scope,configuredFlows));
+  }
+  if (automations) {
+    const configured=automations;
+    app.register(scope=>registerAutomationRoutes(scope,configured));
+  }
+  if (observability) {
+    const configured=observability;
+    app.register(scope=>registerObservabilityRoutes(scope,configured));
+  }
+  if (credentials) {
+    const configured=credentials;
+    app.register(scope=>registerCredentialRoutes(scope,configured));
+  }
+  if (automationWebhooks) {
+    const configured=automationWebhooks;
+    app.register(scope=>registerAutomationWebhookRoutes(scope,configured));
+  }
+  if (automationImports) {
+    const configured=automationImports;
+    app.register(scope=>registerAutomationImportRoutes(scope,configured));
   }
   if (messaging) {
     const configuredMessaging = messaging;

@@ -32,6 +32,7 @@ x-runtime: &runtime
   CHATWOOT_CONTROL_ENABLED: ${CHATWOOT_CONTROL_ENABLED:-false}
   CHATWOOT_EMBED_ENABLED: ${CHATWOOT_EMBED_ENABLED:-false}
   INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:?required}
+  CREDENTIAL_VAULT_KEYS_JSON: ${CREDENTIAL_VAULT_KEYS_JSON:-}
   CHATWOOT_PLATFORM_TOKEN: ${CHATWOOT_PLATFORM_TOKEN:-}
   CHATWOOT_MEDIA_ORIGINS: ${CHATWOOT_MEDIA_ORIGINS:-}
   MEDIA_STORAGE_BYTES_PER_ORGANIZATION: ${MEDIA_STORAGE_BYTES_PER_ORGANIZATION:-1073741824}
@@ -52,6 +53,9 @@ x-runtime: &runtime
 
   # Typebot
   TYPEBOT_ORIGINS_JSON: ${TYPEBOT_ORIGINS_JSON:?required-json-object}
+
+  # Runtime de automação v2 (rollback: false mantém Flows/Typebot legados)
+  AUTOMATION_RUNTIME_V2_ENABLED: ${AUTOMATION_RUNTIME_V2_ENABLED:-false}
 
 
 services:
@@ -200,6 +204,116 @@ services:
     cpus: 1
 
 
+  automation-worker:
+    image: ${JRC_API_IMAGE:?required}
+    entrypoint:
+      - node
+      - apps/api/dist/commands/automation-worker.js
+      - --watch
+    restart: unless-stopped
+    environment:
+      <<: *runtime
+      AUTOMATION_WORKER_INTERVAL_MS: ${AUTOMATION_WORKER_INTERVAL_MS:-1000}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - backend
+      - egress
+    read_only: true
+    tmpfs:
+      - /tmp:size=1m,uid=1000,gid=1000,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.75
+
+  automation-io-worker:
+    image: ${JRC_API_IMAGE:?required}
+    entrypoint:
+      - node
+      - apps/api/dist/commands/automation-io-worker.js
+      - --watch
+    restart: unless-stopped
+    environment:
+      <<: *runtime
+      AUTOMATION_IO_WORKER_INTERVAL_MS: ${AUTOMATION_IO_WORKER_INTERVAL_MS:-1000}
+      AUTOMATION_SANDBOX_URL: http://automation-sandbox:8080
+      AUTOMATION_SANDBOX_TOKEN: ${AUTOMATION_SANDBOX_TOKEN:?required}
+    depends_on:
+      api:
+        condition: service_healthy
+      automation-sandbox:
+        condition: service_started
+    networks:
+      - backend
+      - egress
+      - sandbox
+    read_only: true
+    tmpfs:
+      - /tmp:size=1m,uid=1000,gid=1000,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.75
+
+
+  scheduler-worker:
+    image: ${JRC_API_IMAGE:?required}
+    entrypoint:
+      - node
+      - apps/api/dist/commands/scheduler-worker.js
+      - --watch
+    restart: unless-stopped
+    environment:
+      <<: *runtime
+      SCHEDULER_WORKER_INTERVAL_MS: ${SCHEDULER_WORKER_INTERVAL_MS:-1000}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp:size=1m,uid=1000,gid=1000,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 0.25
+
+
+  automation-sandbox:
+    image: ${JRC_API_IMAGE:?required}
+    entrypoint:
+      - node
+      - --max-old-space-size=128
+      - apps/api/dist/commands/automation-sandbox.js
+    restart: unless-stopped
+    environment:
+      AUTOMATION_SANDBOX_TOKEN: ${AUTOMATION_SANDBOX_TOKEN:?required}
+      AUTOMATION_SANDBOX_PORT: "8080"
+    expose:
+      - "8080"
+    networks:
+      - sandbox
+    read_only: true
+    tmpfs:
+      - /tmp:size=1m,uid=1000,gid=1000,mode=0700,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    mem_limit: 160m
+    cpus: 0.5
+
+
   migrate:
     image: ${JRC_API_IMAGE:?required}
 
@@ -340,6 +454,9 @@ networks:
     internal: true
 
   egress:
+
+  sandbox:
+    internal: true
 
   dokploy-network:
     external: true

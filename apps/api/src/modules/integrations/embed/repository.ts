@@ -11,6 +11,7 @@ export const embedDenied = () => new IntegrationError('EMBED_AUTHORIZATION_DENIE
 export interface EmbedOptions {
   enabled: boolean; pool: Pool; control: ChatwootControlAuth; managedOrigin?: string | undefined;
   rateLimitStore: RateLimitStore; rateLimitSecret: string;
+  sessionSigningSecret: string;
   publicOrigin?: string | undefined;
   dashboardClient?: ((account: AccountRow) => ChatwootClient) | undefined;
   transact<T>(org: string, work: OrganizationTransaction<T>): Promise<T>;

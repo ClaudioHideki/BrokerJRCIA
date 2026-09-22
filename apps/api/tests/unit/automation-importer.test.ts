@@ -1,0 +1,6 @@
+import {describe,expect,it} from 'vitest';
+import {convertAutomationArtifact} from '../../src/modules/automation-integrations/importer.js';
+describe('automation imports',()=>{
+ it('classifies n8n incompatibilities and strips credential material',()=>{const source={name:'Atendimento',nodes:[{id:'start',name:'Webhook',type:'n8n-nodes-base.webhook',position:[0,0],parameters:{},credentials:{httpHeaderAuth:{id:'secret-id'}}},{id:'custom',name:'Código externo',type:'n8n-nodes-base.code',position:[200,0],parameters:{jsCode:'return $input.all()'}}],connections:{Webhook:{main:[[{node:'Código externo',type:'main',index:0}]]}}},result=convertAutomationArtifact('N8N',JSON.stringify(source));expect(result.report.summary).toMatchObject({partial:1,unsupported:1,credentialsRemoved:true,autoPublished:false,manualReviewRequired:true});expect(JSON.stringify(result.graph)).not.toContain('secret-id');});
+ it('converts safe Typebot blocks but reports semantic loss',()=>{const result=convertAutomationArtifact('TYPEBOT',JSON.stringify({name:'Menu',groups:[{blocks:[{id:'hello',type:'text',content:{text:'Olá'}},{id:'answer',type:'textInput',content:{label:'Nome'}}]}]}));expect(result.graph.nodes.map(node=>node.type)).toEqual(['start','message','input','end']);expect(result.report.summary.partial).toBe(2);expect(result.report.summary.autoPublished).toBe(false);});
+});

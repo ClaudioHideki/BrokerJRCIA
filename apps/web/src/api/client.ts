@@ -28,6 +28,7 @@ export class ApiClientError extends Error {
     readonly status: number,
     readonly requestId?: string,
     readonly code?: string,
+    readonly correlationId?: string,
   ) {
     super(message);
     this.name = "ApiClientError";
@@ -156,6 +157,10 @@ async function errorFor(
   const requestId =
     safeRequestId(problem?.requestId) ??
     safeRequestId(response.headers.get("x-request-id"));
+  const reportedCorrelationId = safeRequestId(problem?.correlationId);
+  const correlationId = reportedCorrelationId === requestId
+    ? reportedCorrelationId
+    : requestId;
   const code =
     typeof problem?.code === "string" && /^[A-Z][A-Z0-9_]*$/.test(problem.code)
       ? problem.code
@@ -165,6 +170,7 @@ async function errorFor(
     response.status,
     requestId,
     code,
+    correlationId,
   );
 }
 

@@ -22,5 +22,5 @@ export function HomeRedirect() {
   const { status } = useSession();
   if (status === 'booting') return <SessionBoot />;
   if (status === 'selecting') return <Navigate replace to="/selecionar-organizacao" />;
-  return <Navigate replace to={status === 'authenticated' ? '/conexoes' : '/login'} />;
+  return <Navigate replace to={status === 'authenticated' ? '/channels' : '/login'} />;
 }

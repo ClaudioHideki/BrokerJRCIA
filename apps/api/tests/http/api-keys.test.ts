@@ -165,6 +165,7 @@ describe('rotas HTTP de API keys', () => {
       status: statusCode,
       code: 'INVALID_REQUEST',
       requestId: REQUEST_ID,
+      correlationId: REQUEST_ID,
     });
     expect(response.body).not.toContain('FST_ERR');
     expect(response.body).not.toContain(payload);
@@ -193,6 +194,7 @@ describe('rotas HTTP de API keys', () => {
       status: 401,
       code: 'INVALID_CREDENTIALS',
       requestId: REQUEST_ID,
+      correlationId: REQUEST_ID,
     });
     expect(harness.calls).toEqual([]);
   });
@@ -271,6 +273,7 @@ describe('rotas HTTP de API keys', () => {
       status: 409,
       code: 'API_KEY_NAME_CONFLICT',
       requestId: REQUEST_ID,
+      correlationId: REQUEST_ID,
     });
   });
 

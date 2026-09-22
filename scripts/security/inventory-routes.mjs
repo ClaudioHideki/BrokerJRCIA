@@ -4,6 +4,37 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/operations/health': policy('apps/api/src/http/routes/observability.ts','JWT_CURRENT_MEMBERSHIP','CURRENT_MEMBER',true,'READ_ONLY','SANITIZED_OPERATIONAL_CODES_ONLY','RLS_CURRENT_ORGANIZATION_HEALTH_AND_QUEUES'),
+  'POST /hooks/{token}': policy('apps/api/src/http/routes/automation-webhooks.ts', 'OPAQUE_TOKEN_OPTIONAL_HMAC_TIMESTAMP', 'ACTIVE_BOUND_AUTOMATION',
+    true, 'UNIQUE_EVENT_ID_AND_AUTOMATION_EVENT_KEY', 'TOKEN_PATH_REDACTED_NO_STORE', 'SECURITY_DEFINER_HASH_LOOKUP_THEN_RLS_ORGANIZATION'),
+  ...Object.fromEntries(['GET /v1/webhooks','POST /v1/webhooks','DELETE /v1/webhooks/{id}'].map(route=>[route,policy(
+    'apps/api/src/http/routes/automation-webhooks.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    route.startsWith('GET')?'READ_ONLY':'IDEMPOTENCY_OR_REVOCATION','TOKEN_RETURNED_ON_CREATE_ONLY','RLS_CURRENT_ORGANIZATION_BINDING_CREDENTIAL',
+  )])),
+  ...Object.fromEntries(['GET /v1/credentials','GET /v1/credentials/{id}'].map(route=>[route,policy(
+    'apps/api/src/http/routes/credentials.ts','JWT_CURRENT_MEMBERSHIP','CURRENT_MEMBER',true,'READ_ONLY','METADATA_ONLY_NO_SECRET_READ','RLS_CURRENT_ORGANIZATION_CREDENTIAL',
+  )])),
+  ...Object.fromEntries(['POST /v1/credentials','PUT /v1/credentials/{id}','DELETE /v1/credentials/{id}','POST /v1/credentials/{id}/test'].map(route=>[route,policy(
+    'apps/api/src/http/routes/credentials.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'IDEMPOTENCY_OR_OPTIMISTIC_REVISION','ENVELOPE_ENCRYPTED_NO_SECRET_RESPONSE','RLS_CURRENT_ORGANIZATION_CREDENTIAL',
+  )])),
+  'POST /v1/automation-imports': policy('apps/api/src/http/routes/automation-imports.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'IDEMPOTENCY_KEY_DRAFT_ONLY','ENCRYPTED_ORIGINAL_CREDENTIALS_STRIPPED','RLS_CURRENT_ORGANIZATION_IMPORT_ARTIFACT'),
+  'GET /v1/automation-nodes': policy('apps/api/src/http/routes/automations.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_MEMBER',
+    true, 'READ_ONLY', 'NONE', 'STATIC_EXECUTABLE_NODE_CATALOG'),
+  ...Object.fromEntries([
+    'GET /v1/automations/status', 'GET /v1/automations', 'GET /v1/automations/{id}',
+    'GET /v1/automations/{id}/versions', 'GET /v1/automations/{id}/bindings',
+    'GET /v1/executions', 'GET /v1/executions/{id}',
+  ].map(route => [route, policy('apps/api/src/http/routes/automations.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_MEMBER',
+    true, 'READ_ONLY', 'NONE', 'RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION')])) ,
+  ...Object.fromEntries([
+    'POST /v1/automations', 'PUT /v1/automations/{id}', 'POST /v1/automations/{id}/validate',
+    'POST /v1/automations/{id}/simulate', 'POST /v1/automations/{id}/publish',
+    'POST /v1/automations/{id}/bindings', 'PATCH /v1/automations/{id}/bindings/{bindingId}',
+    'POST /v1/executions/{id}/cancel', 'POST /v1/executions/{id}/retry', 'POST /v1/executions/{id}/resume', 'POST /v1/executions/{id}/reconcile',
+  ].map(route => [route, policy('apps/api/src/http/routes/automations.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
+    true, route.includes('/simulate') || route.includes('/validate') ? 'NO_EXTERNAL_EFFECT' : 'IDEMPOTENCY_OR_OPTIMISTIC_REVISION',
+    'NONE', 'RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX')])) ,
   ...Object.fromEntries([
     'GET /v1/flows', 'GET /v1/flows/status', 'GET /v1/flows/channels', 'GET /v1/flows/library',
     'GET /v1/flows/{id}', 'GET /v1/flows/{id}/export', 'GET /v1/flows/{id}/runs',
@@ -471,6 +502,47 @@ const ROUTE_POLICIES = Object.freeze({
     "NOT_APPLICABLE",
     "NOT_APPLICABLE",
     "RLS_ORGANIZATION_AND_RESOURCE_ID",
+  ),
+  ...Object.fromEntries(
+    ["GET /v1/channels", "GET /v1/channels/{id}"].map((route) => [
+      route,
+      policy(
+        "apps/api/src/http/routes/channels.ts",
+        "JWT_CURRENT_MEMBERSHIP",
+        "OWNER_ADMIN_OPERATOR_VIEWER",
+        true,
+        "READ_ONLY",
+        "NONE",
+        "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID",
+      ),
+    ]),
+  ),
+  "POST /v1/channels": policy(
+    "apps/api/src/http/routes/channels.ts",
+    "JWT_CURRENT_MEMBERSHIP",
+    "OWNER_ADMIN_OPERATOR",
+    true,
+    "IDEMPOTENCY_KEY_DELEGATED_TO_PROVIDER_WORKFLOW",
+    "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
+    "RLS_ORGANIZATION_PROVIDER_ACCOUNT_AND_CHANNEL",
+  ),
+  "POST /v1/channels/{id}/pair": policy(
+    "apps/api/src/http/routes/channels.ts",
+    "JWT_CURRENT_MEMBERSHIP",
+    "OWNER_ADMIN_OPERATOR",
+    true,
+    "IDEMPOTENCY_KEY_AND_SHARED_PAIR_WINDOW",
+    "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
+    "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER",
+  ),
+  "PUT /v1/channels/{id}/destination": policy(
+    "apps/api/src/http/routes/channels.ts",
+    "JWT_CURRENT_MEMBERSHIP",
+    "OWNER_ADMIN_OPERATOR",
+    true,
+    "DESTINATION_RECONCILIATION",
+    "NONE",
+    "RLS_ORGANIZATION_CHANNEL_ACCOUNT_AND_INBOX",
   ),
   "POST /v1/instances": policy(
     "apps/api/src/http/routes/instances.ts",
