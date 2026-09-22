@@ -1,6 +1,6 @@
 # Fase 6 — Automation Studio
 
-Data: 2026-09-21  
+Data: 2026-09-21
 Branch: `codex/jrc-platform-v2-phase6-automation-studio-20260921`
 
 ## Resultado

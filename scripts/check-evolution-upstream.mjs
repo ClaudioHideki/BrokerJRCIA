@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const upstreamCommit = 'fa09d37892cdbb1d65a250155d293d92230c5b30';
 const officialRepository = 'https://github.com/evolution-foundation/evolution-api.git';
@@ -38,9 +38,10 @@ export async function checkEvolutionUpstream(root) {
 
   let stagedEntry = '';
   try {
+    const safeRoot = resolve(root).replaceAll('\\', '/');
     stagedEntry = execFileSync(
       'git',
-      ['ls-files', '--stage', 'upstream/evolution-api'],
+      ['-c', `safe.directory=${safeRoot}`, 'ls-files', '--stage', 'upstream/evolution-api'],
       { cwd: root, encoding: 'utf8' }
     );
   } catch {

@@ -41,4 +41,3 @@ Cada etapa salva progresso e apresenta erro acionável com `correlationId`.
 ## Acessibilidade e resiliência
 
 Teclado, foco, rótulos, contraste, estados vazios e leitores de tela integram o aceite. Atualizações otimistas precisam de reversão visual. Falhas 401 renovam sessão uma vez; 403 não entram em loop; 5xx exibem correlação e preservam edição local.
-

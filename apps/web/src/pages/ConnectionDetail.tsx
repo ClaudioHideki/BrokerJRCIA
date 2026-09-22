@@ -186,7 +186,7 @@ export function ConnectionDetailPage() {
   const actionLabel = instance.status === 'AWAITING_ACTION' ? 'Gerar novo desafio' : connectRetry || instance.status === 'CONNECTING' ? 'Tentar conexão novamente' : 'Conectar';
   return (
     <section aria-labelledby="connection-title">
-      <Link className="back-link" to="/conexoes">← Voltar para conexões</Link>
+      <Link className="back-link" to="/legacy/conexoes">← Voltar para conexões</Link>
       <div className="page-heading">
         <div><p className="eyebrow">WhatsApp Business por QR Code</p><h1 id="connection-title">{instance.name}</h1></div>
         <ConnectionStatus status={instance.status} />
@@ -197,7 +197,7 @@ export function ConnectionDetailPage() {
         <div className="notice notice--error" role="alert">
           <p>A conexão não foi criada no serviço de WhatsApp. O QR Code ainda não pode ser gerado.</p>
           <p>Solicite à equipe JRC a verificação do serviço. Após a normalização, crie uma nova conexão; este registro será preservado.</p>
-          <Link to="/conexoes">Voltar à lista de conexões</Link>
+          <Link to="/legacy/conexoes">Voltar à lista de conexões</Link>
         </div>
       ) : null}
       {error ? <div className="notice notice--error" role="alert">{error.text}{error.requestId ? <small>Solicitação: {error.requestId}</small> : null}</div> : null}

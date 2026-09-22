@@ -44,4 +44,3 @@ flowchart LR
 - Todo efeito externo é repetível com idempotência.
 - Contratos OpenAPI e eventos versionados precedem troca da UI.
 - Compatibilidade é feita por adaptadores temporários, com data e critério de remoção.
-

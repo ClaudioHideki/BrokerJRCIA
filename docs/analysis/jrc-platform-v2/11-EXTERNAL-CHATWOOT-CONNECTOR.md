@@ -27,4 +27,3 @@ Os endpoints atuais `/v1/integrations/chatwoot` e `/control` permanecem como ada
 - inbox removida: bloquear novas entregas e alertar administrador;
 - duplicidade: chave por tenant/canal/evento;
 - timeout: repetição exponencial limitada e fila de falhas inspecionável.
-

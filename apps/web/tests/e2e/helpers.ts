@@ -17,6 +17,10 @@ export async function signIn(page: Page, organizationName = 'JRC E2E Matriz'): P
   await page.getByRole('button', { name: 'Entrar' }).click();
   const organization = page.getByRole('listitem').filter({ hasText: organizationName });
   await organization.getByRole('button', { name: `Acessar ${organizationName}` }).click();
+  await expect(page.getByRole('heading', { name: 'Canais' })).toBeVisible();
+  // The connection lifecycle scenarios intentionally exercise the preserved
+  // legacy console while /channels is the canonical post-login destination.
+  await page.goto('/legacy/conexoes');
   await expect(page.getByRole('heading', { name: 'Conexões' })).toBeVisible();
 }
 

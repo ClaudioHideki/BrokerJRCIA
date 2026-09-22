@@ -113,7 +113,7 @@ test('shell mobile é navegável por teclado e captura apenas dados sintéticos'
   await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Dashboard' })).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('link', { name: 'Conexões' })).toBeFocused();
+  await expect(page.getByRole('link', { name: 'Canais' })).toBeFocused();
   await expectNoAutomaticAccessibilityViolations(page);
   await mkdir(screenshotDirectory, { recursive: true });
   await page.screenshot({

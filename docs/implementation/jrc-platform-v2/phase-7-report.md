@@ -1,6 +1,6 @@
 # Fase 7 — Integrações seguras e importação
 
-Data: 2026-09-21  
+Data: 2026-09-21
 Branch: `codex/jrc-platform-v2-phase7-integrations-20260921`
 
 ## Resultado

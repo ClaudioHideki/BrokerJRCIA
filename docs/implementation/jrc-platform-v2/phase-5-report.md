@@ -1,6 +1,6 @@
 # Fase 5 — Automation Runtime v2
 
-Data: 2026-09-21  
+Data: 2026-09-21
 Branch: `codex/jrc-platform-v2-phase5-automation-runtime-20260921`
 
 ## Resultado

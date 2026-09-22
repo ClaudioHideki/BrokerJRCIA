@@ -105,7 +105,7 @@ describe('ConnectionDetailPage', () => {
     render(<App client={client(request)} initialEntries={[`/legacy/conexoes/${INSTANCE}`]} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('O QR Code ainda não pode ser gerado');
     expect(screen.queryByRole('button', { name: /^Conectar$/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Voltar à lista de conexões' })).toHaveAttribute('href', '/conexoes');
+    expect(screen.getByRole('link', { name: 'Voltar à lista de conexões' })).toHaveAttribute('href', '/legacy/conexoes');
   });
 
   it('exige número no modo código e limpa o número ao voltar para QR', async () => {

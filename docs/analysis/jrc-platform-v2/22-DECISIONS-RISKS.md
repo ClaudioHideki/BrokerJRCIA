@@ -35,4 +35,3 @@
 | Dependência de API Chatwoot | média/média | adaptador versionado e contract tests |
 | Rollback falhar por migração destrutiva | baixa/crítica | migrations aditivas e restore drill |
 | Escopo crescer para clone integral de n8n | alta/alta | catálogo fechado e critérios de produto |
-

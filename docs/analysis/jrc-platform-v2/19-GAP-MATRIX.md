@@ -30,4 +30,3 @@
 ## Prioridade
 
 P0: corrigir schema/500, autorização, cofre, backup e observabilidade. P1: fachada de canais, Studio/runtime persistente, mídia/interações e conectores. P2: importadores e integrações opcionais. Nenhum item `PARTIAL` deve ser divulgado como concluído antes do aceite ponta a ponta.
-

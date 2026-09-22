@@ -136,7 +136,7 @@ export function ConnectionsPage() {
                 <Icon name="upload" size={15} />
                 Importar
               </Link>
-              <Link className="button button--primary" to="/conexoes/nova">
+              <Link className="button button--primary" to="/legacy/conexoes/nova">
                 <Icon name="plus" size={15} />
                 Nova conexão
               </Link>
@@ -281,7 +281,7 @@ export function ConnectionsPage() {
                   <td>
                     <Link
                       className="connection-name"
-                      to={`/conexoes/${instance.id}`}
+                      to={`/legacy/conexoes/${instance.id}`}
                       aria-label={`${instance.name}, ver detalhes`}
                     >
                       <span className="connection-avatar">

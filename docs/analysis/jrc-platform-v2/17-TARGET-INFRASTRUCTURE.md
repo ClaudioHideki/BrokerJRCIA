@@ -34,4 +34,3 @@ Variáveis atuais de Chatwoot e shards continuam necessárias. Meta só fica hab
 Métricas por tenant sem identificadores sensíveis: latência/falha de webhook, idade da outbox, profundidade de fila, execução por nó, entrega por provedor e handoff. Logs estruturados usam correlação, redaction e amostragem. Alertas distinguem transporte, automação e destino humano.
 
 Não introduzir Kafka/RabbitMQ enquanto Postgres outbox + Redis atenderem throughput, retenção e recuperação medidos.
-

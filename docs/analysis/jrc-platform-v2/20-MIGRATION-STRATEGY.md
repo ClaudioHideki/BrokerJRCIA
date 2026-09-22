@@ -34,4 +34,3 @@ Instances/Evolution e ativos Meta ganham `channel_id` sem perder seus IDs. Integ
 ## Gates
 
 Backup externo restaurável, reconciliação sem divergência material, testes multi-tenant, OpenAPI compatível, filas drenáveis e dashboards ativos são obrigatórios antes de mudança de tráfego.
-

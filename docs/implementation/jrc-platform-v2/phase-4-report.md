@@ -1,6 +1,6 @@
 # Fase 4 — Canais unificados e Meta
 
-Data: 2026-09-21  
+Data: 2026-09-21
 Branch: `codex/jrc-platform-v2-phase4-channels-meta-20260921`
 
 ## Resultado

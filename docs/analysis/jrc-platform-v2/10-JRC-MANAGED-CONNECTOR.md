@@ -35,4 +35,3 @@ O JRC Conversas chama um endpoint servidor-servidor assinado. O Broker resolve t
 ## Ajustes sobre o legado
 
 O modelo atual de grants individuais é `PARTIAL`: ele comprova vínculo, porém adiciona administração manual e permite rotas sensíveis no mesmo controlador. A migração deve criar grant por inbox, derivar membros de `InboxMember`, separar comandos administrativos e manter leitura compatível durante a transição.
-
