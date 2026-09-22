@@ -13,13 +13,18 @@ CREATE TABLE automation_legacy_migrations (
  binding_count integer NOT NULL DEFAULT 0 CHECK(binding_count>=0), live_execution_count integer NOT NULL DEFAULT 0 CHECK(live_execution_count>=0),
  report jsonb NOT NULL DEFAULT '{}', created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(organization_id,id), UNIQUE(organization_id,source,source_id),
+ FOREIGN KEY(organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
  FOREIGN KEY(organization_id,automation_id) REFERENCES automation_definitions(organization_id,id),
  CHECK(octet_length(report::text)<=131072)
 );
 CREATE TABLE automation_owner_transitions (
  organization_id uuid NOT NULL,id uuid NOT NULL DEFAULT gen_random_uuid(),channel_id uuid NOT NULL,
- from_origin text,to_origin text,automation_id uuid,actor_id uuid,reason_code text NOT NULL,
+ from_origin text NOT NULL CHECK(from_origin IN ('jrc-flows-native','jrc-automation-v2')),
+ to_origin text NOT NULL CHECK(to_origin IN ('jrc-flows-native','jrc-automation-v2')),
+ automation_id uuid,actor_id uuid,
+ reason_code text NOT NULL CHECK(octet_length(reason_code) BETWEEN 1 AND 128),
  created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(organization_id,id),
+ FOREIGN KEY(organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
  FOREIGN KEY(organization_id,channel_id) REFERENCES messaging_channels(organization_id,id),
  FOREIGN KEY(organization_id,automation_id) REFERENCES automation_definitions(organization_id,id)
 );
@@ -36,6 +41,8 @@ END $$;
 GRANT SELECT,INSERT,UPDATE ON automation_legacy_migrations TO jrc_app;
 GRANT SELECT,INSERT ON automation_owner_transitions TO jrc_app;
 GRANT UPDATE(origin,external_id,migration_status) ON automation_definitions TO jrc_app;
+--> statement-breakpoint
+CREATE POLICY legacy_flow_discovery ON flows FOR SELECT TO jrc_migrator USING(true);
 --> statement-breakpoint
 CREATE FUNCTION legacy_flow_migration_organizations(after_id uuid DEFAULT NULL,batch_size integer DEFAULT 100)
 RETURNS TABLE(organization_id uuid) LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public AS $$

@@ -362,6 +362,11 @@ describe('migrations PostgreSQL', () => {
     );
 
     expect(result.rows).toEqual([
+      ...Array.from({length:5},()=>({policyname:'automation_integration_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:2},()=>({policyname:'automation_migration_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:8},()=>({policyname:'automation_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:2},()=>({policyname:'operational_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      {policyname:'legacy_flow_discovery',roles:['jrc_migrator'],cmd:'SELECT'},
       ...Array.from({length:10},()=>({policyname:'flow_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'flow_platform',roles:['jrc_platform'],cmd:'ALL'},
       {policyname:'flow_ingress_resolution',roles:['jrc_migrator'],cmd:'SELECT'},
