@@ -666,7 +666,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 52,
+    "handlerLine": 53,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID"
   },
   {
@@ -696,7 +696,7 @@
     ],
     "challengeExposure": "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 57,
+    "handlerLine": 66,
     "ownershipCheck": "RLS_ORGANIZATION_PROVIDER_ACCOUNT_AND_CHANNEL"
   },
   {
@@ -723,8 +723,93 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 54,
+    "handlerLine": 55,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/channels/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "ATOMIC_CHANNEL_IDENTITY_UPDATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 58,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/{id}/automation",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 96,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/channels/{id}/automation",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "ATOMIC_REPLACE_PUBLISHED_AUTOMATION_BINDING",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 100,
+    "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_AUTOMATION_AND_VERSION"
   },
   {
     "method": "PUT",
@@ -753,8 +838,40 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 72,
+    "handlerLine": 104,
     "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_ACCOUNT_AND_INBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/{id}/disconnect",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_DELEGATED_TO_PROVIDER_WORKFLOW",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 89,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER"
   },
   {
     "method": "POST",
@@ -785,7 +902,67 @@
     ],
     "challengeExposure": "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 64,
+    "handlerLine": 73,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/{id}/reconnect",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENCY_KEY_DELEGATED_TO_PROVIDER_WORKFLOW",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 81,
+    "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/{id}/status",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "READ_PROVIDER_STATUS",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 62,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER"
   },
   {

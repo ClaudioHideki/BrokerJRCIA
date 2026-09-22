@@ -17,3 +17,20 @@
 **Acceptance:** todas as operações alvo passam pela fachada e rotas antigas continuam funcionais.
 **Rollback:** remover os adapters novos; nenhum dado migrado.
 **Explicitly not included:** providers reais, Destination genérico, novo Studio, deploy.
+
+## Execução em 2026-09-22
+
+**Status:** IMPLEMENTADO E VALIDADO LOCALMENTE.
+
+Foram adicionados `PATCH /v1/channels/:id`, `GET /v1/channels/:id/status`,
+`POST /v1/channels/:id/reconnect`, `POST /v1/channels/:id/disconnect`,
+`GET /v1/channels/:id/automation` e `PUT /v1/channels/:id/automation`. As operações QR
+delegam ao serviço de instâncias; a Meta mantém a fronteira do Embedded Signup; o vínculo
+de automação resolve o canal interno da organização e grava a troca em uma única transação RLS.
+O detalhe do canal agora expõe atualização de status, reconexão, desconexão, renomeação e
+seleção de automações publicadas, respeitando o papel somente leitura do cliente.
+
+Evidências executadas: build e typecheck; 1.208 testes padrão; 254 testes de integração;
+teste PostgreSQL específico com duas empresas; 27 E2E aprovados e 5 ignorados pela matriz;
+OpenAPI reproduzível; inventário de 176 rotas; submódulo Evolution íntegro; auditoria sem
+finding CRITICAL/HIGH aberto e PDF de 19 páginas verificado por rasterização.

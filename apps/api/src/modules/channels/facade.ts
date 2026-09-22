@@ -1,4 +1,7 @@
-import type { BindChannelDestinationV1, ChannelV1, CreateChannelV1, Instance } from '@jrc/contracts';
+import { randomUUID } from 'node:crypto';
+import { AUTOMATION_ORIGIN, type AutomationBindingV1, type BindChannelAutomationV1,
+  type BindChannelDestinationV1, type ChannelV1, type CreateChannelV1, type Instance,
+  type PatchChannelV1 } from '@jrc/contracts';
 import type { OrganizationTransaction } from '../../db/tenant-transaction.js';
 import type { InstanceActorContext, InstanceService } from '../instances/service.js';
 import type { createMetaOnboardingService } from '../meta-onboarding/service.js';
@@ -14,6 +17,12 @@ interface ChannelRow {
   instance_status: string | null; meta_status: 'PENDING' | 'READY' | 'REVOKED' | null;
   bot_public_id: string | null; bot_origin_reference: string | null; flow_published_version: number | null;
   flow_enabled: boolean | null; human_status: string | null; created_at: Date | string; updated_at: Date | string;
+}
+
+interface AutomationBindingRow {
+  id: string; organizationId: string; automationId: string; version: number; channelId: string;
+  humanDestinationId: string | null; status: 'ACTIVE' | 'PAUSED' | 'DISABLED'; revision: number;
+  createdAt: Date | string; updatedAt: Date | string;
 }
 
 const iso = (value: Date | string) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -76,6 +85,10 @@ function fromInstance(instance: Instance): ChannelV1 {
     created_at: instance.createdAt, updated_at: instance.updatedAt });
 }
 
+function bindingView(row: AutomationBindingRow): AutomationBindingV1 {
+  return { ...row, schemaVersion: 1, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) };
+}
+
 export interface ChannelFacadeOptions {
   instances: InstanceService;
   meta: Pick<ReturnType<typeof createMetaOnboardingService>, 'start'>;
@@ -113,9 +126,37 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
     if (!found) throw new ChannelFacadeError('CHANNEL_NOT_FOUND', 404);
     return channelView(found);
   }
+  async function messagingChannelId(org: string, channel: ChannelV1): Promise<string> {
+    return options.transact(org, async tx => {
+      const query = channel.provider === 'QR'
+        ? ['SELECT id FROM messaging_channels WHERE organization_id=$1 AND instance_id=$2', channel.providerReference.instanceId] as const
+        : ['SELECT channel_id AS id FROM meta_connections WHERE organization_id=$1 AND id=$2', channel.providerReference.connectionId] as const;
+      const found = (await tx.query<{ id: string }>(query[0], [org, query[1]])).rows[0]?.id;
+      if (!found) throw new ChannelFacadeError('CHANNEL_NOT_FOUND', 404);
+      return found;
+    });
+  }
+  const mutation = (result: Awaited<ReturnType<InstanceService['disconnectInstance']>>) => ({
+    provider: 'QR' as const, channel: fromInstance(result.instance), operationId: result.operationId,
+    replayed: result.replayed, pending: result.pending, reconciliationRequired: result.reconciliationRequired,
+  });
   return {
     async list(org: string) { return { data: (await rows(org)).map(channelView) }; },
     get,
+    async patch(org: string, id: string, input: PatchChannelV1) {
+      const channel = await get(org, id);
+      if (channel.provider !== 'QR') throw new ChannelFacadeError('CHANNEL_PATCH_UNSUPPORTED', 409);
+      const updated = await options.transact(org, async tx => (await tx.query<{ id: string }>(
+        'UPDATE instances SET name=$3,updated_at=now() WHERE organization_id=$1 AND id=$2 RETURNING id',
+        [org, channel.providerReference.instanceId, input.displayName])).rows[0]);
+      if (!updated) throw new ChannelFacadeError('CHANNEL_NOT_FOUND', 404);
+      return get(org, id);
+    },
+    async status(context: InstanceActorContext, id: string) {
+      const channel = await get(context.organizationId, id);
+      if (channel.provider === 'QR') await options.instances.getInstanceStatus(context, channel.providerReference.instanceId);
+      return get(context.organizationId, id);
+    },
     async create(context: InstanceActorContext, actorId: string, input: CreateChannelV1, idempotencyKey: string) {
       if (input.provider === 'META') {
         const action = await options.meta.start(context.organizationId, actorId);
@@ -132,6 +173,56 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
       const result = await options.instances.connectInstance(context, { instanceId: channel.providerReference.instanceId, idempotencyKey });
       return { provider: 'QR' as const, channel: fromInstance(result.instance), operationId: result.operationId,
         replayed: result.replayed, pending: result.pending, reconciliationRequired: result.reconciliationRequired, action: result.action };
+    },
+    async reconnect(context: InstanceActorContext, id: string, idempotencyKey: string) {
+      const channel = await get(context.organizationId, id);
+      if (channel.provider !== 'QR') throw new ChannelFacadeError('CHANNEL_RECONNECT_UNSUPPORTED', 409);
+      const result = await options.instances.connectInstance(context, { instanceId: channel.providerReference.instanceId, idempotencyKey });
+      return { ...mutation(result), action: result.action };
+    },
+    async disconnect(context: InstanceActorContext, id: string, idempotencyKey: string) {
+      const channel = await get(context.organizationId, id);
+      if (channel.provider !== 'QR') throw new ChannelFacadeError('CHANNEL_DISCONNECT_UNSUPPORTED', 409);
+      return mutation(await options.instances.disconnectInstance(context,
+        { instanceId: channel.providerReference.instanceId, idempotencyKey }));
+    },
+    async getAutomation(org: string, id: string) {
+      const channel = await get(org, id), channelId = await messagingChannelId(org, channel);
+      const binding = await options.transact(org, async tx => (await tx.query<AutomationBindingRow>(`
+        SELECT id,organization_id AS "organizationId",automation_id AS "automationId",version,
+          channel_id AS "channelId",human_destination_id AS "humanDestinationId",status,revision,
+          created_at AS "createdAt",updated_at AS "updatedAt"
+        FROM automation_bindings
+        WHERE organization_id=$1 AND channel_id=$2 AND status IN ('ACTIVE','PAUSED')
+        ORDER BY updated_at DESC LIMIT 1`, [org, channelId])).rows[0]);
+      return { binding: binding ? bindingView(binding) : null };
+    },
+    async bindAutomation(org: string, id: string, input: BindChannelAutomationV1) {
+      const channel = await get(org, id), channelId = await messagingChannelId(org, channel);
+      return options.transact(org, async tx => {
+        const definition = (await tx.query<{ activeVersion: number | null }>(
+          'SELECT active_version AS "activeVersion" FROM automation_definitions WHERE organization_id=$1 AND id=$2',
+          [org, input.automationId])).rows[0];
+        if (!definition) throw new ChannelFacadeError('AUTOMATION_NOT_FOUND', 404);
+        const version = input.version ?? definition.activeVersion;
+        if (!version) throw new ChannelFacadeError('AUTOMATION_NOT_PUBLISHED', 409);
+        const published = (await tx.query<{ version: number }>(
+          'SELECT version FROM automation_versions WHERE organization_id=$1 AND automation_id=$2 AND version=$3',
+          [org, input.automationId, version])).rows[0];
+        if (!published) throw new ChannelFacadeError('AUTOMATION_VERSION_NOT_FOUND', 404);
+        await tx.query(`UPDATE automation_bindings SET status='DISABLED',revision=revision+1,updated_at=now()
+          WHERE organization_id=$1 AND channel_id=$2 AND status IN ('ACTIVE','PAUSED')`, [org, channelId]);
+        const binding = (await tx.query<AutomationBindingRow>(`
+          INSERT INTO automation_bindings(organization_id,id,automation_id,version,channel_id,human_destination_id)
+          VALUES($1,$2,$3,$4,$5,$6)
+          RETURNING id,organization_id AS "organizationId",automation_id AS "automationId",version,
+            channel_id AS "channelId",human_destination_id AS "humanDestinationId",status,revision,
+            created_at AS "createdAt",updated_at AS "updatedAt"`,
+        [org, randomUUID(), input.automationId, version, channelId, input.humanDestinationId ?? null])).rows[0]!;
+        await tx.query(`UPDATE messaging_channels SET bot_public_id=$3,bot_origin_reference=$4,updated_at=now()
+          WHERE organization_id=$1 AND id=$2`, [org, channelId, input.automationId, AUTOMATION_ORIGIN]);
+        return { binding: bindingView(binding) };
+      });
     },
     async bindDestination(org: string, id: string, input: BindChannelDestinationV1, actorId?: string) {
       if (!options.chatwoot) throw new ChannelFacadeError('CHATWOOT_NOT_CONFIGURED', 503);

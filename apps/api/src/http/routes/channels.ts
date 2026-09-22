@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { BindChannelDestinationV1Schema, ChannelListV1Schema, ChannelV1Schema,
-  CreateChannelResponseV1Schema, CreateChannelV1Schema, IdempotencyHeadersSchema, PairChannelResponseV1Schema,
+import { BindChannelAutomationV1Schema, BindChannelDestinationV1Schema, ChannelAutomationV1Schema,
+  ChannelListV1Schema, ChannelMutationV1Schema, ChannelV1Schema, CreateChannelResponseV1Schema,
+  CreateChannelV1Schema, IdempotencyHeadersSchema, PairChannelResponseV1Schema, PatchChannelV1Schema,
   PROBLEM_CONTENT_TYPE, ProblemDetailsSchema } from '@jrc/contracts';
 import type { ChannelFacade } from '../../modules/channels/facade.js';
 import { ChannelFacadeError } from '../../modules/channels/facade.js';
@@ -54,6 +55,14 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
   api.get('/v1/channels/:id', { preHandler: read, schema: { params, querystring: empty, response: { 200: ChannelV1Schema,
     400: ProblemDetailsSchema, 401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema } } },
   request => options.service.get(org(request), request.params.id));
+  api.patch('/v1/channels/:id', { preHandler: write, schema: { params, querystring: empty,
+    body: PatchChannelV1Schema, response: { 200: ChannelV1Schema, 400: ProblemDetailsSchema,
+      401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema, 409: ProblemDetailsSchema } } },
+  request => options.service.patch(org(request), request.params.id, request.body));
+  api.get('/v1/channels/:id/status', { preHandler: read, schema: { params, querystring: empty,
+    response: { 200: ChannelV1Schema, 400: ProblemDetailsSchema, 401: ProblemDetailsSchema,
+      403: ProblemDetailsSchema, 404: ProblemDetailsSchema, 503: ProblemDetailsSchema } } },
+  request => options.service.status(context(request), request.params.id));
   api.post('/v1/channels', { preHandler: write, schema: { headers: IdempotencyHeadersSchema, querystring: empty,
     body: CreateChannelV1Schema, response: { 201: CreateChannelResponseV1Schema, 202: CreateChannelResponseV1Schema,
       400: ProblemDetailsSchema, 401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 409: ProblemDetailsSchema, 503: ProblemDetailsSchema } } },
@@ -69,6 +78,29 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
     const result = await options.service.pair(context(request), request.params.id, request.headers['idempotency-key']);
     return reply.code(result.pending && result.action.type === 'NONE' ? 202 : 200).send(result);
   });
+  api.post('/v1/channels/:id/reconnect', { preHandler: write, schema: { params, headers: IdempotencyHeadersSchema,
+    querystring: empty, body: empty, response: { 200: PairChannelResponseV1Schema, 202: PairChannelResponseV1Schema,
+      400: ProblemDetailsSchema, 401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema,
+      409: ProblemDetailsSchema, 503: ProblemDetailsSchema } } }, async (request, reply) => {
+    reply.header('Pragma', 'no-cache');
+    const result = await options.service.reconnect(context(request), request.params.id, request.headers['idempotency-key']);
+    return reply.code(result.pending && result.action.type === 'NONE' ? 202 : 200).send(result);
+  });
+  api.post('/v1/channels/:id/disconnect', { preHandler: write, schema: { params, headers: IdempotencyHeadersSchema,
+    querystring: empty, body: empty, response: { 200: ChannelMutationV1Schema, 202: ChannelMutationV1Schema,
+      400: ProblemDetailsSchema, 401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema,
+      409: ProblemDetailsSchema, 503: ProblemDetailsSchema } } }, async (request, reply) => {
+    const result = await options.service.disconnect(context(request), request.params.id, request.headers['idempotency-key']);
+    return reply.code(result.pending ? 202 : 200).send(result);
+  });
+  api.get('/v1/channels/:id/automation', { preHandler: read, schema: { params, querystring: empty,
+    response: { 200: ChannelAutomationV1Schema, 400: ProblemDetailsSchema, 401: ProblemDetailsSchema,
+      403: ProblemDetailsSchema, 404: ProblemDetailsSchema } } },
+  request => options.service.getAutomation(org(request), request.params.id));
+  api.put('/v1/channels/:id/automation', { preHandler: write, schema: { params, querystring: empty,
+    body: BindChannelAutomationV1Schema, response: { 200: ChannelAutomationV1Schema, 400: ProblemDetailsSchema,
+      401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema, 409: ProblemDetailsSchema } } },
+  request => options.service.bindAutomation(org(request), request.params.id, request.body));
   api.put('/v1/channels/:id/destination', { preHandler: write, schema: { params, querystring: empty,
     body: BindChannelDestinationV1Schema, response: { 200: ChannelV1Schema, 400: ProblemDetailsSchema,
       401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema, 409: ProblemDetailsSchema, 503: ProblemDetailsSchema } } },

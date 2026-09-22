@@ -2,7 +2,7 @@
 
 - Fase: 1
 - Incremento: 2 — Console web operacional JRC
-- Referência da fonte: `sha256:fd9222cf52b93bb00f5437c7a56f2a637ea9e8bc9f9bad1762a311df5bdd8dde`
+- Referência da fonte: `sha256:a3c00672ad28d95d3f8e4fe56521e48f0703b967996fea1747053ffc4078a826`
 - Data de referência: 2026-09-06
 
 ## Resumo executivo
@@ -131,11 +131,17 @@ A imagem fixa Node por tag e digest, separa build/runtime e executa o entrypoint
 | POST | `/v1/automations/migrations/legacy/{id}/cutover` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX | `apps/api/src/http/routes/automations.ts:32` |
 | POST | `/v1/automations/migrations/legacy/{id}/rollback` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX | `apps/api/src/http/routes/automations.ts:33` |
 | GET | `/v1/automations/status` | JWT_CURRENT_MEMBERSHIP | CURRENT_MEMBER | SIM | RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION | `apps/api/src/http/routes/automations.ts:26` |
-| GET | `/v1/channels` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR_VIEWER | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID | `apps/api/src/http/routes/channels.ts:52` |
-| POST | `/v1/channels` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_PROVIDER_ACCOUNT_AND_CHANNEL | `apps/api/src/http/routes/channels.ts:57` |
-| GET | `/v1/channels/{id}` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR_VIEWER | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID | `apps/api/src/http/routes/channels.ts:54` |
-| PUT | `/v1/channels/{id}/destination` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_CHANNEL_ACCOUNT_AND_INBOX | `apps/api/src/http/routes/channels.ts:72` |
-| POST | `/v1/channels/{id}/pair` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER | `apps/api/src/http/routes/channels.ts:64` |
+| GET | `/v1/channels` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR_VIEWER | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID | `apps/api/src/http/routes/channels.ts:53` |
+| POST | `/v1/channels` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_PROVIDER_ACCOUNT_AND_CHANNEL | `apps/api/src/http/routes/channels.ts:66` |
+| GET | `/v1/channels/{id}` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR_VIEWER | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID | `apps/api/src/http/routes/channels.ts:55` |
+| PATCH | `/v1/channels/{id}` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID | `apps/api/src/http/routes/channels.ts:58` |
+| GET | `/v1/channels/{id}/automation` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR_VIEWER | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID | `apps/api/src/http/routes/channels.ts:96` |
+| PUT | `/v1/channels/{id}/automation` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_CHANNEL_AUTOMATION_AND_VERSION | `apps/api/src/http/routes/channels.ts:100` |
+| PUT | `/v1/channels/{id}/destination` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_CHANNEL_ACCOUNT_AND_INBOX | `apps/api/src/http/routes/channels.ts:104` |
+| POST | `/v1/channels/{id}/disconnect` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER | `apps/api/src/http/routes/channels.ts:89` |
+| POST | `/v1/channels/{id}/pair` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER | `apps/api/src/http/routes/channels.ts:73` |
+| POST | `/v1/channels/{id}/reconnect` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER | `apps/api/src/http/routes/channels.ts:81` |
+| GET | `/v1/channels/{id}/status` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR_VIEWER | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER | `apps/api/src/http/routes/channels.ts:62` |
 | POST | `/v1/console/auth/logout` | EXACT_ORIGIN_WITH_OPTIONAL_REFRESH_COOKIE_CSRF | NOT_APPLICABLE_PRE_AUTH | NÃO | REFRESH_TOKEN_FAMILY_WHEN_PRESENT | `apps/api/src/http/routes/console-auth.ts:380` |
 | POST | `/v1/console/auth/restore` | REFRESH_COOKIE_CSRF_AND_EXACT_ORIGIN | NOT_APPLICABLE_PRE_AUTH | NÃO | REFRESH_TOKEN_TENANT_BOUND | `apps/api/src/http/routes/console-auth.ts:336` |
 | POST | `/v1/console/auth/select-organization` | SELECTION_TOKEN_AND_EXACT_ORIGIN | NOT_APPLICABLE_PRE_AUTH | NÃO | SELECTION_TOKEN_MEMBERSHIP_REVALIDATED | `apps/api/src/http/routes/console-auth.ts:313` |

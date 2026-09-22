@@ -67,7 +67,9 @@ button, a, input, select { outline-offset: 3px; }
 .button--danger { color: var(--jrc-on-primary); background: var(--jrc-danger); }
 .notice { padding: var(--jrc-space-cozy) var(--jrc-space-lg); border-radius: var(--jrc-radius-md); }
 .notice--error { color: var(--jrc-state-danger-text); border: var(--jrc-border-width) solid var(--jrc-border-danger); background: var(--jrc-state-danger-surface); }
+.notice--success { color: var(--jrc-state-success-text); border: var(--jrc-border-width) solid currentColor; background: var(--jrc-state-success-surface); }
 .notice small { display: block; margin-top: 0.35rem; }
+.button-row { display: flex; flex-wrap: wrap; gap: var(--jrc-space-sm); }
 .organization-list { display: grid; gap: var(--jrc-space-md); margin: 0; padding: 0; list-style: none; }
 .organization-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--jrc-space-lg); padding: var(--jrc-space-lg); border: var(--jrc-border-width) solid var(--jrc-border); border-radius: var(--jrc-radius-lg); }
 .organization-list li div { display: grid; gap: 0.3rem; }

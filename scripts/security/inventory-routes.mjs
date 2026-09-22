@@ -507,7 +507,7 @@ const ROUTE_POLICIES = Object.freeze({
     "RLS_ORGANIZATION_AND_RESOURCE_ID",
   ),
   ...Object.fromEntries(
-    ["GET /v1/channels", "GET /v1/channels/{id}"].map((route) => [
+    ["GET /v1/channels", "GET /v1/channels/{id}", "GET /v1/channels/{id}/automation"].map((route) => [
       route,
       policy(
         "apps/api/src/http/routes/channels.ts",
@@ -519,6 +519,24 @@ const ROUTE_POLICIES = Object.freeze({
         "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID",
       ),
     ]),
+  ),
+  "GET /v1/channels/{id}/status": policy(
+    "apps/api/src/http/routes/channels.ts",
+    "JWT_CURRENT_MEMBERSHIP",
+    "OWNER_ADMIN_OPERATOR_VIEWER",
+    true,
+    "READ_PROVIDER_STATUS",
+    "NONE",
+    "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER",
+  ),
+  "PATCH /v1/channels/{id}": policy(
+    "apps/api/src/http/routes/channels.ts",
+    "JWT_CURRENT_MEMBERSHIP",
+    "OWNER_ADMIN_OPERATOR",
+    true,
+    "ATOMIC_CHANNEL_IDENTITY_UPDATE",
+    "NONE",
+    "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID",
   ),
   "POST /v1/channels": policy(
     "apps/api/src/http/routes/channels.ts",
@@ -537,6 +555,29 @@ const ROUTE_POLICIES = Object.freeze({
     "IDEMPOTENCY_KEY_AND_SHARED_PAIR_WINDOW",
     "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
     "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER",
+  ),
+  ...Object.fromEntries(
+    ["POST /v1/channels/{id}/reconnect", "POST /v1/channels/{id}/disconnect"].map((route) => [
+      route,
+      policy(
+        "apps/api/src/http/routes/channels.ts",
+        "JWT_CURRENT_MEMBERSHIP",
+        "OWNER_ADMIN_OPERATOR",
+        true,
+        "IDEMPOTENCY_KEY_DELEGATED_TO_PROVIDER_WORKFLOW",
+        "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
+        "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER",
+      ),
+    ]),
+  ),
+  "PUT /v1/channels/{id}/automation": policy(
+    "apps/api/src/http/routes/channels.ts",
+    "JWT_CURRENT_MEMBERSHIP",
+    "OWNER_ADMIN_OPERATOR",
+    true,
+    "ATOMIC_REPLACE_PUBLISHED_AUTOMATION_BINDING",
+    "NONE",
+    "RLS_ORGANIZATION_CHANNEL_AUTOMATION_AND_VERSION",
   ),
   "PUT /v1/channels/{id}/destination": policy(
     "apps/api/src/http/routes/channels.ts",

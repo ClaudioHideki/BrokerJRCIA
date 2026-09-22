@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ConnectionActionSchema } from './instances/schemas.js';
+import { AutomationBindingV1Schema } from './automations-v1.js';
 
 export const CHANNEL_CONTRACT_VERSION = 1 as const;
 
@@ -82,6 +83,9 @@ export const CreateChannelV1Schema = z.discriminatedUnion('provider', [
   }),
   z.strictObject({ provider: z.literal('META') }),
 ]);
+export const PatchChannelV1Schema = z.strictObject({
+  displayName: z.string().trim().min(1).max(100),
+});
 export const ChannelMutationV1Schema = z.strictObject({
   provider: z.literal('QR'),
   channel: ChannelV1Schema,
@@ -108,10 +112,20 @@ export const BindChannelDestinationV1Schema = z.strictObject({
   inboxId: z.number().int().positive().optional(),
   replaceExistingWebhook: z.boolean().default(false),
 });
+export const ChannelAutomationV1Schema = z.strictObject({
+  binding: AutomationBindingV1Schema.nullable(),
+});
+export const BindChannelAutomationV1Schema = z.strictObject({
+  automationId: z.uuid(),
+  version: z.number().int().positive().optional(),
+  humanDestinationId: z.uuid().nullable().optional(),
+});
 
 export type ChannelV1 = z.infer<typeof ChannelV1Schema>;
 export type CreateChannelV1 = z.infer<typeof CreateChannelV1Schema>;
+export type PatchChannelV1 = z.infer<typeof PatchChannelV1Schema>;
 export type BindChannelDestinationV1 = z.infer<typeof BindChannelDestinationV1Schema>;
+export type BindChannelAutomationV1 = z.infer<typeof BindChannelAutomationV1Schema>;
 export type ChannelTransportStatusV1 = z.infer<typeof ChannelTransportStatusV1Schema>;
 export type ChannelProviderStatusV1 = z.infer<typeof ChannelProviderStatusV1Schema>;
 export type ChannelAutomationStatusV1 = z.infer<typeof ChannelAutomationStatusV1Schema>;

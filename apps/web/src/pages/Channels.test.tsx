@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { welcomeFlow } from '@jrc/contracts';
 import type { ApiClient } from '../api/client.js';
 import { App } from '../app/App.js';
 
@@ -37,5 +38,30 @@ describe('canonical channels UI', () => {
     expect(screen.getByRole('button', { name: /WhatsApp por QR Code/ })).toBeVisible();
     expect(screen.getByRole('button', { name: /WhatsApp oficial Meta/ })).toBeVisible();
     expect(screen.getByRole('list', { name: 'Etapas da configuração' }).children).toHaveLength(6);
+  });
+
+  it('exposes status, reconnection, disconnection, rename and published automation controls', async () => {
+    const channel = { schemaVersion: 1, id, organizationId: org, provider: 'QR',
+      identity: { displayName: 'Atendimento', maskedAddress: null }, providerReference: { providerAccountId: account, instanceId: id },
+      transportStatus: 'CONNECTED', providerStatus: 'READY', automationStatus: 'UNBOUND', humanStatus: 'UNBOUND', revision: 1,
+      createdAt: timestamp, updatedAt: timestamp };
+    const automationId = '11111111-2222-4333-8444-555555555555';
+    const request = vi.fn(async (path: string) => {
+      if (path === '/v1/flows/status') return { enabled: true };
+      if (path === `/v1/channels/${id}`) return channel;
+      if (path === `/v1/channels/${id}/automation`) return { binding: null };
+      if (path === '/v1/automations') return { data: [{ schemaVersion: 1, id: automationId, organizationId: org,
+        name: 'Triagem inteligente', lifecycleStatus: 'PUBLISHED', draft: { revision: 1, graph: welcomeFlow() },
+        activeVersion: 2, updatedAt: timestamp }] };
+      throw new Error(`Unexpected ${path}`);
+    }) as ApiClient['request'];
+    render(<App client={client(request)} initialEntries={[`/channels/${id}`]} />);
+    expect(await screen.findByRole('heading', { name: 'Atendimento' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Atualizar status' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Reconectar' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Desconectar' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Salvar nome' })).toBeVisible();
+    expect(await screen.findByRole('option', { name: 'Triagem inteligente · v2' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Vincular automação' })).toBeDisabled();
   });
 });

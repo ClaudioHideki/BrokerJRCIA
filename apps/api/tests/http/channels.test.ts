@@ -23,7 +23,10 @@ describe('canonical channel routes', () => {
     let role: 'OWNER' | 'VIEWER' = 'OWNER';
     const service = { list: vi.fn().mockResolvedValue({ data: [channel] }), get: vi.fn().mockResolvedValue(channel),
       create: vi.fn().mockResolvedValue({ provider: 'QR', channel, operationId: null, replayed: false, pending: false, reconciliationRequired: false }),
-      pair: vi.fn(), bindDestination: vi.fn().mockResolvedValue({ ...channel, humanStatus: 'READY' }) } as unknown as ChannelFacade;
+      pair: vi.fn(), patch: vi.fn().mockResolvedValue({ ...channel, identity: { displayName: 'Comercial', maskedAddress: null } }),
+      status: vi.fn().mockResolvedValue(channel), reconnect: vi.fn(), disconnect: vi.fn(),
+      getAutomation: vi.fn().mockResolvedValue({ binding: null }), bindAutomation: vi.fn(),
+      bindDestination: vi.fn().mockResolvedValue({ ...channel, humanStatus: 'READY' }) } as unknown as ChannelFacade;
     const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ verifyPasswordOrDummy: async () => false }),
       channels: { jwtSecret: secret, authenticateApiKey: async () => null, resolveCurrentRole: async () => role, service } });
     apps.push(app);
@@ -35,6 +38,10 @@ describe('canonical channel routes', () => {
       payload: { provider: 'QR', name: 'Atendimento', providerAccountId: account } });
     expect(created.statusCode).toBe(201);
     expect(service.create).toHaveBeenCalled();
+    expect((await app.inject({ method: 'PATCH', url: `/v1/channels/${id}`, headers: { authorization },
+      payload: { displayName: 'Comercial' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: `/v1/channels/${id}/status`, headers: { authorization } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: `/v1/channels/${id}/automation`, headers: { authorization } })).statusCode).toBe(200);
     role = 'VIEWER';
     expect((await app.inject({ method: 'PUT', url: `/v1/channels/${id}/destination`, headers: { authorization },
       payload: { name: 'Caixa suporte' } })).statusCode).toBe(403);
@@ -53,5 +60,29 @@ describe('canonical channel routes', () => {
     expect(paired.statusCode).toBe(200);
     expect(paired.headers['cache-control']).toBe('no-store');
     expect(paired.headers.pragma).toBe('no-cache');
+  });
+
+  it('exposes reconnect, disconnect and automation binding with idempotency and write authorization', async () => {
+    const mutation = { provider: 'QR' as const, channel, operationId: null, replayed: false, pending: false,
+      reconciliationRequired: false };
+    const binding = { schemaVersion: 1 as const, id: user, organizationId: org, automationId: account, version: 2,
+      channelId: id, humanDestinationId: null, status: 'ACTIVE' as const, revision: 1,
+      createdAt: timestamp, updatedAt: timestamp };
+    const service = { reconnect: vi.fn().mockResolvedValue({ ...mutation, action: { type: 'NONE', reason: 'ALREADY_CONNECTED' } }),
+      disconnect: vi.fn().mockResolvedValue(mutation), bindAutomation: vi.fn().mockResolvedValue({ binding }),
+      getAutomation: vi.fn().mockResolvedValue({ binding }) } as unknown as ChannelFacade;
+    const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ verifyPasswordOrDummy: async () => false }),
+      channels: { jwtSecret: secret, authenticateApiKey: async () => null, resolveCurrentRole: async () => 'OWNER', service } });
+    apps.push(app);
+    const authorization = `Bearer ${await issueAccessToken({ userId: user, organizationId: org, role: 'OWNER' }, secret)}`;
+    expect((await app.inject({ method: 'POST', url: `/v1/channels/${id}/reconnect`, headers: { authorization }, payload: {} })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: `/v1/channels/${id}/reconnect`,
+      headers: { authorization, 'idempotency-key': 'reconnect-channel' }, payload: {} })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/v1/channels/${id}/disconnect`,
+      headers: { authorization, 'idempotency-key': 'disconnect-channel' }, payload: {} })).statusCode).toBe(200);
+    const response = await app.inject({ method: 'PUT', url: `/v1/channels/${id}/automation`, headers: { authorization },
+      payload: { automationId: account, version: 2 } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().binding).toMatchObject({ automationId: account, version: 2 });
   });
 });
