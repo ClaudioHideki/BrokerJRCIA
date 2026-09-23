@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {MemoryRouter} from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ApiClient } from '../api/client.js';
@@ -28,22 +29,22 @@ function client(role:'OWNER'|'ADMIN'|'VIEWER'='OWNER') {
 describe('LegacyMigrationPanel',()=>{
   it('shows every migration state, checksums, counts and conversion errors',async()=>{
     const api=client();
-    render(<LegacyMigrationPanel client={{request:api.request} as ApiClient} role={api.role}/>);
-    for(const state of states)expect(await screen.findByText(state)).toBeInTheDocument();
+    render(<MemoryRouter><LegacyMigrationPanel client={{request:api.request} as ApiClient} role={api.role}/></MemoryRouter>);
+    for(const state of ['Convertida','Aguardando execuções','Migração concluída','Requer adaptação','Requer conferência','Migração revertida'])expect(await screen.findByText(state)).toBeInTheDocument();
     expect(screen.getByText('2 execuções vivas')).toBeInTheDocument();
     expect(screen.getByText('AUTOMATION_GRAPH_UNSUPPORTED')).toBeInTheDocument();
     expect(screen.getAllByText(/aaaaaaaaaaaa/).length).toBeGreaterThan(0);
-    expect(screen.getByText('6 fluxos legados')).toBeInTheDocument();
+    expect(screen.getByText('6 fluxos anteriores')).toBeInTheDocument();
   });
 
   it('offers contextual safe actions only to OWNER or ADMIN',async()=>{
     const api=client('ADMIN');
     vi.spyOn(window,'confirm').mockReturnValue(true);
-    render(<LegacyMigrationPanel client={{request:api.request} as ApiClient} role={api.role}/>);
+    render(<MemoryRouter><LegacyMigrationPanel client={{request:api.request} as ApiClient} role={api.role}/></MemoryRouter>);
     fireEvent.click(await screen.findByRole('button',{name:'Migrar próximo lote'}));
-    await screen.findByText('Lote processado. Revise os estados antes do cutover.');
+    await screen.findByText('Lote processado. Revise os estados antes de concluir a migração.');
     fireEvent.click(screen.getAllByRole('button',{name:'Concluir migração'})[0]!);
-    await screen.findByText('Cutover verificado.');
+    await screen.findByText('Migração concluída.');
     fireEvent.click(screen.getAllByRole('button',{name:'Reverter para fluxo legado'})[0]!);
     await waitFor(()=>expect(api.request).toHaveBeenCalledWith(expect.stringMatching(/\/cutover$/),expect.objectContaining({method:'POST'})));
     expect(api.request).toHaveBeenCalledWith(expect.stringMatching(/\/rollback$/),expect.objectContaining({method:'POST'}));
@@ -51,7 +52,7 @@ describe('LegacyMigrationPanel',()=>{
 
   it('keeps incompatible flows visible and hides mutation actions from VIEWER',async()=>{
     const api=client('VIEWER');
-    render(<LegacyMigrationPanel client={{request:api.request} as ApiClient} role={api.role}/>);
+    render(<MemoryRouter><LegacyMigrationPanel client={{request:api.request} as ApiClient} role={api.role}/></MemoryRouter>);
     expect(await screen.findByText('AUTOMATION_GRAPH_UNSUPPORTED')).toBeInTheDocument();
     expect(screen.queryByRole('button',{name:'Migrar próximo lote'})).not.toBeInTheDocument();
     expect(screen.queryByRole('button',{name:'Concluir migração'})).not.toBeInTheDocument();

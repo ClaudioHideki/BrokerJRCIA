@@ -7,6 +7,7 @@ import { FakeProviderAdapter, ProviderRegistry } from '@jrc/providers';
 import { runMigrations } from '../../src/db/migrate.js';
 import { withOrganizationTransaction } from '../../src/db/tenant-transaction.js';
 import { writeTenantAudit } from '../../src/modules/audit/audit.js';
+import {createChatwootService} from '../../src/modules/integrations/chatwoot-service.js';
 import { createChannelFacade } from '../../src/modules/channels/facade.js';
 import { createPostgresInstanceRepository } from '../../src/modules/instances/repository.js';
 import { createInstanceService } from '../../src/modules/instances/service.js';
@@ -69,6 +70,7 @@ describe('isolamento PostgreSQL da fachada canônica de canais', () => {
       providerAccountId: tenantA.accountId, idempotencyKey: 'channel-a' });
     const b = await instances.createInstance(context(tenantB), { name: 'Canal B', provider: 'BAILEYS',
       providerAccountId: tenantB.accountId, idempotencyKey: 'channel-b' });
+    await expect(facade.getAutomation(tenantA.organizationId,a.instance.id)).resolves.toEqual({binding:null});
     await expect(facade.list(tenantA.organizationId)).resolves.toMatchObject({ data: [{ id: a.instance.id }] });
     await expect(facade.list(tenantB.organizationId)).resolves.toMatchObject({ data: [{ id: b.instance.id }] });
     await expect(facade.get(tenantB.organizationId, a.instance.id)).rejects.toMatchObject({ code: 'CHANNEL_NOT_FOUND' });
@@ -91,4 +93,35 @@ describe('isolamento PostgreSQL da fachada canônica de canais', () => {
     await expect(facade.getAutomation(tenantA.organizationId, a.instance.id))
       .resolves.toMatchObject({ binding: { automationId, channelId } });
   });
+  it('archives a disconnected instance, preserves its record and prevents tenant/provider operations',async()=>{
+    const result=await instances.createInstance(context(tenantA),{name:'Cadastro a arquivar',provider:'BAILEYS',providerAccountId:tenantA.accountId,idempotencyKey:'archive-fixture'});
+    await expect(facade.setArchived(tenantB.organizationId,result.instance.id,true,tenantB.ownerId)).rejects.toMatchObject({code:'CHANNEL_NOT_FOUND'});
+    await database.pool.query("update instances set status='CONNECTED' where id=$1",[result.instance.id]);
+    await expect(facade.setArchived(tenantA.organizationId,result.instance.id,true,tenantA.ownerId)).rejects.toMatchObject({code:'CHANNEL_DISCONNECT_REQUIRED'});
+    await database.pool.query("update instances set status='DISCONNECTED' where id=$1",[result.instance.id]);
+    await expect(facade.setArchived(tenantA.organizationId,result.instance.id,true,tenantA.ownerId)).rejects.toMatchObject({code:'CHANNEL_HAS_PENDING_WORK'});
+    await database.pool.query("update provider_operations set status='SUCCEEDED',reconciliation_required=false where instance_id=$1",[result.instance.id]);
+    await facade.setArchived(tenantA.organizationId,result.instance.id,true,tenantA.ownerId);
+    expect((await facade.list(tenantA.organizationId)).data.some(item=>item.id===result.instance.id)).toBe(false);
+    expect((await facade.list(tenantA.organizationId,true)).data.some(item=>item.id===result.instance.id&&item.archivedAt)).toBe(true);
+    await expect(instances.connectInstance(context(tenantA),{instanceId:result.instance.id,idempotencyKey:'after-archive'})).rejects.toThrow();
+    await expect(withOrganizationTransaction(appPool,tenantA.organizationId,t=>t.query("insert into provider_operations(organization_id,instance_id,operation_type) values($1,$2,'CONNECT')",[tenantA.organizationId,result.instance.id]))).rejects.toMatchObject({constraint:'instance_archived'});
+    await facade.setArchived(tenantA.organizationId,result.instance.id,false,tenantA.ownerId);
+    expect((await facade.get(tenantA.organizationId,result.instance.id)).archivedAt).toBeNull();
+  });
+
+  it('removes an unused disabled inbox binding only within its organization, without calling the remote system',async()=>{
+    const channel=(await database.pool.query('select id from messaging_channels where organization_id=$1 limit 1',[tenantA.organizationId])).rows[0].id;
+    const connection=randomUUID();await database.pool.query("insert into chatwoot_accounts(organization_id,base_url,status) values($1,'https://qa.example.test','READY')",[tenantA.organizationId]);
+    await database.pool.query("insert into chatwoot_connections(id,organization_id,channel_id,name,status) values($1,$2,$3,'Cadastro errado','DISABLED')",[connection,tenantA.organizationId,channel]);
+    const service=createChatwootService({publicOrigin:'https://broker.example.test',baseUrl:'https://qa.example.test',encryptionKey:Buffer.alloc(32,1).toString('base64'),transact:(org,work)=>withOrganizationTransaction(appPool,org,work),resolveIntegration:async()=>undefined,fetch:async()=>{throw new Error('Must not call remote');}});
+    await expect(service.removeUnusedConnection(tenantB.organizationId,connection,tenantB.ownerId)).rejects.toMatchObject({code:'INTEGRATION_NOT_FOUND'});
+    const binding=(await database.pool.query('select id from automation_bindings where organization_id=$1 and channel_id=$2 limit 1',[tenantA.organizationId,channel])).rows[0];
+    await database.pool.query('update automation_bindings set human_destination_id=$3 where organization_id=$1 and id=$2',[tenantA.organizationId,binding.id,connection]);
+    await expect(service.removeUnusedConnection(tenantA.organizationId,connection,tenantA.ownerId)).rejects.toMatchObject({code:'INTEGRATION_HAS_HISTORY'});
+    await database.pool.query('update automation_bindings set human_destination_id=null where organization_id=$1 and id=$2',[tenantA.organizationId,binding.id]);
+    await service.removeUnusedConnection(tenantA.organizationId,connection,tenantA.ownerId);
+    expect((await database.pool.query('select id from chatwoot_connections where id=$1',[connection])).rows).toHaveLength(0);
+  });
+
 });

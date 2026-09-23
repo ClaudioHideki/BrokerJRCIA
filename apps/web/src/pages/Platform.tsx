@@ -31,6 +31,7 @@ function platformErrorMessage(error: unknown): string {
     const reference = error.correlationId ?? error.requestId;
     return reference ? `${error.message} Referência: ${reference}` : error.message;
   }
+  if(error instanceof ApiClientError&&error.code==='PLATFORM_LAST_OWNER')return 'Cadastre outro responsável ativo antes de remover este acesso.';
   return error.message;
 }
 
@@ -595,6 +596,7 @@ export function PlatformPage() {
                     saveCompany={saveCompany}
                     saveMember={saveMember}
                     refresh={() => void inspect(selected)}
+                    channelRequest={(path,method,body)=>request('/organizations/'+selected.id+'/channels'+path,method,body)}
                     integrationRequest={(path,method,body)=>request('/organizations/'+selected.id+'/chatwoot'+path,method,body)}
                     acknowledge={() =>
                       void action(async () => {

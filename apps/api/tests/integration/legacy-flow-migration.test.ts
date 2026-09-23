@@ -200,4 +200,11 @@ describe('legacy flow reconciliation', () => {
       [organizationB],
     )).rows[0].count).toBe(0);
   });
+ it('converts an incomplete draft for editing without publishing it',async()=>{
+  const created=await flows.create(organizationB,{name:'Rascunho em revisão',graph:welcomeFlow()});
+  const graph={...welcomeFlow(),edges:[]};await database.pool.query('update flows set graph=$3 where organization_id=$1 and id=$2',[organizationB,created.id,JSON.stringify(graph)]);
+  const result=await migration.migrateBatch(organizationB);expect(result.items).toContainEqual(expect.objectContaining({flowId:created.id,status:'CONVERTED'}));
+  expect((await database.pool.query('select lifecycle_status,active_version from automation_definitions where organization_id=$1 and id=$2',[organizationB,created.id])).rows[0]).toMatchObject({lifecycle_status:'DRAFT',active_version:null});
+ });
+
 });

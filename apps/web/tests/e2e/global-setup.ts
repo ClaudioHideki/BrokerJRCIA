@@ -15,6 +15,12 @@ import {
 } from '@jrc/providers';
 import { initializePasswordVerifier } from '@jrc/security';
 
+import {createChannelFacade} from '../../../api/src/modules/channels/facade.js';
+import {ensureQrChannel} from '../../../api/src/modules/messaging/qr-service.js';
+import {createAutomationService,createExecutionService} from '../../../api/src/modules/automations/service.js';
+import {createAutomationImporter} from '../../../api/src/modules/automation-integrations/importer.js';
+import {createLegacyFlowMigrationService} from '../../../api/src/modules/automations/legacy-migration.js';
+import type {OrganizationTransaction} from '../../../api/src/db/tenant-transaction.js';
 import { buildApp } from '../../../api/src/app.js';
 import { runMigrations } from '../../../api/src/db/migrate.js';
 import { withOrganizationTransaction } from '../../../api/src/db/tenant-transaction.js';
@@ -280,7 +286,12 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     platformFixture=await createPlatformFixture(database.pool,database.connectionString,CONSOLE_ORIGIN);
     const metaWebhookSecret = secret();
     process.env.JRC_E2E_META_SECRET = metaWebhookSecret;
+    const transact=<T>(org:string,work:OrganizationTransaction<T>)=>withOrganizationTransaction(appPool!,org,work);
+    const automationOptions={transact},routeAuth={jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(authPool)};
     app = buildApp({
+      channels:{...routeAuth,service:createChannelFacade({instances,meta:{start:async()=>{throw new Error('Meta real não configurada no E2E');}},transact,activateQr:(org,id)=>transact(org,tx=>ensureQrChannel(tx,org,id))})},
+      automations:{...routeAuth,service:createAutomationService(automationOptions),executions:createExecutionService(automationOptions),migration:createLegacyFlowMigrationService(automationOptions)},
+      automationImports:{...routeAuth,service:createAutomationImporter({transact,keyring:JSON.stringify({'1':Buffer.alloc(32,22).toString('base64')})})},
       nodeEnv: 'test',
       platform:platformFixture.routeOptions,
       integrations: {

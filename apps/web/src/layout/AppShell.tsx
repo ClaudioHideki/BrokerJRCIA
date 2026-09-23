@@ -6,14 +6,14 @@ import { Icon } from '../broker/Icon.js';
 
 const navigation = [
   ['/dashboard', 'Dashboard', 'dashboard'],
-  ['/channels', 'Canais', 'connections'],
+  ['/channels', 'Caixas de entrada', 'connections'],
   ['/provisionamento', 'Provisionamento', 'upload'],
-  ['/mensagens', 'Mensagens e automações', 'messages'],
-  ['/flows', 'Automações', 'brain'],
+  ['/mensagens', 'Conversas', 'messages'],
+  ['/automations', 'Automações', 'brain'],
   ['/credentials', 'Credenciais', 'key'],
   ['/uso-custos', 'Uso e custos', 'costs'],
   ['/relatorios', 'Relatórios', 'reports'],
-  ['/health', 'Health Center', 'health'],
+  ['/health', 'Saúde operacional', 'health'],
   ['/brain', 'JRC Brain', 'brain'],
   ['/chaves-api', 'Chaves de API', 'key'],
   ['/integracoes', 'JRC Conversas', 'messages'],
@@ -170,7 +170,7 @@ export function AppShell() {
           </div>
         ) : null}
         <main className="page-content">
-          <Outlet />
+          <Outlet key={session.activeOrganization.id} />
         </main>
       </div>
     </div>

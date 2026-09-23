@@ -265,6 +265,7 @@ export async function registerIntegrationRoutes(
     },
     (request) => service().reconcileConnection(org(request), request.params.id),
   );
+  api.delete('/v1/integrations/chatwoot/connections/:id',{preHandler:write,schema:{params,querystring:empty}},request=>service().removeUnusedConnection(org(request),request.params.id,actor(request)));
   api.patch(
     "/v1/integrations/chatwoot/connections/:id",
     {

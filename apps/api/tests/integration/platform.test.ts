@@ -96,3 +96,10 @@ it('requires origin and CSRF with opaque cookies and fails closed when rate stor
   expect((await app.inject({method:'POST',url:'/v1/platform/auth/login',headers:{origin:'https://console.example.test'},payload:{email:'admin@example.test',password:'long-test-password',totp:'000000'}})).statusCode).toBe(500);
  }finally{await db.pool.query('grant insert on platform_login_limits to jrc_platform');await app.close();}
 });
+
+it('refuses removal of the last active owner with an actionable code',async()=>{
+ await db.pool.query("update platform_users set last_totp_step=-1 where email='admin@example.test'");
+ const s=await service.login('admin@example.test','long-test-password',totp(seed,Math.floor(Date.now()/30000)),'127.0.0.14');
+ const created=await service.execute(s.token,'QA owner protection','create',undefined,{name:'Owner QA',slug:'owner-qa',ownerEmail:'owner-qa@example.test',ownerPassword:'owner-password-strong'}) as {organization:{id:string}};
+ await expect(service.execute(s.token,'QA deactivate owner','membership',created.organization.id,{email:'owner-qa@example.test',role:'OWNER',status:'DISABLED'})).rejects.toMatchObject({code:'PLATFORM_LAST_OWNER'});
+});

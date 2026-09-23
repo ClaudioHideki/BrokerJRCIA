@@ -15,7 +15,7 @@ import { LoginPage } from '../pages/Login.js';
 import { NewConnectionPage } from '../pages/NewConnection.js';
 import { OrganizationSelectPage } from '../pages/OrganizationSelect.js';
 import { MessagingPage } from '../pages/Messaging.js';
-import { FlowsPage } from '../pages/Flows.js';
+
 import { CredentialsPage } from '../pages/Credentials.js';
 import {
   AutomationEditorPage,
@@ -96,7 +96,7 @@ function AppRoutes() {
         <Route path="/automation-executions" element={<AutomationExecutionsPage />} />
         <Route path="/automation-executions/:id" element={<AutomationExecutionDetailPage />} />
         <Route path="/credentials" element={<CredentialsPage />} />
-        <Route path="/legacy/flows" element={<FlowsPage />} />
+        <Route path="/legacy/flows" element={<FlowsCompatibilityRoute />} />
         <Route path="/flows" element={<FlowsCompatibilityRoute />} />
         <Route path="/whatsapp-oficial" element={<Navigate replace to="/channels/meta/connect" />} />
         <Route path="/minha-empresa" element={<CompanyPage />} />

@@ -36,13 +36,13 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
       requestId: request.id });
   });
   const authentication = authenticateRequest(options);
-  const role = (write: boolean) => async (request: FastifyRequest, reply: FastifyReply) => {
+  const role = (write: boolean,admin=false) => async (request: FastifyRequest, reply: FastifyReply) => {
     const auth = request.authentication;
     const current = auth?.kind === 'JWT' ? await options.resolveCurrentRole(auth.actorId, auth.organizationId) : null;
-    if (!current || (write && current === 'VIEWER')) return reply.code(403).type(PROBLEM_CONTENT_TYPE)
+    if (!current || (write && current === 'VIEWER') || (admin && current!=='OWNER' && current!=='ADMIN')) return reply.code(403).type(PROBLEM_CONTENT_TYPE)
       .send({ type: 'about:blank', title: 'Forbidden', status: 403, code: 'FORBIDDEN', requestId: request.id });
   };
-  const read = [authentication, role(false)], write = [authentication, role(true)];
+  const read = [authentication, role(false)], write = [authentication, role(true)],manage=[authentication,role(true,true)];
   const api = app.withTypeProvider<ZodTypeProvider>();
   const params = z.strictObject({ id: z.uuid() }), empty = z.strictObject({});
   const org = (request: FastifyRequest) => request.authentication!.organizationId;
@@ -50,8 +50,9 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
   const context = (request: FastifyRequest) => ({ credentialKind: 'JWT' as const, organizationId: org(request), actorId: actor(request),
     requestId: request.id, deadline: request.operationDeadline, signal: request.operationSignal });
 
-  api.get('/v1/channels', { preHandler: read, schema: { querystring: empty, response: { 200: ChannelListV1Schema,
-    400: ProblemDetailsSchema, 401: ProblemDetailsSchema, 403: ProblemDetailsSchema } } }, request => options.service.list(org(request)));
+  api.get('/v1/channels', { preHandler: read, schema: { querystring: z.strictObject({includeArchived:z.enum(['true','false']).optional()}), response: { 200: ChannelListV1Schema,
+    400: ProblemDetailsSchema, 401: ProblemDetailsSchema, 403: ProblemDetailsSchema } } }, request => options.service.list(org(request),request.query.includeArchived==='true'));
+  api.post('/v1/channels/:id/archive',{preHandler:manage,schema:{params,querystring:empty,body:z.strictObject({archived:z.boolean()}),response:{200:ChannelV1Schema}}},request=>options.service.setArchived(org(request),request.params.id,request.body.archived,actor(request)));
   api.get('/v1/channels/:id', { preHandler: read, schema: { params, querystring: empty, response: { 200: ChannelV1Schema,
     400: ProblemDetailsSchema, 401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema } } },
   request => options.service.get(org(request), request.params.id));
@@ -97,11 +98,11 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
     response: { 200: ChannelAutomationV1Schema, 400: ProblemDetailsSchema, 401: ProblemDetailsSchema,
       403: ProblemDetailsSchema, 404: ProblemDetailsSchema } } },
   request => options.service.getAutomation(org(request), request.params.id));
-  api.put('/v1/channels/:id/automation', { preHandler: write, schema: { params, querystring: empty,
+  api.put('/v1/channels/:id/automation', { preHandler: manage, schema: { params, querystring: empty,
     body: BindChannelAutomationV1Schema, response: { 200: ChannelAutomationV1Schema, 400: ProblemDetailsSchema,
       401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema, 409: ProblemDetailsSchema } } },
   request => options.service.bindAutomation(org(request), request.params.id, request.body));
-  api.put('/v1/channels/:id/destination', { preHandler: write, schema: { params, querystring: empty,
+  api.put('/v1/channels/:id/destination', { preHandler: manage, schema: { params, querystring: empty,
     body: BindChannelDestinationV1Schema, response: { 200: ChannelV1Schema, 400: ProblemDetailsSchema,
       401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema, 409: ProblemDetailsSchema, 503: ProblemDetailsSchema } } },
   request => options.service.bindDestination(org(request), request.params.id, request.body, actor(request)));

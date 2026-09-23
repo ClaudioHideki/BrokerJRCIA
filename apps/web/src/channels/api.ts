@@ -19,8 +19,8 @@ function parse<T>(schema: { safeParse(value: unknown): { success: true; data: T 
   return result.data;
 }
 
-export async function listChannels(client: ApiClient) {
-  return parse(ChannelListV1Schema, await client.request<unknown>('/v1/channels'));
+export async function listChannels(client: ApiClient,includeArchived=false) {
+  return parse(ChannelListV1Schema, await client.request<unknown>('/v1/channels'+(includeArchived?'?includeArchived=true':'')));
 }
 export async function getChannel(client: ApiClient, id: string) {
   return parse(ChannelV1Schema, await client.request<unknown>(`/v1/channels/${encodeURIComponent(id)}`));

@@ -43,24 +43,49 @@ export function createAutomationService(options:AutomationServiceOptions){
     get:(org:string,id:string)=>{available();return options.transact(org,async tx=>definition(await getDefinition(tx,org,id)));},
     create:(org:string,input:{name:string;graph:AutomationGraphV1})=>{available();return options.transact(org,async tx=>{
       const graph=AutomationGraphV1Schema.parse(input.graph),name=input.name.trim();if(!name)throw new AutomationError('AUTOMATION_NAME_INVALID',400);
-      const errors=validateAutomationGraph(graph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);
+      // A draft is editable work in progress. Semantic validation gates publication and simulation.
       return definition(await repository.insertDefinition(tx,{org,id:randomUUID(),name,graph}));});},
     save:(org:string,id:string,input:{name:string;graph:AutomationGraphV1;revision:number})=>{available();return options.transact(org,async tx=>{
-      const graph=AutomationGraphV1Schema.parse(input.graph),errors=validateAutomationGraph(graph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);
+      const graph=AutomationGraphV1Schema.parse(input.graph);
       const updated=await repository.updateDefinition(tx,{org,id,name:input.name.trim(),graph,revision:input.revision});if(!updated)throw new AutomationError('AUTOMATION_CHANGED',409);return definition(updated);});},
     validate:(org:string,id:string)=>{available();return options.transact(org,async tx=>{const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(!errors.length)await validateDependencies(tx,org,id,row.draftGraph);return {valid:errors.length===0,errors};});},
     simulate:(org:string,id:string,input:{text:string})=>{available();return options.transact(org,async tx=>{const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);
       return executeAutomation({automationId:id,version:row.activeVersion??1,graph:row.draftGraph},{text:input.text,eventType:'MESSAGE',now:new Date()},(child,childVersion)=>resolveVersion(tx,org,child,childVersion));});},
-    publish:(org:string,id:string,revision:number)=>{available();return options.transact(org,async tx=>{const row=await getDefinition(tx,org,id,true);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
+    publish:(org:string,id:string,revision:number)=>{available();return options.transact(org,async tx=>{const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
       const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);await validateDependencies(tx,org,id,row.draftGraph);
       const next=(row.activeVersion??0)+1,checksum=createHash('sha256').update(canonical(row.draftGraph)).digest('hex');const published=await repository.insertVersion(tx,{org,id,version:next,graph:row.draftGraph,checksum});await repository.activateVersion(tx,org,id,next);return version(published);});},
+    setArchived:(org:string,id:string,archived:boolean,actorId?:string)=>{available();return options.transact(org,async tx=>{
+      const row=await getDefinition(tx,org,id,true);
+      if((row.lifecycleStatus==='ARCHIVED')===archived)return definition(row);
+      if(archived){
+        // Lock bindings before checking work: inbound routing takes the same locks.
+        await tx.query('select id from automation_bindings where organization_id=$1 and automation_id=$2 order by id for update',[org,id]);
+        await tx.query('select id from automation_executions where organization_id=$1 and automation_id=$2 order by id for update',[org,id]);
+        const pending=await tx.query(`select 1 from automation_executions e where e.organization_id=$1 and e.automation_id=$2
+          and (e.status in ('QUEUED','RUNNING','WAITING','UNKNOWN') or exists(select 1 from automation_outbox o where o.organization_id=e.organization_id and o.execution_id=e.id and o.status in ('PENDING','SENDING','UNKNOWN'))) limit 1`,[org,id]);
+        if(pending.rowCount)throw new AutomationError('AUTOMATION_HAS_PENDING_WORK',409);
+        await tx.query(`update automation_bindings set status='DISABLED',revision=revision+1,updated_at=now() where organization_id=$1 and automation_id=$2 and status<>'DISABLED'`,[org,id]);
+        await tx.query(`update messaging_channels set bot_public_id=null,bot_origin_reference=null,updated_at=now() where organization_id=$1 and bot_public_id=$2 and bot_origin_reference=$3`,[org,id,AUTOMATION_ORIGIN]);
+      }
+      await tx.query(`update automation_definitions set lifecycle_status=$3,updated_at=now() where organization_id=$1 and id=$2`,[org,id,archived?'ARCHIVED':row.activeVersion?'PUBLISHED':'DRAFT']);
+      await tx.query(`insert into audit_logs(organization_id,actor_id,event_type,resource_type,resource_id,request_id,outcome,metadata) values($1,$2,$3,'automation',$4,$5,'SUCCESS','{}')`,[org,actorId??null,archived?'AUTOMATION_ARCHIVED':'AUTOMATION_RESTORED',id,randomUUID()]);
+      return definition(await getDefinition(tx,org,id));
+    });},
     versions:(org:string,id:string)=>{available();return options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listVersions(tx,org,id)).map(version)};});},
     bindings:(org:string,id:string)=>{available();return options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listBindings(tx,org,id)).map(row=>({...row,createdAt:iso(row.createdAt),updatedAt:iso(row.updatedAt),schemaVersion:1}))};});},
-    bind:(org:string,id:string,input:{channelId:string;version?:number;humanDestinationId?:string|null})=>{available();return options.transact(org,async tx=>{const row=await getDefinition(tx,org,id);const selected=input.version??row.activeVersion;if(!selected)throw new AutomationError('AUTOMATION_NOT_PUBLISHED',409);if(!await repository.getVersion(tx,org,id,selected))throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);
+    bind:(org:string,id:string,input:{channelId:string;version?:number;humanDestinationId?:string|null})=>{available();return options.transact(org,async tx=>{const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);const selected=input.version??row.activeVersion;if(!selected)throw new AutomationError('AUTOMATION_NOT_PUBLISHED',409);if(!await repository.getVersion(tx,org,id,selected))throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);
       const channel=await messaging.findChannel(tx,org,input.channelId);if(!channel)throw new AutomationError('CHANNEL_NOT_FOUND',404);
       const binding=await repository.insertBinding(tx,{org,id:randomUUID(),automationId:id,version:selected,channelId:input.channelId,humanDestinationId:input.humanDestinationId??null});
       await messaging.setChannelBot(tx,{organizationId:org,channelId:input.channelId,botPublicId:id,botOriginReference:AUTOMATION_ORIGIN});return {...binding,createdAt:iso(binding.createdAt),updatedAt:iso(binding.updatedAt),schemaVersion:1};});},
-    setBindingStatus:(org:string,bindingId:string,input:{status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number})=>{available();return options.transact(org,async tx=>{const row=await repository.setBindingStatus(tx,org,bindingId,input.status,input.revision);if(!row)throw new AutomationError('AUTOMATION_BINDING_CHANGED',409);return {...row,createdAt:iso(row.createdAt),updatedAt:iso(row.updatedAt),schemaVersion:1};});},
+    setBindingStatus:(org:string,bindingId:string,input:{status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number},automationId:string)=>{available();return options.transact(org,async tx=>{
+      const automation=await getDefinition(tx,org,automationId,true);if(automation.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);
+      const current=(await repository.listBindings(tx,org,automationId)).find(item=>item.id===bindingId);
+      if(!current)throw new AutomationError('AUTOMATION_BINDING_NOT_FOUND',404);
+      if(current.status==='DISABLED'&&input.status!=='DISABLED')throw new AutomationError('AUTOMATION_BINDING_DISABLED',409);
+      const row=await repository.setBindingStatus(tx,org,bindingId,input.status,input.revision);if(!row)throw new AutomationError('AUTOMATION_BINDING_CHANGED',409);
+      if(input.status==='DISABLED')await tx.query(`update messaging_channels set bot_public_id=null,bot_origin_reference=null,updated_at=now() where organization_id=$1 and id=$2 and bot_public_id=$3 and bot_origin_reference=$4`,[org,row.channelId,automationId,AUTOMATION_ORIGIN]);
+      return {...row,createdAt:iso(row.createdAt),updatedAt:iso(row.updatedAt),schemaVersion:1};
+    });},
     _resolveVersion:resolveVersion,_repository:repository,
   };
 }

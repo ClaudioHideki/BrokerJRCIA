@@ -23,7 +23,7 @@ export async function createMessagingFixture(adminPool: Pool, appPool: Pool) {
       await repository.getOrCreateConversation(tx, { id: randomUUID(), organizationId: org.id, channelId: channel.id, contactId: contact.id });
       bindings[phoneNumberId] = { organizationId: org.id, channelId: channel.id };
     });
-    if (org.name === 'JRC E2E Matriz') process.env.JRC_E2E_META_PHONE_ID = phoneNumberId;
+    if (org.name === 'JRC E2E Matriz') { process.env.JRC_E2E_META_PHONE_ID = phoneNumberId; process.env.JRC_E2E_META_CHANNEL_ID = bindings[phoneNumberId]!.channelId; }
   }
   const ingest = createMetaIngestor({ repository, bindings, transact });
   const resolveMetaClient = async (channel: { phoneNumberId: string }): Promise<Pick<MetaCloudClient, 'listTemplates' | 'sendText' | 'sendTemplate'>> => {
@@ -51,5 +51,5 @@ export async function createMessagingFixture(adminPool: Pool, appPool: Pool) {
     running = (async () => { for (const org of organizations) await worker.runOnce(org.id); })()
       .catch(() => { failure = true; }).finally(() => { running = undefined; });
   }, 100);
-  return { service, ingest, async close() { clearInterval(timer); await running; delete process.env.JRC_E2E_META_PHONE_ID; if (failure) throw new Error('Messaging fixture worker failed'); } };
+  return { service, ingest, async close() { clearInterval(timer); await running; delete process.env.JRC_E2E_META_PHONE_ID; delete process.env.JRC_E2E_META_CHANNEL_ID; if (failure) throw new Error('Messaging fixture worker failed'); } };
 }

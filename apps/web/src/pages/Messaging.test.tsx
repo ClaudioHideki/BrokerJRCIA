@@ -229,48 +229,12 @@ describe('MessagingPage', () => {
     expect(await screen.findByText('Modo: Atendimento humano')).toBeVisible();
   });
 
-  it('lets an admin configure a server-owned Typebot origin reference', async () => {
-    const mutations: Array<{ path: string; init?: RequestInit }> = [];
-    const request = loadedRequest({
-      onMutation(path, init) {
-        mutations.push({ path, ...(init === undefined ? {} : { init }) });
-        return { id: CHANNEL_ID, provider: 'META', botPublicId: 'support-v2' };
-      },
-    });
-    renderPage(clientFor(request, 'ADMIN'));
-    await screen.findByText('Olá, preciso de ajuda');
-
-    expect(screen.getByText('Fluxo atual: jrc-welcome')).toBeVisible();
-    fireEvent.change(screen.getByLabelText('ID público do fluxo'), {
-      target: { value: 'support-v2' },
-    });
-    fireEvent.change(screen.getByLabelText('Referência de origem'), {
-      target: { value: 'typebot-cloud' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Salvar automação' }));
-
-    await waitFor(() => expect(mutations).toHaveLength(1));
-    expect(mutations[0]?.path).toBe(`/v1/messaging/channels/${CHANNEL_ID}/automation`);
-    expect(mutations[0]?.init?.method).toBe('PATCH');
-    expect(JSON.parse(String(mutations[0]?.init?.body))).toEqual({
-      publicId: 'support-v2',
-      originReference: 'typebot-cloud',
-    });
-    expect(await screen.findByText('Fluxo atual: support-v2')).toBeVisible();
+  it.each(['OWNER','ADMIN','OPERATOR','VIEWER'] as const)('uses only the JRC automation journey for %s',async(role)=>{
+    renderPage(clientFor(loadedRequest(),role));await screen.findByText('Olá, preciso de ajuda');
+    expect(screen.queryByText(/Typebot|n8n|Evolution/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('ID público do fluxo')).not.toBeInTheDocument();
+    expect(screen.getByRole('link',{name:'Gerenciar automações'})).toHaveAttribute('href','/automations');
   });
-
-  it.each(['OPERATOR', 'VIEWER'] as const)(
-    'keeps Typebot configuration unavailable to %s',
-    async (role) => {
-      renderPage(clientFor(loadedRequest(), role));
-      await screen.findByText('Olá, preciso de ajuda');
-
-      expect(screen.getByText('Fluxo atual: jrc-welcome')).toBeVisible();
-      expect(screen.queryByLabelText('ID público do fluxo')).not.toBeInTheDocument();
-      expect(screen.queryByLabelText('Referência de origem')).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Salvar automação' })).not.toBeInTheDocument();
-    },
-  );
 
   it('keeps viewer access read-only', async () => {
     const request = loadedRequest();

@@ -241,7 +241,7 @@ export function createPostgresInstanceRepository(): InstanceRepository {
            FROM instances i
            JOIN provider_accounts pa
              ON pa.organization_id = i.organization_id AND pa.id = i.provider_account_id
-          WHERE i.organization_id = $1 AND i.id = $2`,
+          WHERE i.organization_id = $1 AND i.id = $2 AND i.archived_at IS NULL`,
         [organizationId, instanceId],
       );
       return first(result);
@@ -253,7 +253,7 @@ export function createPostgresInstanceRepository(): InstanceRepository {
            FROM instances i
            JOIN provider_accounts pa
              ON pa.organization_id = i.organization_id AND pa.id = i.provider_account_id
-          WHERE i.organization_id = $1 AND i.id = $2
+          WHERE i.organization_id = $1 AND i.id = $2 AND i.archived_at IS NULL
           FOR UPDATE OF i`,
         [organizationId, instanceId],
       );
@@ -280,7 +280,7 @@ export function createPostgresInstanceRepository(): InstanceRepository {
            FROM instances i
            JOIN provider_accounts pa
              ON pa.organization_id = i.organization_id AND pa.id = i.provider_account_id
-          WHERE i.organization_id = $1
+          WHERE i.organization_id = $1 AND i.archived_at IS NULL
             AND ($2::timestamptz IS NULL OR (i.created_at, i.id) < ($2::timestamptz, $3::uuid))
           ORDER BY i.created_at DESC, i.id DESC
           LIMIT $4`,

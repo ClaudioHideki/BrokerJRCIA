@@ -37,12 +37,8 @@ export function NativeJrcSetup({ request, accountId, baseUrl }: {
   const accountUrl = `${baseUrl.replace(/\/$/, '')}/app/accounts/${accountId}`;
   return <section className="panel form-stack">
     <h3>Módulo nativo JRC Conversas</h3>
-    <p>O administrador configura a conta uma vez. Os agentes autorizados abrem “Conectar seu WhatsApp” no menu do JRC Conversas, sem abrir uma conversa.</p>
-    <ol>
-      <li>Emita a chave abaixo e copie o ID da empresa.</li>
-      <li>No JRC Conversas, abra Configurações → Caixas de entrada → Adicionar caixa → WhatsApp JRC. Informe o endereço HTTPS deste Broker, o ID e a chave.</li>
-      <li>Crie a caixa, selecione a conexão e os agentes. Depois escaneie o QR e confirme o número da empresa.</li>
-    </ol>
+    <p>O módulo dentro do sistema de atendimento precisa ser instalado separadamente. Emitir uma chave não instala botões ou telas no JRC Conversas ou no Chatwoot.</p>
+    <ol><li>Para usar agora, conecte o WhatsApp em Caixas de entrada e vincule a caixa API pela seção abaixo.</li><li>Para uma experiência dentro da central, a equipe técnica deve instalar o conector JRC no servidor da central, com o endereço HTTPS do Broker, o ID da empresa e uma chave restrita à conta.</li><li>O conector valida o usuário e a caixa antes de exibir o QR temporário. O módulo Automações usa os fluxos publicados no Broker.</li></ol>
     <p>A chave permite controlar somente a conta {accountId}. Guarde-a no servidor do JRC Conversas; os agentes não precisam recebê-la. A chave completa aparece apenas nesta emissão.</p>
     {error && <p role="alert">{error} <a href="/chaves-api">Abrir Chaves de API</a></p>}
     {!issued && <button className="button button--primary" disabled={busy} onClick={() => void issue()}>{error ? 'Repetir consulta da emissão' : 'Emitir chave para o módulo JRC'}</button>}
@@ -55,8 +51,6 @@ export function NativeJrcSetup({ request, accountId, baseUrl }: {
       {copied && <p role="status">Chave copiada. Cole somente no campo protegido do módulo JRC.</p>}
       <button className="button button--secondary" onClick={() => { setIssued(null); setCopied(false); intent.current = null; }}>Fechar e apagar chave desta tela</button>
     </>}
-    <p><a href={`${accountUrl}/whatsapp-connections`} target="_blank" rel="noopener noreferrer">Abrir conexões no JRC Conversas</a></p>
-    <p><a href="/flows">Criar automação no Broker</a> · Publique o flow e vincule-o à caixa de atendimento.</p>
-    <p><a href={`${accountUrl}/flows`} target="_blank" rel="noopener noreferrer">Abrir Flows no JRC Conversas</a> · Para automações administradas no próprio JRC. Escolha um único motor por caixa.</p>
+    <p><a href={accountUrl} target="_blank" rel="noopener noreferrer">Abrir central de atendimento</a></p><p><a href="/channels">Conectar WhatsApp no Broker</a> · <a href="/automations">Criar automação no Broker</a></p>
   </section>;
 }

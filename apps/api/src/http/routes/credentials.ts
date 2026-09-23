@@ -10,7 +10,7 @@ export interface CredentialRouteOptions extends AuthenticationOptions {service:C
 const empty=z.strictObject({}),params=z.strictObject({id:z.uuid()}),secret=z.record(z.string(),z.unknown()).refine(value=>Object.keys(value).length>0,'Secret is required'),metadata=z.record(z.string(),z.unknown()).default({});
 const problem=(reply:FastifyReply,request:FastifyRequest,status:number,code:string)=>reply.code(status).type('application/problem+json').send({type:'about:blank',title:code,status,code,requestId:request.id});
 export async function registerCredentialRoutes(app:FastifyInstance,options:CredentialRouteOptions){
- app.decorateRequest('authentication',null);app.addHook('onRequest',async(_request,reply)=>reply.header('Cache-Control','no-store'));
+ app.decorateRequest('authentication',null);app.addHook('onRequest',async(_request,reply)=>{reply.header('Cache-Control','no-store');});
  app.setErrorHandler((error,request,reply)=>{if(error instanceof CredentialError)return problem(reply,request,error.statusCode,error.code);const candidate=error as {validation?:unknown};return problem(reply,request,candidate.validation||error instanceof z.ZodError?400:500,candidate.validation?'INVALID_REQUEST':'CREDENTIAL_UNAVAILABLE');});
  const auth=authenticateRequest(options),guard=(write:boolean)=>async(request:FastifyRequest,reply:FastifyReply)=>{const identity=request.authentication,role=identity?.kind==='JWT'?await options.resolveCurrentRole(identity.actorId,identity.organizationId):null;if(!role||(write&&!['OWNER','ADMIN'].includes(role)))return problem(reply,request,403,'FORBIDDEN');};
  const read=[auth,guard(false)],write=[auth,guard(true)],api=app.withTypeProvider<ZodTypeProvider>(),org=(request:FastifyRequest)=>request.authentication!.organizationId;

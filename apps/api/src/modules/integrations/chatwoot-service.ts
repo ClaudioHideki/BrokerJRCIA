@@ -587,6 +587,18 @@ export function createChatwootService(options: ChatwootOptions) {
       }
       return this.status(org);
     },
+    async removeUnusedConnection(org:string,id:string,actorId?:string){
+      try {await tx(org,async t=>{
+        await requireActiveOrganization(t,org);
+        const row=(await t.query<{status:string}>('SELECT status FROM chatwoot_connections WHERE organization_id=$1 AND id=$2 FOR UPDATE',[org,id])).rows[0];
+        if(!row)throw new IntegrationError('INTEGRATION_NOT_FOUND',404);
+        if(!['DISABLED','FAILED'].includes(row.status))throw new IntegrationError('INTEGRATION_PAUSE_REQUIRED',409);
+        // Referenced bindings cannot be deleted: conversations, messages, jobs and control grants retain their FK.
+        await t.query('DELETE FROM chatwoot_connections WHERE organization_id=$1 AND id=$2',[org,id]);
+        await integrationAudit(t,org,'UNUSED_CONNECTION_REMOVED',id,'Removed unused local binding; remote inbox preserved',actorId);
+      });}catch(error){if((error as {code?:string}).code==='23503')throw new IntegrationError('INTEGRATION_HAS_HISTORY',409);throw error;}
+      return {ok:true};
+    },
     async setEnabled(
       org: string,
       id: string,

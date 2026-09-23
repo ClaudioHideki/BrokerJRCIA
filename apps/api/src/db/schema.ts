@@ -324,6 +324,7 @@ export const instances = pgTable(
       .$type<string[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [

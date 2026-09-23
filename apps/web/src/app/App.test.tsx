@@ -55,7 +55,7 @@ describe('Console JRC', () => {
   it('renderiza shell, identidade, organização e papel ativos', async () => {
     const { container } = render(<App client={client()} initialEntries={['/channels']} />);
 
-    expect(await screen.findByRole('heading', { name: 'Canais' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Caixas de entrada' })).toBeVisible();
     expect(screen.getByRole('img', { name: 'JRC PABX' })).toHaveAttribute(
       'src',
       '/brand/logo-jrc-2024.png',
@@ -76,7 +76,7 @@ describe('Console JRC', () => {
     const removeItem = vi.spyOn(Storage.prototype, 'removeItem');
     const clear = vi.spyOn(Storage.prototype, 'clear');
     render(<App client={client()} initialEntries={['/channels']} />);
-    await screen.findByRole('heading', { name: 'Canais' });
+    await screen.findByRole('heading', { name: 'Caixas de entrada' });
 
     // React Router may read its own view-transition preference. The console
     // must never write authentication state or use a sensitive storage key.
@@ -93,7 +93,7 @@ describe('Console JRC', () => {
 
   it('não apresenta violações automáticas de acessibilidade no shell desktop', async () => {
     const { container } = render(<App client={client()} initialEntries={['/channels']} />);
-    await screen.findByRole('heading', { name: 'Canais' });
+    await screen.findByRole('heading', { name: 'Caixas de entrada' });
     const results = await axe.run(container);
     expect(results.violations).toEqual([]);
   });

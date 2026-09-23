@@ -4,6 +4,9 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'POST /v1/automations/{id}/archive': policy('apps/api/src/http/routes/automations.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'IDEMPOTENT_LIFECYCLE_TRANSITION','NONE','RLS_ORGANIZATION_LOCKED_DEFINITION_BINDINGS_EXECUTIONS_AUDIT'),
+  'POST /v1/channels/{id}/archive': policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'IDEMPOTENT_LIFECYCLE_TRANSITION','NONE','RLS_ORGANIZATION_DISCONNECTED_INSTANCE_PENDING_WORK_GUARD_AUDIT'),
+
   'GET /v1/operations/health': policy('apps/api/src/http/routes/observability.ts','JWT_CURRENT_MEMBERSHIP','CURRENT_MEMBER',true,'READ_ONLY','SANITIZED_OPERATIONAL_CODES_ONLY','RLS_CURRENT_ORGANIZATION_HEALTH_AND_QUEUES'),
   'POST /hooks/{token}': policy('apps/api/src/http/routes/automation-webhooks.ts', 'OPAQUE_TOKEN_OPTIONAL_HMAC_TIMESTAMP', 'ACTIVE_BOUND_AUTOMATION',
     true, 'UNIQUE_EVENT_ID_AND_AUTOMATION_EVENT_KEY', 'TOKEN_PATH_REDACTED_NO_STORE', 'SECURITY_DEFINER_HASH_LOOKUP_THEN_RLS_ORGANIZATION'),
@@ -181,6 +184,7 @@ const ROUTE_POLICIES = Object.freeze({
       "PUT /v1/integrations/chatwoot/account",
       "POST /v1/integrations/chatwoot/connections",
       "PATCH /v1/integrations/chatwoot/connections/{id}",
+      "DELETE /v1/integrations/chatwoot/connections/{id}",
       "GET /v1/integrations/chatwoot/connections/{id}/agents",
       "POST /v1/integrations/chatwoot/connections/{id}/agents",
       "POST /v1/integrations/chatwoot/connections/{id}/reconcile",
@@ -241,6 +245,9 @@ const ROUTE_POLICIES = Object.freeze({
   ),
   ...Object.fromEntries(
     [
+      "GET /v1/platform/organizations/{id}/channels",
+      "POST /v1/platform/organizations/{id}/channels/{channelId}/archive",
+      "DELETE /v1/platform/organizations/{id}/chatwoot/connections/{resourceId}",
       "GET /v1/platform/organizations/{id}/chatwoot",
       "PUT /v1/platform/organizations/{id}/chatwoot/account",
       "POST /v1/platform/organizations/{id}/chatwoot/connections",
@@ -573,7 +580,7 @@ const ROUTE_POLICIES = Object.freeze({
   "PUT /v1/channels/{id}/automation": policy(
     "apps/api/src/http/routes/channels.ts",
     "JWT_CURRENT_MEMBERSHIP",
-    "OWNER_ADMIN_OPERATOR",
+    "OWNER_ADMIN",
     true,
     "ATOMIC_REPLACE_PUBLISHED_AUTOMATION_BINDING",
     "NONE",
@@ -582,7 +589,7 @@ const ROUTE_POLICIES = Object.freeze({
   "PUT /v1/channels/{id}/destination": policy(
     "apps/api/src/http/routes/channels.ts",
     "JWT_CURRENT_MEMBERSHIP",
-    "OWNER_ADMIN_OPERATOR",
+    "OWNER_ADMIN",
     true,
     "DESTINATION_RECONCILIATION",
     "NONE",

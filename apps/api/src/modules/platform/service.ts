@@ -83,6 +83,14 @@ export class PlatformService {
    return session.user.id;
   });
  }
+ async authorizeChannels(token:string,reason:string,org:string,write:boolean){
+  if(reason.trim().length<5||reason.length>500)throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  return this.transaction(async c=>{const session=await this.readSession(c,token);
+   if(write&&session.user.role!=='SUPER_ADMIN')throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+   if(!(await c.query('select id from organizations where id=$1',[org])).rowCount)throw new PlatformError(404,'ORGANIZATION_NOT_FOUND');
+   await this.audit(c,session.user.id,org,write?'channel-lifecycle-request':'channel-read',reason);return session.user.id;
+  });
+ }
  async logout(token:string) {await this.transaction(async c=>{const s=await this.readSession(c,token);await c.query('delete from platform_sessions where token_hash=$1',[digest(token)]);await this.audit(c,s.user.id,null,'logout','Explicit session logout');});}
  private async audit(c:PoolClient,actor:string,org:string|null,action:string,reason:string) {await c.query('insert into platform_audit_logs(actor_id,organization_id,action,reason) values($1,$2,$3,$4)',[actor,org,action,reason]);}
  private async limits(c:PoolClient,id:string,l:Limits) {
@@ -115,13 +123,17 @@ export class PlatformService {
     case 'membership': {
      const email=input.email!.trim().toLowerCase();let user=(await c.query('select id from users where email=$1',[email])).rows[0];
      if(!user) {if(!input.password) throw new PlatformError(400,'PASSWORD_REQUIRED');user=(await c.query('insert into users(email,password_hash) values($1,$2) returning id',[email,await hashPassword(input.password)])).rows[0];}
-     const existing=await c.query('select 1 from memberships where organization_id=$1 and user_id=$2',[id,user.id]);
+     const existing=await c.query('select role,status from memberships where organization_id=$1 and user_id=$2',[id,user.id]);
+     if(existing.rows[0]?.role==='OWNER'&&existing.rows[0]?.status==='ACTIVE'&&(input.role!=='OWNER'||input.status!=='ACTIVE')){
+       const owners=await c.query("select count(*)::int n from memberships where organization_id=$1 and role='OWNER' and status='ACTIVE'",[id]);
+       if(owners.rows[0].n<=1)throw new PlatformError(409,'PLATFORM_LAST_OWNER');
+     }
      if(existing.rowCount) await c.query('update memberships set role=$3,status=$4,updated_at=now() where organization_id=$1 and user_id=$2',[id,user.id,input.role,input.status??'ACTIVE']);
      else await c.query('insert into memberships(organization_id,user_id,role,status) values($1,$2,$3,$4)',[id,user.id,input.role,input.status??'ACTIVE']);
      result={ok:true};break;
     }
     case 'monitor':result=(await c.query(`select
-     ((select count(*)::int from instances where organization_id=$1 and status='CONNECTED') + (select count(*)::int from messaging_channels where organization_id=$1)) as connections,
+     ((select count(*)::int from instances where organization_id=$1 and status='CONNECTED') + (select count(*)::int from messaging_channels where organization_id=$1 and provider='META')) as connections,
      (select count(*)::int from messaging_outbox where organization_id=$1) as queue,
      (select count(*)::int from messaging_messages where organization_id=$1 and state='FAILED') as failures,
      (select count(*)::int from messaging_inbox_events where organization_id=$1) as webhooks`,[id])).rows[0];break;

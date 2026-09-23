@@ -18,7 +18,7 @@ function errorText(error:unknown){
   FLOW_CHANGED:'Este flow foi alterado em outra sessão. Volte à lista e reabra antes de salvar.',
   FLOW_REPLACE_REQUIRED:'Este canal já possui uma automação. Confirme a substituição para continuar.',
   FLOW_INVALID:'Há blocos ou conexões inválidas. Confira a validação do editor.',
-  FLOW_IMPORT_INVALID:'Não foi possível converter este JSON. Use um arquivo JRC Flows ou um workflow n8n compatível.',
+  FLOW_IMPORT_INVALID:'Não foi possível converter este JSON. Use um JSON compatível com o editor JRC.',
  };
  return labels[code??'']??(error instanceof ApiClientError?error.message:'Não foi possível concluir. Tente novamente.');
 }

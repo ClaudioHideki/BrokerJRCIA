@@ -30,7 +30,9 @@ import {
   type PlatformAction,
   type PlatformInput,
 } from "../../modules/platform/service.js";
+import {ChannelFacadeError,type ChannelFacade} from '../../modules/channels/facade.js';
 export interface PlatformRouteOptions {
+  channels?:ChannelFacade;
   service: PlatformService;
   origin: string;
   secureCookies: boolean;
@@ -137,7 +139,7 @@ export async function registerPlatformRoutes(
         const status =
           error instanceof PlatformError
             ? error.statusCode
-            : error instanceof IntegrationError || error instanceof ChatwootDestinationError
+            : error instanceof ChannelFacadeError || error instanceof IntegrationError || error instanceof ChatwootDestinationError
               ? error.status
               : error instanceof ChatwootError
                 ? 502
@@ -148,7 +150,7 @@ export async function registerPlatformRoutes(
                     ? 409
                     : 500;
         const code =
-          error instanceof PlatformError ||
+          error instanceof PlatformError || error instanceof ChannelFacadeError ||
           error instanceof IntegrationError ||
           error instanceof ChatwootDestinationError ||
           error instanceof ChatwootError
@@ -328,6 +330,16 @@ export async function registerPlatformRoutes(
         },
         (req) => run(req, "acknowledge", z.object({}).strict()),
       );
+      scoped.get('/organizations/:id/channels',{schema:{params:idParams,querystring:z.strictObject({})}},async req=>{
+        const org=idParams.parse(req.params).id;await options.service.authorizeChannels(cookie(req),z.string().trim().min(5).max(500).parse(req.headers['x-platform-reason']),org,false);
+        if(!options.channels)throw new PlatformError(503,'CHANNELS_UNAVAILABLE');return options.channels.list(org,true);
+      });
+      scoped.post('/organizations/:id/channels/:channelId/archive',{schema:{params:idParams.extend({channelId:z.uuid()}),querystring:z.strictObject({}),body:z.strictObject({archived:z.boolean()})}},async req=>{
+        const {id:org,channelId}=idParams.extend({channelId:z.uuid()}).parse(req.params),token=await mutation(req);
+        const actor=await options.service.authorizeChannels(token,z.string().trim().min(5).max(500).parse(req.headers['x-platform-reason']),org,true);
+        if(!options.channels)throw new PlatformError(503,'CHANNELS_UNAVAILABLE');
+        return options.channels.setArchived(org,channelId,z.strictObject({archived:z.boolean()}).parse(req.body).archived,undefined,actor);
+      });
       const integration = async (req: FastifyRequest) => {
         const token = req.method === "GET" ? cookie(req) : await mutation(req);
         const reason = z
@@ -541,6 +553,7 @@ export async function registerPlatformRoutes(
           );
         },
       );
+      scoped.delete(base + '/connections/:resourceId',{schema:{...resourceSchema}},async req=>{const {org,actor,service}=await integration(req);return service.removeUnusedConnection(org,resourceSchema.params.parse(req.params).resourceId,actor);});
       scoped.patch(
         base + "/connections/:resourceId",
         {

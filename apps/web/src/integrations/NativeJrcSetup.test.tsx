@@ -22,7 +22,7 @@ it('issues an account-limited key and shows the native setup links without a con
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
   fireEvent.click(screen.getByRole('button', { name: 'Copiar chave' }));
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(secret));
-  expect(screen.getByRole('link', { name: 'Abrir conexões no JRC Conversas' })).toHaveAttribute('href', 'https://conversas.example.test/app/accounts/3/whatsapp-connections');
+  expect(screen.getByRole('link', { name: 'Abrir central de atendimento' })).toHaveAttribute('href', 'https://conversas.example.test/app/accounts/3');
   fireEvent.click(screen.getByRole('button', { name: 'Fechar e apagar chave desta tela' }));
   expect(screen.queryByDisplayValue(secret)).not.toBeInTheDocument();
 });

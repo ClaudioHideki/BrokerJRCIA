@@ -9,10 +9,10 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('carrega o manifesto real até a migration 0029', async () => {
+  it('carrega o manifesto real até a migration 0030', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(29);
-    expect(migrations.at(-1)?.name).toBe('0029_legacy_flow_migration');
+    expect(migrations).toHaveLength(30);
+    expect(migrations.at(-1)?.name).toBe('0030_instance_archive');
   });
 
   it('informa a versão aplicada e migrations pendentes sem expor hashes', () => {

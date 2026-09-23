@@ -17,6 +17,9 @@ interface ChannelRow {
   instance_status: string | null; meta_status: 'PENDING' | 'READY' | 'REVOKED' | null;
   bot_public_id: string | null; bot_origin_reference: string | null; flow_published_version: number | null;
   flow_enabled: boolean | null; human_status: string | null; created_at: Date | string; updated_at: Date | string;
+  archived_at?:Date|string|null;
+  messaging_channel_id?:string|null; automation_binding_status?:string|null; automation_name?:string|null;
+  integration_id?:string|null; inbox_id?:number|string|null; inbox_name?:string|null; observed_last4?:string|null;
 }
 
 interface AutomationBindingRow {
@@ -36,6 +39,8 @@ const qrTransport = (status: string | null): ChannelV1['transportStatus'] => {
 };
 const automationStatus = (row: ChannelRow): ChannelV1['automationStatus'] => {
   if (!row.bot_public_id) return 'UNBOUND';
+  if (row.bot_origin_reference === AUTOMATION_ORIGIN) return row.automation_binding_status === 'ACTIVE' ? 'ACTIVE'
+    : row.automation_binding_status === 'PAUSED' ? 'PAUSED' : 'UNBOUND';
   if (row.bot_origin_reference !== 'jrc-flows-native') return 'ACTIVE';
   if (!row.flow_published_version) return 'DRAFT';
   return row.flow_enabled === false ? 'PAUSED' : 'ACTIVE';
@@ -53,7 +58,11 @@ export function channelView(row: ChannelRow): ChannelV1 {
     schemaVersion: 1 as const,
     id: row.id,
     organizationId: row.organization_id,
-    identity: { displayName: row.name, maskedAddress: null },
+    identity: { displayName: row.name, maskedAddress: row.observed_last4 ? `****${row.observed_last4}` : null },
+    archivedAt:row.archived_at?iso(row.archived_at):null,
+    messagingChannelId:row.messaging_channel_id??null,
+    automationName:row.automation_name??null,
+    destination:row.integration_id?{integrationId:row.integration_id,inboxId:row.inbox_id?Number(row.inbox_id):null,name:row.inbox_name??'Caixa de atendimento'}:null,
     automationStatus: automationStatus(row),
     humanStatus: humanStatus(row.human_status),
     revision: 1,
@@ -92,6 +101,7 @@ function bindingView(row: AutomationBindingRow): AutomationBindingV1 {
 export interface ChannelFacadeOptions {
   instances: InstanceService;
   meta: Pick<ReturnType<typeof createMetaOnboardingService>, 'start'>;
+  activateQr?(org:string,instanceId:string):Promise<{id:string}>;
   chatwoot?: Pick<ChatwootService, 'connect'> | undefined;
   transact<T>(organizationId: string, operation: OrganizationTransaction<T>): Promise<T>;
 }
@@ -102,22 +112,30 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
       SELECT i.id,i.organization_id,'BAILEYS'::text AS provider,i.provider_account_id,i.id AS instance_id,
         NULL::uuid AS connection_id,i.name,i.status::text AS instance_status,NULL::text AS meta_status,
         c.bot_public_id,c.bot_origin_reference,f.published_version AS flow_published_version,ff.enabled AS flow_enabled,
-        cw.status AS human_status,i.created_at,GREATEST(i.updated_at,COALESCE(c.updated_at,i.updated_at),COALESCE(cw.updated_at,i.updated_at)) AS updated_at
+        cw.status AS human_status,i.created_at,GREATEST(i.updated_at,COALESCE(c.updated_at,i.updated_at),COALESCE(cw.updated_at,i.updated_at)) AS updated_at,
+        c.id AS messaging_channel_id,ab.status AS automation_binding_status,ad.name AS automation_name,
+        cw.id AS integration_id,cw.inbox_id,cw.name AS inbox_name,h.observed_last4,i.archived_at
       FROM instances i
       JOIN provider_accounts pa ON pa.organization_id=i.organization_id AND pa.id=i.provider_account_id AND pa.provider='BAILEYS'
       LEFT JOIN messaging_channels c ON c.organization_id=i.organization_id AND c.instance_id=i.id
       LEFT JOIN flows f ON f.organization_id=c.organization_id AND f.id::text=c.bot_public_id AND c.bot_origin_reference='jrc-flows-native'
       LEFT JOIN flow_features ff ON ff.organization_id=i.organization_id
       LEFT JOIN chatwoot_connections cw ON cw.organization_id=c.organization_id AND cw.channel_id=c.id
+      LEFT JOIN chatwoot_connection_health h ON h.organization_id=c.organization_id AND h.channel_id=c.id
+      LEFT JOIN automation_bindings ab ON ab.organization_id=c.organization_id AND ab.channel_id=c.id AND ab.status IN ('ACTIVE','PAUSED') AND ab.automation_id::text=c.bot_public_id
+      LEFT JOIN automation_definitions ad ON ad.organization_id=ab.organization_id AND ad.id=ab.automation_id
       WHERE i.organization_id=$1
       UNION ALL
       SELECT m.id,m.organization_id,'META'::text,c.provider_account_id,NULL::uuid,m.id,'WhatsApp oficial',NULL::text,m.status,
-        c.bot_public_id,c.bot_origin_reference,f.published_version,ff.enabled,cw.status,c.created_at,GREATEST(m.updated_at,c.updated_at,COALESCE(cw.updated_at,m.updated_at))
+        c.bot_public_id,c.bot_origin_reference,f.published_version,ff.enabled,cw.status,c.created_at,GREATEST(m.updated_at,c.updated_at,COALESCE(cw.updated_at,m.updated_at)),
+        c.id,ab.status,ad.name,cw.id,cw.inbox_id,cw.name,NULL::text,NULL::timestamptz
       FROM meta_connections m
       JOIN messaging_channels c ON c.organization_id=m.organization_id AND c.id=m.channel_id AND c.provider='META'
       LEFT JOIN flows f ON f.organization_id=c.organization_id AND f.id::text=c.bot_public_id AND c.bot_origin_reference='jrc-flows-native'
       LEFT JOIN flow_features ff ON ff.organization_id=m.organization_id
       LEFT JOIN chatwoot_connections cw ON cw.organization_id=c.organization_id AND cw.channel_id=c.id
+      LEFT JOIN automation_bindings ab ON ab.organization_id=c.organization_id AND ab.channel_id=c.id AND ab.status IN ('ACTIVE','PAUSED') AND ab.automation_id::text=c.bot_public_id
+      LEFT JOIN automation_definitions ad ON ad.organization_id=ab.organization_id AND ad.id=ab.automation_id
       WHERE m.organization_id=$1
       ORDER BY updated_at DESC,id`, [org])).rows);
   }
@@ -126,7 +144,8 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
     if (!found) throw new ChannelFacadeError('CHANNEL_NOT_FOUND', 404);
     return channelView(found);
   }
-  async function messagingChannelId(org: string, channel: ChannelV1): Promise<string> {
+  async function messagingChannelId(org: string, channel: ChannelV1,activate=false): Promise<string> {
+    if(activate&&channel.provider==='QR'&&options.activateQr)return (await options.activateQr(org,channel.providerReference.instanceId)).id;
     return options.transact(org, async tx => {
       const query = channel.provider === 'QR'
         ? ['SELECT id FROM messaging_channels WHERE organization_id=$1 AND instance_id=$2', channel.providerReference.instanceId] as const
@@ -141,8 +160,32 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
     replayed: result.replayed, pending: result.pending, reconciliationRequired: result.reconciliationRequired,
   });
   return {
-    async list(org: string) { return { data: (await rows(org)).map(channelView) }; },
+    async list(org: string,includeArchived=false) { return { data: (await rows(org)).filter(row=>includeArchived||!row.archived_at).map(channelView) }; },
     get,
+    async setArchived(org:string,id:string,archived:boolean,actorId?:string,platformActorId?:string){
+      await options.transact(org,async tx=>{
+        const row=(await tx.query<{status:string;archived_at:Date|null}>('select status,archived_at from instances where organization_id=$1 and id=$2 for update',[org,id])).rows[0];
+        if(!row)throw new ChannelFacadeError('CHANNEL_NOT_FOUND',404);
+        if(Boolean(row.archived_at)===archived)return;
+        if(archived){
+          if(!['DISCONNECTED','PROVISIONING_FAILED'].includes(row.status))throw new ChannelFacadeError('CHANNEL_DISCONNECT_REQUIRED',409);
+          const operations=await tx.query("select 1 from provider_operations where organization_id=$1 and instance_id=$2 and (status in ('PENDING','UNKNOWN') or reconciliation_required) limit 1",[org,id]);
+          if(operations.rowCount)throw new ChannelFacadeError('CHANNEL_HAS_PENDING_WORK',409);
+          const channels=await tx.query<{id:string}>('select id from messaging_channels where organization_id=$1 and instance_id=$2 for update',[org,id]);
+          for(const channel of channels.rows){
+            const bindings=await tx.query("select 1 from automation_bindings where organization_id=$1 and channel_id=$2 and status in ('ACTIVE','PAUSED')",[org,channel.id]);
+            const destination=await tx.query("select 1 from chatwoot_connections where organization_id=$1 and channel_id=$2 and status<>'DISABLED'",[org,channel.id]);
+            const work=await tx.query(`select 1 where exists(select 1 from messaging_messages where organization_id=$1 and channel_id=$2 and direction='OUTGOING' and state in ('ACCEPTED','SENDING','UNKNOWN'))
+             or exists(select 1 from automation_executions e where e.organization_id=$1 and e.channel_id=$2 and (e.status in ('QUEUED','RUNNING','WAITING','UNKNOWN') or exists(select 1 from automation_outbox o where o.organization_id=e.organization_id and o.execution_id=e.id and o.status in ('PENDING','SENDING','UNKNOWN'))))`,[org,channel.id]);
+            if(bindings.rowCount||destination.rowCount)throw new ChannelFacadeError('CHANNEL_UNLINK_REQUIRED',409);
+            if(work.rowCount)throw new ChannelFacadeError('CHANNEL_HAS_PENDING_WORK',409);
+            await tx.query('update messaging_channels set bot_public_id=null,bot_origin_reference=null where organization_id=$1 and id=$2',[org,channel.id]);
+          }
+        }
+        await tx.query('update instances set archived_at=case when $3 then now() else null end,updated_at=now() where organization_id=$1 and id=$2',[org,id,archived]);
+        await tx.query(`insert into audit_logs(organization_id,actor_id,event_type,resource_type,resource_id,request_id,outcome,metadata) values($1,$2,$3,'instance',$4,$5,'SUCCESS',$6)`,[org,actorId??null,archived?'CHANNEL_ARCHIVED':'CHANNEL_RESTORED',id,randomUUID(),JSON.stringify(platformActorId?{platformActorId}:{})]);
+      });return get(org,id);
+    },
     async patch(org: string, id: string, input: PatchChannelV1) {
       const channel = await get(org, id);
       if (channel.provider !== 'QR') throw new ChannelFacadeError('CHANNEL_PATCH_UNSUPPORTED', 409);
@@ -187,7 +230,9 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
         { instanceId: channel.providerReference.instanceId, idempotencyKey }));
     },
     async getAutomation(org: string, id: string) {
-      const channel = await get(org, id), channelId = await messagingChannelId(org, channel);
+      const channel = await get(org, id);
+      if(!channel.messagingChannelId)return {binding:null};
+      const channelId=channel.messagingChannelId;
       const binding = await options.transact(org, async tx => (await tx.query<AutomationBindingRow>(`
         SELECT id,organization_id AS "organizationId",automation_id AS "automationId",version,
           channel_id AS "channelId",human_destination_id AS "humanDestinationId",status,revision,
@@ -198,12 +243,13 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
       return { binding: binding ? bindingView(binding) : null };
     },
     async bindAutomation(org: string, id: string, input: BindChannelAutomationV1) {
-      const channel = await get(org, id), channelId = await messagingChannelId(org, channel);
+      const channel = await get(org, id), channelId = await messagingChannelId(org, channel,true);
       return options.transact(org, async tx => {
-        const definition = (await tx.query<{ activeVersion: number | null }>(
-          'SELECT active_version AS "activeVersion" FROM automation_definitions WHERE organization_id=$1 AND id=$2',
+        const definition = (await tx.query<{ activeVersion: number | null;lifecycleStatus:string }>(
+          'SELECT active_version AS "activeVersion",lifecycle_status AS "lifecycleStatus" FROM automation_definitions WHERE organization_id=$1 AND id=$2 FOR UPDATE',
           [org, input.automationId])).rows[0];
         if (!definition) throw new ChannelFacadeError('AUTOMATION_NOT_FOUND', 404);
+        if(definition.lifecycleStatus==='ARCHIVED')throw new ChannelFacadeError('AUTOMATION_ARCHIVED',409);
         const version = input.version ?? definition.activeVersion;
         if (!version) throw new ChannelFacadeError('AUTOMATION_NOT_PUBLISHED', 409);
         const published = (await tx.query<{ version: number }>(

@@ -23,6 +23,7 @@ export function tenantOperationalProblem(error: unknown, requestId: string) {
     tenant_user_limit: 'USER_LIMIT_REACHED',
     tenant_pending_limit: 'PENDING_MESSAGE_LIMIT_REACHED',
     tenant_daily_limit: 'DAILY_MESSAGE_LIMIT_REACHED',
+    instance_archived: 'CHANNEL_ARCHIVED',
   };
   const code = error instanceof TenantOperationalError ? error.code
     : candidate?.code === '23514' && typeof candidate.constraint === 'string'

@@ -7,10 +7,8 @@ import {
 } from "react";
 
 import {
-  ConfigureBotRequestSchema,
   ConversationsResponseSchema,
   MessagesResponseSchema,
-  MessagingChannelViewSchema,
   MessagingChannelsResponseSchema,
   TemplatesResponseSchema,
   type ConversationView,
@@ -112,8 +110,6 @@ export function MessagingPage() {
   const [templates, setTemplates] = useState<TemplateView[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [templateVariables, setTemplateVariables] = useState<string[]>([]);
-  const [botPublicId, setBotPublicId] = useState("");
-  const [botOriginReference, setBotOriginReference] = useState("");
   const [conversations, setConversations] = useState<ConversationView[]>([]);
   const [conversationId, setConversationId] = useState("");
   const [messages, setMessages] = useState<MessageView[]>([]);
@@ -125,7 +121,6 @@ export function MessagingPage() {
   const sendLock = useRef(false),
     pendingSend = useRef<{ payload: string; key: string } | null>(null);
   const [changingMode, setChangingMode] = useState(false);
-  const [savingAutomation, setSavingAutomation] = useState(false);
   const [messageRevision, setMessageRevision] = useState(0);
   const [error, setError] = useState<{
     text: string;
@@ -143,8 +138,6 @@ export function MessagingPage() {
     setTemplates([]);
     setTemplateId("");
     setTemplateVariables([]);
-    setBotPublicId("");
-    setBotOriginReference("");
     setConversations([]);
     setConversationId("");
     setMessages([]);
@@ -155,7 +148,6 @@ export function MessagingPage() {
     pendingSend.current = null;
     sendLock.current = false;
     setChangingMode(false);
-    setSavingAutomation(false);
     setError(null);
   }, []);
 
@@ -188,7 +180,7 @@ export function MessagingPage() {
           !controller.signal.aborted
         ) {
           setError(
-            safeError(caught, "Não foi possível carregar os canais Meta."),
+            safeError(caught, "Não foi possível carregar as caixas WhatsApp."),
           );
         }
       })
@@ -225,16 +217,12 @@ export function MessagingPage() {
     setTemplates([]);
     setTemplateId("");
     setTemplateVariables([]);
-    setBotPublicId(
-      channels.find((channel) => channel.id === channelId)?.botPublicId ?? "",
-    );
-    setBotOriginReference("");
     setConversations([]);
     setConversationId("");
     setMessages([]);
     setError(null);
     void Promise.all([
-      loadTemplates(client, channelId, controller.signal),
+      channels.find(channel=>channel.id===channelId)?.provider === "META" ? loadTemplates(client, channelId, controller.signal) : Promise.resolve([]),
       loadConversations(client, channelId, controller.signal),
     ])
       .then(([nextTemplates, nextConversations]) => {
@@ -337,10 +325,6 @@ export function MessagingPage() {
     templateVariables.every(
       (value) => value.length > 0 && value.length <= 1_024,
     );
-  const automationInput = ConfigureBotRequestSchema.safeParse({
-    publicId: botPublicId,
-    originReference: botOriginReference,
-  });
 
   function selectTemplate(nextTemplateId: string) {
     const nextTemplate = sendableTemplates.find(
@@ -484,41 +468,6 @@ export function MessagingPage() {
     }
   }
 
-  async function configureAutomation(event: FormEvent) {
-    event.preventDefault();
-    if (!canConfigureAutomation || channelId === "" || !automationInput.success)
-      return;
-    const generation = tenantGeneration.current;
-    setSavingAutomation(true);
-    setError(null);
-    try {
-      const parsed = MessagingChannelViewSchema.safeParse(
-        await client.request<unknown>(
-          `/v1/messaging/channels/${encodeURIComponent(channelId)}/automation`,
-          {
-            method: "PATCH",
-            body: JSON.stringify(automationInput.data),
-          },
-        ),
-      );
-      if (!parsed.success || parsed.data.id !== channelId)
-        throw invalidResponse();
-      if (generation !== tenantGeneration.current) return;
-      setChannels((current) =>
-        current.map((channel) =>
-          channel.id === channelId ? { ...channel, ...parsed.data } : channel,
-        ),
-      );
-      setBotPublicId(parsed.data.botPublicId ?? "");
-    } catch (caught) {
-      if (generation === tenantGeneration.current) {
-        setError(safeError(caught, "Não foi possível salvar a automação."));
-      }
-    } finally {
-      if (generation === tenantGeneration.current) setSavingAutomation(false);
-    }
-  }
-
   async function changeMode() {
     if (!canMutate || !selectedConversation) return;
     const generation = tenantGeneration.current;
@@ -615,56 +564,10 @@ export function MessagingPage() {
             </select>
           </div>
           <section className="panel" aria-labelledby="automation-title">
-            <h2 id="automation-title">Automação Typebot</h2>
-            <p>
-              Fluxo atual:{" "}
-              {selectedChannel?.botPublicId ?? "Nenhum fluxo configurado"}
-            </p>
-            <p>
-              Uma configuração diferente reinicia as sessões das conversas
-              existentes no novo fluxo. Respostas que já estiverem em
-              processamento podem exigir reconciliação. Salvar novamente a mesma
-              configuração preserva as sessões atuais.
-            </p>
-            {canConfigureAutomation ? (
-              <form onSubmit={(event) => void configureAutomation(event)}>
-                <label htmlFor="bot-public-id">ID público do fluxo</label>
-                <input
-                  id="bot-public-id"
-                  maxLength={128}
-                  pattern="[a-zA-Z0-9_-]{1,128}"
-                  required
-                  type="text"
-                  value={botPublicId}
-                  onChange={(event) => setBotPublicId(event.target.value)}
-                />
-                <label htmlFor="bot-origin-reference">
-                  Referência de origem
-                </label>
-                <input
-                  id="bot-origin-reference"
-                  maxLength={64}
-                  pattern="[a-zA-Z0-9_-]{1,64}"
-                  required
-                  type="text"
-                  value={botOriginReference}
-                  onChange={(event) =>
-                    setBotOriginReference(event.target.value)
-                  }
-                />
-                <p>
-                  Use o alias técnico de uma origem pré-configurada no servidor.
-                  Não informe URL ou token.
-                </p>
-                <button
-                  className="button button--primary"
-                  type="submit"
-                  disabled={!automationInput.success || savingAutomation}
-                >
-                  {savingAutomation ? "Salvando…" : "Salvar automação"}
-                </button>
-              </form>
-            ) : null}
+            <h2 id="automation-title">Automação JRC</h2>
+            <p>Crie ou importe seu chatbot em Automações. Publique uma versão e ative-a na caixa WhatsApp desejada.</p>
+            <a className="button button--secondary" href="/automations">Gerenciar automações</a>{' '}
+            <a href="/channels">Gerenciar caixas de entrada</a>
           </section>
           {loadingChannel ? (
             <div className="state-card" aria-busy="true">
@@ -673,7 +576,7 @@ export function MessagingPage() {
           ) : null}
           {!loadingChannel ? (
             <div className="messaging-grid">
-              <section className="panel" aria-labelledby="templates-title">
+              {selectedChannel?.provider === "META" ? <section className="panel" aria-labelledby="templates-title">
                 <h2 id="templates-title">Templates</h2>
                 {templates.length === 0 ? (
                   <p>Nenhum template sincronizado.</p>
@@ -743,7 +646,7 @@ export function MessagingPage() {
                     </button>
                   </form>
                 ) : null}
-              </section>
+              </section> : null}
               <section className="panel" aria-labelledby="history-title">
                 <h2 id="history-title">Histórico</h2>
                 {selectedConversation ? (

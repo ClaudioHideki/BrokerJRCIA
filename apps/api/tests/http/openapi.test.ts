@@ -10,6 +10,12 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/platform/organizations/{id}/channels',
+  'POST /v1/platform/organizations/{id}/channels/{channelId}/archive',
+  'POST /v1/automations/{id}/archive',
+  'POST /v1/channels/{id}/archive',
+  'DELETE /v1/integrations/chatwoot/connections/{id}',
+  'DELETE /v1/platform/organizations/{id}/chatwoot/connections/{resourceId}',
   'GET /v1/automation-nodes',
   'POST /v1/automation-imports',
   'GET /v1/credentials', 'POST /v1/credentials', 'GET /v1/credentials/{id}', 'PUT /v1/credentials/{id}',

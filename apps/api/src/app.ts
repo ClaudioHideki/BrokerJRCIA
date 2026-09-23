@@ -440,6 +440,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       service: createChannelFacade({
         instances: instances.service,
         meta: metaOnboardingService,
+        ...(integrationRuntime.qr?{activateQr:integrationRuntime.qr.activate}:{}),
         chatwoot: integrationRuntime.chatwoot,
         transact: (organizationId, operation) =>
           withOrganizationTransaction(pools.appPool, organizationId, operation),
@@ -847,7 +848,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     );
   }
   if (platform) {
-    const configured = platform;
+    const configured = {...platform,...(channels?{channels:channels.service}:{})};
     void app.register(async (scope) =>
       registerPlatformRoutes(scope, configured),
     );

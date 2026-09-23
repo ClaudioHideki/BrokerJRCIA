@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import {CompanyChannels} from './CompanyChannels.js';
 import { Metric, number } from "../broker/components.js";
 import { Icon } from "../broker/Icon.js";
 import { CompanyMark, Status } from "./components.js";
@@ -14,9 +15,10 @@ import {
   type Monitor,
 } from "./model.js";
 
-export type DetailTab = "overview" | "plan" | "users" | "monitor" | "support" | "chatwoot";
+export type DetailTab = "channels" | "overview" | "plan" | "users" | "monitor" | "support" | "chatwoot";
 const tabs: [DetailTab, string][] = [
   ["overview", "Visão geral"],
+  ["channels", "Caixas de entrada"],
   ["plan", "Plano e limites"],
   ["users", "Usuários e acessos"],
   ["monitor", "Monitoramento"],
@@ -55,6 +57,7 @@ export function CompanyWorkspace({
   acknowledge,
   refresh,
   integrationRequest,
+  channelRequest,
 }: {
   company: Company;
   members: Member[] | null;
@@ -68,6 +71,7 @@ export function CompanyWorkspace({
   acknowledge: () => void;
   refresh: () => void;
   integrationRequest?: IntegrationRequest;
+  channelRequest?:IntegrationRequest;
 }) {
   const [tab, setTab] = useState(defaultTab);
   const memberList = (
@@ -80,7 +84,7 @@ export function CompanyWorkspace({
                 <tr>
                   <th>Usuário</th>
                   <th>Papel</th>
-                  <th>Acesso</th>
+                  <th>Acesso</th>{admin&&<th>Ações</th>}
                 </tr>
               </thead>
               <tbody>
@@ -95,9 +99,7 @@ export function CompanyWorkspace({
                         <i />
                         {member.status === "ACTIVE" ? "Ativo" : "Desativado"}
                       </span>
-                    </td>
-                  </tr>
-                ))}
+                    </td>{admin&&<td><form onSubmit={event=>{event.preventDefault();if(window.confirm(member.status==='ACTIVE'?'Desativar este acesso? O histórico será preservado.':'Reativar este acesso?'))void saveMember(new FormData(event.currentTarget),event.currentTarget);}}><input type="hidden" name="email" value={member.email}/><input type="hidden" name="role" value={member.role}/><input type="hidden" name="status" value={member.status==='ACTIVE'?'DISABLED':'ACTIVE'}/><button className="button button--secondary" disabled={disabled||(member.role==='OWNER'&&member.status==='ACTIVE'&&members.filter(m=>m.role==='OWNER'&&m.status==='ACTIVE').length===1)}>{member.status==='ACTIVE'?'Desativar acesso':'Reativar acesso'}</button></form></td>}</tr>))}
               </tbody>
             </table>
           </div>
@@ -127,6 +129,7 @@ export function CompanyWorkspace({
           </p>
         </div>
         <Status status={company.status} />
+        {admin&&<form onSubmit={event=>{event.preventDefault();if(window.confirm(company.status==='DISABLED'?'Reativar esta empresa?':'Desativar a empresa? Novos envios serão bloqueados e as pendências e o histórico preservados.'))void saveCompany(new FormData(event.currentTarget));}}><input type="hidden" name="status" value={company.status==='DISABLED'?'ACTIVE':'DISABLED'}/><input type="hidden" name="plan" value={company.plan}/><button className="button button--danger" disabled={disabled}>{company.status==='DISABLED'?'Reativar empresa':'Desativar empresa'}</button></form>}
         <button
           className="button button--ghost"
           disabled={disabled}
@@ -205,6 +208,7 @@ export function CompanyWorkspace({
             )}
           </>
         )}
+        {tab === "channels" && channelRequest && <CompanyChannels request={channelRequest} admin={admin} disabled={disabled}/>}
         {tab === "overview" && (
           <div className="admin-detail-columns">
             <section className="panel">
@@ -287,8 +291,8 @@ export function CompanyWorkspace({
                 <fieldset>
                   <legend>Módulos da empresa</legend>
                   <input type="hidden" name="flowsConfigPresent" value="1" />
-                  <label><input type="checkbox" name="flowsEnabled" defaultChecked={company.flowsEnabled === true} /> Liberar JRC Flows</label>
-                  <p className="admin-form-hint">Habilita o canvas e os chatbots desta empresa. Desativar bloqueia novas execuções e envios pendentes dos flows.</p>
+                  <label><input type="checkbox" name="flowsEnabled" defaultChecked={company.flowsEnabled === true} /> Manter fluxos da versão anterior</label>
+                  <p className="admin-form-hint">Habilita o canvas e os chatbots desta empresa. Desativar bloqueia novas execuções e envios pendentes dos automações.</p>
                 </fieldset>
                 <fieldset>
                   <legend>Limites da empresa</legend>
@@ -512,7 +516,7 @@ export function NewCompany({
         </fieldset>
         <fieldset>
           <legend>Plano e capacidade</legend>
-          <label><input type="checkbox" name="flowsEnabled" /> Liberar JRC Flows para esta empresa</label>
+          <label><input type="checkbox" name="flowsEnabled" /> Manter fluxos da versão anterior</label>
           <div className="admin-form-grid">
             <label>
               Plano

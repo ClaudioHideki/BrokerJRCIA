@@ -155,7 +155,7 @@ export function DashboardPage() {
                 </span>
                 <div>
                   <strong>Mensagens e automações</strong>
-                  <small>Templates, histórico e Typebot</small>
+                  <small>Templates e histórico de conversas</small>
                 </div>
                 <Icon name="arrow" />
               </Link>

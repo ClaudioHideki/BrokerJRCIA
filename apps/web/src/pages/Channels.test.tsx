@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { welcomeFlow } from '@jrc/contracts';
 import type { ApiClient } from '../api/client.js';
@@ -23,21 +23,21 @@ describe('canonical channels UI', () => {
       automationStatus: 'ACTIVE', humanStatus: 'DEGRADED', revision: 1, createdAt: timestamp, updatedAt: timestamp,
     }] }) as ApiClient['request'];
     render(<App client={client(request)} initialEntries={['/conexoes']} />);
-    expect(await screen.findByRole('heading', { name: 'Canais' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Caixas de entrada' })).toBeVisible();
     expect(await screen.findByText('Conectado')).toBeVisible();
-    expect(screen.getByText('Pronto')).toBeVisible();
+    expect(screen.getByText(/Serviço WhatsApp: Pronto/)).toBeInTheDocument();
     expect(screen.getAllByText('Ativo').length).toBeGreaterThan(0);
     expect(screen.getByText('Com falha')).toBeVisible();
     await waitFor(() => expect(request).toHaveBeenCalledWith('/v1/channels'));
   });
 
-  it('offers both providers and six explicit setup steps', async () => {
+  it('offers both providers and three customer setup steps', async () => {
     const request = vi.fn(async (path: string) => path === '/v1/flows/status' ? { enabled: true } : {}) as ApiClient['request'];
     render(<App client={client(request)} initialEntries={['/channels/new']} />);
     expect(await screen.findByRole('heading', { name: 'Configurar canal' })).toBeVisible();
     expect(screen.getByRole('button', { name: /WhatsApp por QR Code/ })).toBeVisible();
     expect(screen.getByRole('button', { name: /WhatsApp oficial Meta/ })).toBeVisible();
-    expect(screen.getByRole('list', { name: 'Etapas da configuração' }).children).toHaveLength(6);
+    expect(screen.getByRole('list', { name: 'Etapas da configuração' }).children).toHaveLength(3);
   });
 
   it('exposes status, reconnection, disconnection, rename and published automation controls', async () => {
@@ -64,4 +64,20 @@ describe('canonical channels UI', () => {
     expect(await screen.findByRole('option', { name: 'Triagem inteligente · v2' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Vincular automação' })).toBeDisabled();
   });
+});
+
+it('never renders an expired QR challenge and provides a new request action',async()=>{
+ const channel={schemaVersion:1,id,organizationId:org,provider:'QR',identity:{displayName:'Parear',maskedAddress:null},providerReference:{providerAccountId:account,instanceId:id},transportStatus:'DISCONNECTED',providerStatus:'READY',automationStatus:'UNBOUND',humanStatus:'UNBOUND',revision:1,createdAt:timestamp,updatedAt:timestamp};
+ const request=vi.fn(async(path:string)=>{if(path.endsWith('/pair'))return {provider:'QR',channel,operationId:null,replayed:false,pending:false,reconciliationRequired:false,action:{type:'QR_CODE',encoding:'DATA_URL',value:'data:image/png;base64,abc',expiresAt:new Date(Date.now()-1000).toISOString()}};if(path.endsWith('/automation'))return {binding:null};if(path==='/v1/automations')return {data:[]};return channel;}) as ApiClient['request'];
+ render(<App client={client(request)} initialEntries={['/channels/'+id]}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'Gerar QR Code'}));
+ expect(await screen.findByText('QR ou código expirado. Gere outro para continuar.')).toBeVisible();
+ expect(screen.queryByRole('img',{name:'QR Code para conectar o WhatsApp'})).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Gerar QR Code'})).toBeEnabled();
+});
+
+it('renders a BASE64 pairing challenge as an image data URL',async()=>{
+ const channel={schemaVersion:1,id,organizationId:org,provider:'QR',identity:{displayName:'Parear',maskedAddress:null},providerReference:{providerAccountId:account,instanceId:id},transportStatus:'DISCONNECTED',providerStatus:'READY',automationStatus:'UNBOUND',humanStatus:'UNBOUND',revision:1,createdAt:timestamp,updatedAt:timestamp};
+ const request=vi.fn(async(path:string)=>{if(path.endsWith('/pair'))return {provider:'QR',channel,operationId:null,replayed:false,pending:false,reconciliationRequired:false,action:{type:'QR_CODE',encoding:'BASE64',value:'aGVsbG8=',expiresAt:new Date(Date.now()+60000).toISOString()}};if(path.endsWith('/automation'))return {binding:null};if(path==='/v1/automations')return {data:[]};return channel;}) as ApiClient['request'];
+ render(<App client={client(request)} initialEntries={['/channels/'+id]}/>);fireEvent.click(await screen.findByRole('button',{name:'Gerar QR Code'}));expect(await screen.findByRole('img',{name:'QR Code para conectar o WhatsApp'})).toHaveAttribute('src','data:image/png;base64,aGVsbG8=');
 });

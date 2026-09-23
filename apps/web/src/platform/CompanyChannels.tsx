@@ -1,0 +1,13 @@
+import {useEffect,useState} from 'react';
+import type {ChannelV1} from '@jrc/contracts';
+import type {IntegrationRequest} from '../integrations/ChatwootPanel.js';
+import {statusLabel} from '../pages/Channels.js';
+import {ApiClientError} from '../api/client.js';
+export function CompanyChannels({request,admin,disabled}:{request:IntegrationRequest;admin:boolean;disabled:boolean}){
+ const [items,setItems]=useState<ChannelV1[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ const load=()=>request('').then(result=>setItems((result as {data:ChannelV1[]}).data));
+ useEffect(()=>{let live=true;void request('').then(result=>{if(live)setItems((result as {data:ChannelV1[]}).data);}).catch(()=>{if(live)setError('Não foi possível consultar as caixas desta empresa.');});return()=>{live=false;};},[]);
+ async function archive(item:ChannelV1){if(busy||!window.confirm(item.archivedAt?'Restaurar este cadastro? Vínculos e conexão não serão ativados automaticamente.':'Arquivar este cadastro? A operação exige WhatsApp desconectado, vínculos desativados e ausência de pendências. O histórico será preservado.'))return;
+ setBusy(true);setError('');try{await request('/'+item.id+'/archive','POST',{archived:!item.archivedAt});await load();}catch(reason){const code=reason instanceof ApiClientError?reason.code:'';setError(({CHANNEL_DISCONNECT_REQUIRED:'Desconecte o WhatsApp no portal da empresa antes de arquivar.',CHANNEL_UNLINK_REQUIRED:'Desvincule a automação e pause o atendimento no portal.',CHANNEL_HAS_PENDING_WORK:'Conclua ou cancele as operações pendentes antes de arquivar.'} as Record<string,string>)[code??'']??'Não foi possível alterar o cadastro. Confira as pendências e tente novamente.');}finally{setBusy(false);}}
+ return <section className="panel"><h2>Caixas de entrada da empresa</h2><p>Consulta e alterações vinculadas ao motivo de suporte informado. O histórico e as caixas remotas são preservados.</p>{error&&<p role="alert">{error}</p>}{items.length?<div className="admin-table-scroll"><table><thead><tr><th>Caixa</th><th>WhatsApp</th><th>Atendimento</th><th>Cadastro</th>{admin&&<th>Ações</th>}</tr></thead><tbody>{items.map(item=><tr key={item.id}><td>{item.identity.displayName}<small>{item.provider==='QR'?'WhatsApp QR Code':'WhatsApp oficial Meta'}</small></td><td>{statusLabel[item.transportStatus]}</td><td>{item.destination?.name??'Sem vínculo'}</td><td>{item.archivedAt?'Arquivado':'Ativo'}</td>{admin&&<td>{item.provider==='QR'?<button className="button button--secondary" disabled={busy||disabled} onClick={()=>void archive(item)}>{item.archivedAt?'Restaurar cadastro':'Arquivar cadastro'}</button>:<span>Revogar autorização no portal</span>}</td>}</tr>)}</tbody></table></div>:<p>Nenhuma caixa cadastrada.</p>}</section>;
+}

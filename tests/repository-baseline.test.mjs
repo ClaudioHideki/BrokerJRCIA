@@ -18,10 +18,11 @@ describe('repository baseline', () => {
       .sort();
 
     expect(migrations.slice(-4)).toEqual([
-      '0026_automation_runtime_v2.sql',
+
       '0027_automation_integrations.sql',
       '0028_operational_observability.sql',
       '0029_legacy_flow_migration.sql',
+      '0030_instance_archive.sql',
     ]);
     expect(rootManifests).toEqual(['MANIFESTO_ARQUIVOS_SHA256.txt']);
   });

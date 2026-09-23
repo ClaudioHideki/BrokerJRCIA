@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { AUTOMATION_ORIGIN } from '@jrc/contracts';
 import type { InstanceService } from '../../src/modules/instances/service.js';
 import { ChannelFacadeError, channelView, createChannelFacade } from '../../src/modules/channels/facade.js';
 
@@ -8,9 +9,18 @@ const id = '519b77a6-a4e5-409a-85c8-d78fc155c525';
 const now = '2030-01-01T12:00:00.000Z';
 
 describe('channel facade', () => {
+  it('shows the actual paused binding, inbox and masked observed identity', () => {
+    expect(channelView({id,organization_id:org,provider:'BAILEYS',provider_account_id:account,
+      instance_id:id,connection_id:null,name:'Comercial',instance_status:'CONNECTED',meta_status:null,
+      bot_public_id:account,bot_origin_reference:AUTOMATION_ORIGIN,flow_published_version:null,flow_enabled:true,
+      automation_binding_status:'PAUSED',automation_name:'Triagem',human_status:'READY',inbox_id:7,
+      integration_id:account,inbox_name:'Comercial JRC',observed_last4:'1234',messaging_channel_id:id,
+      created_at:now,updated_at:now})).toMatchObject({automationStatus:'PAUSED',automationName:'Triagem',
+        identity:{maskedAddress:'****1234'},destination:{integrationId:account,inboxId:7,name:'Comercial JRC'}});
+  });
   it('keeps transport, provider, automation and human service states independent', () => {
     expect(channelView({ id, organization_id: org, provider: 'BAILEYS', provider_account_id: account,
-      instance_id: id, connection_id: null, name: 'Atendimento', instance_status: 'CONNECTED', meta_status: null,
+      instance_id: id, connection_id: null, messaging_channel_id:id, name: 'Atendimento', instance_status: 'CONNECTED', meta_status: null,
       bot_public_id: '519b77a6-a4e5-409a-85c8-d78fc155c525', bot_origin_reference: 'jrc-flows-native',
       flow_published_version: 2, flow_enabled: true, human_status: 'FAILED', created_at: now, updated_at: now })).toMatchObject({
       id, provider: 'QR', transportStatus: 'CONNECTED', providerStatus: 'READY', automationStatus: 'ACTIVE', humanStatus: 'DEGRADED',
@@ -26,7 +36,7 @@ describe('channel facade', () => {
     const service = createChannelFacade({ instances: { createInstance, connectInstance } as unknown as InstanceService,
       meta: { start: vi.fn() }, transact: async (_org, work) => work({ query: vi.fn().mockResolvedValue({ rows: [{
         id, organization_id: org, provider: 'BAILEYS', provider_account_id: account, instance_id: id, connection_id: null,
-        name: 'Atendimento', instance_status: 'CREATED', meta_status: null, bot_public_id: null, bot_origin_reference: null,
+        messaging_channel_id:id, name: 'Atendimento', instance_status: 'CREATED', meta_status: null, bot_public_id: null, bot_origin_reference: null,
         flow_published_version: null, flow_enabled: null, human_status: null, created_at: now, updated_at: now,
       }] }) } as never) });
     const context = { credentialKind: 'JWT' as const, organizationId: org, actorId: account, requestId: 'request' };
@@ -68,7 +78,7 @@ describe('channel facade', () => {
       replayed: false, pending: false, reconciliationRequired: false });
     const query = vi.fn(async (sql: string) => ({ rows: sql.includes('UPDATE instances') ? [{ id }] : [{
       id, organization_id: org, provider: 'BAILEYS', provider_account_id: account, instance_id: id, connection_id: null,
-      name: 'Atendimento', instance_status: 'CONNECTED', meta_status: null, bot_public_id: null, bot_origin_reference: null,
+      messaging_channel_id:id, name: 'Atendimento', instance_status: 'CONNECTED', meta_status: null, bot_public_id: null, bot_origin_reference: null,
       flow_published_version: null, flow_enabled: null, human_status: null, created_at: now, updated_at: now,
     }] }));
     const service = createChannelFacade({ instances: { getInstanceStatus, connectInstance, disconnectInstance } as unknown as InstanceService,
@@ -91,7 +101,7 @@ describe('channel facade', () => {
       sql.push(statement);
       if (statement.includes('UNION ALL')) return { rows: [{
         id, organization_id: org, provider: 'BAILEYS', provider_account_id: account, instance_id: id, connection_id: null,
-        name: 'Atendimento', instance_status: 'CONNECTED', meta_status: null, bot_public_id: null, bot_origin_reference: null,
+        messaging_channel_id:id, name: 'Atendimento', instance_status: 'CONNECTED', meta_status: null, bot_public_id: null, bot_origin_reference: null,
         flow_published_version: null, flow_enabled: null, human_status: null, created_at: now, updated_at: now,
       }] };
       if (statement.includes('SELECT id FROM messaging_channels')) return { rows: [{ id }] };

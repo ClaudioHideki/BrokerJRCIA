@@ -47,6 +47,8 @@ const stages: Record<string, string> = {
   DONE: "Concluído",
 };
 const errors: Record<string, string> = {
+  INTEGRATION_PAUSE_REQUIRED:'Pause a integração antes de remover o vínculo.',
+  INTEGRATION_HAS_HISTORY:'Este vínculo já possui histórico ou operações. Mantenha-o pausado para preservar os registros; a exclusão definitiva exige o processo de retenção da empresa.',
   CHATWOOT_DESTINATION_REQUIRED: 'Escolha uma instalação e solicite a aprovação da equipe JRC.',
   CHATWOOT_DESTINATION_NOT_APPROVED: 'O destino precisa ser aprovado pela equipe JRC antes de vincular a conta.',
   CHATWOOT_CONTEXT_CHANGED: 'A configuração mudou durante a validação. Atualize os dados e tente novamente.',
@@ -736,6 +738,7 @@ export function ChatwootPanel({
                           </button>
                         </form>
                       )}
+                      {['FAILED','DISABLED'].includes(c.status)&&<button className="button button--danger" disabled={blocked} onClick={()=>{if(window.confirm('Excluir este vínculo vazio do Broker? A caixa e os dados no sistema de atendimento não serão apagados. Vínculos com histórico não podem ser excluídos aqui.'))void action('/connections/'+c.id,'DELETE');}}>Excluir vínculo sem histórico</button>}
                       {["READY", "DISABLED"].includes(c.status) ? (
                         <button
                           className="button button--secondary"

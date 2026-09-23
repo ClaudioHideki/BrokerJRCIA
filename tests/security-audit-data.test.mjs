@@ -49,8 +49,15 @@ describe('dados reproduzíveis da auditoria de segurança', () => {
     // Source locations move when later phases add imports/guards; policies remain immutable.
     // buildRouteInventory independently resolves and validates each current handler line.
     const withoutLocation = ({handlerLine, ...policy}) => policy;
+    // Lifecycle QA adds a read-only archive filter and tightens binding changes to administrators.
+    const currentExpectedPolicy = route => {
+      const key = route.method+' '+route.path;
+      if(key==='GET /v1/channels')return {...withoutLocation(route),requestSchemas:['query:includeArchived']};
+      if(['PUT /v1/channels/{id}/automation','PUT /v1/channels/{id}/destination'].includes(key))return {...withoutLocation(route),permission:'OWNER_ADMIN'};
+      return withoutLocation(route);
+    };
     expect(generated.filter(({ method, path }) => historicKeys.has(`${method} ${path}`)).map(withoutLocation))
-      .toEqual(stored.map(withoutLocation));
+      .toEqual(stored.map(currentExpectedPolicy));
     expect(generated.map(({ method, path }) => `${method} ${path}`).sort())
       .toEqual(openApiOperations(openapi));
     for (const route of generated) {
