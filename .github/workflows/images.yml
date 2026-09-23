@@ -6,6 +6,14 @@ on:
         description: 'Publish this reviewed revision to GHCR'
         type: boolean
         default: false
+      component:
+        description: 'Image component to build and optionally publish'
+        type: choice
+        default: all
+        options:
+          - all
+          - api
+          - web
 permissions:
   contents: read
 jobs:
@@ -67,6 +75,7 @@ jobs:
           image="ghcr.io/${REPOSITORY,,}"
           echo "IMAGE_BASE=$image" >> "$GITHUB_ENV"
       - name: Build API with SBOM and provenance
+        if: ${{ inputs.component == 'all' || inputs.component == 'api' }}
         id: api
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -79,6 +88,7 @@ jobs:
           sbom: true
           provenance: mode=max
       - name: Build web with SBOM and provenance
+        if: ${{ inputs.component == 'all' || inputs.component == 'web' }}
         id: web
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -95,15 +105,21 @@ jobs:
         uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9 # v3
       - name: Sign the published image digests with GitHub OIDC
         if: ${{ inputs.publish }}
+        env:
+          COMPONENT: ${{ inputs.component }}
         run: |
-          cosign sign --yes "$IMAGE_BASE-api@${{ steps.api.outputs.digest }}"
-          cosign sign --yes "$IMAGE_BASE-web@${{ steps.web.outputs.digest }}"
+          if [[ "$COMPONENT" == "all" || "$COMPONENT" == "api" ]]; then
+            cosign sign --yes "$IMAGE_BASE-api@${{ steps.api.outputs.digest }}"
+          fi
+          if [[ "$COMPONENT" == "all" || "$COMPONENT" == "web" ]]; then
+            cosign sign --yes "$IMAGE_BASE-web@${{ steps.web.outputs.digest }}"
+          fi
       - name: Record sanitized immutable image evidence
         shell: bash
         run: |
           mkdir -p .sessions
-          jq -n --arg revision "$GITHUB_SHA" --arg api "${{ steps.api.outputs.digest }}" --arg web "${{ steps.web.outputs.digest }}" --argjson published '${{ inputs.publish }}' \
-            '{revision:$revision,published:$published,apiDigest:$api,webDigest:$web,sbom:true,provenance:"mode=max",signature:(if $published then "github-oidc" else "not-published" end)}' \
+          jq -n --arg revision "$GITHUB_SHA" --arg component "${{ inputs.component }}" --arg api "${{ steps.api.outputs.digest }}" --arg web "${{ steps.web.outputs.digest }}" --argjson published '${{ inputs.publish }}' \
+            '{revision:$revision,component:$component,published:$published,apiDigest:$api,webDigest:$web,sbom:true,provenance:"mode=max",signature:(if $published then "github-oidc" else "not-published" end)}' \
             > .sessions/image-release.json
       - name: Retain sanitized image evidence
         if: always()

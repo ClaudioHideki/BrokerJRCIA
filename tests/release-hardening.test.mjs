@@ -16,6 +16,9 @@ describe('release hardening', () => {
 
   it('publishes attestations and signs only explicitly approved image digests', async () => {
     const source = await text('.github/workflows/images.yml');
+    expect(source).toContain('component:');
+    expect(source).toContain("inputs.component == 'all' || inputs.component == 'api'");
+    expect(source).toContain("inputs.component == 'all' || inputs.component == 'web'");
     expect(source).toContain('sbom: true');
     expect(source).toContain('provenance: mode=max');
     expect(source).toContain('cosign sign --yes "$IMAGE_BASE-api@${{ steps.api.outputs.digest }}"');
