@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { Icon } from "../broker/Icon.js";
 import { ApiClientError } from '../api/client.js';
 import { PlatformShell } from "../layout/PlatformShell.js";
+import { EconomicGroups } from '../platform/EconomicGroups.js';
 import {
   AdminCharts,
   AdminMetrics,
@@ -502,7 +503,7 @@ export function PlatformPage() {
           >
             <Icon name="refresh" size={15} /> Atualizar empresas
           </button>
-          {admin && !creating && (
+          {admin && !creating && section.path !== '/jrc/grupos' && (
             <button
               className="button button--primary"
               disabled={busy}
@@ -526,7 +527,9 @@ export function PlatformPage() {
           {notice}
         </div>
       )}
-      {creating && admin ? (
+      {section.path === '/jrc/grupos' ? (
+        <EconomicGroups key={session.user.id} request={request} companies={companies} admin={!!admin} disabled={disabled || !companiesLoaded} />
+      ) : creating && admin ? (
         <NewCompany
           disabled={disabled}
           cancel={() => setCreating(false)}

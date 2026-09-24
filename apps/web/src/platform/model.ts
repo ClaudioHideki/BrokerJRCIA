@@ -63,6 +63,13 @@ export const sections = [
     icon: "dashboard",
   },
   {
+    path: "/jrc/grupos",
+    label: "Grupos econômicos",
+    title: "Grupos econômicos",
+    description: "Organize empresas sem compartilhar dados ou permissões entre elas.",
+    icon: "providers",
+  },
+  {
     path: "/jrc/empresas",
     label: "Empresas",
     title: "Empresas",

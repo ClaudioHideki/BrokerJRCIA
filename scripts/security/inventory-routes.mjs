@@ -4,6 +4,9 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/platform/groups': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_COOKIE','SUPER_ADMIN_OR_SUPPORT',true,'READ_ONLY','NONE','PLATFORM_ONLY_RLS_NO_TENANT_ACCESS_AUDITED'),
+  'POST /v1/platform/groups': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN',true,'CREATE_NEW_GROUP','NONE','PLATFORM_ONLY_RLS_NO_MEMBERSHIP_PROPAGATION_AUDITED'),
+  'PUT /v1/platform/groups/{id}/organizations': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN',true,'ROW_LOCK_AND_OPTIMISTIC_REVISION','NONE','PLATFORM_ONLY_RLS_UNIQUE_ORGANIZATION_GROUP_NO_MEMBERSHIP_PROPAGATION_AUDITED'),
   'POST /v1/automations/{id}/archive': policy('apps/api/src/http/routes/automations.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'IDEMPOTENT_LIFECYCLE_TRANSITION','NONE','RLS_ORGANIZATION_LOCKED_DEFINITION_BINDINGS_EXECUTIONS_AUDIT'),
   'POST /v1/channels/{id}/archive': policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'IDEMPOTENT_LIFECYCLE_TRANSITION','NONE','RLS_ORGANIZATION_DISCONNECTED_INSTANCE_PENDING_WORK_GUARD_AUDIT'),
 

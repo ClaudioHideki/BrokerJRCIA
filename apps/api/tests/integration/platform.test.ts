@@ -20,6 +20,26 @@ beforeAll(async()=>{
  await db.pool.query('insert into platform_users(email,password_hash,role,mfa_seed) values ($1,$2,$3,$4)', ['support@example.test',await hashPassword('long-test-password'),'SUPPORT',encryptSeed(seed,key)]);
 });
 afterAll(async()=>{await pool?.end();await db?.dispose();});
+it('groups organizations without sharing tenant authority and rejects stale assignments', async () => {
+ await db.pool.query("update platform_users set last_totp_step=-1");
+ const admin=await service.login('admin@example.test','long-test-password',totp(seed,Math.floor(Date.now()/30000)),'127.0.0.9');
+ const support=await service.login('support@example.test','long-test-password',totp(seed,Math.floor(Date.now()/30000)),'127.0.0.10');
+ const tenant=(await service.execute(admin.token,'Create grouped tenant','create',undefined,{name:'Grouped',slug:'grouped-test',ownerEmail:'grouped@example.test',ownerPassword:'owner-password-strong'}) as {organization:{id:string}}).organization.id;
+ const group=await service.createGroup(admin.token,'Create economic group',{name:'Synthetic group'});
+ await expect(service.assignGroupOrganizations(support.token,'Attempt support update',group.id,{revision:1,organizationIds:[tenant]})).rejects.toMatchObject({statusCode:403});
+ await expect(service.assignGroupOrganizations(admin.token,'Assign explicit tenant',group.id,{revision:1,organizationIds:[tenant]})).resolves.toMatchObject({revision:2});
+ await expect(service.assignGroupOrganizations(admin.token,'Reject stale assignment',group.id,{revision:1,organizationIds:[]})).rejects.toMatchObject({statusCode:409});
+ expect((await service.listGroups(admin.token,'Review economic groups')).data).toContainEqual(expect.objectContaining({id:group.id,organizationIds:[tenant]}));
+ const second=(await service.execute(admin.token,'Create second tenant','create',undefined,{name:'Second grouped',slug:'second-grouped-test',ownerEmail:'second-grouped@example.test',ownerPassword:'owner-password-strong'}) as {organization:{id:string}}).organization.id;
+ await service.assignGroupOrganizations(admin.token,'Add independent company',group.id,{revision:2,organizationIds:[tenant,second]});
+ const other=await service.createGroup(admin.token,'Create another group',{name:'Other synthetic group'});
+ await expect(service.assignGroupOrganizations(admin.token,'Reject duplicate membership',other.id,{revision:1,organizationIds:[second]})).rejects.toMatchObject({code:'ORGANIZATION_ALREADY_GROUPED'});
+ expect((await service.execute(admin.token,'Inspect isolated members','memberships',second))).toMatchObject({memberships:[{email:'second-grouped@example.test'}]});
+ for(const role of ['jrc_auth','jrc_app']) {const c=await db.pool.connect();try{await c.query('begin');await c.query(`set local role ${role}`);await expect(c.query('select * from economic_groups')).rejects.toThrow();}finally{await c.query('rollback');c.release();}}
+ expect((await db.pool.query('select count(*)::int n from memberships where organization_id=$1',[tenant])).rows[0].n).toBe(1);
+ await service.logout(admin.token);await service.logout(support.token);
+ await db.pool.query("update platform_users set last_totp_step=-1");
+});
 it('updates existing memberships at the user limit and while suspended',async()=>{
  await db.pool.query("update platform_users set last_totp_step=-1 where email='admin@example.test'");
  const s=await service.login('admin@example.test','long-test-password',totp(seed,Math.floor(Date.now()/30000)),'127.0.0.8');

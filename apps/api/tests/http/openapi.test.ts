@@ -10,6 +10,7 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/platform/groups', 'POST /v1/platform/groups', 'PUT /v1/platform/groups/{id}/organizations',
   'GET /v1/platform/organizations/{id}/channels',
   'POST /v1/platform/organizations/{id}/channels/{channelId}/archive',
   'POST /v1/automations/{id}/archive',

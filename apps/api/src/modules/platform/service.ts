@@ -4,6 +4,7 @@ import { hashPassword, initializePasswordVerifier } from '@jrc/security';
 import { digest, decryptSeed, verifyTotp } from './crypto.js';
 import {platformMfaRequired,type PlatformLoginPolicy} from './login-policy.js';
 import { normalizeChatwootOrigin } from '../integrations/chatwoot-destination.js';
+import { CreateEconomicGroupSchema, AssignGroupOrganizationsSchema } from '@jrc/contracts';
 
 export class PlatformError extends Error { constructor(public statusCode:number, public code:string) {super(code);} }
 export type PlatformAction = 'list'|'create'|'update'|'memberships'|'membership'|'monitor'|'acknowledge';
@@ -54,6 +55,46 @@ export class PlatformService {
   return {user:{id:r.id,email:r.email,role:r.role},csrfToken:r.csrf_token,expiresAt:new Date(r.expires_at).toISOString()};
  }
  session(token:string) {return this.transaction(c=>this.readSession(c,token));}
+ async listGroups(token:string,reason:string) {
+  if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  return this.transaction(async c=>{
+   const session=await this.readSession(c,token);
+   const data=(await c.query(`SELECT g.id,g.name,g.revision,
+    COALESCE((SELECT json_agg(m.organization_id ORDER BY m.organization_id) FROM economic_group_organizations m WHERE m.group_id=g.id),'[]') AS "organizationIds"
+    FROM economic_groups g ORDER BY g.name,g.id LIMIT 200`)).rows;
+   await this.audit(c,session.user.id,null,'economic-groups-read',reason);return {data};
+  });
+ }
+ async createGroup(token:string,reason:string,value:{name:string}) {
+  const input=CreateEconomicGroupSchema.parse(value);
+  if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  return this.transaction(async c=>{
+   const session=await this.readSession(c,token);
+   if(session.user.role!=='SUPER_ADMIN') throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+   const group=(await c.query('INSERT INTO economic_groups(name) VALUES($1) RETURNING id,name,revision',[input.name])).rows[0];
+   await this.audit(c,session.user.id,null,`economic-group-create:${group.id}`,reason);return {...group,organizationIds:[]};
+  });
+ }
+ async assignGroupOrganizations(token:string,reason:string,id:string,value:{revision:number;organizationIds:string[]}) {
+  const input=AssignGroupOrganizationsSchema.parse(value);
+  if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  return this.transaction(async c=>{
+   const session=await this.readSession(c,token);
+   if(session.user.role!=='SUPER_ADMIN') throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+   const group=(await c.query('SELECT id,name,revision FROM economic_groups WHERE id=$1 FOR UPDATE',[id])).rows[0];
+   if(!group) throw new PlatformError(404,'GROUP_NOT_FOUND');
+   if(group.revision!==input.revision) throw new PlatformError(409,'GROUP_REVISION_CHANGED');
+   const organizations=await c.query('SELECT id FROM organizations WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE',[input.organizationIds]);
+   if(organizations.rowCount!==input.organizationIds.length) throw new PlatformError(404,'ORGANIZATION_NOT_FOUND');
+   if((await c.query('SELECT 1 FROM economic_group_organizations WHERE organization_id=ANY($1::uuid[]) AND group_id<>$2',[input.organizationIds,id])).rowCount)
+    throw new PlatformError(409,'ORGANIZATION_ALREADY_GROUPED');
+   await c.query('DELETE FROM economic_group_organizations WHERE group_id=$1',[id]);
+   await c.query('INSERT INTO economic_group_organizations(group_id,organization_id) SELECT $1,unnest($2::uuid[])',[id,input.organizationIds]);
+   await c.query('UPDATE economic_groups SET revision=revision+1 WHERE id=$1',[id]);
+   await this.audit(c,session.user.id,null,`economic-group-assign:${id}`,reason);
+   return {...group,revision:group.revision+1,organizationIds:input.organizationIds};
+  });
+ }
  async approveChatwootDestination(token:string,csrf:string,reason:string,org:string,input:{revision:number;mediaOrigins:string[]}) {
   if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
   const origins=[...new Set(input.mediaOrigins.map(normalizeChatwootOrigin))];

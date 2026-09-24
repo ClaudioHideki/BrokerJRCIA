@@ -14,3 +14,4 @@ export * from './integrations/embed.js';
 export * from './flows.js';
 export * from './channels-v1.js';
 export * from './automations-v1.js';
+export * from './economic-groups.js';

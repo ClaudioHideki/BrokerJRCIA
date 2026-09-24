@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { tenantOperationalProblem } from "../../modules/tenancy/operational-limits.js";
 import { z } from "zod";
+import { CreateEconomicGroupSchema, AssignGroupOrganizationsSchema, EconomicGroupSchema } from '@jrc/contracts';
 import {
   ChatwootStatusSchema,
   BindChatwootAccountSchema,
@@ -242,6 +243,13 @@ export async function registerPlatformRoutes(
             : undefined,
         );
       };
+      const groupReason = (req: FastifyRequest) => z.string().trim().min(5).max(500).parse(req.headers['x-platform-reason']);
+      scoped.get('/groups', { schema: { querystring: z.strictObject({}), response: { 200: z.strictObject({ data: z.array(EconomicGroupSchema) }) } } },
+        req => options.service.listGroups(cookie(req), groupReason(req)));
+      scoped.post('/groups', { schema: { querystring: z.strictObject({}), body: CreateEconomicGroupSchema, response: { 201: EconomicGroupSchema } } },
+        async (req, reply) => reply.code(201).send(await options.service.createGroup(await mutation(req), groupReason(req), CreateEconomicGroupSchema.parse(req.body))));
+      scoped.put('/groups/:id/organizations', { schema: { params: idParams, querystring: z.strictObject({}), body: AssignGroupOrganizationsSchema, response: { 200: EconomicGroupSchema } } },
+        async req => options.service.assignGroupOrganizations(await mutation(req), groupReason(req), (req.params as {id:string}).id, AssignGroupOrganizationsSchema.parse(req.body)));
       scoped.get(
         "/organizations",
         {

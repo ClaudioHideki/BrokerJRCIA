@@ -2,6 +2,57 @@
 
 Data: 23/09/2026. Contratos conferidos no código do Broker desta branch. As telas do host descritas como propostas precisam ser implementadas no repositório da central. Emitir uma chave não instala módulos.
 
+## Estado coordenado dos dois repositórios
+
+Repositórios de continuidade:
+
+- Broker: <https://github.com/ClaudioHideki/BrokerJRCIA>
+- JRC Conversas: <https://github.com/ClaudioHideki/jrc-conversas-nico-v12-2-7-comercial-integrado>
+
+Base conciliada do Broker: `f8e81df271670348201998890b56654b1c95bb0c`. A base informada para o desenvolvimento do JRC Conversas no DEV03 é `3b4db70dab1f1fe40bc31a45ebd3f6bfa8cfe7d1`. Esses SHAs identificam as bases de trabalho; não comprovam publicação das imagens nem implantação no servidor.
+
+O DEV03 informou a seguinte validação automatizada conjunta das bases em 23/09/2026:
+
+| Verificação | Resultado informado |
+|---|---:|
+| Broker — suíte principal, incluindo submódulo | 1.232 testes aprovados |
+| Broker — integração com PostgreSQL | 70 testes aprovados |
+| JRC Conversas — interface QR/Flows | 26 testes aprovados |
+| JRC Conversas — Rails | 38 exemplos, zero falhas |
+
+Os logs detalhados permanecem no ambiente DEV03 em `C:/Users/DEV03/Documents/Jrc/output/conciliacao-dev02-20260923/VALIDACAO-FUNCIONAL-20260923.md`. Os totais acima são evidência informada pelo DEV03 e não foram reexecutados nesta atualização documental. Não houve pareamento WhatsApp real nem jornada conjunta por TLS; portanto, esses resultados validam componentes, não homologação ponta a ponta.
+
+### Entregue na base `f8e81df`
+
+- Jornadas e ações de ciclo de vida da console do Broker revisadas.
+- Fachada canônica de canais Meta e QR, com separação entre provider, transporte, automação e atendimento humano.
+- Criação/importação de automações em rascunho, revisão de compatibilidade, editor, validação, simulação, publicação, versões, vínculos e execuções.
+- Arquivamento/restauração com preservação de histórico e bloqueios para trabalho ativo ou incerto.
+- Correção do `claimExecution` PostgreSQL já presente na `main` ancestral.
+- Migration `0030_instance_archive.sql`, OpenAPI, testes de API, integração, UI e E2E sintético.
+
+### Próximos incrementos, ainda não implementados integralmente
+
+A ordem coordenada é `Q3 → A1/A2 → A3 → A4`, mantendo QR assíncrono, ciclo de vida e migração/importação no escopo:
+
+1. **Q3 — adoção de caixas existentes:** descoberta restrita à conta, adoção idempotente e consulta assíncrona do desafio de pareamento, sem duplicar inbox nem substituir webhook silenciosamente.
+2. **Ciclo de vida distribuído:** desvincular/arquivar por operação persistente, consultar progresso e reconciliar timeouts sem apagar conversas ou histórico.
+3. **A1 — identidade delegada:** sessão curta para o usuário autenticado no JRC Conversas, com conta, organização, origem, revisão e escopos mínimos. A chave QR não passa a autorizar automações.
+4. **A2 — editor integrado:** núcleo versionado do editor do Broker com cliente, navegação e permissões injetados no frontend da central; sem segundo login ou JWT administrativo compartilhado.
+5. **A3 — um motor por caixa:** proprietário explícito `NONE`, `LOCAL_LEGACY` ou `BROKER`, revisão monotônica, bloqueio do motor anterior, drain/reconciliação e confirmação dos dois sistemas.
+6. **A4 — handoff e retomada:** coordenação do modo humano com a conversa real na central, cursor/versão explícitos e callbacks idempotentes para atendimento, CRM e NICO.
+7. **Migração real de `jrc_flows`:** preview e conversão dos formatos da central para rascunho do Broker. A migração `BROKER_FLOW_V1` não comprova essa conversão.
+
+Os nomes finais dos endpoints novos devem ser congelados primeiro em `packages/contracts` e no OpenAPI. Até isso ocorrer, exemplos de discovery/adoption, sessão delegada, ownership e conversation-control são propostas de contrato, não APIs disponíveis.
+
+### Critério para preparar a publicação
+
+A próxima entrega deve trazer commits identificados dos dois repositórios, testes dos novos contratos e do isolamento entre duas empresas e evidência HTTPS da jornada:
+
+`adotar caixa → gerar QR → conectar WhatsApp → receber mensagem → executar fluxo → transferir ao atendente → responder → retomar automação`
+
+Somente depois dessa homologação serão fechadas migrations adicionais, novas variáveis, Compose e imagens finais. O workflow de imagens continua separado do merge e não deve ser tratado como consequência automática desta documentação.
+
 ## Como o conjunto funciona
 
 ```mermaid
@@ -15,6 +66,47 @@ flowchart LR
 A caixa no Broker representa o número da empresa. A inbox da central organiza contatos, conversas e atendentes. O vínculo associa as duas. A automação é publicada no Broker e vinculada ao canal. Transferir para humano interrompe as respostas automáticas daquela conversa. Defina um único responsável pela automação de cada caixa para evitar dois bots respondendo ao mesmo evento.
 
 Typebot e n8n são referências e formatos de importação parcial; não são serviços que o cliente precise configurar para o runtime JRC. O serviço que mantém WhatsApp QR é infraestrutura. Meta continua dependente de autorização oficial.
+
+## Modelo multitenant entre grupo, empresa e conta
+
+No JRC Conversas, `account_id` é a fronteira operacional do tenant. Usuários, caixas de entrada, contatos, conversas, flows e vínculos do Broker são sempre filtrados pela conta ativa. No Broker atual, `organization_id` cumpre a mesma função de isolamento por RLS. A relação operacional segura é, portanto:
+
+`1 organização do Broker ↔ 1 conta do JRC Conversas ↔ N caixas de entrada/canais`.
+
+Um grupo econômico não deve compartilhar uma única conta operacional quando suas empresas possuem administradores, agentes, contatos, conversas ou políticas diferentes. O grupo é uma camada superior de administração e cobrança. Cada empresa/unidade continua sendo tenant isolado:
+
+| Camada | Exemplo | Responsabilidade |
+|---|---|---|
+| Plataforma JRC | Administração global | Criar grupos/empresas, planos, limites e suporte auditado |
+| Grupo econômico | Grupo JRC | Visão consolidada e responsáveis corporativos autorizados |
+| Tenant operacional | GoPure, Construtora, Operadora | Organização no Broker e conta no JRC Conversas |
+| Caixa de entrada | Comercial, Suporte, Financeiro | Inbox e canal WhatsApp pertencentes a um único tenant |
+| Usuário | Administrador, supervisor, agente | Membership na conta e grants nas caixas autorizadas |
+
+Para o exemplo, criar um grupo `Grupo JRC` e três tenants filhos: `GoPure`, `Construtora` e `Operadora`. Cada filho recebe `organization_id` próprio no Broker e `account_id` próprio no JRC Conversas. Um administrador corporativo pode ser membro das três contas; um agente da GoPure não enxerga caixas, flows ou conversas das demais. Se o próprio Grupo JRC também operar canais, ele recebe um quarto tenant operacional.
+
+A camada de grupo ainda precisa ser materializada como relacionamento explícito, por exemplo `organization_groups` e `organization_group_members` no Broker e um identificador equivalente de agrupamento na central. Ela não substitui `organization_id`/`account_id`, não amplia automaticamente permissões e não deve ser usada para consultas sem autorização por tenant.
+
+### Módulos disponíveis em todas as empresas
+
+Os módulos **WhatsApp JRC** e **Automações JRC** devem aparecer dentro de cada conta habilitada do JRC Conversas:
+
+1. **Configurações → Caixas de entrada → Adicionar caixa → WhatsApp JRC:** criar ou adotar uma caixa da conta ativa, gerar/renovar QR, acompanhar estado assíncrono, confirmar identidade, reconectar, desconectar e arquivar o vínculo.
+2. **Detalhe da caixa:** mostrar canal, número/identidade, status do transporte, agentes autorizados, automação vinculada e ações permitidas. A lista de caixas sempre vem da conta ativa.
+3. **Automações JRC:** criar, importar JSON, editar, validar, testar e publicar flows do tenant; depois vincular uma versão publicada a uma caixa da mesma conta.
+4. **Conversa:** transferir ao humano e retomar a automação com estado coordenado. Uma caixa possui apenas um motor de automação ativo.
+
+O frontend envia apenas a intenção e os IDs selecionados. O backend do JRC Conversas deriva o `account_id` da sessão, valida `AccountUser` e acesso à inbox e chama o Broker por proxy servidor a servidor. O navegador não recebe a chave de controle, a chave administrativa do provider nem um JWT global.
+
+Permissões mínimas recomendadas:
+
+| Papel na conta | QR/status | Reconectar | Administrar caixa | Criar/publicar flow | Atender conversas |
+|---|---:|---:|---:|---:|---:|
+| Administrador | Sim | Sim | Sim | Sim | Sim |
+| Supervisor | Sim | Conforme grant | Conforme grant | Conforme grant | Sim |
+| Agente | Status da própria caixa | Não por padrão | Não | Não por padrão | Sim |
+
+O usuário de homologação da conta 1 do LAB pode validar a UX, mas os testes de isolamento exigem uma segunda conta e um usuário sem acesso à primeira. Não realizar desconexão destrutiva em uma caixa de produção; usar número e inbox dedicados à homologação.
 
 ## 1. Operar agora pelo Broker
 

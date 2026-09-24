@@ -155,7 +155,8 @@ export async function executeAutomation(
     if(node.type==='variable'){const key=string(node.data.variable);if(safeKey(key))variables[key]=renderFlowText(node.data.value,variables);}
     let port='next';
     if(node.type==='condition'){
-      const actual=variables[string(node.data.field)]??'',expected=renderFlowText(node.data.value,variables),operator=string(node.data.operator);
+      const normalize=(value:string)=>node.data.comparisonMode==='JRC_NORMALIZED'?value.toLowerCase().trim():value;
+      const actual=normalize(variables[string(node.data.field)]??''),expected=normalize(renderFlowText(node.data.value,variables)),operator=string(node.data.operator);
       const ok=operator==='present'?Boolean(actual.trim()):operator==='not_equals'?actual!==expected:operator==='contains'?actual.toLowerCase().includes(expected.toLowerCase())
         :operator==='starts_with'?actual.toLowerCase().startsWith(expected.toLowerCase()):actual===expected;port=ok?'yes':'no';
     }
