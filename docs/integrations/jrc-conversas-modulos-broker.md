@@ -67,6 +67,47 @@ A caixa no Broker representa o número da empresa. A inbox da central organiza c
 
 Typebot e n8n são referências e formatos de importação parcial; não são serviços que o cliente precise configurar para o runtime JRC. O serviço que mantém WhatsApp QR é infraestrutura. Meta continua dependente de autorização oficial.
 
+## Modelo multitenant entre grupo, empresa e conta
+
+No JRC Conversas, `account_id` é a fronteira operacional do tenant. Usuários, caixas de entrada, contatos, conversas, flows e vínculos do Broker são sempre filtrados pela conta ativa. No Broker atual, `organization_id` cumpre a mesma função de isolamento por RLS. A relação operacional segura é, portanto:
+
+`1 organização do Broker ↔ 1 conta do JRC Conversas ↔ N caixas de entrada/canais`.
+
+Um grupo econômico não deve compartilhar uma única conta operacional quando suas empresas possuem administradores, agentes, contatos, conversas ou políticas diferentes. O grupo é uma camada superior de administração e cobrança. Cada empresa/unidade continua sendo tenant isolado:
+
+| Camada | Exemplo | Responsabilidade |
+|---|---|---|
+| Plataforma JRC | Administração global | Criar grupos/empresas, planos, limites e suporte auditado |
+| Grupo econômico | Grupo JRC | Visão consolidada e responsáveis corporativos autorizados |
+| Tenant operacional | GoPure, Construtora, Operadora | Organização no Broker e conta no JRC Conversas |
+| Caixa de entrada | Comercial, Suporte, Financeiro | Inbox e canal WhatsApp pertencentes a um único tenant |
+| Usuário | Administrador, supervisor, agente | Membership na conta e grants nas caixas autorizadas |
+
+Para o exemplo, criar um grupo `Grupo JRC` e três tenants filhos: `GoPure`, `Construtora` e `Operadora`. Cada filho recebe `organization_id` próprio no Broker e `account_id` próprio no JRC Conversas. Um administrador corporativo pode ser membro das três contas; um agente da GoPure não enxerga caixas, flows ou conversas das demais. Se o próprio Grupo JRC também operar canais, ele recebe um quarto tenant operacional.
+
+A camada de grupo ainda precisa ser materializada como relacionamento explícito, por exemplo `organization_groups` e `organization_group_members` no Broker e um identificador equivalente de agrupamento na central. Ela não substitui `organization_id`/`account_id`, não amplia automaticamente permissões e não deve ser usada para consultas sem autorização por tenant.
+
+### Módulos disponíveis em todas as empresas
+
+Os módulos **WhatsApp JRC** e **Automações JRC** devem aparecer dentro de cada conta habilitada do JRC Conversas:
+
+1. **Configurações → Caixas de entrada → Adicionar caixa → WhatsApp JRC:** criar ou adotar uma caixa da conta ativa, gerar/renovar QR, acompanhar estado assíncrono, confirmar identidade, reconectar, desconectar e arquivar o vínculo.
+2. **Detalhe da caixa:** mostrar canal, número/identidade, status do transporte, agentes autorizados, automação vinculada e ações permitidas. A lista de caixas sempre vem da conta ativa.
+3. **Automações JRC:** criar, importar JSON, editar, validar, testar e publicar flows do tenant; depois vincular uma versão publicada a uma caixa da mesma conta.
+4. **Conversa:** transferir ao humano e retomar a automação com estado coordenado. Uma caixa possui apenas um motor de automação ativo.
+
+O frontend envia apenas a intenção e os IDs selecionados. O backend do JRC Conversas deriva o `account_id` da sessão, valida `AccountUser` e acesso à inbox e chama o Broker por proxy servidor a servidor. O navegador não recebe a chave de controle, a chave administrativa do provider nem um JWT global.
+
+Permissões mínimas recomendadas:
+
+| Papel na conta | QR/status | Reconectar | Administrar caixa | Criar/publicar flow | Atender conversas |
+|---|---:|---:|---:|---:|---:|
+| Administrador | Sim | Sim | Sim | Sim | Sim |
+| Supervisor | Sim | Conforme grant | Conforme grant | Conforme grant | Sim |
+| Agente | Status da própria caixa | Não por padrão | Não | Não por padrão | Sim |
+
+O usuário de homologação da conta 1 do LAB pode validar a UX, mas os testes de isolamento exigem uma segunda conta e um usuário sem acesso à primeira. Não realizar desconexão destrutiva em uma caixa de produção; usar número e inbox dedicados à homologação.
+
 ## 1. Operar agora pelo Broker
 
 ### Preparação e QR
