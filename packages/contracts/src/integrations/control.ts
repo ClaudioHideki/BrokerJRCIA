@@ -45,6 +45,7 @@ export const OnboardingOperationSchema = z.strictObject({
 });
 export const OnboardingRecoverySchema = z.strictObject({ action: z.enum(['RETRY', 'RECONCILE', 'CANCEL']) });
 export const ControlResourcesSchema = z.strictObject({
+  connections: z.array(z.strictObject({ integrationId: z.uuid(), inboxId: z.number().int().positive(), instanceId: z.uuid(), name: z.string() })).max(500).default([]),
   providers: z.array(z.strictObject({ id: z.uuid(), name: z.string() })).max(500),
   instances: z.array(z.strictObject({ id: z.uuid(), name: z.string(), status: InstanceStatusSchema })).max(500),
 });

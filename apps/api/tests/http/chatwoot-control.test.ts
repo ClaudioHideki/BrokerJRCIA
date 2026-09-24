@@ -18,7 +18,7 @@ function harness(enabled = true) {
   if (enabled) service.authorize = authorize;
   const operation = { operationId: '721d4277-c925-4873-85d6-0ce516873b62', state: 'PENDING', stage: 'INSTANCE', instanceId: null, integrationId: null, inboxId: null, lastError: null };
   const start = vi.fn().mockResolvedValue(operation), get = vi.fn().mockResolvedValue(operation), recover = vi.fn().mockResolvedValue(operation);
-  const resources = vi.fn().mockResolvedValue({ instances: [], providers: [] });
+  const resources = vi.fn().mockResolvedValue({ instances: [], providers: [], connections: [] });
   if (enabled) Object.assign(service, { resources });
   const list = vi.fn().mockResolvedValue({ data: [operation] });
   const instance = vi.fn();
@@ -34,7 +34,7 @@ it('offers native onboarding resource selection and operation recovery through t
   const h = harness();
   const resources = await h.app.inject({ method: 'GET', url: '/v1/integrations/chatwoot/control/resources', headers: h.headers });
   expect(resources.statusCode).toBe(200); expect(resources.headers['cache-control']).toBe('no-store');
-  expect(resources.json()).toEqual({ instances: [], providers: [] });
+  expect(resources.json()).toEqual({ instances: [], providers: [], connections: [] });
   const operations = await h.app.inject({ method: 'GET', url: '/v1/integrations/chatwoot/control/onboarding', headers: h.headers });
   expect(operations.statusCode).toBe(200); expect(operations.json()).toEqual({ data: [h.operation] });
   expect(h.authorize).toHaveBeenCalledWith(expect.anything(), 'chatwoot:manage');

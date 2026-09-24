@@ -122,7 +122,12 @@ export function createChatwootControlAuth(options: ChatwootControlAuthOptions) {
             WHERE ch.organization_id=i.organization_id AND ch.instance_id=i.id)
           AND NOT EXISTS(SELECT 1 FROM chatwoot_onboarding_operations op WHERE op.organization_id=i.organization_id AND op.instance_id=i.id
             AND op.state<>'SUCCEEDED' AND NOT op.cancel_requested) ORDER BY i.name,i.id LIMIT 500`, [org])).rows;
-        return { providers, instances };
+        const connections = (await tx.query<{ integrationId: string; inboxId: number; instanceId: string; name: string }>(`SELECT
+          c.id AS "integrationId", c.inbox_id::integer AS "inboxId", ch.instance_id AS "instanceId", c.name
+          FROM chatwoot_connections c JOIN messaging_channels ch ON ch.organization_id=c.organization_id AND ch.id=c.channel_id
+          WHERE c.organization_id=$1 AND c.status='READY' AND c.inbox_id IS NOT NULL
+          AND ch.provider='BAILEYS' AND ch.instance_id IS NOT NULL ORDER BY c.name,c.id LIMIT 500`, [org])).rows;
+        return { providers, instances, connections };
       });
     },
     delegate(principal: ChatwootControlPrincipal, request: { requestId: string; deadline: Date; signal: AbortSignal }, integrationId?: string): InstanceActorContext {

@@ -54,7 +54,8 @@ describe('scoped Chatwoot control credentials in PostgreSQL', () => {
     const resources = await control.resources(jwt);
     expect(resources.providers).toEqual([{ id: expect.any(String), name: 'Fixture' }]);
     expect(resources.instances).toEqual([]); // The existing instance already has an inbox.
-    expect(await control.resources({ ...jwt, organizationId: other, actorId: outsider })).toEqual({ providers: [], instances: [] });
+    expect(resources.connections).toEqual([{ integrationId: integration, inboxId: 31, instanceId: expect.any(String), name: 'Fixture' }]);
+    expect(await control.resources({ ...jwt, organizationId: other, actorId: outsider })).toEqual({ providers: [], instances: [], connections: [] });
     await expect(control.resources({ ...jwt, actorId: viewer, role: 'OWNER' })).rejects.toMatchObject({ status: 403 });
   });
   it('issues only from a current owner/admin, persists HMAC and binding atomically, never replays the secret', async () => {
