@@ -1,14 +1,16 @@
 # JRC WhatsApp Broker
 
-## Candidato atual: Flows e múltiplas instalações de atendimento
+## Candidato atual: jornadas do Broker e integração com JRC Conversas
 
-O candidato de 18/09/2026 acrescenta Flows no Broker, com editor de nós, JSON,
-simulador e execução persistente por empresa. Pode atender canais WhatsApp do
-próprio Broker ou caixas de instalações JRC/Chatwoot compatíveis via Agent Bot.
-Confira [configuração, limites e atualização](docs/operations/broker-omnichannel.md)
-e [os testes realmente executados](docs/validation/2026-09-18-broker-omnichannel.md).
-As imagens desta tarefa são locais; a publicação e a homologação no servidor
-continuam separadas.
+O candidato de 23/09/2026 consolida as caixas Meta/QR, ações seguras de ciclo de
+vida e o runtime de Automações da JRC. A base conciliada é `f8e81df`. A integração
+nativa com o JRC Conversas ainda exige adoção de caixas existentes, identidade
+delegada, um único motor por caixa e handoff/retomada coordenados nos dois
+repositórios. Consulte o [estado, contratos existentes e próximos incrementos](docs/integrations/jrc-conversas-modulos-broker.md),
+a [matriz de QA desta base](docs/qa/2026-09-23-broker-journeys.md) e o
+[registro anterior do candidato omnichannel](docs/validation/2026-09-18-broker-omnichannel.md).
+Testes sintéticos ou isolados não substituem pareamento real nem homologação HTTPS
+com duas empresas. Imagens e deploy permanecem etapas separadas.
 
 ## Repositório e imagens
 
@@ -129,6 +131,8 @@ A geração sempre atualiza os artefatos diagnósticos sanitizados. A verificaç
 
 ## Documentação
 
+- [Integração com JRC Conversas: estado e próximos incrementos](docs/integrations/jrc-conversas-modulos-broker.md)
+- [Matriz QA das jornadas do Broker em 23/09/2026](docs/qa/2026-09-23-broker-journeys.md)
 - [Especificação superior de arquitetura](docs/superpowers/specs/2026-09-03-jrc-whatsapp-broker-design.md)
 - [Especificação do Incremento 1](docs/superpowers/specs/2026-09-03-phase-1-increment-1-backend-multitenant-baileys-design.md)
 - [Plano de implementação do Incremento 1](docs/superpowers/plans/2026-09-03-phase-1-increment-1-implementation-plan.md)
