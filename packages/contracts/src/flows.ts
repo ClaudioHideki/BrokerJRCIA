@@ -166,14 +166,35 @@ export function importFlow(text:string):{name:string;graph:FlowGraph;warnings:st
   }
   if(Array.isArray(doc.nodes)&&doc.connections&&typeof doc.connections==='object'){
     const names=new Map<string,string>(), nodes:FlowNode[]=[];
+    const positions=doc.nodes.map(raw=>record(raw).position).filter((position):position is number[]=>
+      Array.isArray(position)&&position.length===2&&position.every(coordinate=>typeof coordinate==='number'&&Number.isFinite(coordinate)));
+    const xs=positions.map(position=>position[0]!),ys=positions.map(position=>position[1]!);
+    const translate=positions.some(position=>position[0]! < -10000||position[0]! > 100000||position[1]! < -10000||position[1]! > 100000);
+    const fitAxis=(values:number[],start:number,gap:number)=>{
+      const unique=[...new Set(values)].sort((left,right)=>left-right),minimum=unique[0]??0,maximum=unique.at(-1)??0,span=maximum-minimum;
+      const scale=Number.isFinite(span)&&span>0?Math.min(1,(100000-start)/span):0;
+      const mapped=new Map<number,number>();let previous=start-gap;
+      unique.forEach((coordinate,index)=>{
+        // Extreme coordinates can overflow subtraction; rank preserves order in that case.
+        const projected=Number.isFinite(span)?start+(coordinate-minimum)*scale:start+(100000-start)*index/Math.max(1,unique.length-1);
+        const fitted=Math.min(100000,Math.max(Math.round(projected),previous+gap));
+        mapped.set(coordinate,fitted);previous=fitted;
+      });
+      return mapped;
+    };
+    const fittedX=translate?fitAxis(xs,60,200):null,fittedY=translate?fitAxis(ys,80,120):null;
+    if(translate)warnings.push('Posições do canvas n8n foram ajustadas para caber no editor JRC.');
     for(const [i,raw] of doc.nodes.entries()){
       const n=record(raw),p=record(n.parameters),nodeId=value(n.id)||'node-'+i;
       names.set(value(n.name),nodeId);
       const node:FlowNode={id:nodeId,label:value(n.name).slice(0,160)||'Nó '+i,type:'unsupported',position:{x:60+(i%4)*270,y:80+Math.floor(i/4)*150},data:{sourceType:value(n.type)}};
-      if(Array.isArray(n.position)&&n.position.length===2&&n.position.every(v=>typeof v==='number'&&Number.isFinite(v)))node.position={x:Number(n.position[0]),y:Number(n.position[1])};
+      if(Array.isArray(n.position)&&n.position.length===2&&n.position.every(v=>typeof v==='number'&&Number.isFinite(v)))node.position=translate?
+        {x:fittedX!.get(Number(n.position[0]))!,y:fittedY!.get(Number(n.position[1]))!}:
+        {x:Number(n.position[0]),y:Number(n.position[1])};
       if(n.type==='n8n-nodes-base.webhook'||n.type==='n8n-nodes-base.executeWorkflowTrigger'){node.type='start';node.data={};}
       if(n.type==='n8n-nodes-base.respondToWebhook'&&p.respondWith==='text'&&typeof p.responseBody==='string'&&!p.responseBody.startsWith('=')){node.type='message';node.data={text:p.responseBody};}
       if(n.type==='n8n-nodes-base.noOp'){node.type='variable';node.data={variable:'_continue',value:''};}
+      if(n.disabled===true){node.type='unsupported';node.data={sourceType:value(n.type),disabledInSource:true};}
       if(node.type==='unsupported')warnings.push(node.label+': requer adaptação de '+value(n.type)+'.');
       if(n.disabled===true)warnings.push(node.label+': nó desabilitado na origem; revise antes de publicar.');
       if(n.credentials)warnings.push(node.label+': credenciais da origem não foram copiadas.');
@@ -192,8 +213,8 @@ export function importFlow(text:string):{name:string;graph:FlowGraph;warnings:st
       }
     }
     // Message-only response nodes must terminate explicitly in the native graph.
-    for(const node of [...nodes])if(node.type==='message'&&!edges.some(e=>e.source===node.id)){
-      const endId='end-'+node.id;nodes.push({id:endId,type:'end',label:'Encerrar',position:{x:node.position.x+250,y:node.position.y},data:{}});edges.push({id:'end-edge-'+node.id,source:node.id,target:endId,port:'next'});
+    for(const node of [...nodes])if(nodes.length<150&&node.type==='message'&&!edges.some(e=>e.source===node.id)){
+      const endId='end-'+node.id;nodes.push({id:endId,type:'end',label:'Encerrar',position:{x:Math.min(100000,node.position.x+250),y:node.position.y},data:{}});edges.push({id:'end-edge-'+node.id,source:node.id,target:endId,port:'next'});
     }
     return {name:value(doc.name).slice(0,120)||'Workflow importado',graph:FlowGraphSchema.parse({nodes,edges}),warnings};
   }

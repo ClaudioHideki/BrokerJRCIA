@@ -18,13 +18,40 @@ function typebot(document:Record<string,unknown>):{name:string;graph:AutomationG
   report.push({sourceId,sourceType:type||'unknown',classification,targetType:classification==='UNSUPPORTED'?null:node.type,notes});nodes.push(node);
  }
  nodes.push({id:'end',type:'end',label:'Encerrar',position:{x,y:120},data:{}});const compatible=nodes.filter(node=>node.type!=='unsupported'),edges=compatible.slice(0,-1).map((node,index)=>({id:`edge-${index}`,source:node.id,target:compatible[index+1]!.id,port:node.type==='menu'?'option-1':'next'}));return {name:string(document.name).slice(0,120)||'Automação importada',graph:FlowGraphSchema.parse({nodes,edges}),nodes:report};}
-export function convertAutomationArtifact(requestedSource:ImportSource|'AUTO',raw:string){if(Buffer.byteLength(raw)>2*1024*1024)throw new Error('AUTOMATION_IMPORT_SIZE_LIMIT');let document=record(JSON.parse(raw.replace(/^\uFEFF/,'')));
+export function convertAutomationArtifact(requestedSource:ImportSource|'AUTO',raw:string){
+ if(Buffer.byteLength(raw)>2*1024*1024)throw new Error('AUTOMATION_IMPORT_SIZE_LIMIT');
+ let document=record(JSON.parse(raw.replace(/^\uFEFF/,'')));
  // Compatibility follows the underlying artifact, including legacy JRC workflow wrappers.
  while(['jrc-flows/1','jrc-flows/2','jrc-broker-flows/1'].includes(string(document.format))&&record(document.flow).engine==='workflow'&&document.workflow)document=record(document.workflow);
- const source:ImportSource=Array.isArray(document.groups)?'TYPEBOT':Array.isArray(document.nodes)&&document.connections?'N8N':requestedSource==='AUTO'?'JRC':requestedSource;let converted:{name:string;graph:AutomationGraphV1;nodes:ImportNodeReport[]};
- if(isLocalJrcFlow(document)) converted=convertLocalJrcFlow(document);
- else if(source==='TYPEBOT')converted=typebot(document);else {const imported=importFlow(raw),sourceNodes=Array.isArray(document.nodes)?document.nodes:imported.graph.nodes;converted={name:imported.name,graph:imported.graph,nodes:sourceNodes.map((item,index)=>{const node=record(item),sourceType=string(node.type)||'jrc',target=imported.graph.nodes[index];return {sourceId:string(node.id)||String(index),sourceType,classification:(target?.type==='unsupported'?'UNSUPPORTED':source==='JRC'?'EXACT':'PARTIAL') as ImportNodeReport['classification'],targetType:target?.type==='unsupported'?null:target?.type??null,notes:node.credentials?['Credenciais removidas; selecione uma credencial do cofre.']:source==='N8N'?['Revise expressões, conexões e parâmetros convertidos.']:[]};})};}
- const summary={source,total:converted.nodes.length,exact:converted.nodes.filter(node=>node.classification==='EXACT').length,partial:converted.nodes.filter(node=>node.classification==='PARTIAL').length,unsupported:converted.nodes.filter(node=>node.classification==='UNSUPPORTED').length,credentialsRemoved:true,autoPublished:false,manualReviewRequired:converted.nodes.some(node=>node.classification!=='EXACT')};if(summary.manualReviewRequired){let id='import-review';while(converted.graph.nodes.some(node=>node.id===id))id+='-review';converted.graph.nodes.push({id,type:'unsupported',label:'Revisar importação antes de publicar',position:{x:40,y:360},data:{sourceType:'IMPORT_REVIEW_REQUIRED'}});}return {...converted,source,report:{schemaVersion:1,summary,nodes:converted.nodes,warnings:['O artefato foi importado como rascunho e nunca é publicado automaticamente.','Credenciais da origem não foram copiadas.',...(isLocalJrcFlow(document)?['Caixas, gatilhos, horários, retomada e permissões devem ser configurados nesta empresa.']:[])]}};}
+ const source:ImportSource=Array.isArray(document.groups)?'TYPEBOT':Array.isArray(document.nodes)&&document.connections?'N8N':requestedSource==='AUTO'?'JRC':requestedSource;
+ let converted:{name:string;graph:AutomationGraphV1;nodes:ImportNodeReport[]};const importWarnings:string[]=[];
+ if(isLocalJrcFlow(document))converted=convertLocalJrcFlow(document);
+ else if(source==='TYPEBOT')converted=typebot(document);
+ else{
+  const imported=importFlow(raw),sourceNodes=Array.isArray(document.nodes)?document.nodes:imported.graph.nodes;
+  importWarnings.push(...imported.warnings.filter(warning=>warning==='Posições do canvas n8n foram ajustadas para caber no editor JRC.'));
+  converted={name:imported.name,graph:imported.graph,nodes:sourceNodes.map((item,index)=>{
+   const node=record(item),sourceType=string(node.type)||'jrc',target=imported.graph.nodes[index],notes:string[]=[];
+   if(node.credentials)notes.push('Credenciais removidas; selecione uma credencial do cofre.');
+   if(node.disabled===true)notes.push('Nó desabilitado na origem; reative somente após revisão.');
+   if(source==='N8N')notes.push('Revise expressões, conexões e parâmetros convertidos.');
+   return {sourceId:string(node.id)||String(index),sourceType,classification:(target?.type==='unsupported'?'UNSUPPORTED':source==='JRC'?'EXACT':'PARTIAL') as ImportNodeReport['classification'],targetType:target?.type==='unsupported'?null:target?.type??null,notes};
+  })};
+ }
+ const reviewNeeded=converted.nodes.some(node=>node.classification!=='EXACT');
+ if(reviewNeeded&&converted.graph.nodes.length>=150&&!converted.graph.nodes.some(node=>node.type==='unsupported')){
+  // At capacity, keep the artifact valid while retaining a mandatory review blocker.
+  const last=converted.graph.nodes.at(-1)!,report=converted.nodes.at(-1);
+  last.type='unsupported';last.data={sourceType:'IMPORT_REVIEW_REQUIRED'};
+  if(report){report.classification='UNSUPPORTED';report.targetType=null;report.notes.push('Revisar importação antes de publicar.');}
+ }
+ const summary={source,total:converted.nodes.length,exact:converted.nodes.filter(node=>node.classification==='EXACT').length,partial:converted.nodes.filter(node=>node.classification==='PARTIAL').length,unsupported:converted.nodes.filter(node=>node.classification==='UNSUPPORTED').length,credentialsRemoved:true,autoPublished:false,manualReviewRequired:reviewNeeded};
+ if(summary.manualReviewRequired&&converted.graph.nodes.length<150){
+  let id='import-review';while(converted.graph.nodes.some(node=>node.id===id))id+='-review';
+  converted.graph.nodes.push({id,type:'unsupported',label:'Revisar importação antes de publicar',position:{x:40,y:360},data:{sourceType:'IMPORT_REVIEW_REQUIRED'}});
+ }
+ return {...converted,source,report:{schemaVersion:1,summary,nodes:converted.nodes,warnings:['O artefato foi importado como rascunho e nunca é publicado automaticamente.','Credenciais da origem não foram copiadas.',...importWarnings,...(isLocalJrcFlow(document)?['Caixas, gatilhos, horários, retomada e permissões devem ser configurados nesta empresa.']:[])]}};
+}
 export function createAutomationImporter(options:{transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;keyring:string}){const keys=z.record(z.string().regex(/^\d+$/),z.string()).parse(JSON.parse(options.keyring)) as Record<string,string>,versions=Object.keys(keys).map(Number).sort((a,b)=>a-b),keyVersion=versions.at(-1);if(!keyVersion)throw new Error('CREDENTIAL_VAULT_KEYRING_EMPTY');const vault=createIntegrationSecrets(keys[String(keyVersion)]!);
  return {import:(org:string,input:{source:ImportSource|'AUTO';content:string;formatVersion?:string})=>options.transact(org,async tx=>{const id=randomUUID(),converted=convertAutomationArtifact(input.source,input.content),encrypted=vault.encrypt(`${org}:automation-import:${id}:key-${keyVersion}`,input.content);await tx.query(`insert into automation_import_artifacts(organization_id,id,source,format_version,encrypted_original,key_version,report,converted_graph) values($1,$2,$3,$4,$5,$6,$7,$8)`,[org,id,converted.source,input.formatVersion??null,encrypted,keyVersion,JSON.stringify(converted.report),JSON.stringify(converted.graph)]);return {schemaVersion:1,id,name:converted.name,source:converted.source,graph:converted.graph,report:converted.report,createdAsDraft:true};})};}
 export type AutomationImporter=ReturnType<typeof createAutomationImporter>;
