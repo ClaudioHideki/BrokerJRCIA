@@ -1,6 +1,6 @@
 # Broker JRC — auditoria de produto, integração e prontidão comercial
 
-Data: 25/09/2026. Revisão de código baseada no Broker `46e63f459f857211903df47e8e591f27d2434eb0` (incrementos locais em `codex/broker-commercial-readiness-20260925`) e no JRC Conversas `239c8358666289846e6e0112ea6c38eccfd956ba` (`codex/jrc-broker-modules-20260924`). Este documento distingue implementação local, testes e homologação externa. Não é certificado de funcionamento integral nem autorização de deploy.
+Data: 25/09/2026. Revisão de código baseada no Broker `46e63f459f857211903df47e8e591f27d2434eb0`, com correções publicadas na branch `codex/broker-commercial-readiness-20260925` (`73ec056` importador, `5c3d89e` saúde, `356b1d8` Compose), e no JRC Conversas `239c8358666289846e6e0112ea6c38eccfd956ba` (`codex/jrc-broker-modules-20260924`). Este documento distingue implementação, testes e homologação externa. Não é certificado de funcionamento integral nem autorização de deploy.
 
 ## 1. Situação verificada
 
