@@ -94,6 +94,7 @@ import {
 import { resolveRequestId } from "./http/request-id.js";
 import { loadAppConfig } from "./config/env.js";
 import { createDatabasePools } from "./db/pools.js";
+import { probeRequiredRuntimeSchema } from "./db/runtime-schema.js";
 import { withOrganizationTransaction } from "./db/tenant-transaction.js";
 import { writeTenantAudit } from "./modules/audit/audit.js";
 import { createSecurityAuditWriter } from "./modules/audit/security-audit.js";
@@ -538,7 +539,8 @@ export function buildApp(options: BuildAppOptions = {}) {
       executions:createExecutionService(automationOptions),
       migration:createLegacyFlowMigrationService(automationOptions),
     };
-    observability={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createObservabilityService({transact:automationOptions.transact,probeRedis:async()=>redisClient.isReady&&(await redisClient.ping())==='PONG',schemaCurrent:async()=>Boolean((await pools.appPool.query("select to_regclass('public.operational_heartbeats') is not null as ready")).rows[0]?.ready)})};
+    const schemaObjectsReady = () => probeRequiredRuntimeSchema(sql => pools.appPool.query(sql));
+    observability={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createObservabilityService({transact:automationOptions.transact,probeRedis:async()=>redisClient.isReady&&(await redisClient.ping())==='PONG',schemaCurrent:schemaObjectsReady})};
     const vaultKeys=messagingEnvironment.CREDENTIAL_VAULT_KEYS_JSON??(messagingEnvironment.INTEGRATION_ENCRYPTION_KEY?JSON.stringify({1:messagingEnvironment.INTEGRATION_ENCRYPTION_KEY}):undefined);
     if(config.automationRuntimeV2Enabled&&!vaultKeys)throw new Error('CREDENTIAL_VAULT_KEYS_REQUIRED');
     if(vaultKeys){const credentialService=createCredentialService({transact:automationOptions.transact,vault:createCredentialVault(vaultKeys),tester:createCredentialTester()}),membership=createMessagingMembershipResolver(pools.authPool),authentication={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:membership};
@@ -640,13 +642,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     });
     readinessCheck = async () => {
       if (!redisClient.isReady) throw new Error("DEPENDENCY_UNAVAILABLE");
-      const [result] = await Promise.all([
-        pools.appPool.query(
-          "SELECT to_regclass('public.messaging_media') IS NOT NULL AS ready",
-        ),
+      const [schemaReady] = await Promise.all([
+        schemaObjectsReady(),
         redisClient.ping(),
       ]);
-      if (!result.rows[0]?.ready) throw new Error("MIGRATIONS_REQUIRED");
+      if (!schemaReady) throw new Error("MIGRATIONS_REQUIRED");
     };
     app.addHook("onClose", async () => {
       if (redisClient.isOpen) await redisClient.quit();
