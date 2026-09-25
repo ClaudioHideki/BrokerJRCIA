@@ -53,8 +53,8 @@ caixa, inclusive para conversas anteriores à associação.
    vinculação do Flow direto usa esse canal de mensagens, não um ID de caixa.
 
 A empresa pode usar seus canais WhatsApp no Broker sem contratar JRC Conversas.
-O Compose atual ainda exige `CHATWOOT_BASE_URL` como origem gerenciada da
-plataforma; isso não exige que toda empresa tenha conta de atendimento vinculada.
+`CHATWOOT_BASE_URL` é opcional no Compose; deixe-o vazio quando o Broker usar
+somente destinos Chatwoot externos aprovados para cada empresa.
 
 ### 2. Vincular JRC Conversas ou Chatwoot
 

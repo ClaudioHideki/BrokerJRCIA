@@ -1,4 +1,4 @@
-name: jrc-broker
+name: ${BROKER_STACK_NAME:-jrc-broker}
 
 x-runtime: &runtime
   NODE_ENV: production
@@ -27,7 +27,7 @@ x-runtime: &runtime
   CONSOLE_COOKIE_SECURE: "true"
   PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?required}
   # Chatwoot / JRC Conversas
-  CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:?required}
+  CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:-}
   CHATWOOT_EXTERNAL_DESTINATIONS_ENABLED: ${CHATWOOT_EXTERNAL_DESTINATIONS_ENABLED:-false}
   CHATWOOT_CONTROL_ENABLED: ${CHATWOOT_CONTROL_ENABLED:-false}
   CHATWOOT_EMBED_ENABLED: ${CHATWOOT_EMBED_ENABLED:-false}
@@ -93,17 +93,17 @@ services:
 
     labels:
       - traefik.docker.network=dokploy-network
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-web.rule=Host(`jrc-broker.jrcws.cloud`)
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-web.entrypoints=web
-      - traefik.http.services.jrc-broker-broker-ophydn-57-web.loadbalancer.server.port=8080
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-web.service=jrc-broker-broker-ophydn-57-web
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-web.middlewares=redirect-to-https@file
+      - traefik.http.routers.${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-web.rule=Host(`${BROKER_HOST:-jrc-broker.jrcws.cloud}`)
+      - traefik.http.routers.${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-web.entrypoints=web
+      - traefik.http.services.${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-web.loadbalancer.server.port=8080
+      - traefik.http.routers.${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-web.service=${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-web
+      - traefik.http.routers.${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-web.middlewares=redirect-to-https@file
 
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-websecure.rule=Host(`jrc-broker.jrcws.cloud`)
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-websecure.entrypoints=websecure
-      - traefik.http.services.jrc-broker-broker-ophydn-57-websecure.loadbalancer.server.port=8080
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-websecure.service=jrc-broker-broker-ophydn-57-websecure
-      - traefik.http.routers.jrc-broker-broker-ophydn-57-websecure.tls.certresolver=letsencrypt
+      - traefik.http.routers.${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-websecure.rule=Host(`${BROKER_HOST:-jrc-broker.jrcws.cloud}`)
+      - traefik.http.routers.${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-websecure.entrypoints=websecure
+      - traefik.http.services.${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-websecure.loadbalancer.server.port=8080
+      - traefik.http.routers.${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-websecure.service=${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-websecure
+      - traefik.http.routers.${BROKER_ROUTE_ID:-jrc-broker-broker-ophydn-57}-websecure.tls.certresolver=letsencrypt
       - traefik.enable=true
 
 
