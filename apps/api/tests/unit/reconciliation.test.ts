@@ -52,7 +52,9 @@ function harness(provider: FakeProviderAdapter) {
     async list() { return [state.instance]; },
     async createOperation() { return state.operation; },
     async findPendingConnectOperationForUpdate() { return null; },
+    async findLatestConnectOperationForUpdate() { return null; },
     async updatePendingConnectOperation() { return false; },
+    async resolveUncertainConnectOperation() { return false; },
     async updateInstanceState(_tx, update) {
       state.instance = { ...state.instance, ...update, updatedAt: NOW };
       return state.instance;

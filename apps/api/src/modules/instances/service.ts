@@ -115,6 +115,7 @@ export type InstanceServiceErrorCode =
   | 'INVALID_CURSOR'
   | 'CURSOR_NOT_FOUND'
   | 'INSTANCE_STATE_CONFLICT'
+  | 'CONNECT_RECONCILIATION_REQUIRED'
   | 'PROVIDER_OPERATION_FAILED';
 
 export class InstanceServiceError extends Error {
@@ -167,6 +168,14 @@ function errorCode(error: unknown): string {
 function isUncertain(error: unknown): boolean {
   const code = errorCode(error);
   return code === 'PROVIDER_TIMEOUT' || code === 'PROVIDER_ABORTED';
+}
+
+function hasUncertainConnectOutcome(operation: ProviderOperationRow): boolean {
+  return operation.reconciliationRequired
+    || operation.canonicalErrorCode === 'PROVIDER_TIMEOUT'
+    || operation.canonicalErrorCode === 'PROVIDER_ABORTED'
+    || operation.canonicalErrorCode === 'CONNECT_LEASE_EXPIRED'
+    || operation.canonicalErrorCode === 'CONNECTION_NOT_ACTIVE';
 }
 
 function providerStatusToInstanceStatus(status: ProviderStatus): InstanceStatus {
@@ -505,7 +514,13 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
             if (idempotency.record.status === 'FAILED') {
               throw new InstanceServiceError('PROVIDER_OPERATION_FAILED', 502);
             }
-            return { kind: 'REPLAY' as const, instance, operationId: idempotency.record.operationId };
+            const latest = idempotency.record.operationId
+              ? await dependencies.repository.findLatestConnectOperationForUpdate(
+                transaction, context.organizationId, instance.id,
+              )
+              : null;
+            return { kind: 'REPLAY' as const, instance, operationId: idempotency.record.operationId,
+              reconciliationRequired: latest?.id === idempotency.record.operationId && hasUncertainConnectOutcome(latest) };
           }
           if (instance.status === 'CONNECTED') {
             await dependencies.repository.completeIdempotency(transaction, {
@@ -539,21 +554,25 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
                 status: 'COMPLETED',
                 responseMetadata: { instanceId: instance.id, status: 'CONNECTING', actionType: 'NONE' },
               });
-              return { kind: 'JOINED' as const, instance, operationId: active.id };
+              return { kind: 'JOINED' as const, instance, operationId: active.id,
+                reconciliationRequired: hasUncertainConnectOutcome(active) };
             }
             if (active) {
-              await dependencies.repository.updatePendingConnectOperation(transaction, {
-                organizationId: context.organizationId,
-                instanceId: instance.id,
-                operationId: active.id,
-                status: 'UNKNOWN',
-                canonicalErrorCode: 'CONNECT_LEASE_EXPIRED',
-                updatedAt: acquiredAt,
-              });
+              throw new InstanceServiceError('CONNECT_RECONCILIATION_REQUIRED', 409);
             }
           } else if (!['CREATED', 'DISCONNECTED', 'ERROR', 'AWAITING_ACTION'].includes(instance.status)) {
             throw new InstanceServiceError('INSTANCE_STATE_CONFLICT', 409);
           }
+
+          // A webhook may have changed the instance state while CONNECT is still pending.
+          // Neither that update nor a transient disconnected read proves the old provider
+          // call ended. Without a provider generation fence, do not start another one.
+          const latestConnect = await dependencies.repository.findLatestConnectOperationForUpdate(
+            transaction, context.organizationId, instance.id,
+          );
+          if (latestConnect && (latestConnect.status === 'PENDING' || latestConnect.status === 'UNKNOWN'
+            || hasUncertainConnectOutcome(latestConnect)))
+            throw new InstanceServiceError('CONNECT_RECONCILIATION_REQUIRED', 409);
 
           const operation = await dependencies.repository.createOperation(transaction, {
             organizationId: context.organizationId,
@@ -590,7 +609,7 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
           operationId: initial.operationId,
           replayed: true,
           pending: initial.instance.status !== 'CONNECTED',
-          reconciliationRequired: false,
+          reconciliationRequired: initial.reconciliationRequired,
           action: replayConnectionAction(initial.instance.status),
         };
       }
@@ -600,7 +619,7 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
           operationId: initial.operationId,
           replayed: false,
           pending: true,
-          reconciliationRequired: false,
+          reconciliationRequired: initial.reconciliationRequired,
           action: { type: 'NONE', reason: 'CONNECTION_PENDING' },
         };
       }
@@ -661,6 +680,7 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
               operationId: initial.operation.id,
               status: uncertain ? 'PENDING' : 'FAILED',
               canonicalErrorCode: errorCode(error),
+              reconciliationRequired: uncertain,
               updatedAt: now(),
               incrementAttempt: true,
             });
@@ -819,13 +839,26 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
               operationId: pending.id,
               status: operationStatus,
               canonicalErrorCode: operationStatus === 'UNKNOWN'
-                ? 'CONNECT_LEASE_EXPIRED'
+                ? pending.canonicalErrorCode ?? 'CONNECT_LEASE_EXPIRED'
                 : operationStatus === 'FAILED'
-                  ? 'CONNECTION_NOT_ACTIVE'
+                  ? pending.canonicalErrorCode ?? 'CONNECTION_NOT_ACTIVE'
                   : null,
+              reconciliationRequired: status !== 'CONNECTED',
               updatedAt: observedAt,
               incrementAttempt: true,
             });
+          } else if (status === 'CONNECTED') {
+            const latest = await dependencies.repository.findLatestConnectOperationForUpdate(
+              transaction, context.organizationId, instanceId,
+            );
+            if (latest?.reconciliationRequired && (latest.status === 'UNKNOWN' || latest.status === 'FAILED')) {
+              await dependencies.repository.resolveUncertainConnectOperation(transaction, {
+                organizationId: context.organizationId,
+                instanceId,
+                operationId: latest.id,
+                updatedAt: observedAt,
+              });
+            }
           }
           const pendingDisconnect = await dependencies.repository.findPendingDisconnectOperationForUpdate(
             transaction,

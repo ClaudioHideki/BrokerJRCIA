@@ -233,6 +233,7 @@ export async function registerPlatformRoutes(
           .parse(req.headers["x-platform-reason"]);
         const id = (req.params as { id?: string }).id;
         if (id) z.uuid().parse(id);
+        const paginationCursor=action==='list'?(req.query as {cursor?:string}).cursor:undefined;
         return options.service.execute(
           token,
           reason,
@@ -241,11 +242,12 @@ export async function registerPlatformRoutes(
           bodySchema
             ? (bodySchema.parse(req.body) as PlatformInput)
             : undefined,
+          ...(action==='list'?[paginationCursor]:[]),
         );
       };
       const groupReason = (req: FastifyRequest) => z.string().trim().min(5).max(500).parse(req.headers['x-platform-reason']);
-      scoped.get('/groups', { schema: { querystring: z.strictObject({}), response: { 200: z.strictObject({ data: z.array(EconomicGroupSchema) }) } } },
-        req => options.service.listGroups(cookie(req), groupReason(req)));
+      scoped.get('/groups', { schema: { querystring: z.strictObject({cursor:z.string().min(1).max(1024).optional()}), response: { 200: z.strictObject({ data: z.array(EconomicGroupSchema), nextCursor:z.string().optional() }) } } },
+        req => options.service.listGroups(cookie(req), groupReason(req), (req.query as {cursor?:string}).cursor));
       scoped.post('/groups', { schema: { querystring: z.strictObject({}), body: CreateEconomicGroupSchema, response: { 201: EconomicGroupSchema } } },
         async (req, reply) => reply.code(201).send(await options.service.createGroup(await mutation(req), groupReason(req), CreateEconomicGroupSchema.parse(req.body))));
       scoped.put('/groups/:id/organizations', { schema: { params: idParams, querystring: z.strictObject({}), body: AssignGroupOrganizationsSchema, response: { 200: EconomicGroupSchema } } },
@@ -254,8 +256,9 @@ export async function registerPlatformRoutes(
         "/organizations",
         {
           schema: {
+            querystring: z.strictObject({cursor:z.string().min(1).max(1024).optional()}),
             response: {
-              200: z.object({ organizations: z.array(organizationDto) }),
+              200: z.object({ organizations: z.array(organizationDto),nextCursor:z.string().optional() }),
             },
           },
         },
@@ -338,9 +341,13 @@ export async function registerPlatformRoutes(
         },
         (req) => run(req, "acknowledge", z.object({}).strict()),
       );
-      scoped.get('/organizations/:id/channels',{schema:{params:idParams,querystring:z.strictObject({})}},async req=>{
+      scoped.get('/organizations/:id/channels',{schema:{params:idParams,querystring:z.strictObject({
+        pageSize:z.coerce.number().int().min(1).max(100).optional(),cursor:z.string().min(1).max(256).optional(),
+      })}},async req=>{
         const org=idParams.parse(req.params).id;await options.service.authorizeChannels(cookie(req),z.string().trim().min(5).max(500).parse(req.headers['x-platform-reason']),org,false);
-        if(!options.channels)throw new PlatformError(503,'CHANNELS_UNAVAILABLE');return options.channels.list(org,true);
+        if(!options.channels)throw new PlatformError(503,'CHANNELS_UNAVAILABLE');
+        const {pageSize,cursor}=z.strictObject({pageSize:z.coerce.number().int().min(1).max(100).optional(),cursor:z.string().min(1).max(256).optional()}).parse(req.query);
+        return options.channels.list(org,true,{pageSize:pageSize??50,...(cursor?{cursor}:{})});
       });
       scoped.post('/organizations/:id/channels/:channelId/archive',{schema:{params:idParams.extend({channelId:z.uuid()}),querystring:z.strictObject({}),body:z.strictObject({archived:z.boolean()})}},async req=>{
         const {id:org,channelId}=idParams.extend({channelId:z.uuid()}).parse(req.params),token=await mutation(req);

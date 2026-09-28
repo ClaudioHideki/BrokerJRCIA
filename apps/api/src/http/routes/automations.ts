@@ -7,6 +7,7 @@ import type { Role } from '../plugins/authorization.js';
 import { authenticateRequest, type AuthenticationOptions } from '../plugins/authentication.js';
 import { AutomationError, type AutomationService, type createExecutionService } from '../../modules/automations/service.js';
 import type { LegacyFlowMigrationService } from '../../modules/automations/legacy-migration.js';
+import { IdempotencyConflictError } from '../../modules/instances/idempotency.js';
 
 export interface AutomationRouteOptions extends AuthenticationOptions {
   service:AutomationService;executions:ReturnType<typeof createExecutionService>;migration?:LegacyFlowMigrationService;
@@ -18,6 +19,7 @@ const problem=(reply:FastifyReply,request:FastifyRequest,status:number,code:stri
 export async function registerAutomationRoutes(app:FastifyInstance,options:AutomationRouteOptions){
   app.decorateRequest('authentication',null);app.addHook('onRequest',async(_request,reply)=>{reply.header('Cache-Control','no-store');});
   app.setErrorHandler((error,request,reply)=>{const operational=tenantOperationalProblem(error,request.id);if(operational)return reply.code(operational.status).type('application/problem+json').send(operational);if(error instanceof AutomationError)return problem(reply,request,error.statusCode,error.code,error.details);
+    if(error instanceof IdempotencyConflictError)return problem(reply,request,409,error.code);
     const candidate=error as {validation?:unknown;statusCode?:number};const status=candidate.validation||error instanceof z.ZodError?400:candidate.statusCode===413?413:500;return problem(reply,request,status,status===400?'INVALID_REQUEST':'AUTOMATION_UNAVAILABLE');});
   const auth=authenticateRequest(options),guard=(write:boolean)=>async(request:FastifyRequest,reply:FastifyReply)=>{const identity=request.authentication;
     const role=identity?.kind==='JWT'?await options.resolveCurrentRole(identity.actorId,identity.organizationId):null;
@@ -26,14 +28,17 @@ export async function registerAutomationRoutes(app:FastifyInstance,options:Autom
   const org=(request:FastifyRequest)=>request.authentication!.organizationId;
   api.get('/v1/automations/status',{preHandler:read,schema:{querystring:empty}},()=>options.service.status());
   api.get('/v1/automation-nodes',{preHandler:read,schema:{querystring:empty}},()=>({schemaVersion:1,data:AUTOMATION_NODE_CATALOG_V1}));
-  api.get('/v1/automations',{preHandler:read,schema:{querystring:empty}},request=>options.service.list(org(request)));
+  api.get('/v1/automations',{preHandler:read,schema:{querystring:z.strictObject({pageSize:z.coerce.number().int().min(1).max(200).optional(),cursor:z.string().min(1).max(256).optional()})}},request=>options.service.list(org(request),{
+    ...(request.query.pageSize===undefined?{}:{pageSize:request.query.pageSize}),
+    ...(request.query.cursor===undefined?{}:{cursor:request.query.cursor}),
+  }));
   if(options.migration){const migration=options.migration;
    api.get('/v1/automations/migrations/legacy',{preHandler:read,schema:{querystring:empty}},request=>migration.status(org(request)));
    api.post('/v1/automations/migrations/legacy',{preHandler:write,schema:{headers:IdempotencyHeadersSchema,querystring:empty,body:z.strictObject({limit:z.number().int().min(1).max(200).default(50),afterId:z.uuid().optional()})}},request=>migration.migrateBatch(org(request),{limit:request.body.limit,...(request.body.afterId?{afterId:request.body.afterId}:{}),actorId:request.authentication!.actorId!}));
    api.post('/v1/automations/migrations/legacy/:id/cutover',{preHandler:write,schema:{params,headers:IdempotencyHeadersSchema,querystring:empty,body:empty}},request=>migration.cutover(org(request),request.params.id,request.authentication!.actorId!));
    api.post('/v1/automations/migrations/legacy/:id/rollback',{preHandler:write,schema:{params,headers:IdempotencyHeadersSchema,querystring:empty,body:empty}},request=>migration.rollback(org(request),request.params.id,request.authentication!.actorId!));
   }
-  api.post('/v1/automations',{preHandler:write,schema:{headers:IdempotencyHeadersSchema,querystring:empty,body:draft}},async(request,reply)=>reply.code(201).send(await options.service.create(org(request),request.body)));
+  api.post('/v1/automations',{preHandler:write,schema:{headers:IdempotencyHeadersSchema,querystring:empty,body:draft}},async(request,reply)=>reply.code(201).send(await options.service.create(org(request),request.body,request.headers['idempotency-key'])));
   api.get('/v1/automations/:id',{preHandler:read,schema:{params,querystring:empty}},request=>options.service.get(org(request),request.params.id));
   api.put('/v1/automations/:id',{preHandler:write,schema:{params,querystring:empty,body:draft.extend({revision:z.number().int().positive()})}},request=>options.service.save(org(request),request.params.id,request.body));
   api.post('/v1/automations/:id/validate',{preHandler:read,schema:{params,querystring:empty,body:empty}},request=>options.service.validate(org(request),request.params.id));

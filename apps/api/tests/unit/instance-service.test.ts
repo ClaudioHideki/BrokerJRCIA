@@ -140,6 +140,13 @@ function createHarness(options: {
         && candidate.status === 'PENDING'
       )) ?? null;
     },
+    async findLatestConnectOperationForUpdate(_tx, organizationId, instanceId) {
+      return [...operations.values()].filter((candidate) => (
+        candidate.organizationId === organizationId
+        && candidate.instanceId === instanceId
+        && candidate.operationType === 'CONNECT'
+      )).at(-1) ?? null;
+    },
     async findPendingDisconnectOperationForUpdate(_tx, organizationId, instanceId) {
       return [...operations.values()].find((candidate) => (
         candidate.organizationId === organizationId
@@ -161,9 +168,19 @@ function createHarness(options: {
         ...current,
         status: input.status,
         canonicalErrorCode: input.canonicalErrorCode,
+        reconciliationRequired: input.reconciliationRequired ?? current.reconciliationRequired,
         updatedAt: input.updatedAt,
         attemptCount: current.attemptCount + (input.incrementAttempt ? 1 : 0),
       });
+      return true;
+    },
+    async resolveUncertainConnectOperation(_tx, input) {
+      const current = operations.get(input.operationId);
+      if (!current || current.organizationId !== input.organizationId
+        || current.instanceId !== input.instanceId || !current.reconciliationRequired
+        || (current.status !== 'UNKNOWN' && current.status !== 'FAILED')) return false;
+      operations.set(current.id, { ...current, status: 'SUCCEEDED', canonicalErrorCode: null,
+        reconciliationRequired: false, updatedAt: input.updatedAt });
       return true;
     },
     async updatePendingDisconnectOperation(_tx, input) {
@@ -644,22 +661,25 @@ describe('serviço de instâncias', () => {
     }));
   });
 
-  it('expira lease antiga e permite exatamente uma nova chamada ao provider', async () => {
+  it('bloqueia nova chamada ao provider após lease de CONNECT expirada', async () => {
     const stale = createHarness({
       persistedStatus: 'CONNECTING',
       persistedConnectUpdatedAt: new Date(NOW.getTime() - 60_001),
     });
 
-    await stale.service.connectInstance(context(), {
+    await expect(stale.service.connectInstance(context(), {
       instanceId: INSTANCE_ID,
       idempotencyKey: 'after-expired-lease',
-    });
+    })).rejects.toMatchObject({ code: 'CONNECT_RECONCILIATION_REQUIRED', status: 409 });
 
-    expect(stale.provider.calls.beginConnection).toHaveLength(1);
+    expect(stale.provider.calls.beginConnection).toHaveLength(0);
+    stale.provider.responses.getStatus = 'CONNECTING';
+    await stale.service.getInstanceStatus(context(), INSTANCE_ID);
     expect([...stale.operations.values()]).toContainEqual(expect.objectContaining({
       id: OPERATION_ID,
       status: 'UNKNOWN',
       canonicalErrorCode: 'CONNECT_LEASE_EXPIRED',
+      reconciliationRequired: true,
     }));
   });
 

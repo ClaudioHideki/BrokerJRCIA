@@ -5,9 +5,13 @@ import { z } from "zod";
 import {
   MessagingChannelsResponseSchema,
   TemplatesResponseSchema,
+  TemplateStatusResponseSchema,
+  CreateTextTemplateRequestSchema,
+  SubmittedTemplateSchema,
   ConversationsResponseSchema,
   MessagesResponseSchema,
   SendTemplateRequestSchema,
+  IdempotencyHeadersSchema,
   ConversationModeRequestSchema,
   ConfigureBotRequestSchema,
   MessagingChannelViewSchema,
@@ -17,6 +21,9 @@ import {
   type ConfigureBotRequest,
   type MessagingChannelView,
   type TemplateView,
+  type TemplateStatusResponse,
+  type CreateTextTemplateRequest,
+  type SubmittedTemplate,
   type ConversationView,
   type MessageView,
   type SendTemplateRequest,
@@ -50,6 +57,17 @@ export interface MessagingService {
     organizationId: string,
     channelId: string,
   ): Promise<{ data: TemplateView[] }>;
+  getTemplateStatus(
+    organizationId: string,
+    channelId: string,
+    templateId: string,
+  ): Promise<TemplateStatusResponse>;
+  createTextTemplate(
+    organizationId: string,
+    channelId: string,
+    input: CreateTextTemplateRequest,
+    idempotencyKey: string,
+  ): Promise<SubmittedTemplate>;
   listConversations(
     organizationId: string,
     channelId: string,
@@ -83,6 +101,7 @@ export interface MessagingRouteOptions extends AuthenticationOptions {
   ): Promise<Role | null>;
 }
 const idParams = z.strictObject({ id: z.uuid() });
+const templateStatusParams = z.strictObject({ id: z.uuid(), templateId: z.string().regex(/^[1-9]\d{4,63}$/) });
 const emptyQuery = z.strictObject({});
 function tenant(request: FastifyRequest) {
   return request.authentication!.organizationId;
@@ -170,14 +189,17 @@ export async function registerMessagingRoutes(
         : [404, 409, 422, 503].includes(candidate.status ?? 0)
           ? candidate.status!
           : 500;
-    const code =
-      status === 400
+    const safeCode = typeof candidate.code === "string" && [
+      "META_CHANNEL_REQUIRED", "META_TEMPLATE_REJECTED", "META_TEMPLATE_SUBMISSION_UNKNOWN",
+      "META_TEMPLATE_NAME_CONFLICT", "IDEMPOTENCY_CONFLICT",
+    ].includes(candidate.code) ? candidate.code : undefined;
+    const code = safeCode ?? (status === 400
         ? "INVALID_REQUEST"
         : status === 404
           ? "NOT_FOUND"
           : status === 500
             ? "INTERNAL_ERROR"
-            : "MESSAGING_UNAVAILABLE";
+            : "MESSAGING_UNAVAILABLE");
     // Never log provider bodies or credential references.
     return reply
       .code(status)
@@ -332,6 +354,34 @@ export async function registerMessagingRoutes(
     },
     (request) =>
       options.service.listTemplates(tenant(request), request.params.id),
+  );
+  api.get(
+    "/v1/messaging/channels/:id/templates/:templateId/status",
+    {
+      preHandler: read,
+      schema: {
+        params: templateStatusParams,
+        querystring: emptyQuery,
+        response: { 200: TemplateStatusResponseSchema },
+      },
+    },
+    request => options.service.getTemplateStatus(tenant(request), request.params.id, request.params.templateId),
+  );
+  api.post(
+    "/v1/messaging/channels/:id/templates",
+    {
+      preHandler: administerAutomation,
+      schema: {
+        params: idParams,
+        headers: IdempotencyHeadersSchema,
+        querystring: emptyQuery,
+        body: CreateTextTemplateRequestSchema,
+        response: { 202: SubmittedTemplateSchema },
+      },
+    },
+    async (request, reply) => reply.code(202).send(await options.service.createTextTemplate(
+      tenant(request), request.params.id, request.body, request.headers["idempotency-key"],
+    )),
   );
   api.get(
     "/v1/messaging/channels/:id/conversations",

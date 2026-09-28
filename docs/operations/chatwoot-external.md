@@ -56,6 +56,7 @@ papel no corpo. O Rails atribui o usuário em `X-JRC-External-Actor` para audito
 | Recuperação | POST `/onboarding/:operationId/recover` | RETRY, RECONCILE ou CANCEL autorizados |
 | Saúde | GET `/connections/:integrationId/status` | Consulta; não cria QR |
 | Pareamento | POST `/connections/:integrationId/pair` | Confere acesso remoto e inicia/reutiliza desafio |
+| Progresso do pareamento | GET `/connections/:integrationId/pair-operations/:operationId` | Consulta estado durável da operação CONNECT; pode entregar uma vez o QR/código efêmero |
 | Identidade | POST `/connections/:integrationId/confirm-identity` | Admin aprova a revisão observada pelo provider |
 | Logout | POST `/connections/:integrationId/disconnect` | Desconexão explícita e auditada |
 | Agentes | PUT `/connections/:integrationId/agents` | Associa agentes existentes na conta |
@@ -78,10 +79,53 @@ Nenhuma transação de banco deve ficar aberta enquanto um backend chama o outro
 
 ## Pareamento e diagnóstico
 
-- QR/pairing code fica apenas em memória da tela autorizada, até expirar. Não
-  armazenar em atributos, logs, cache, localStorage ou capturas de tela reais.
-- Duas abas compartilham janela curta de pareamento. Repetir uma operação concluída
-  não recupera o segredo persistido, pois ele não é armazenado.
+- QR/pairing code fica apenas em memória da tela autorizada. Para recuperar um
+  desafio quando o cliente conhece o `operationId` mas não recebeu o QR do POST,
+  o Broker guarda o desafio cifrado em Redis por no máximo 60 segundos e nunca
+  além do prazo do provider. Não registrar em banco, logs,
+  atributos, localStorage ou capturas de tela reais.
+- Duas abas compartilham janela curta de pareamento. Repetir o POST com a mesma
+  chave não recupera o segredo; somente uma leitura GET autorizada pode consumir
+  o desafio efêmero, antes da expiração.
+- `GET pair-operations/:operationId` exige permissão `chatwoot:pair` vigente e
+  as mesmas restrições de primeiro pareamento administrativo e identidade do POST;
+  devolve `operationId`, `state`, `instanceStatus`, `reconciliationRequired`,
+  `lastError`, `updatedAt` e `action` apenas da conexão vinculada. `action` é
+  `null` ou um QR/código ainda válido. A primeira leitura autorizada consome o
+  desafio atomicamente; outra leitura recebe `null`. O Broker revalida a
+  permissão e o vínculo também depois da leitura do Redis. `SUCCEEDED` significa
+  que a chamada ao provider terminou; não significa que o telefone já está
+  conectado. Se o provider retornou `CONNECTION_PENDING` sem QR, esta consulta
+  não cria um desafio novo: é necessário um mecanismo futuro de reconciliação
+  com lease/fence para chamar o provider com segurança. Enquanto a lease de um
+  PENDING normal estiver fresca, novas intenções unem-se à mesma operação sem
+  repetir a chamada. Após a lease expirar, uma nova chave recebe HTTP 409
+  `CONNECT_RECONCILIATION_REQUIRED`; verifique o status em vez de reiniciar
+  a conexão. Repetir a chave antiga não recria nem recupera o QR.
+- Se `beginConnection` terminou em timeout ou abort, a operação mantém
+  `reconciliationRequired=true` e `lastError=PROVIDER_TIMEOUT` ou
+  `PROVIDER_ABORTED`, inclusive após expirar a lease. Uma nova chave retorna
+  HTTP 409 `CONNECT_RECONCILIATION_REQUIRED` antes de outra chamada ao provider.
+  Use a consulta de status para observar a conexão; uma observação transitória
+  de `DISCONNECTED` não libera retry, pois a chamada anterior pode continuar
+  no provider. Somente resultado confirmado `CONNECTED` encerra a dúvida sem
+  outro efeito. Para voltar a parear após resultado incerto não confirmado,
+  ainda falta um contrato de reconciliação explícito com geração da sessão do
+  provider; o produto ainda não possui uma ação administrativa segura de reset
+  remoto para esse estado. Não remova o bloqueio manualmente no banco nem apague
+  a caixa ou o histórico de atendimento.
+- A recuperação usa `INTEGRATION_ENCRYPTION_KEY` e o Redis já configurados no
+  Broker, sem variável ou migration nova. Todas as réplicas precisam compartilhar
+  a mesma chave e o mesmo Redis. Se o cache falhar, a resposta síncrona do POST
+  ainda pode exibir o desafio, mas não há recuperação posterior pelo GET. Se o
+  POST inteiro se perder, repetir a mesma chave idempotente pode devolver o
+  `operationId` sem o QR; esse ID permite consultar o GET uma única vez.
+- O Evolution atual responde a `GET instance/connect/:id` com o QR em `connecting`,
+  mas pode iniciar outra conexão se o estado for `close`. `connectionState` não
+  contém QR, e o webhook configurado não inclui `QRCODE_UPDATED`. Não fazer
+  retry automático do provider em uma consulta de progresso. O contrato futuro
+  precisa de leitura somente do desafio com geração/revisão da sessão e uma
+  ação explícita de reconciliação cercada por lease e idempotência no Broker.
 - Primeira identidade e substituição exigem administrador. Agente precisa de grant
   específico e identidade anterior aprovada. Troca observada bloqueia o envio e
   preserva a fila até confirmação explícita. Revogação vale na próxima chamada.

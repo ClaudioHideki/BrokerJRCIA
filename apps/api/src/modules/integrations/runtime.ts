@@ -22,6 +22,7 @@ import { MediaError, EvolutionWorkspaceClient, type MetaCloudClient } from "@jrc
 import { randomUUID } from 'node:crypto';
 import { createChatwootHealth } from './chatwoot-health.js';
 import { createChatwootControlService } from './chatwoot-control-service.js';
+import { createPairActionStore, type PairActionRedisClient } from './chatwoot-pair-action-store.js';
 import type { MessagingChannel, OutboxClaim } from "../messaging/types.js";
 import { createOnboardingService } from './chatwoot-onboarding.js';
 import type { ChatwootControlAuth } from './chatwoot-control-auth.js';
@@ -104,7 +105,7 @@ export function createIntegrationRuntime(
   environment: NodeJS.ProcessEnv,
   pool: Pool,
   resolveMetaClient?: (channel: MessagingChannel) => Promise<MetaCloudClient>,
-  control?: { auth: ChatwootControlAuth; instances: InstanceService },
+  control?: { auth: ChatwootControlAuth; instances: InstanceService; pairActionRedis?: PairActionRedisClient },
 ) {
   const config = loadIntegrationConfig(environment);
   const transact: ChatwootOptions["transact"] = (org, operation) =>
@@ -256,7 +257,10 @@ export function createIntegrationRuntime(
     } }) : undefined,
     dashboardClient: options ? chatwootEnvironment(options).client : undefined,
     identity,
-    controlService: control && options && chatwoot && identity ? createChatwootControlService({ ...options, ...control, chatwoot, health: identity }) : undefined,
+    controlService: control && options && chatwoot && identity ? createChatwootControlService({
+      ...options, ...control, chatwoot, health: identity,
+      ...(control.pairActionRedis ? { pairActions: createPairActionStore({ client: control.pairActionRedis, encryptionKey: options.encryptionKey }) } : {}),
+    }) : undefined,
     onboarding: control && chatwoot && qr ? createOnboardingService({ transact, ...control, chatwoot, activateQr: qr.activate }) : undefined,
     chatwootWorker: options ? createChatwootWorker(options) : undefined,
     provisioner: options ? createChatwootProvisioner(options) : undefined,

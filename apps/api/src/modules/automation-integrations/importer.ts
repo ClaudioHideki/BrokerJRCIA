@@ -4,6 +4,8 @@ import {z} from 'zod';
 import type {OrganizationTransaction} from '../../db/tenant-transaction.js';
 import {createIntegrationSecrets} from '../integrations/secrets.js';
 import { convertLocalJrcFlow, isLocalJrcFlow } from './jrc-flow-converter.js';
+import { AutomationError } from '../automations/service.js';
+import { claimIdempotency, completeIdempotencyRecord, hashIdempotencyRequest } from '../instances/idempotency.js';
 
 export type ImportSource='JRC'|'N8N'|'TYPEBOT';
 export interface ImportNodeReport{sourceId:string;sourceType:string;classification:'EXACT'|'PARTIAL'|'UNSUPPORTED';targetType:string|null;notes:string[]}
@@ -52,6 +54,32 @@ export function convertAutomationArtifact(requestedSource:ImportSource|'AUTO',ra
  }
  return {...converted,source,report:{schemaVersion:1,summary,nodes:converted.nodes,warnings:['O artefato foi importado como rascunho e nunca é publicado automaticamente.','Credenciais da origem não foram copiadas.',...importWarnings,...(isLocalJrcFlow(document)?['Caixas, gatilhos, horários, retomada e permissões devem ser configurados nesta empresa.']:[])]}};
 }
-export function createAutomationImporter(options:{transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;keyring:string}){const keys=z.record(z.string().regex(/^\d+$/),z.string()).parse(JSON.parse(options.keyring)) as Record<string,string>,versions=Object.keys(keys).map(Number).sort((a,b)=>a-b),keyVersion=versions.at(-1);if(!keyVersion)throw new Error('CREDENTIAL_VAULT_KEYRING_EMPTY');const vault=createIntegrationSecrets(keys[String(keyVersion)]!);
- return {import:(org:string,input:{source:ImportSource|'AUTO';content:string;formatVersion?:string})=>options.transact(org,async tx=>{const id=randomUUID(),converted=convertAutomationArtifact(input.source,input.content),encrypted=vault.encrypt(`${org}:automation-import:${id}:key-${keyVersion}`,input.content);await tx.query(`insert into automation_import_artifacts(organization_id,id,source,format_version,encrypted_original,key_version,report,converted_graph) values($1,$2,$3,$4,$5,$6,$7,$8)`,[org,id,converted.source,input.formatVersion??null,encrypted,keyVersion,JSON.stringify(converted.report),JSON.stringify(converted.graph)]);return {schemaVersion:1,id,name:converted.name,source:converted.source,graph:converted.graph,report:converted.report,createdAsDraft:true};})};}
+export function createAutomationImporter(options:{transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;keyring:string;enabled?:boolean}){const keys=z.record(z.string().regex(/^\d+$/),z.string()).parse(JSON.parse(options.keyring)) as Record<string,string>,versions=Object.keys(keys).map(Number).sort((a,b)=>a-b),keyVersion=versions.at(-1);if(!keyVersion)throw new Error('CREDENTIAL_VAULT_KEYRING_EMPTY');const vault=createIntegrationSecrets(keys[String(keyVersion)]!);
+ const available=()=>{if(options.enabled===false)throw new AutomationError('AUTOMATION_RUNTIME_DISABLED',503);};
+ return {
+  preview:(_org:string,input:{source:ImportSource|'AUTO';content:string;formatVersion?:string})=>{available();const converted=convertAutomationArtifact(input.source,input.content);return {schemaVersion:1,name:converted.name,source:converted.source,graph:converted.graph,report:{...converted.report,warnings:['Prévia sem gravação. Confirme a importação para salvar o rascunho.',...converted.report.warnings.slice(1)]},createdAsDraft:false};},
+  import:(org:string,input:{source:ImportSource|'AUTO';content:string;formatVersion?:string},idempotencyKey:string)=>{
+   available();
+   const requestHash=hashIdempotencyRequest({source:input.source,content:input.content,formatVersion:input.formatVersion??null});
+   return options.transact(org,async tx=>{
+    const claim=await claimIdempotency(tx,{organizationId:org,route:'POST /v1/automation-imports',key:idempotencyKey,requestHash,expiresAt:new Date(Date.now()+7*24*60*60*1000)});
+    if(claim.kind==='REPLAY'){
+     const artifactId=z.uuid().safeParse(claim.record.responseMetadata.artifactId);
+     if(claim.record.status!=='COMPLETED'||!artifactId.success)throw new AutomationError('AUTOMATION_IMPORT_REPLAY_UNAVAILABLE',503);
+     const stored=await tx.query<{source:ImportSource;encryptedOriginal:string;keyVersion:number;report:ReturnType<typeof convertAutomationArtifact>['report'];convertedGraph:AutomationGraphV1}>(
+      `select source,encrypted_original as "encryptedOriginal",key_version as "keyVersion",report,converted_graph as "convertedGraph"
+         from automation_import_artifacts where organization_id=$1 and id=$2`,[org,artifactId.data]);
+     const row=stored.rows[0],oldKey=row&&keys[String(row.keyVersion)];
+     if(!row||!oldKey)throw new AutomationError('AUTOMATION_IMPORT_REPLAY_UNAVAILABLE',503);
+     const original=createIntegrationSecrets(oldKey).decrypt(`${org}:automation-import:${artifactId.data}:key-${row.keyVersion}`,row.encryptedOriginal);
+     const name=convertAutomationArtifact(row.source,original).name;
+     return {schemaVersion:1,id:artifactId.data,name,source:row.source,graph:FlowGraphSchema.parse(row.convertedGraph),report:row.report,createdAsDraft:true};
+    }
+    const id=randomUUID(),converted=convertAutomationArtifact(input.source,input.content),encrypted=vault.encrypt(`${org}:automation-import:${id}:key-${keyVersion}`,input.content);
+    await tx.query(`insert into automation_import_artifacts(organization_id,id,source,format_version,encrypted_original,key_version,report,converted_graph) values($1,$2,$3,$4,$5,$6,$7,$8)`,[org,id,converted.source,input.formatVersion??null,encrypted,keyVersion,JSON.stringify(converted.report),JSON.stringify(converted.graph)]);
+    await completeIdempotencyRecord(tx,{organizationId:org,recordId:claim.recordId,status:'COMPLETED',responseMetadata:{artifactId:id}});
+    return {schemaVersion:1,id,name:converted.name,source:converted.source,graph:converted.graph,report:converted.report,createdAsDraft:true};
+   });
+  }
+ };}
 export type AutomationImporter=ReturnType<typeof createAutomationImporter>;

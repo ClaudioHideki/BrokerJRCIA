@@ -19,8 +19,12 @@ function parse<T>(schema: { safeParse(value: unknown): { success: true; data: T 
   return result.data;
 }
 
-export async function listChannels(client: ApiClient,includeArchived=false) {
-  return parse(ChannelListV1Schema, await client.request<unknown>('/v1/channels'+(includeArchived?'?includeArchived=true':'')));
+export async function listChannels(client: ApiClient,includeArchived=false,page?:{pageSize:number;cursor?:string}) {
+  const query = new URLSearchParams();
+  if (includeArchived) query.set('includeArchived', 'true');
+  if (page) { query.set('pageSize', String(page.pageSize)); if (page.cursor) query.set('cursor', page.cursor); }
+  const suffix = query.size ? `?${query}` : '';
+  return parse(ChannelListV1Schema, await client.request<unknown>(`/v1/channels${suffix}`));
 }
 export async function getChannel(client: ApiClient, id: string) {
   return parse(ChannelV1Schema, await client.request<unknown>(`/v1/channels/${encodeURIComponent(id)}`));

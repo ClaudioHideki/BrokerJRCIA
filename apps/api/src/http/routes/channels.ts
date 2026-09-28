@@ -50,8 +50,14 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
   const context = (request: FastifyRequest) => ({ credentialKind: 'JWT' as const, organizationId: org(request), actorId: actor(request),
     requestId: request.id, deadline: request.operationDeadline, signal: request.operationSignal });
 
-  api.get('/v1/channels', { preHandler: read, schema: { querystring: z.strictObject({includeArchived:z.enum(['true','false']).optional()}), response: { 200: ChannelListV1Schema,
-    400: ProblemDetailsSchema, 401: ProblemDetailsSchema, 403: ProblemDetailsSchema } } }, request => options.service.list(org(request),request.query.includeArchived==='true'));
+  api.get('/v1/channels', { preHandler: read, schema: { querystring: z.strictObject({includeArchived:z.enum(['true','false']).optional(),
+    pageSize:z.coerce.number().int().min(1).max(100).optional(),cursor:z.string().min(1).max(256).optional()}), response: { 200: ChannelListV1Schema,
+    400: ProblemDetailsSchema, 401: ProblemDetailsSchema, 403: ProblemDetailsSchema } } }, request => {
+    const { pageSize, cursor } = request.query;
+    if (cursor && pageSize === undefined) throw new ChannelFacadeError('CHANNEL_CURSOR_INVALID', 400);
+    return options.service.list(org(request),request.query.includeArchived==='true',
+      { pageSize: pageSize ?? 50, ...(cursor ? { cursor } : {}) });
+  });
   api.post('/v1/channels/:id/archive',{preHandler:manage,schema:{params,querystring:empty,body:z.strictObject({archived:z.boolean()}),response:{200:ChannelV1Schema}}},request=>options.service.setArchived(org(request),request.params.id,request.body.archived,actor(request)));
   api.get('/v1/channels/:id', { preHandler: read, schema: { params, querystring: empty, response: { 200: ChannelV1Schema,
     400: ProblemDetailsSchema, 401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema } } },

@@ -40,6 +40,37 @@ it('groups organizations without sharing tenant authority and rejects stale assi
  await service.logout(admin.token);await service.logout(support.token);
  await db.pool.query("update platform_users set last_totp_step=-1");
 });
+it('pages beyond 200 economic groups and organizations with stable, disjoint cursors', async () => {
+ await db.pool.query("update platform_users set last_totp_step=-1 where email='admin@example.test'");
+ const admin=await service.login('admin@example.test','long-test-password',totp(seed,Math.floor(Date.now()/30000)),'127.0.0.32');
+ await db.pool.query("insert into economic_groups(name) select 'Bulk group ' || lpad(n::text,3,'0') from generate_series(1,205) n");
+ const client=await db.pool.connect();
+ try {
+  await client.query('begin');
+  const owner=(await client.query('insert into users(email,password_hash) values($1,$2) returning id',['bulk-owner@example.test',await hashPassword('synthetic-bulk-owner-password')])).rows[0].id;
+  await client.query("insert into organizations(name,slug,plan) select 'Bulk org ' || n, 'bulk-org-' || n, 'TEST' from generate_series(1,205) n");
+  await client.query("insert into memberships(organization_id,user_id,role) select id,$1,'OWNER' from organizations where slug like 'bulk-org-%'",[owner]);
+  await client.query('commit');
+ } catch(error) { await client.query('rollback'); throw error; } finally { client.release(); }
+ const firstGroups=await service.listGroups(admin.token,'Page economic groups');
+ expect(firstGroups.data).toHaveLength(200);
+ expect(firstGroups.nextCursor).toBeTruthy();
+ const laterGroups=await service.listGroups(admin.token,'Page economic groups',firstGroups.nextCursor);
+ expect(new Set([...firstGroups.data,...laterGroups.data].map(group=>group.id)).size).toBe(firstGroups.data.length+laterGroups.data.length);
+ expect([...firstGroups.data,...laterGroups.data].filter(group=>group.name.startsWith('Bulk group '))).toHaveLength(205);
+ const firstOrganizations=await service.execute(admin.token,'Page organizations','list') as {organizations:{id:string;slug:string}[];nextCursor?:string};
+ expect(firstOrganizations.organizations).toHaveLength(200);
+ expect(firstOrganizations.nextCursor).toBeTruthy();
+ const laterOrganizations=await service.execute(admin.token,'Page organizations','list',undefined,undefined,firstOrganizations.nextCursor) as {organizations:{id:string;slug:string}[];nextCursor?:string};
+ expect(new Set([...firstOrganizations.organizations,...laterOrganizations.organizations].map(org=>org.id)).size).toBe(firstOrganizations.organizations.length+laterOrganizations.organizations.length);
+ expect([...firstOrganizations.organizations,...laterOrganizations.organizations].filter(org=>org.slug.startsWith('bulk-org-'))).toHaveLength(205);
+ await expect(service.listGroups(admin.token,'Reject malformed cursor','invalid')).rejects.toMatchObject({statusCode:400,code:'PLATFORM_INVALID_CURSOR'});
+ await expect(service.execute(admin.token,'Reject wrong cursor','list',undefined,undefined,firstGroups.nextCursor)).rejects.toMatchObject({statusCode:400,code:'PLATFORM_INVALID_CURSOR'});
+ const invalidDate=Buffer.from(JSON.stringify({version:1,kind:'organizations',sort:'2026-02-31T12:00:00.000000Z',id:firstOrganizations.organizations[0]!.id})).toString('base64url');
+ await expect(service.execute(admin.token,'Reject invalid date','list',undefined,undefined,invalidDate)).rejects.toMatchObject({statusCode:400,code:'PLATFORM_INVALID_CURSOR'});
+ await service.logout(admin.token);
+ await db.pool.query("update platform_users set last_totp_step=-1 where email='admin@example.test'");
+});
 it('updates existing memberships at the user limit and while suspended',async()=>{
  await db.pool.query("update platform_users set last_totp_step=-1 where email='admin@example.test'");
  const s=await service.login('admin@example.test','long-test-password',totp(seed,Math.floor(Date.now()/30000)),'127.0.0.8');

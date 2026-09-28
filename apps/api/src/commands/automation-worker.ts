@@ -11,6 +11,24 @@ import { recordHeartbeat, workerInstanceId } from '../modules/observability/serv
 
 export function loadAutomationWorkerConfig(environment:NodeJS.ProcessEnv){const databaseUrl=z.string().url().parse(environment.DATABASE_URL);
   if(new URL(databaseUrl).username!=='jrc_app')throw new Error('AUTOMATION_WORKER_REQUIRES_APP_ROLE');return {databaseUrl,intervalMs:z.coerce.number().int().min(100).max(60000).default(1000).parse(environment.AUTOMATION_WORKER_INTERVAL_MS)};}
+export async function scanOperationalOrganizations(
+  loadPage:(afterId:string|null,batchSize:number)=>Promise<string[]>,
+  visit:(organizationId:string)=>Promise<void>,
+  signal?:AbortSignal,
+  onError?:(error:unknown,organizationId:string)=>void,
+){
+  const batchSize=100;
+  let cursor:string|null=null,more=true;
+  while(more&&!signal?.aborted){
+    const organizations=await loadPage(cursor,batchSize);
+    more=organizations.length===batchSize;
+    cursor=organizations.at(-1)??cursor;
+    for(const org of organizations){
+      if(signal?.aborted)return;
+      try{await visit(org);}catch(error){if(!onError)throw error;onError(error,org);}
+    }
+  }
+}
 export async function runAutomationWorker(environment:NodeJS.ProcessEnv=process.env,watch=false){const config=loadAutomationWorkerConfig(environment),pool=new Pool({connectionString:config.databaseUrl,max:4,connectionTimeoutMillis:5000,statement_timeout:30000});
   const instanceId=workerInstanceId();
   const repository=createPostgresAutomationRepository(),transact=<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pool,org,work),execution=createExecutionService({transact,repository});
@@ -23,7 +41,9 @@ export async function runAutomationWorker(environment:NodeJS.ProcessEnv=process.
     }catch(error){const code=error instanceof Error?error.message:'AUTOMATION_EFFECT_FAILED';return ['CONVERSATION_PAUSED','CONTACT_SUPPRESSED','CONTACT_CONSENT_REQUIRED'].includes(code)?{kind:'FAILED' as const,error:code}:{kind:'NOT_SENT' as const,error:code,retryAt:new Date(Date.now()+30000)};}
   }});
   const abort=new AbortController(),stop=()=>abort.abort();process.once('SIGINT',stop);process.once('SIGTERM',stop);
-  try{do{const organizations=(await pool.query<{organization_id:string}>('select * from operational_worker_organizations(null,1000)')).rows.map(row=>row.organization_id);
-    for(const org of organizations){if(abort.signal.aborted)break;await transact(org,tx=>recordHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId));await execution.runOnce(org);await outbox.runOnce(org);}if(watch&&!abort.signal.aborted)await setTimeout(config.intervalMs,undefined,{signal:abort.signal}).catch(()=>undefined);
+  try{do{await scanOperationalOrganizations(async(cursor,batchSize)=>(await pool.query<{organization_id:string}>('select * from operational_worker_organizations($1,$2)',[cursor,batchSize])).rows.map(row=>row.organization_id),
+    async org=>{await transact(org,tx=>recordHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId));await execution.runOnce(org);await outbox.runOnce(org);},abort.signal,
+    (_error,org)=>process.stderr.write(JSON.stringify({event:'AUTOMATION_WORKER_ORGANIZATION_FAILED',organizationId:org})+'\n'));
+    if(watch&&!abort.signal.aborted)await setTimeout(config.intervalMs,undefined,{signal:abort.signal}).catch(()=>undefined);
   }while(watch&&!abort.signal.aborted);}finally{process.off('SIGINT',stop);process.off('SIGTERM',stop);await pool.end();}}
 if(process.argv[1]&&pathToFileURL(process.argv[1]).href===import.meta.url)runAutomationWorker(process.env,process.argv.includes('--watch')).catch(()=>{process.stderr.write('AUTOMATION_WORKER_FAILED\n');process.exitCode=1;});

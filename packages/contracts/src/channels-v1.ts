@@ -78,7 +78,7 @@ export const ChannelV1Schema = z.discriminatedUnion('provider', [
   }),
 ]);
 
-export const ChannelListV1Schema = z.strictObject({ data: z.array(ChannelV1Schema) });
+export const ChannelListV1Schema = z.strictObject({ data: z.array(ChannelV1Schema), nextCursor: z.string().min(1).max(256).nullable().optional() });
 export const CreateChannelV1Schema = z.discriminatedUnion('provider', [
   z.strictObject({
     provider: z.literal('QR'),

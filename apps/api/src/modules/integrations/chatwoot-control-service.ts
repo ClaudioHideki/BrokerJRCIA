@@ -1,5 +1,5 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { ControlIdempotencyKeySchema, ControlAgentIdsSchema, type ChatwootControlScope, type ConnectionHealth } from '@jrc/contracts';
+import { ControlIdempotencyKeySchema, ControlAgentIdsSchema, type ChatwootControlScope, type ConnectionHealth, type PairOperation, type InstanceStatus } from '@jrc/contracts';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { ChatwootControlAuth, ChatwootControlPrincipal } from './chatwoot-control-auth.js';
 import { InstanceServiceError, type InstanceService } from '../instances/service.js';
@@ -10,8 +10,9 @@ import { readChatwootHealth, identityStatus, deriveTransportStatus, type Chatwoo
 import { IntegrationError } from './integration-error.js';
 import { ChatwootError } from './chatwoot-client.js';
 import { observeChatwootCapabilities } from './chatwoot-compatibility.js';
+import type { PairActionStore } from './chatwoot-pair-action-store.js';
 
-export interface ChatwootControlOptions extends ChatwootOptions { auth: ChatwootControlAuth; health: ChatwootHealth; instances: InstanceService; chatwoot: ChatwootService }
+export interface ChatwootControlOptions extends ChatwootOptions { auth: ChatwootControlAuth; health: ChatwootHealth; instances: InstanceService; chatwoot: ChatwootService; pairActions?: PairActionStore }
 interface Mapping extends ConnectionRow { instance_id: string }
 export function createChatwootControlService(options: ChatwootControlOptions) {
   const env = chatwootEnvironment(options), tx = options.transact;
@@ -26,6 +27,17 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
   async function can(t: TenantTransaction, p: ChatwootControlPrincipal, id: string, scope: ChatwootControlScope) {
     try { await options.auth.revalidate(t, p, scope, id); return true; }
     catch (error) { if (error instanceof IntegrationError && error.status === 403) return false; throw error; }
+  }
+  async function pairOperationMapping(t: TenantTransaction, p: ChatwootControlPrincipal, id: string) {
+    const c = await mapping(t, p, id, 'chatwoot:pair');
+    if (c.status !== 'READY') throw new IntegrationError('CHATWOOT_WEBHOOK_NOT_READY', 409);
+    const h = await readChatwootHealth(t, p.organizationId, id);
+    if (!h?.approved_fingerprint && !await can(t, p, id, 'chatwoot:manage'))
+      throw new IntegrationError('CHATWOOT_CONTROL_FORBIDDEN', 403);
+    if (h?.approved_fingerprint &&
+      (identityStatus(h) === 'CONFIRMATION_REQUIRED' || (h.observed_connected && h.identity_error)))
+      throw new IntegrationError('IDENTITY_CONFIRMATION_REQUIRED', 409);
+    return c;
   }
   async function prepare(p: ChatwootControlPrincipal, id: string, scope: ChatwootControlScope) {
     const c = await tx(p.organizationId, t => mapping(t, p, id, scope));
@@ -59,6 +71,44 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
     return c;
   }
   return {
+    async pairOperation(p: ChatwootControlPrincipal, id: string, operationId: string): Promise<PairOperation> {
+      const { progress, instanceId, currentConnect } = await tx(p.organizationId, async t => {
+        const c = await pairOperationMapping(t, p, id);
+        const row = (await t.query<{
+          operationId: string; state: PairOperation['state']; instanceStatus: InstanceStatus;
+          reconciliationRequired: boolean; lastError: string | null; updatedAt: Date; currentConnect: boolean;
+        }>(`SELECT po.id AS "operationId",po.status AS state,i.status AS "instanceStatus",
+          po.reconciliation_required AS "reconciliationRequired",po.canonical_error_code AS "lastError",po.updated_at AS "updatedAt",
+          po.id = (SELECT latest.id FROM provider_operations latest
+            WHERE latest.organization_id=po.organization_id AND latest.instance_id=po.instance_id AND latest.operation_type='CONNECT'
+            ORDER BY latest.created_at DESC,latest.id DESC LIMIT 1) AS "currentConnect"
+          FROM provider_operations po JOIN instances i ON i.organization_id=po.organization_id AND i.id=po.instance_id
+          WHERE po.organization_id=$1 AND po.instance_id=$2 AND po.id=$3 AND po.operation_type='CONNECT' AND i.archived_at IS NULL`,
+        [p.organizationId, c.instance_id, operationId])).rows[0];
+        if (!row) throw new IntegrationError('PAIR_OPERATION_NOT_FOUND', 404);
+        return { instanceId: c.instance_id, currentConnect: row.currentConnect, progress: { operationId: row.operationId, state: row.state, instanceStatus: row.instanceStatus,
+          reconciliationRequired: row.reconciliationRequired,
+          lastError: row.lastError && /^[A-Z][A-Z0-9_]{0,127}$/.test(row.lastError) ? row.lastError : null,
+          updatedAt: row.updatedAt.toISOString() } };
+      });
+      let action: PairOperation['action'] = null;
+      if (currentConnect && progress.state === 'SUCCEEDED' && progress.instanceStatus === 'AWAITING_ACTION') {
+        try {
+          action = await options.pairActions?.take({ organizationId: p.organizationId, integrationId: id, operationId }) ?? null;
+        } catch { /* Durable progress remains available during a Redis outage. */ }
+      }
+      // Redis is outside the tenant transaction. Recheck the grant and binding before releasing the challenge.
+      const stillCurrent = await tx(p.organizationId, async t => {
+        const current = await pairOperationMapping(t, p, id);
+        if (current.instance_id !== instanceId) throw new IntegrationError('PAIR_OPERATION_NOT_FOUND', 404);
+        const latest = (await t.query<{ id: string }>(`SELECT id FROM provider_operations
+          WHERE organization_id=$1 AND instance_id=$2 AND operation_type='CONNECT'
+          ORDER BY created_at DESC,id DESC LIMIT 1`, [p.organizationId, instanceId])).rows[0];
+        return latest?.id === operationId;
+      });
+      if (!stillCurrent) action = null;
+      return { ...progress, action };
+    },
     async status(p: ChatwootControlPrincipal, id: string): Promise<ConnectionHealth> {
       const c = await tx(p.organizationId, async t => {
         const mapped = await mapping(t, p, id, 'chatwoot:read');
@@ -131,6 +181,19 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
         return childKey;
       });
       const result = await options.instances.connectInstance(delegated(p, id), { instanceId: c.instance_id, idempotencyKey: `cw:${id}:${providerKey}` });
+      if (result.action.type === 'QR_CODE' || result.action.type === 'PAIRING_CODE') {
+        // The provider call may outlive a revoked grant or a disabled inbox binding.
+        await tx(p.organizationId, async t => {
+          const current = await pairOperationMapping(t, p, id);
+          if (current.instance_id !== c.instance_id) throw new IntegrationError('CONTROL_QR_INTEGRATION_NOT_FOUND', 404);
+        });
+      }
+      if (result.operationId && (result.action.type === 'QR_CODE' || result.action.type === 'PAIRING_CODE')) {
+        // A Redis outage must not discard the challenge already available in this authorized POST response.
+        try {
+          await options.pairActions?.save({ organizationId: p.organizationId, integrationId: id, operationId: result.operationId, action: result.action });
+        } catch { /* The immediate response remains usable; short-lived recovery is unavailable. */ }
+      }
       const expiry = 'expiresAt' in result.action ? result.action.expiresAt : null;
       if (expiry) await tx(p.organizationId, t => t.query(`UPDATE chatwoot_connection_health SET pair_window_expires_at=LEAST(pair_window_expires_at,$4)
         WHERE organization_id=$1 AND integration_id=$2 AND pair_window_key=$3`, [p.organizationId, id, providerKey, expiry]));

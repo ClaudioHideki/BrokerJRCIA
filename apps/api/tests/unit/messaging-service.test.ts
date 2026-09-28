@@ -3,6 +3,13 @@ import { createMessagingService } from '../../src/modules/messaging/service.js';
 import type { MessagingRepository } from '../../src/modules/messaging/repository.js';
 import type { TenantTransaction } from '../../src/db/tenant-transaction.js';
 
+function activeTemplateTransaction(): TenantTransaction {
+  let inserts = 0;
+  return { query: async (sql: string) => sql.includes('INSERT INTO idempotency_records')
+    ? { rows: [{ id: `record-${++inserts}` }] }
+    : { rows: [{ active: true }] } } as unknown as TenantTransaction;
+}
+
 describe('serviço de mensageria', () => {
   it('configura bot somente após validar canal tenant e referência allowlist fora da transação', async () => {
     let inTransaction = false;
@@ -105,5 +112,122 @@ describe('serviço de mensageria', () => {
     });
     await expect(service.listTemplates('tenant', 'other')).rejects.toMatchObject({ status: 404 });
     expect(providerCalls).toBe(0);
+  });
+  it('consulta a revisão do template somente na WABA do canal autorizado e não presume aprovação se não observado', async () => {
+    const observedWabas: string[] = [];
+    const service = createMessagingService({
+      repository: { async findChannel(_tx: unknown, _org: string, channelId: string) {
+        if (channelId === 'foreign') return null;
+        return { id: channelId, organizationId: 'tenant', provider: channelId === 'qr' ? 'BAILEYS' : 'META',
+          wabaId: channelId === 'channel-b' ? 'waba-b' : 'waba-a' };
+      } } as unknown as MessagingRepository,
+      async runInOrganizationTransaction(_org, operation) { return operation({} as TenantTransaction); },
+      async resolveMetaClient(channel) {
+        observedWabas.push(channel.wabaId!);
+        return { async listTemplates() { return channel.wabaId === 'waba-a' ? [
+          { id: '20001', name: 'aviso', language: 'pt_BR', status: 'APPROVED', category: 'UTILITY',
+            components: [{ type: 'BODY', text: 'Olá' }] },
+        ] : []; }, async createTextTemplate() { throw new Error('unexpected'); } };
+      },
+      async resolveTypebotClient() { throw new Error('unexpected'); },
+    });
+    const found = await service.getTemplateStatus('tenant', 'channel-a', '20001');
+    expect(found).toMatchObject({ observation: 'OBSERVED', id: '20001', template: { status: 'APPROVED', name: 'aviso' } });
+    expect(found.checkedAt).toEqual(expect.any(String));
+    const absent = await service.getTemplateStatus('tenant', 'channel-b', '20001');
+    expect(absent).toMatchObject({ observation: 'NOT_OBSERVED', id: '20001' });
+    expect(absent).not.toHaveProperty('template');
+    expect(observedWabas).toEqual(['waba-a', 'waba-b']);
+    await expect(service.getTemplateStatus('tenant', 'foreign', '20001')).rejects.toMatchObject({ status: 404 });
+    await expect(service.getTemplateStatus('tenant', 'qr', '20001')).rejects.toMatchObject({ status: 422 });
+    expect(observedWabas).toEqual(['waba-a', 'waba-b']);
+  });
+  it('submete template de texto somente pelo WABA do canal Meta da empresa, fora da transação', async () => {
+    let inTransaction = false;
+    const submitted: unknown[] = [];
+    const service = createMessagingService({
+      repository: { async findChannel(_tx: unknown, organizationId: string) {
+        return { id: 'channel', organizationId, provider: 'META', wabaId: '10001' };
+      } } as unknown as MessagingRepository,
+      async runInOrganizationTransaction(_org, operation) {
+        inTransaction = true;
+        try { return await operation(activeTemplateTransaction()); } finally { inTransaction = false; }
+      },
+      async resolveMetaClient() {
+        expect(inTransaction).toBe(false);
+        return { async listTemplates() { return []; }, async findTemplateByName() { return undefined; }, async createTextTemplate(input: { name: string; language: string; category: 'UTILITY' | 'MARKETING'; body: string }) {
+          submitted.push(input);
+          return { id: '20001', status: 'PENDING', category: 'UTILITY' };
+        } };
+      },
+      async resolveTypebotClient() { throw new Error('unexpected'); },
+    });
+    await expect(service.createTextTemplate('tenant', 'channel', {
+      name: 'aviso_entrega', language: 'pt_BR', category: 'UTILITY', body: 'Seu pedido está pronto.',
+    }, 'submit-1')).resolves.toEqual({
+      id: '20001', name: 'aviso_entrega', language: 'pt_BR', status: 'PENDING', category: 'UTILITY',
+    });
+    expect(submitted).toEqual([{ name: 'aviso_entrega', language: 'pt_BR', category: 'UTILITY', body: 'Seu pedido está pronto.' }]);
+  });
+  it('não presume aprovação nem revisão pendente quando a Meta devolve somente o ID', async () => {
+    const service = createMessagingService({
+      repository: { async findChannel() { return { id: 'channel', organizationId: 'tenant', provider: 'META', wabaId: '10001' }; } } as unknown as MessagingRepository,
+      async runInOrganizationTransaction(_org, operation) { return operation(activeTemplateTransaction()); },
+      async resolveMetaClient() { return { async listTemplates() { return []; }, async findTemplateByName() { return undefined; }, async createTextTemplate() { return { id: '20002' }; } }; },
+      async resolveTypebotClient() { throw new Error('unexpected'); },
+    });
+    await expect(service.createTextTemplate('tenant', 'channel', {
+      name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá',
+    }, 'submit-2')).resolves.toMatchObject({ id: '20002', status: 'STATUS_NOT_RETURNED', category: 'UTILITY' });
+  });
+  it('rejeita canal QR e outro tenant antes de resolver credenciais Meta', async () => {
+    let providerCalls = 0;
+    const service = createMessagingService({
+      repository: { async findChannel(_tx: unknown, _org: string, channelId: string) {
+        return channelId === 'qr' ? { id: 'qr', organizationId: 'tenant', provider: 'BAILEYS' } : null;
+      } } as unknown as MessagingRepository,
+      async runInOrganizationTransaction(_org, operation) { return operation({ query: async () => ({ rows: [{ active: true }] }) } as unknown as TenantTransaction); },
+      async resolveMetaClient() { providerCalls++; throw new Error('unexpected'); },
+      async resolveTypebotClient() { throw new Error('unexpected'); },
+    });
+    const input = { name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá' } as const;
+    await expect(service.createTextTemplate('tenant', 'foreign', input, 'foreign-key')).rejects.toMatchObject({ status: 404 });
+    await expect(service.createTextTemplate('tenant', 'qr', input, 'qr-key')).rejects.toMatchObject({ status: 422 });
+    expect(providerCalls).toBe(0);
+  });
+  it('não submete template quando a empresa está suspensa', async () => {
+    let repositoryCalls = 0;
+    let providerCalls = 0;
+    const service = createMessagingService({
+      repository: { async findChannel() { repositoryCalls++; throw new Error('unexpected'); } } as unknown as MessagingRepository,
+      async runInOrganizationTransaction(_org, operation) {
+        return operation({ query: async () => ({ rows: [{ active: false }] }) } as unknown as TenantTransaction);
+      },
+      async resolveMetaClient() { providerCalls++; throw new Error('unexpected'); },
+      async resolveTypebotClient() { throw new Error('unexpected'); },
+    });
+    await expect(service.createTextTemplate('tenant', 'channel', {
+      name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá',
+    }, 'suspended-key')).rejects.toMatchObject({ status: 403, code: 'ORGANIZATION_NOT_ACTIVE' });
+    expect(repositoryCalls).toBe(0);
+    expect(providerCalls).toBe(0);
+  });
+  it('distingue recusa definitiva da Meta de submissão de resultado incerto', async () => {
+    const input = { name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá' } as const;
+    const build = (errorCode: string) => createMessagingService({
+      repository: { async findChannel(_tx: unknown, organizationId: string) {
+        return { id: 'channel', organizationId, provider: 'META', wabaId: '10001' };
+      } } as unknown as MessagingRepository,
+      async runInOrganizationTransaction(_org, operation) {
+        return operation(activeTemplateTransaction());
+      },
+      async resolveMetaClient() { return { async listTemplates() { return []; }, async findTemplateByName() { return undefined; },
+        async createTextTemplate() { throw Object.assign(new Error('secret upstream body'), { code: errorCode }); } }; },
+      async resolveTypebotClient() { throw new Error('unexpected'); },
+    });
+    await expect(build('META_REQUEST_REJECTED').createTextTemplate('tenant', 'channel', input, 'reject-key'))
+      .rejects.toMatchObject({ status: 422, code: 'META_TEMPLATE_REJECTED' });
+    await expect(build('META_TEMPLATE_SUBMISSION_UNKNOWN').createTextTemplate('tenant', 'channel', input, 'unknown-key'))
+      .rejects.toMatchObject({ status: 503, code: 'META_TEMPLATE_SUBMISSION_UNKNOWN' });
   });
 });

@@ -291,8 +291,8 @@ export function CompanyWorkspace({
                 <fieldset>
                   <legend>Módulos da empresa</legend>
                   <input type="hidden" name="flowsConfigPresent" value="1" />
-                  <label><input type="checkbox" name="flowsEnabled" defaultChecked={company.flowsEnabled === true} /> Manter fluxos da versão anterior</label>
-                  <p className="admin-form-hint">Habilita o canvas e os chatbots desta empresa. Desativar bloqueia novas execuções e envios pendentes dos automações.</p>
+                  <label><input type="checkbox" name="flowsEnabled" defaultChecked={company.flowsEnabled === true} /> Habilitar automações da empresa</label>
+                  <p className="admin-form-hint">Habilita o canvas e os chatbots desta empresa. Desativar interrompe novas execuções e envios pendentes dos fluxos; as automações e o histórico são preservados.</p>
                 </fieldset>
                 <fieldset>
                   <legend>Limites da empresa</legend>
@@ -351,6 +351,7 @@ export function CompanyWorkspace({
                 <div>
                   <h2>Usuários da empresa</h2>
                   <p>Os papéis e acessos abaixo pertencem a {company.name}.</p>
+                  <p>Mesmo dentro de um grupo econômico, o acesso é definido separadamente em cada empresa.</p>
                 </div>
                 <Icon name="key" />
               </div>
@@ -470,6 +471,8 @@ export function NewCompany({
         <div>
           <h2>Nova empresa</h2>
           <p>Crie o cliente, o acesso do responsável e os limites iniciais.</p>
+          <p>Cada empresa é uma organização isolada (tenant), com caixas, automações e usuários próprios.</p>
+          <p>Depois você pode vinculá-la a um grupo econômico, sem compartilhar dados ou acessos.</p>
         </div>
         <Icon name="providers" size={24} />
       </div>
@@ -516,7 +519,8 @@ export function NewCompany({
         </fieldset>
         <fieldset>
           <legend>Plano e capacidade</legend>
-          <label><input type="checkbox" name="flowsEnabled" /> Manter fluxos da versão anterior</label>
+          <label><input type="checkbox" name="flowsEnabled" /> Habilitar automações da empresa</label>
+          <p className="admin-form-hint">Habilita o canvas e os chatbots desta empresa. Desativar interrompe novas execuções e envios pendentes dos fluxos; as automações e o histórico são preservados.</p>
           <div className="admin-form-grid">
             <label>
               Plano

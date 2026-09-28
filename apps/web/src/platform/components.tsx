@@ -165,12 +165,6 @@ export function CompanyTable({
         </span>
         <span>Ordenadas pelas mais recentes</span>
       </div>
-      {companies.length === 200 && (
-        <p className="notice">
-          Exibindo as 200 empresas mais recentes. Os indicadores consideram esta
-          lista.
-        </p>
-      )}
     </section>
   );
 }

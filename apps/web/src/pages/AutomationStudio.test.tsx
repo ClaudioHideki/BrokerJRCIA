@@ -33,18 +33,58 @@ beforeEach(()=>sessionStorage.clear());
 describe('Automation Studio',()=>{
   it('previews JSON automatically and lets the user cancel before creating an automation',async()=>{
     const request=vi.fn(async(path:string)=>{
-      if(path==='/v1/automation-imports')return {name:'Importação',graph:welcomeFlow(),report:{summary:{total:3,exact:3,partial:0,unsupported:0,manualReviewRequired:false},nodes:[],warnings:[]}};
+      if(path==='/v1/automations/status')return {enabled:true};
+      if(path==='/v1/automation-imports/preview')return {name:'Importação',graph:welcomeFlow(),report:{summary:{total:3,exact:3,partial:0,unsupported:0,manualReviewRequired:false},nodes:[],warnings:['Prévia sem gravação.']}};
       throw new Error(`Unexpected ${path}`);
     }) as ApiClient['request'];
     render(<SessionProvider client={client(request)}><MemoryRouter><NewAutomationPage/></MemoryRouter></SessionProvider>);
     const input=await screen.findByLabelText('Arquivo JSON');
+    await waitFor(()=>expect(input).toBeEnabled());
     fireEvent.change(input,{target:{files:[{name:'chatbot.json',size:50,text:async()=>'{"format":"jrc-flows/1"}'}]}});
     expect(await screen.findByRole('heading',{name:'Revisar importação'})).toBeInTheDocument();
-    expect(request).toHaveBeenCalledWith('/v1/automation-imports',expect.objectContaining({body:expect.stringContaining('"source":"AUTO"')}));
+    expect(request).toHaveBeenCalledWith('/v1/automation-imports/preview',expect.objectContaining({body:expect.stringContaining('"source":"AUTO"')}));
     expect(screen.queryByText(/n8n|typebot/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button',{name:'Cancelar importação'}));
     expect(screen.queryByRole('heading',{name:'Revisar importação'})).not.toBeInTheDocument();
+    expect(request).not.toHaveBeenCalledWith('/v1/automation-imports',expect.anything());
     expect(request).not.toHaveBeenCalledWith('/v1/automations',expect.anything());
+  });
+  it('persists a reviewed import only on confirmation and avoids persisting it twice if draft creation is retried',async()=>{
+    let createAttempts=0;const paths:string[]=[];
+    const imported={name:'Importação',graph:welcomeFlow(),report:{summary:{total:3,exact:3,partial:0,unsupported:0,manualReviewRequired:false},nodes:[],warnings:[]}};
+    const request=vi.fn(async(path:string)=>{paths.push(path);
+      if(path==='/v1/automations/status')return {enabled:true};
+      if(path==='/v1/automation-imports/preview')return imported;
+      if(path==='/v1/automation-imports')return imported;
+      if(path==='/v1/automations'){createAttempts++;if(createAttempts===1)throw new ApiClientError('Falha temporária.',503,'req-create-503');return {...definition,name:'Importação'};}
+      throw new Error(`Unexpected ${path}`);
+    }) as ApiClient['request'];
+    render(<SessionProvider client={client(request)}><MemoryRouter initialEntries={['/automations/new']}><Routes><Route path="/automations/new" element={<NewAutomationPage/>}/><Route path="/automations/:id/edit" element={<div>Editor aberto</div>}/></Routes></MemoryRouter></SessionProvider>);
+    const input=await screen.findByLabelText('Arquivo JSON');
+    await waitFor(()=>expect(input).toBeEnabled());
+    fireEvent.change(input,{target:{files:[{name:'chatbot.json',size:50,text:async()=>'{"format":"jrc-flows/1"}'}]}});
+    expect(await screen.findByRole('heading',{name:'Revisar importação'})).toBeInTheDocument();
+    expect(request).not.toHaveBeenCalledWith('/v1/automation-imports',expect.anything());
+    fireEvent.click(screen.getByRole('button',{name:'Importar rascunho e abrir editor'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('req-create-503');
+    expect(request).toHaveBeenCalledWith('/v1/automation-imports',expect.objectContaining({body:expect.stringContaining('"source":"AUTO"')}));
+    fireEvent.click(screen.getByRole('button',{name:'Importar rascunho e abrir editor'}));
+    expect(await screen.findByText('Editor aberto')).toBeVisible();
+    expect(paths.filter(path=>path==='/v1/automation-imports')).toHaveLength(1);
+    expect(paths.filter(path=>path==='/v1/automations')).toHaveLength(2);
+  });
+  it('explains disabled automation runtime and prevents an import from being sent',async()=>{
+    const request=vi.fn(async(path:string)=>{
+      if(path==='/v1/automations/status')return {enabled:false};
+      throw new Error(`Unexpected ${path}`);
+    }) as ApiClient['request'];
+    render(<SessionProvider client={client(request)}><MemoryRouter><NewAutomationPage/></MemoryRouter></SessionProvider>);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Automações temporariamente desativadas');
+    const input=screen.getByLabelText('Arquivo JSON');
+    expect(input).toBeDisabled();
+    fireEvent.change(input,{target:{files:[{name:'chatbot.json',size:50,text:async()=>'{"format":"jrc-flows/1"}'}]}});
+    expect(request).not.toHaveBeenCalledWith('/v1/automation-imports',expect.anything());
+    expect(screen.getByRole('button',{name:'Criar e abrir editor'})).toBeDisabled();
   });
   it('archives with confirmation and offers restore without deleting the definition',async()=>{
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);
@@ -73,6 +113,20 @@ describe('Automation Studio',()=>{
     render(<SessionProvider client={client(request)}><MemoryRouter><AutomationsPage/></MemoryRouter></SessionProvider>);
     expect(await screen.findByRole('heading',{name:'Atendimento principal'})).toBeInTheDocument();
     expect(screen.getByRole('link',{name:'Editar'})).toHaveAttribute('href',`/automations/${automationId}/edit`);
+  });
+
+  it('loads later automation pages without duplicating a definition seen in an earlier page',async()=>{
+    const second={...definition,id:'44444444-4444-4444-8444-444444444444',name:'Atendimento filial'};
+    const request=vi.fn(async(path:string)=>path==='/v1/automations/status'?{enabled:true}
+      :path==='/v1/automations'?{data:[definition],nextCursor:'next-1'}
+      :path==='/v1/automations?cursor=next-1'?{data:[definition,second],nextCursor:null}
+      :Promise.reject(new Error(`Unexpected ${path}`))) as ApiClient['request'];
+    render(<SessionProvider client={client(request)}><MemoryRouter><AutomationsPage/></MemoryRouter></SessionProvider>);
+    fireEvent.click(await screen.findByRole('button',{name:'Carregar mais automações'}));
+    await waitFor(()=>expect(request).toHaveBeenCalledWith('/v1/automations?cursor=next-1'));
+    expect(await screen.findByRole('heading',{name:'Atendimento filial'})).toBeVisible();
+    expect(screen.getAllByRole('heading',{name:'Atendimento principal'})).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'Carregar mais automações'})).not.toBeInTheDocument();
   });
 
   it('keeps a local draft and exposes the request id when saving returns 5xx',async()=>{

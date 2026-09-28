@@ -34,6 +34,7 @@ describe('canonical channel routes', () => {
     const listed = await app.inject({ method: 'GET', url: '/v1/channels', headers: { authorization } });
     expect(listed.statusCode).toBe(200);
     expect(listed.json().data[0]).toMatchObject({ id, transportStatus: 'CONNECTED' });
+    expect(service.list).toHaveBeenCalledWith(org, false, { pageSize: 50 });
     const created = await app.inject({ method: 'POST', url: '/v1/channels', headers: { authorization, 'idempotency-key': 'create-channel' },
       payload: { provider: 'QR', name: 'Atendimento', providerAccountId: account } });
     expect(created.statusCode).toBe(201);
@@ -45,6 +46,20 @@ describe('canonical channel routes', () => {
     role = 'VIEWER';
     expect((await app.inject({ method: 'PUT', url: `/v1/channels/${id}/destination`, headers: { authorization },
       payload: { name: 'Caixa suporte' } })).statusCode).toBe(403);
+  });
+
+  it('accepts bounded channel pages and rejects a cursor without a page size', async () => {
+    const service = { list: vi.fn().mockResolvedValue({ data: [channel], nextCursor: 'next-page' }) } as unknown as ChannelFacade;
+    const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ verifyPasswordOrDummy: async () => false }),
+      channels: { jwtSecret: secret, authenticateApiKey: async () => null, resolveCurrentRole: async () => 'VIEWER', service } });
+    apps.push(app);
+    const authorization = `Bearer ${await issueAccessToken({ userId: user, organizationId: org, role: 'VIEWER' }, secret)}`;
+    const response = await app.inject({ method: 'GET', url: '/v1/channels?pageSize=50&includeArchived=true', headers: { authorization } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ data: [{ id }], nextCursor: 'next-page' });
+    expect(service.list).toHaveBeenCalledWith(org, true, { pageSize: 50 });
+    expect((await app.inject({ method: 'GET', url: '/v1/channels?cursor=any', headers: { authorization } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/v1/channels?pageSize=101', headers: { authorization } })).statusCode).toBe(400);
   });
 
   it('returns no-store challenges and requires an idempotency key', async () => {

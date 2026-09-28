@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { ControlResourcesSchema, OnboardingListSchema } from '@jrc/contracts';
-import { ControlContextSchema, ControlIdempotencyKeySchema, IssueControlCredentialSchema, IssuedControlCredentialSchema, OperatorGrantsSchema, PROBLEM_CONTENT_TYPE, OnboardingInputSchema, OnboardingOperationSchema, OnboardingRecoverySchema, ConnectionHealthSchema, ConnectionResponseSchema, InstanceMutationResponseSchema, ConfirmIdentitySchema, ControlAgentsSchema } from '@jrc/contracts';
+import { ControlResourcesSchema, OnboardingListSchema, ProblemDetailsSchema } from '@jrc/contracts';
+import { ControlContextSchema, ControlIdempotencyKeySchema, IssueControlCredentialSchema, IssuedControlCredentialSchema, OperatorGrantsSchema, PROBLEM_CONTENT_TYPE, OnboardingInputSchema, OnboardingOperationSchema, OnboardingRecoverySchema, ConnectionHealthSchema, ConnectionResponseSchema, InstanceMutationResponseSchema, ConfirmIdentitySchema, ControlAgentsSchema, PairOperationSchema } from '@jrc/contracts';
 import { authenticateRequest, type AuthenticationOptions } from '../plugins/authentication.js';
 import type { ChatwootControlAuth } from '../../modules/integrations/chatwoot-control-auth.js';
 import { IntegrationError } from '../../modules/integrations/integration-error.js';
@@ -50,6 +50,14 @@ export async function registerChatwootControlRoutes(app: FastifyInstance, option
   app.get('/v1/integrations/chatwoot/control/connections/:integrationId/status', {
     preHandler: read, schema: { querystring: empty, params: connectionParams, response: { 200: ConnectionHealthSchema } },
   }, async req => facade().status(await options.service.authorize(req.authentication!, 'chatwoot:read', integrationId(req)), integrationId(req)));
+  app.get('/v1/integrations/chatwoot/control/connections/:integrationId/pair-operations/:operationId', {
+    preHandler: read, schema: { querystring: empty, params: z.strictObject({ integrationId: z.uuid(), operationId: z.uuid() }),
+      response: { 200: PairOperationSchema, 409: ProblemDetailsSchema } },
+  }, async req => {
+    const { integrationId: id, operationId } = req.params as { integrationId: string; operationId: string };
+    const principal = await options.service.authorize(req.authentication!, 'chatwoot:pair', id);
+    return facade().pairOperation(principal, id, operationId);
+  });
   app.post('/v1/integrations/chatwoot/control/connections/:integrationId/pair', {
     preHandler: read, schema: { querystring: empty, params: connectionParams, headers: mutationHeaders, body: empty, response: { 200: ConnectionResponseSchema, 202: ConnectionResponseSchema } },
   }, async (req, reply) => {

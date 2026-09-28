@@ -23,6 +23,40 @@ it('protects group mutations by platform session, exact origin, CSRF and strict 
   expect(result.statusCode).toBe(201);expect(result.headers['cache-control']).toBe('no-store');
  }finally{await app.close();}
 });
+it('passes opaque pagination cursors through existing platform list routes',async()=>{
+ const listGroups=vi.fn().mockResolvedValue({data:[],nextCursor:'next-groups'});
+ const execute=vi.fn().mockResolvedValue({organizations:[],nextCursor:'next-organizations'});
+ const service={listGroups,execute} as unknown as PlatformService;
+ const app=Fastify();await registerPlatformRoutes(app,{service,origin:'https://console.example.test',secureCookies:true});
+ const headers={cookie:`platform_session=${'a'.repeat(43)}`,'x-platform-reason':'Page tenant administration'};
+ try {
+  const groups=await app.inject({url:'/v1/platform/groups?cursor=next',headers});
+  expect(groups.statusCode).toBe(200);expect(groups.json()).toMatchObject({data:[],nextCursor:'next-groups'});
+  expect(listGroups).toHaveBeenCalledWith(expect.any(String),'Page tenant administration','next');
+  const organizations=await app.inject({url:'/v1/platform/organizations?cursor=next',headers});
+  expect(organizations.statusCode).toBe(200);expect(organizations.json()).toMatchObject({organizations:[],nextCursor:'next-organizations'});
+  expect(execute).toHaveBeenCalledWith(expect.any(String),'Page tenant administration','list',undefined,undefined,'next');
+ }finally{await app.close();}
+});
+it('pages one company’s channel list after platform authorization',async()=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ const authorizeChannels=vi.fn().mockResolvedValue('operator');
+ const list=vi.fn().mockResolvedValue({data:[],nextCursor:'more-channels'});
+ const service={authorizeChannels} as unknown as PlatformService;
+ const app=Fastify();await registerPlatformRoutes(app,{service,channels:{list} as never,origin:'https://console.example.test',secureCookies:true});
+ const headers={cookie:`platform_session=${'a'.repeat(43)}`,'x-platform-reason':'Support channel audit'};
+ try {
+  const initial=await app.inject({url:`/v1/platform/organizations/${id}/channels`,headers});
+  expect(initial.statusCode).toBe(200);
+  expect(initial.json()).toMatchObject({data:[],nextCursor:'more-channels'});
+  expect(list).toHaveBeenCalledWith(id,true,{pageSize:50});
+  const next=await app.inject({url:`/v1/platform/organizations/${id}/channels?pageSize=10&cursor=opaque`,headers});
+  expect(next.statusCode).toBe(200);
+  expect(list).toHaveBeenCalledWith(id,true,{pageSize:10,cursor:'opaque'});
+  expect(authorizeChannels).toHaveBeenCalledTimes(2);
+  expect((await app.inject({url:`/v1/platform/organizations/${id}/channels?pageSize=101`,headers})).statusCode).toBe(400);
+ }finally{await app.close();}
+});
 it.each([
  ['tenant_user_limit',409,'USER_LIMIT_REACHED'],
  ['tenant_organization_active',403,'ORGANIZATION_NOT_ACTIVE'],

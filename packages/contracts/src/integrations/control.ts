@@ -62,6 +62,21 @@ export const ConnectionHealthSchema = z.strictObject({
   identityApproved: z.boolean(),
   observedNumberSuffix: z.string().regex(/^\d{4}$/).nullable(),
 });
+/** Durable provider progress plus an optional, short-lived, single-read challenge. */
+export const PairOperationActionSchema = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('QR_CODE'), encoding: z.enum(['DATA_URL', 'BASE64']),
+    value: z.string().min(1).max(2_000_000), expiresAt: z.iso.datetime() }),
+  z.strictObject({ type: z.literal('PAIRING_CODE'), code: z.string().min(1).max(64),
+    expiresAt: z.iso.datetime() }),
+]);
+export const PairOperationSchema = z.strictObject({
+  operationId: z.uuid(), state: z.enum(['PENDING', 'SUCCEEDED', 'FAILED', 'UNKNOWN']),
+  instanceStatus: InstanceStatusSchema, reconciliationRequired: z.boolean(),
+  lastError: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/).nullable(),
+  updatedAt: z.iso.datetime(), action: PairOperationActionSchema.nullable(),
+});
+export type PairOperation = z.infer<typeof PairOperationSchema>;
+export type PairOperationAction = z.infer<typeof PairOperationActionSchema>;
 export const ConfirmIdentitySchema = z.strictObject({ observedRevision: z.number().int().positive() });
 export const ControlAgentsSchema = z.strictObject({ agentIds: ControlAgentIdsSchema });
 export type ConnectionHealth = z.infer<typeof ConnectionHealthSchema>;

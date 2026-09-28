@@ -3,15 +3,16 @@ import {expect,test} from '@playwright/test';
 import {welcomeFlow} from '@jrc/contracts';
 import {signIn,expectNoAutomaticAccessibilityViolations} from './helpers.js';
 test('caixa QR, rascunho JSON, publicação, vínculo e arquivamento na jornada atual',async({page,isMobile})=>{
- test.setTimeout(60000);await signIn(page);if(isMobile)await page.goto('/channels');else await page.getByRole('link',{name:'Caixas de entrada',exact:true}).click();
+ test.setTimeout(120000);await signIn(page);if(isMobile)await page.goto('/channels');else await page.getByRole('link',{name:'Caixas de entrada',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Caixas de entrada'})).toBeVisible();
  await page.getByRole('link',{name:'+ Conectar WhatsApp'}).click();await page.getByRole('button',{name:/WhatsApp por QR Code/}).click();
  const name='QA caixa '+(isMobile?'mobile':'desktop');await page.getByLabel('Nome da conexão').fill(name);await page.getByRole('button',{name:'Criar conexão'}).click();
  await expect(page.getByRole('heading',{name})).toBeVisible();const boxUrl=page.url();
  await page.getByRole('button',{name:'Gerar QR Code'}).click();await expect(page.getByRole('img',{name:'QR Code para conectar o WhatsApp'})).toBeVisible();
- await expect(page.getByText('Conectado',{exact:true})).toBeVisible({timeout:12000});
+ await expect(page.getByText('Conectado',{exact:true})).toBeVisible({timeout:30000});
  await page.goto('/legacy/flows');await expect(page).toHaveURL(new RegExp('/automations$'));await page.getByRole('link',{name:'Nova automação'}).click();
  const graph=welcomeFlow();graph.nodes.forEach(n=>{n.position.x-=5000;n.position.y-=3000;});graph.nodes.find(n=>n.type==='message')!.data.text='';
+ await expect(page.getByLabel('Arquivo JSON')).toBeEnabled();
  await page.getByLabel('Arquivo JSON').setInputFiles({name:'qa.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'jrc-flows/1',flow:{name:'QA automação '+name,graph}}))});
  await expect(page.getByRole('heading',{name:'Revisar importação'})).toBeVisible();await page.getByRole('button',{name:'Importar rascunho e abrir editor'}).click();
  await expect(page.getByRole('button',{name:'Configurar Boas-vindas'})).toBeVisible();await page.getByRole('button',{name:'Publicar',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible();

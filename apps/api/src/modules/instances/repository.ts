@@ -96,6 +96,11 @@ export interface InstanceRepository {
     organizationId: string,
     instanceId: string,
   ): Promise<ProviderOperationRow | null>;
+  findLatestConnectOperationForUpdate(
+    transaction: TenantTransaction,
+    organizationId: string,
+    instanceId: string,
+  ): Promise<ProviderOperationRow | null>;
   findPendingDisconnectOperationForUpdate(
     transaction: TenantTransaction,
     organizationId: string,
@@ -107,8 +112,15 @@ export interface InstanceRepository {
     operationId: string;
     status: ProviderOperationRow['status'];
     canonicalErrorCode: string | null;
+    reconciliationRequired?: boolean;
     updatedAt: Date;
     incrementAttempt?: boolean;
+  }): Promise<boolean>;
+  resolveUncertainConnectOperation(transaction: TenantTransaction, input: {
+    organizationId: string;
+    instanceId: string;
+    operationId: string;
+    updatedAt: Date;
   }): Promise<boolean>;
   updatePendingDisconnectOperation(transaction: TenantTransaction, input: {
     organizationId: string;
@@ -316,6 +328,19 @@ export function createPostgresInstanceRepository(): InstanceRepository {
       return first(result);
     },
 
+    async findLatestConnectOperationForUpdate(transaction, organizationId, instanceId) {
+      const result = await transaction.query<OperationDatabaseRow>(
+        `SELECT ${OPERATION_COLUMNS}
+           FROM provider_operations
+          WHERE organization_id = $1 AND instance_id = $2 AND operation_type = 'CONNECT'
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1
+          FOR UPDATE`,
+        [organizationId, instanceId],
+      );
+      return first(result);
+    },
+
     async findPendingDisconnectOperationForUpdate(transaction, organizationId, instanceId) {
       const result = await transaction.query<OperationDatabaseRow>(
         `SELECT ${OPERATION_COLUMNS}
@@ -334,7 +359,7 @@ export function createPostgresInstanceRepository(): InstanceRepository {
       const result = await transaction.query<{ id: string } & QueryResultRow>(
         `UPDATE provider_operations
             SET status = $4, canonical_error_code = $5,
-                reconciliation_required = false,
+                reconciliation_required = COALESCE($8::boolean, reconciliation_required),
                 attempt_count = attempt_count + CASE WHEN $7 THEN 1 ELSE 0 END,
                 updated_at = $6
           WHERE organization_id = $1 AND instance_id = $2 AND id = $3
@@ -348,7 +373,22 @@ export function createPostgresInstanceRepository(): InstanceRepository {
           input.canonicalErrorCode,
           input.updatedAt,
           input.incrementAttempt ?? false,
+          input.reconciliationRequired ?? null,
         ],
+      );
+      return result.rows.length === 1;
+    },
+
+    async resolveUncertainConnectOperation(transaction, input) {
+      const result = await transaction.query<{ id: string } & QueryResultRow>(
+        `UPDATE provider_operations
+            SET status = 'SUCCEEDED', canonical_error_code = NULL,
+                reconciliation_required = false, updated_at = $4
+          WHERE organization_id = $1 AND instance_id = $2 AND id = $3
+            AND operation_type = 'CONNECT' AND status IN ('UNKNOWN', 'FAILED')
+            AND reconciliation_required = true
+        RETURNING id`,
+        [input.organizationId, input.instanceId, input.operationId, input.updatedAt],
       );
       return result.rows.length === 1;
     },

@@ -12,6 +12,10 @@ describe('automation v2 routes',()=>{const apps:Array<ReturnType<typeof buildApp
     const executions={} as ReturnType<typeof createExecutionService>,app=buildApp({nodeEnv:'test',passwordVerifierInitializer:async()=>({verifyPasswordOrDummy:async()=>false}),automations:{jwtSecret:secret,authenticateApiKey:async()=>null,resolveCurrentRole:async()=>role,service,executions}});apps.push(app);
     const authorization=`Bearer ${await issueAccessToken({userId:user,organizationId:org,role:'OWNER'},secret)}`;
     expect((await app.inject({method:'GET',url:'/v1/automations',headers:{authorization}})).json().data[0].id).toBe(id);
+    const page=await app.inject({method:'GET',url:'/v1/automations?pageSize=25&cursor=cursor-1',headers:{authorization}});
+    expect(page.statusCode).toBe(200);
+    expect(service.list).toHaveBeenLastCalledWith(org,{pageSize:25,cursor:'cursor-1'});
+    expect((await app.inject({method:'GET',url:'/v1/automations?pageSize=201',headers:{authorization}})).statusCode).toBe(400);
     expect((await app.inject({method:'POST',url:'/v1/automations',headers:{authorization,'idempotency-key':'create'},payload:{name:'Atendimento',graph}})).statusCode).toBe(201);
     role='VIEWER';expect((await app.inject({method:'POST',url:'/v1/automations',headers:{authorization,'idempotency-key':'blocked'},payload:{name:'Atendimento',graph}})).statusCode).toBe(403);
   });

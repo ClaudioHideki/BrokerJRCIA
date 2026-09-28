@@ -25,6 +25,7 @@ export type MetaCloudErrorCode =
   | "META_REQUEST_REJECTED"
   | "META_RESPONSE_TOO_LARGE"
   | "META_SEND_UNKNOWN"
+  | "META_TEMPLATE_SUBMISSION_UNKNOWN"
   | "META_TIMEOUT";
 
 export interface MetaCloudError extends Error {
@@ -66,6 +67,19 @@ export interface MetaMessageTemplate {
   status: string;
   category: string;
   components: readonly unknown[];
+}
+
+export interface MetaTextTemplateInput {
+  name: string;
+  language: string;
+  category: "UTILITY" | "MARKETING";
+  body: string;
+}
+
+export interface MetaSubmittedTemplate {
+  id: string;
+  status?: string;
+  category?: string;
 }
 
 const GRAPH_ORIGIN = "https://graph.facebook.com";
@@ -423,6 +437,58 @@ export class MetaCloudClient {
     });
   }
 
+  async createTextTemplate(input: MetaTextTemplateInput): Promise<MetaSubmittedTemplate> {
+    if (
+      !isRecord(input) ||
+      !validTemplateName(input.name) ||
+      !validLanguage(input.language) ||
+      !["UTILITY", "MARKETING"].includes(input.category) ||
+      typeof input.body !== "string" ||
+      input.body.trim().length < 1 ||
+      input.body.length > 1_024 ||
+      /\{\{|\}\}/u.test(input.body)
+    ) throw metaCloudError("INVALID_META_INPUT");
+
+    const body = serializeRequestBody({
+      name: input.name,
+      language: input.language,
+      category: input.category,
+      components: [{ type: "BODY", text: input.body }],
+    });
+    const signal = AbortSignal.timeout(this.#timeoutMs);
+    try {
+      const response = await this.#fetch(
+        this.#graphUrl(`${this.#wabaId}/message_templates`),
+        {
+          method: "POST",
+          headers: this.#headers(true),
+          body,
+          redirect: "error",
+          signal,
+        },
+      );
+      if (response.status === 400 || response.status === 422) {
+        await response.body?.cancel();
+        throw metaCloudError("META_REQUEST_REJECTED");
+      }
+      if (!response.ok) throw metaCloudError("META_TEMPLATE_SUBMISSION_UNKNOWN");
+      const result = parseJson(await readBoundedResponse(response, this.#maxResponseBytes));
+      if (
+        !isRecord(result) ||
+        !validMetaId(result.id)
+      ) throw metaCloudError("META_TEMPLATE_SUBMISSION_UNKNOWN");
+      return {
+        id: result.id,
+        ...(validBoundedString(result.status, 64) ? { status: result.status } : {}),
+        ...(validBoundedString(result.category, 64) ? { category: result.category } : {}),
+      };
+    } catch (error) {
+      if (isMetaCloudError(error) && error.code === "META_REQUEST_REJECTED") throw error;
+      // After an uncertain POST the template may exist; callers must refresh Graph before resubmission.
+      throw metaCloudError("META_TEMPLATE_SUBMISSION_UNKNOWN");
+    }
+  }
+
   async listTemplates(): Promise<MetaMessageTemplate[]> {
     const templates: MetaMessageTemplate[] = [];
     const observedCursors = new Set<string>();
@@ -454,6 +520,28 @@ export class MetaCloudClient {
       after = page.after;
     }
 
+    throw metaCloudError("META_INVALID_RESPONSE");
+  }
+
+  async findTemplateByName(name: string, language: string): Promise<MetaMessageTemplate | undefined> {
+    if (!validTemplateName(name) || !validLanguage(language)) throw metaCloudError("INVALID_META_INPUT");
+    const observedCursors = new Set<string>();
+    let after: string | null = null;
+    for (let pageNumber = 1; pageNumber <= this.#maxTemplatePages; pageNumber += 1) {
+      // Meta's name filter belongs to this WABA edge. Never follow provider next URLs.
+      const url = this.#graphUrl(`${this.#wabaId}/message_templates`);
+      url.searchParams.set("limit", String(TEMPLATE_PAGE_SIZE));
+      url.searchParams.set("name", name);
+      if (after !== null) url.searchParams.set("after", after);
+      const page = parseTemplatePage(await this.#getJson(url));
+      const found = page.templates.find(template => template.name === name && template.language === language);
+      if (found) return found;
+      if (page.after === null) return undefined;
+      if (observedCursors.has(page.after) || pageNumber === this.#maxTemplatePages)
+        throw metaCloudError("META_INVALID_RESPONSE");
+      observedCursors.add(page.after);
+      after = page.after;
+    }
     throw metaCloudError("META_INVALID_RESPONSE");
   }
   /** Media ownership is checked by Graph against this channel's phone, before downloading. */

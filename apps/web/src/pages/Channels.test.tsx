@@ -2,7 +2,7 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { welcomeFlow } from '@jrc/contracts';
-import type { ApiClient } from '../api/client.js';
+import { ApiClientError, type ApiClient } from '../api/client.js';
 import { App } from '../app/App.js';
 
 const org = '92776cb0-bcba-45c0-98a3-2937fefdfdaf';
@@ -16,6 +16,17 @@ function client(request: ApiClient['request']): ApiClient { return { restore: vi
   registerTenantPurge: vi.fn(() => () => undefined), subscribeToSessionExpiration: vi.fn(() => () => undefined) } as unknown as ApiClient; }
 
 describe('canonical channels UI', () => {
+  it('shows the request ID when the inbox list is unavailable so support can trace the failure', async () => {
+    const requestId = '85a17103-9f0d-4d86-b55d-4184597e17a8';
+    const request = vi.fn(async (path: string) => {
+      if (path.startsWith('/v1/channels?pageSize=')) throw new ApiClientError('Serviço temporariamente indisponível. Tente novamente.', 503, requestId);
+      return { data: [] };
+    }) as ApiClient['request'];
+    render(<App client={client(request)} initialEntries={['/channels']} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Serviço temporariamente indisponível');
+    expect(screen.getByRole('alert')).toHaveTextContent(`Solicitação: ${requestId}`);
+  });
   it('shows four independent states and keeps legacy list URL as a redirect', async () => {
     const request = vi.fn(async (path: string) => path === '/v1/flows/status' ? { enabled: true } : { data: [{
       schemaVersion: 1, id, organizationId: org, provider: 'QR', identity: { displayName: 'Atendimento', maskedAddress: null },
@@ -28,7 +39,56 @@ describe('canonical channels UI', () => {
     expect(screen.getByText(/Serviço WhatsApp: Pronto/)).toBeInTheDocument();
     expect(screen.getAllByText('Ativo').length).toBeGreaterThan(0);
     expect(screen.getByText('Com falha')).toBeVisible();
-    await waitFor(() => expect(request).toHaveBeenCalledWith('/v1/channels'));
+    await waitFor(() => expect(request).toHaveBeenCalledWith('/v1/channels?pageSize=50'));
+  });
+
+  it('loads a bounded next page of inboxes on demand', async () => {
+    const secondId = 'f1654439-24f2-4cde-927a-e11754028789';
+    const base = { schemaVersion: 1, organizationId: org, provider: 'QR',
+      providerReference: { providerAccountId: account, instanceId: id }, transportStatus: 'CONNECTED', providerStatus: 'READY',
+      automationStatus: 'UNBOUND', humanStatus: 'UNBOUND', revision: 1, createdAt: timestamp, updatedAt: timestamp };
+    const request = vi.fn(async (path: string) => {
+      if (path === '/v1/channels?pageSize=50') return { data: [{ ...base, id, identity: { displayName: 'Caixa 1', maskedAddress: null } }], nextCursor: 'cursor1' };
+      if (path === '/v1/channels?pageSize=50&cursor=cursor1') return { data: [{ ...base, id,
+        identity: { displayName: 'Caixa 1 duplicada após atualização', maskedAddress: null } }, { ...base, id: secondId,
+        providerReference: { ...base.providerReference, instanceId: secondId }, identity: { displayName: 'Caixa 2', maskedAddress: null } }], nextCursor: null };
+      throw new Error(`Unexpected ${path}`);
+    }) as ApiClient['request'];
+    render(<App client={client(request)} initialEntries={['/channels']} />);
+
+    expect(await screen.findByText('Caixa 1')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Carregar mais caixas' }));
+    expect(await screen.findByText('Caixa 2')).toBeVisible();
+    expect(screen.queryByText('Caixa 1 duplicada após atualização')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Carregar mais caixas' })).not.toBeInTheDocument();
+  });
+
+  it('unlocks pagination when archived filter changes during an older load-more request', async () => {
+    let finishOldPage!: (value: unknown) => void;
+    const oldPage = new Promise(resolve => { finishOldPage = resolve; });
+    const base = { schemaVersion: 1, id, organizationId: org, provider: 'QR',
+      identity: { displayName: 'Caixa ativa', maskedAddress: null },
+      providerReference: { providerAccountId: account, instanceId: id }, transportStatus: 'CONNECTED',
+      providerStatus: 'READY', automationStatus: 'UNBOUND', humanStatus: 'UNBOUND', revision: 1,
+      createdAt: timestamp, updatedAt: timestamp };
+    const archivedId = 'c58013f8-7a60-4a55-b4fa-e3b4c56540a0';
+    const request = vi.fn(async (path: string) => {
+      if (path === '/v1/channels?pageSize=50') return { data: [base], nextCursor: 'old-cursor' };
+      if (path === '/v1/channels?pageSize=50&cursor=old-cursor') return oldPage;
+      if (path === '/v1/channels?includeArchived=true&pageSize=50') return { data: [{ ...base,
+        id: archivedId, providerReference: { ...base.providerReference, instanceId: archivedId },
+        identity: { displayName: 'Caixa arquivada', maskedAddress: null }, archivedAt: timestamp }], nextCursor: 'new-cursor' };
+      throw new Error(`Unexpected ${path}`);
+    }) as ApiClient['request'];
+    render(<App client={client(request)} initialEntries={['/channels']} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Carregar mais caixas' }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith('/v1/channels?pageSize=50&cursor=old-cursor'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Mostrar arquivadas' }));
+    expect(await screen.findByText('Caixa arquivada')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Carregar mais caixas' })).toBeEnabled();
+    finishOldPage({ data: [], nextCursor: null });
+    expect(screen.getByText('Caixa arquivada')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Carregar mais caixas' })).toBeEnabled();
   });
 
   it('offers both providers and three customer setup steps', async () => {
@@ -64,6 +124,24 @@ describe('canonical channels UI', () => {
     expect(await screen.findByRole('option', { name: 'Triagem inteligente · v2' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Vincular automação' })).toBeDisabled();
   });
+
+  it('explica ao administrador o bloqueio de reconciliação sem sugerir novo QR', async () => {
+    const channel = { schemaVersion: 1, id, organizationId: org, provider: 'QR',
+      identity: { displayName: 'Atendimento', maskedAddress: null }, providerReference: { providerAccountId: account, instanceId: id },
+      transportStatus: 'DISCONNECTED', providerStatus: 'READY', automationStatus: 'UNBOUND', humanStatus: 'UNBOUND', revision: 1,
+      createdAt: timestamp, updatedAt: timestamp };
+    const request = vi.fn(async (path: string) => {
+      if (path.endsWith('/pair')) throw new ApiClientError('CONNECT_RECONCILIATION_REQUIRED', 409, undefined, 'CONNECT_RECONCILIATION_REQUIRED');
+      if (path.endsWith('/automation')) return { binding: null };
+      if (path === '/v1/automations') return { data: [] };
+      return channel;
+    }) as ApiClient['request'];
+    render(<App client={client(request)} initialEntries={[`/channels/${id}`]} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar QR Code' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Atualize o status');
+    expect(screen.getByRole('alert')).toHaveTextContent('reconciliação');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('CONNECT_RECONCILIATION_REQUIRED');
+  });
 });
 
 it('never renders an expired QR challenge and provides a new request action',async()=>{
@@ -71,7 +149,7 @@ it('never renders an expired QR challenge and provides a new request action',asy
  const request=vi.fn(async(path:string)=>{if(path.endsWith('/pair'))return {provider:'QR',channel,operationId:null,replayed:false,pending:false,reconciliationRequired:false,action:{type:'QR_CODE',encoding:'DATA_URL',value:'data:image/png;base64,abc',expiresAt:new Date(Date.now()-1000).toISOString()}};if(path.endsWith('/automation'))return {binding:null};if(path==='/v1/automations')return {data:[]};return channel;}) as ApiClient['request'];
  render(<App client={client(request)} initialEntries={['/channels/'+id]}/>);
  fireEvent.click(await screen.findByRole('button',{name:'Gerar QR Code'}));
- expect(await screen.findByText('QR ou código expirado. Gere outro para continuar.')).toBeVisible();
+ expect(await screen.findByText('QR ou código expirado. Atualize o status antes de solicitar outro.')).toBeVisible();
  expect(screen.queryByRole('img',{name:'QR Code para conectar o WhatsApp'})).not.toBeInTheDocument();
  expect(screen.getByRole('button',{name:'Gerar QR Code'})).toBeEnabled();
 });

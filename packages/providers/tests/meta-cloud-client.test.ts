@@ -195,7 +195,91 @@ describe('MetaCloudClient sends', () => {
   });
 });
 
+describe('MetaCloudClient template creation', () => {
+  it('submits a fixed text BODY to the channel WABA and reports review status', async () => {
+    const fetch = vi.fn<MetaCloudFetch>().mockResolvedValue(jsonResponse({
+      id: '1627019861106475', status: 'PENDING', category: 'UTILITY',
+    }));
+    const client = new MetaCloudClient({ ...options, fetch });
+
+    await expect(client.createTextTemplate({
+      name: 'aviso_entrega', language: 'pt_BR', category: 'UTILITY',
+      body: 'Seu pedido está pronto para retirada.',
+    })).resolves.toEqual({ id: '1627019861106475', status: 'PENDING', category: 'UTILITY' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(String(url)).toBe('https://graph.facebook.com/v23.0/987654321098765/message_templates');
+    expect(init?.method).toBe('POST');
+    expect(init?.redirect).toBe('error');
+    expect(new Headers(init?.headers).get('authorization')).toBe('Bearer server-owned-token');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: 'aviso_entrega', language: 'pt_BR', category: 'UTILITY',
+      components: [{ type: 'BODY', text: 'Seu pedido está pronto para retirada.' }],
+    });
+  });
+
+  it.each([
+    { name: 'Uppercase', language: 'pt_BR', category: 'UTILITY', body: 'Olá' },
+    { name: 'aviso', language: '../pt_BR', category: 'UTILITY', body: 'Olá' },
+    { name: 'aviso', language: 'pt_BR', category: 'AUTHENTICATION', body: 'Olá' },
+    { name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá {{1}}' },
+    { name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'x'.repeat(1025) },
+  ])('rejects unsupported static template input before Graph', async input => {
+    const fetch = vi.fn<MetaCloudFetch>();
+    await expect(new MetaCloudClient({ ...options, fetch }).createTextTemplate(input as never))
+      .rejects.toMatchObject({ code: 'INVALID_META_INPUT' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('maps definite Graph rejection without leaking provider body', async () => {
+    const fetch = vi.fn<MetaCloudFetch>().mockResolvedValue(
+      new Response('server-owned-token and customer data', { status: 400 }),
+    );
+    const input = { name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá' } as const;
+    const failure = new MetaCloudClient({ ...options, fetch }).createTextTemplate(input);
+    await expect(failure).rejects.toMatchObject({ code: 'META_REQUEST_REJECTED' });
+    await expect(failure).rejects.not.toHaveProperty('cause');
+  });
+
+  it.each([401, 403, 429])('keeps a %i template POST uncertain instead of permanently rejected', async status => {
+    const fetch = vi.fn<MetaCloudFetch>().mockResolvedValue(
+      new Response('server-owned-token and customer data', { status }),
+    );
+    const client = new MetaCloudClient({ ...options, fetch });
+    await expect(client.createTextTemplate({
+      name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá',
+    })).rejects.toMatchObject({ code: 'META_TEMPLATE_SUBMISSION_UNKNOWN' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts a successful Graph response containing only the new template ID', async () => {
+    const fetch = vi.fn<MetaCloudFetch>().mockResolvedValue(jsonResponse({ id: '10001' }));
+    const input = { name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá' } as const;
+    await expect(new MetaCloudClient({ ...options, fetch }).createTextTemplate(input))
+      .resolves.toEqual({ id: '10001' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('keeps a successful POST with no ID uncertain and does not resubmit it', async () => {
+    const fetch = vi.fn<MetaCloudFetch>().mockResolvedValue(jsonResponse({ success: true }));
+    const input = { name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá' } as const;
+    await expect(new MetaCloudClient({ ...options, fetch }).createTextTemplate(input))
+      .rejects.toMatchObject({ code: 'META_TEMPLATE_SUBMISSION_UNKNOWN' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('MetaCloudClient template listing', () => {
+  it('finds one template by name and language using the WABA-scoped Meta filter', async () => {
+    const fetch = vi.fn<MetaCloudFetch>().mockResolvedValue(jsonResponse({ data: [
+      { id: '10001', name: 'aviso_entrega', language: 'en_US', status: 'APPROVED', category: 'UTILITY', components: [] },
+      { id: '10002', name: 'aviso_entrega', language: 'pt_BR', status: 'PENDING', category: 'UTILITY', components: [{ type: 'BODY', text: 'Pronto.' }] },
+    ] }));
+    const client = new MetaCloudClient({ ...options, fetch });
+    await expect(client.findTemplateByName('aviso_entrega', 'pt_BR')).resolves.toMatchObject({ id: '10002' });
+    expect(String(fetch.mock.calls[0]?.[0])).toBe(
+      'https://graph.facebook.com/v23.0/987654321098765/message_templates?limit=100&name=aviso_entrega',
+    );
+  });
   it('paginates with validated cursors on the fixed host and ignores provider next URLs', async () => {
     const fetch = vi.fn<MetaCloudFetch>()
       .mockResolvedValueOnce(jsonResponse({

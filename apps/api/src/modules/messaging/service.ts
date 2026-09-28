@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   ConfigureBotRequestSchema,
+  CreateTextTemplateRequestSchema,
   SendTemplateRequestSchema,
   type MessageView,
+  type TemplateView,
 } from "@jrc/contracts";
-import type { MetaCloudClient, TypebotClient } from "@jrc/providers";
+import type { MetaCloudClient, MetaMessageTemplate, TypebotClient } from "@jrc/providers";
 import type { OrganizationTransaction } from "../../db/tenant-transaction.js";
 import type { MessagingService } from "../../http/routes/messaging.js";
 import { inspectTemplateComponents } from "./dispatcher.js";
@@ -18,6 +20,11 @@ import { MediaError } from "@jrc/providers";
 import type { MediaStore } from "./media-store.js";
 import { integrationAudit } from "../integrations/chatwoot-service.js";
 import { requireActiveOrganization } from "../tenancy/operational-limits.js";
+import {
+  claimIdempotency,
+  completeIdempotencyRecord,
+  hashIdempotencyRequest,
+} from "../instances/idempotency.js";
 
 export interface MessagingServiceOptions {
   media?: MediaStore;
@@ -28,7 +35,7 @@ export interface MessagingServiceOptions {
   ): Promise<T>;
   resolveMetaClient(
     channel: MessagingChannel,
-  ): Promise<Pick<MetaCloudClient, "listTemplates">>;
+  ): Promise<Pick<MetaCloudClient, "listTemplates" | "findTemplateByName" | "createTextTemplate">>;
   resolveTypebotClient(
     originReference: string,
     organizationId: string,
@@ -61,6 +68,25 @@ export function messageView(message: Message): MessageView {
           ? message.content.caption || message.content.fileName
           : message.content.name,
   };
+}
+function templateView(template: MetaMessageTemplate): TemplateView {
+  const { id, name, language, status, category } = template;
+  const componentValidation = inspectTemplateComponents(template);
+  return { id, name, language, status, category,
+    bodyVariableCount: typeof componentValidation === "number" ? componentValidation : null };
+}
+const TEMPLATE_CLIENT_ROUTE = "POST /v1/messaging/channels/:id/templates";
+const TEMPLATE_IDENTITY_ROUTE = "META_TEMPLATE_WABA_NAME_LANGUAGE";
+const TEMPLATE_RESERVATION_MS = 7 * 24 * 60 * 60 * 1000;
+function templateError(code: string, status: number) {
+  return Object.assign(new Error(code), { code, status });
+}
+function fixedTextBodyMatches(template: MetaMessageTemplate, body: string): boolean {
+  return template.components.length === 1 && template.components.some(component =>
+    typeof component === "object" && component !== null &&
+    (component as Record<string, unknown>).type === "BODY" &&
+    (component as Record<string, unknown>).text === body,
+  );
 }
 export function createMessagingService(
   options: MessagingServiceOptions,
@@ -148,23 +174,134 @@ export function createMessagingService(
       if (channel.provider === "BAILEYS") return { data: [] };
       const client = await options.resolveMetaClient(channel);
       const templates = await client.listTemplates();
-      return {
-        data: templates.map((template) => {
-          const { id, name, language, status, category } = template;
-          const componentValidation = inspectTemplateComponents(template);
-          return {
-            id,
-            name,
-            language,
-            status,
-            category,
-            bodyVariableCount:
-              typeof componentValidation === "number"
-                ? componentValidation
-                : null,
-          };
-        }),
-      };
+      return { data: templates.map(templateView) };
+    },
+    async getTemplateStatus(organizationId, channelId, templateId) {
+      const channel = await findChannel(organizationId, channelId);
+      if (channel.provider !== "META" || !channel.wabaId)
+        throw Object.assign(new Error("META_CHANNEL_REQUIRED"), { code: "META_CHANNEL_REQUIRED", status: 422 });
+      // Query the channel's WABA, never Graph's global template-ID endpoint: the
+      // latter can resolve another WABA accessible to the same service token.
+      const templates = await (await options.resolveMetaClient(channel)).listTemplates();
+      const template = templates.find(item => item.id === templateId);
+      const checkedAt = new Date().toISOString();
+      return template
+        ? { observation: "OBSERVED" as const, id: templateId, checkedAt, template: templateView(template) }
+        : { observation: "NOT_OBSERVED" as const, id: templateId, checkedAt };
+    },
+    async createTextTemplate(organizationId, channelId, rawInput, idempotencyKey) {
+      const input = CreateTextTemplateRequestSchema.parse(rawInput);
+      const channel = await transact(organizationId, async tx => {
+        await requireActiveOrganization(tx, organizationId);
+        const found = await repository.findChannel(tx, organizationId, channelId);
+        if (!found || found.organizationId !== organizationId)
+          throw new MessagingRepositoryError("CHANNEL_NOT_FOUND", 404);
+        if (found.provider !== "META" || !found.wabaId)
+          throw templateError("META_CHANNEL_REQUIRED", 422);
+        return found;
+      });
+      // A failure before Graph POST has no remote side effect. Fetch the WABA-scoped
+      // observation before reserving an idempotency key, so configuration or GET
+      // outages do not strand the name for the reservation lifetime.
+      let client: Awaited<ReturnType<MessagingServiceOptions["resolveMetaClient"]>>;
+      let observed: MetaMessageTemplate | undefined;
+      try {
+        client = await options.resolveMetaClient(channel);
+        observed = await client.findTemplateByName(input.name, input.language);
+      } catch {
+        throw templateError("META_TEMPLATE_SUBMISSION_UNKNOWN", 503);
+      }
+      const reservation = await transact(organizationId, async tx => {
+        await requireActiveOrganization(tx, organizationId);
+        const current = await repository.findChannel(tx, organizationId, channelId);
+        if (!current || current.organizationId !== organizationId)
+          throw new MessagingRepositoryError("CHANNEL_NOT_FOUND", 404);
+        if (current.provider !== "META" || !current.wabaId)
+          throw templateError("META_CHANNEL_REQUIRED", 422);
+        if (current.wabaId !== channel.wabaId)
+          throw templateError("META_CHANNEL_REQUIRED", 409);
+        const expiresAt = new Date(Date.now() + TEMPLATE_RESERVATION_MS);
+        const client = await claimIdempotency(tx, {
+          organizationId,
+          route: TEMPLATE_CLIENT_ROUTE,
+          key: idempotencyKey,
+          requestHash: hashIdempotencyRequest({ channelId, input }),
+          expiresAt,
+        });
+        if (client.kind === "REPLAY" && client.record.status === "FAILED"
+          && client.record.responseMetadata.errorCode === "META_TEMPLATE_REJECTED")
+          return { identity: null, client };
+        const identityKey = hashIdempotencyRequest({ wabaId: current.wabaId,
+          name: input.name, language: input.language });
+        // A definitive provider rejection did not create a template. Release an
+        // identity reserved by an earlier build so a corrected body can retry.
+        await tx.query(`DELETE FROM idempotency_records
+          WHERE organization_id=$1 AND route=$2 AND idempotency_key=$3
+            AND status='FAILED' AND response_metadata->>'errorCode'='META_TEMPLATE_REJECTED'`,
+        [organizationId, TEMPLATE_IDENTITY_ROUTE, identityKey]);
+        const identity = await claimIdempotency(tx, {
+          organizationId,
+          route: TEMPLATE_IDENTITY_ROUTE,
+          key: identityKey,
+          requestHash: hashIdempotencyRequest({ wabaId: current.wabaId, input }),
+          expiresAt,
+        });
+        return { identity, client };
+      });
+      if (!reservation.identity) throw templateError("META_TEMPLATE_REJECTED", 422);
+      const identity = reservation.identity;
+      const recordId = (claim: typeof identity) =>
+        claim.kind === "CLAIMED" ? claim.recordId : claim.record.id;
+      const storeOutcome = async (status: "COMPLETED" | "FAILED", responseMetadata: Record<string, unknown>) =>
+        transact(organizationId, async tx => {
+          if (status === "FAILED") {
+            await completeIdempotencyRecord(tx, {
+              organizationId, recordId: recordId(reservation.client), status, responseMetadata,
+            });
+            // Only the reservation made by this POST may be released. An
+            // uncertain POST retains its identity and is never resent blindly.
+            if (identity.kind === "CLAIMED") await tx.query(
+              `DELETE FROM idempotency_records WHERE organization_id=$1 AND id=$2 AND status='IN_PROGRESS'`,
+              [organizationId, identity.recordId],
+            );
+            return;
+          }
+          for (const claim of [identity, reservation.client]) {
+            await completeIdempotencyRecord(tx, {
+              organizationId, recordId: recordId(claim), status, responseMetadata,
+            });
+          }
+        });
+      if (observed) {
+        if (!fixedTextBodyMatches(observed, input.body))
+          throw templateError("META_TEMPLATE_NAME_CONFLICT", 409);
+        await storeOutcome("COMPLETED", { templateId: observed.id });
+        return { id: observed.id, name: observed.name, language: observed.language,
+          category: observed.category, status: observed.status };
+      }
+      const replay = [identity, reservation.client].find(claim => claim.kind === "REPLAY");
+      if (replay?.kind === "REPLAY") {
+        const metadata = replay.record.responseMetadata;
+        if (replay.record.status === "FAILED" && metadata.errorCode === "META_TEMPLATE_REJECTED")
+          throw templateError("META_TEMPLATE_REJECTED", 422);
+        if (replay.record.status === "COMPLETED" && typeof metadata.templateId === "string")
+          return { id: metadata.templateId, name: input.name, language: input.language,
+            category: input.category, status: "STATUS_NOT_RETURNED" };
+        throw templateError("META_TEMPLATE_SUBMISSION_UNKNOWN", 503);
+      }
+      try {
+        const created = await client.createTextTemplate(input);
+        await storeOutcome("COMPLETED", { templateId: created.id });
+        return { id: created.id, name: input.name, language: input.language,
+          category: created.category ?? input.category, status: created.status ?? "STATUS_NOT_RETURNED" };
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? error.code : undefined;
+        if (code === "META_REQUEST_REJECTED") {
+          await storeOutcome("FAILED", { errorCode: "META_TEMPLATE_REJECTED" });
+          throw templateError("META_TEMPLATE_REJECTED", 422);
+        }
+        throw templateError("META_TEMPLATE_SUBMISSION_UNKNOWN", 503);
+      }
     },
     async listConversations(organizationId, channelId) {
       await findChannel(organizationId, channelId);

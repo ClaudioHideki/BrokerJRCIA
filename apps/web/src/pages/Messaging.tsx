@@ -8,9 +8,12 @@ import {
 
 import {
   ConversationsResponseSchema,
+  CreateTextTemplateRequestSchema,
   MessagesResponseSchema,
   MessagingChannelsResponseSchema,
   TemplatesResponseSchema,
+  TemplateStatusResponseSchema,
+  SubmittedTemplateSchema,
   type ConversationView,
   type MessageView,
   type MessagingChannelView,
@@ -107,9 +110,23 @@ export function MessagingPage() {
   const controllers = useRef(new Set<AbortController>());
   const [channels, setChannels] = useState<MessagingChannelView[]>([]);
   const [channelId, setChannelId] = useState("");
+  const activeChannelId = useRef(channelId);
+  activeChannelId.current = channelId;
   const [templates, setTemplates] = useState<TemplateView[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [templateVariables, setTemplateVariables] = useState<string[]>([]);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateLanguage, setNewTemplateLanguage] = useState("pt_BR");
+  const [newTemplateCategory, setNewTemplateCategory] = useState<"UTILITY" | "MARKETING">("UTILITY");
+  const [newTemplateBody, setNewTemplateBody] = useState("");
+  const [templateSubmission, setTemplateSubmission] = useState<string | null>(null);
+  const [submittingTemplate, setSubmittingTemplate] = useState(false);
+  const [refreshingTemplates, setRefreshingTemplates] = useState(false);
+  const [checkingTemplateId, setCheckingTemplateId] = useState<string | null>(null);
+  const [templateStatusNotes, setTemplateStatusNotes] = useState<Record<string, string>>({});
+  const locallySubmittedTemplateIds = useRef(new Set<string>());
+  const templateSubmitLock = useRef(false);
+  const pendingTemplateSubmission = useRef<{ payload: string; key: string } | null>(null);
   const [conversations, setConversations] = useState<ConversationView[]>([]);
   const [conversationId, setConversationId] = useState("");
   const [messages, setMessages] = useState<MessageView[]>([]);
@@ -138,6 +155,18 @@ export function MessagingPage() {
     setTemplates([]);
     setTemplateId("");
     setTemplateVariables([]);
+    setNewTemplateName("");
+    setNewTemplateLanguage("pt_BR");
+    setNewTemplateCategory("UTILITY");
+    setNewTemplateBody("");
+    setTemplateSubmission(null);
+    setSubmittingTemplate(false);
+    setRefreshingTemplates(false);
+    setCheckingTemplateId(null);
+    setTemplateStatusNotes({});
+    locallySubmittedTemplateIds.current.clear();
+    templateSubmitLock.current = false;
+    pendingTemplateSubmission.current = null;
     setConversations([]);
     setConversationId("");
     setMessages([]);
@@ -217,6 +246,12 @@ export function MessagingPage() {
     setTemplates([]);
     setTemplateId("");
     setTemplateVariables([]);
+    setTemplateSubmission(null);
+    setTemplateStatusNotes({});
+    locallySubmittedTemplateIds.current.clear();
+    pendingTemplateSubmission.current = null;
+    setNewTemplateName("");
+    setNewTemplateBody("");
     setConversations([]);
     setConversationId("");
     setMessages([]);
@@ -332,6 +367,119 @@ export function MessagingPage() {
     );
     setTemplateId(nextTemplateId);
     setTemplateVariables(Array(nextTemplate?.bodyVariableCount ?? 0).fill(""));
+  }
+
+  async function submitTextTemplate(event: FormEvent) {
+    event.preventDefault();
+    if (!canConfigureAutomation || selectedChannel?.provider !== "META" || templateSubmitLock.current) return;
+    const parsed = CreateTextTemplateRequestSchema.safeParse({
+      name: newTemplateName.trim(), language: newTemplateLanguage.trim(),
+      category: newTemplateCategory, body: newTemplateBody,
+    });
+    if (!parsed.success) {
+      setError({ text: "Informe nome em letras minúsculas, idioma e texto fixo sem variáveis." });
+      return;
+    }
+    templateSubmitLock.current = true;
+    const generation = tenantGeneration.current;
+    const submittedChannel = channelId;
+    const payload = JSON.stringify(parsed.data);
+    const submissionIdentity = `${submittedChannel}:${payload}`;
+    if (pendingTemplateSubmission.current?.payload !== submissionIdentity)
+      pendingTemplateSubmission.current = { payload: submissionIdentity, key: crypto.randomUUID() };
+    setSubmittingTemplate(true);
+    setTemplateSubmission(null);
+    setError(null);
+    try {
+      const response = SubmittedTemplateSchema.safeParse(await client.request<unknown>(
+        `/v1/messaging/channels/${encodeURIComponent(submittedChannel)}/templates`,
+        { method: "POST", headers: { "Idempotency-Key": pendingTemplateSubmission.current.key }, body: payload },
+      ));
+      if (!response.success) throw invalidResponse();
+      pendingTemplateSubmission.current = null;
+      if (generation !== tenantGeneration.current || submittedChannel !== activeChannelId.current) return;
+      setTemplateSubmission(response.data.status === "STATUS_NOT_RETURNED"
+        ? `${response.data.name}: solicitação recebida pela Meta; status ainda não confirmado. Atualize a lista para acompanhar.`
+        : `${response.data.name}: ${response.data.status}. Atualize a lista para acompanhar.`);
+      setTemplates(current => current.some(item => item.id === response.data.id) ? current : [
+        ...current, { ...response.data, bodyVariableCount: 0 },
+      ]);
+      locallySubmittedTemplateIds.current.add(response.data.id);
+      setNewTemplateName("");
+      setNewTemplateBody("");
+    } catch (caught) {
+      if (generation !== tenantGeneration.current || submittedChannel !== activeChannelId.current) return;
+      const apiError = caught instanceof ApiClientError ? caught : null;
+      const fallback = apiError?.code === "META_TEMPLATE_REJECTED"
+        ? "A Meta recusou o modelo. Revise o conteúdo e a categoria."
+        : apiError?.code === "META_TEMPLATE_NAME_CONFLICT" || apiError?.code === "IDEMPOTENCY_CONFLICT"
+          ? "Já existe uma solicitação com este nome ou chave e outro conteúdo. Use outro nome ou revise o texto."
+        : "A submissão não pôde ser confirmada. Atualize a lista antes de tentar novamente para evitar duplicação.";
+      setError({ text: fallback, ...(apiError?.requestId ? { requestId: apiError.requestId } : {}) });
+    } finally {
+      if (generation === tenantGeneration.current) {
+        templateSubmitLock.current = false;
+        setSubmittingTemplate(false);
+      }
+    }
+  }
+
+  async function refreshTemplates() {
+    if (selectedChannel?.provider !== "META" || refreshingTemplates) return;
+    const generation = tenantGeneration.current;
+    const requestedChannel = channelId;
+    const controller = new AbortController();
+    controllers.current.add(controller);
+    setRefreshingTemplates(true);
+    try {
+      const data = await loadTemplates(client, requestedChannel, controller.signal);
+      if (generation === tenantGeneration.current && requestedChannel === activeChannelId.current && !controller.signal.aborted) {
+        const observedIds = new Set(data.map(item => item.id));
+        for (const id of observedIds) locallySubmittedTemplateIds.current.delete(id);
+        setTemplates(current => [...data, ...current.filter(item => locallySubmittedTemplateIds.current.has(item.id) && !observedIds.has(item.id))
+          .map(item => ({ ...item, status: "STATUS_NOT_RETURNED" }))]);
+        setError(null);
+      }
+    } catch (caught) {
+      if (generation === tenantGeneration.current && requestedChannel === activeChannelId.current && !controller.signal.aborted)
+        setError(safeError(caught, "Não foi possível consultar o status dos templates."));
+    } finally {
+      controllers.current.delete(controller);
+      if (generation === tenantGeneration.current) setRefreshingTemplates(false);
+    }
+  }
+
+  async function checkTemplateStatus(template: TemplateView) {
+    if (selectedChannel?.provider !== "META" || checkingTemplateId !== null) return;
+    const generation = tenantGeneration.current;
+    const requestedChannel = channelId;
+    const controller = new AbortController();
+    controllers.current.add(controller);
+    setCheckingTemplateId(template.id);
+    try {
+      const result = TemplateStatusResponseSchema.safeParse(await client.request<unknown>(
+        `/v1/messaging/channels/${encodeURIComponent(requestedChannel)}/templates/${encodeURIComponent(template.id)}/status`,
+        { signal: controller.signal },
+      ));
+      if (!result.success) throw invalidResponse();
+      if (generation !== tenantGeneration.current || requestedChannel !== activeChannelId.current || controller.signal.aborted) return;
+      if (result.data.observation === "OBSERVED") {
+        const observedTemplate = result.data.template;
+        locallySubmittedTemplateIds.current.delete(template.id);
+        setTemplates(current => current.map(item => item.id === template.id ? observedTemplate : item));
+        setTemplateStatusNotes(current => ({ ...current, [template.id]: "Status consultado na Meta para esta WABA." }));
+      } else {
+        setTemplates(current => current.map(item => item.id === template.id ? { ...item, status: "STATUS_NOT_RETURNED" } : item));
+        setTemplateStatusNotes(current => ({ ...current, [template.id]: "Este ID ainda não aparece na WABA nesta consulta. Isso não significa rejeição." }));
+      }
+      setError(null);
+    } catch (caught) {
+      if (generation === tenantGeneration.current && requestedChannel === activeChannelId.current && !controller.signal.aborted)
+        setError(safeError(caught, "Não foi possível consultar o status deste template."));
+    } finally {
+      controllers.current.delete(controller);
+      if (generation === tenantGeneration.current) setCheckingTemplateId(null);
+    }
   }
 
   async function sendTemplate(event: FormEvent) {
@@ -578,6 +726,11 @@ export function MessagingPage() {
             <div className="messaging-grid">
               {selectedChannel?.provider === "META" ? <section className="panel" aria-labelledby="templates-title">
                 <h2 id="templates-title">Templates</h2>
+                <button type="button" className="button button--secondary" disabled={refreshingTemplates}
+                  onClick={() => void refreshTemplates()}>
+                  {refreshingTemplates ? "Consultando…" : "Atualizar status dos templates"}
+                </button>
+                {templateSubmission ? <p role="status">{templateSubmission}</p> : null}
                 {templates.length === 0 ? (
                   <p>Nenhum template sincronizado.</p>
                 ) : (
@@ -587,11 +740,41 @@ export function MessagingPage() {
                         <strong>{template.name}</strong>{" "}
                         <span>{template.language}</span>{" "}
                         <span>{template.category}</span>{" "}
-                        <span>{template.status}</span>
+                        <span>{template.status === "STATUS_NOT_RETURNED" ? "Aguardando consulta" : template.status}</span>
+                        {templateStatusNotes[template.id] ? <small>{templateStatusNotes[template.id]}</small> : null}
+                        <button type="button" className="button button--ghost" disabled={checkingTemplateId !== null}
+                          aria-label={`Consultar status de ${template.name}`} onClick={() => void checkTemplateStatus(template)}>
+                          {checkingTemplateId === template.id ? "Consultando…" : "Consultar status"}
+                        </button>
                       </li>
                     ))}
                   </ul>
                 )}
+                {canConfigureAutomation ? (
+                  <form onSubmit={(event) => void submitTextTemplate(event)}>
+                    <h3>Criar template de texto</h3>
+                    <p>O envio solicita análise da Meta. O template só pode ser usado após aprovação.</p>
+                    <label htmlFor="new-template-name">Nome do novo template</label>
+                    <input id="new-template-name" type="text" required maxLength={512} pattern="[a-z0-9_]+"
+                      value={newTemplateName} onChange={event => setNewTemplateName(event.target.value)} />
+                    <label htmlFor="new-template-language">Idioma do novo template</label>
+                    <input id="new-template-language" type="text" required maxLength={6}
+                      value={newTemplateLanguage} onChange={event => setNewTemplateLanguage(event.target.value)} />
+                    <label htmlFor="new-template-category">Categoria do novo template</label>
+                    <select id="new-template-category" value={newTemplateCategory}
+                      onChange={event => setNewTemplateCategory(event.target.value as "UTILITY" | "MARKETING")}>
+                      <option value="UTILITY">Utilidade</option>
+                      <option value="MARKETING">Marketing</option>
+                    </select>
+                    <label htmlFor="new-template-body">Texto do novo template</label>
+                    <textarea id="new-template-body" required maxLength={1024} value={newTemplateBody}
+                      onChange={event => setNewTemplateBody(event.target.value)} />
+                    <p>Esta primeira versão aceita texto fixo, sem variáveis, mídia ou botões.</p>
+                    <button className="button button--primary" type="submit" disabled={submittingTemplate}>
+                      {submittingTemplate ? "Enviando à Meta…" : "Enviar para aprovação da Meta"}
+                    </button>
+                  </form>
+                ) : null}
                 {canMutate ? (
                   <form onSubmit={(event) => void sendTemplate(event)}>
                     <label htmlFor="approved-template">Modelo aprovado</label>

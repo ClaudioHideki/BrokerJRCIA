@@ -3,6 +3,8 @@ import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { RuntimeResult, RuntimeState } from './types.js';
 
 export interface DefinitionRow {id:string;organizationId:string;name:string;lifecycleStatus:'DRAFT'|'PUBLISHED'|'ARCHIVED';draftGraph:AutomationGraphV1;draftRevision:number;activeVersion:number|null;updatedAt:Date}
+export interface DefinitionPageCursor {updatedAt:string;id:string}
+export interface DefinitionPageRow extends DefinitionRow {cursorUpdatedAt:string}
 export interface VersionRow {automationId:string;organizationId:string;version:number;graph:AutomationGraphV1;checksum:string;publishedAt:Date}
 export interface BindingRow {id:string;organizationId:string;automationId:string;version:number;channelId:string;humanDestinationId:string|null;status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number;createdAt:Date;updatedAt:Date}
 export interface ExecutionRow {id:string;organizationId:string;automationId:string;version:number;bindingId:string;channelId:string;conversationId:string|null;status:string;currentNodeId:string|null;correlationId:string;state:RuntimeState;input:Record<string,unknown>;errorCode:string|null;attempts:number;startedAt:Date;updatedAt:Date;completedAt:Date|null;leaseToken:string|null}
@@ -19,7 +21,7 @@ const executionColumns=`id,organization_id AS "organizationId",automation_id AS 
 const claimedExecutionColumns=executionColumns.split(',').map(column=>`e.${column}`).join(',');
 
 export interface AutomationRepository {
- listDefinitions(tx:TenantTransaction,org:string):Promise<DefinitionRow[]>;
+ listDefinitions(tx:TenantTransaction,org:string,options:{pageSize:number;cursor?:DefinitionPageCursor}):Promise<{rows:DefinitionPageRow[];hasMore:boolean}>;
  getDefinition(tx:TenantTransaction,org:string,id:string,lock?:boolean):Promise<DefinitionRow|null>;
  insertDefinition(tx:TenantTransaction,row:{org:string;id:string;name:string;graph:AutomationGraphV1}):Promise<DefinitionRow>;
  updateDefinition(tx:TenantTransaction,row:{org:string;id:string;name:string;graph:AutomationGraphV1;revision:number}):Promise<DefinitionRow|null>;
@@ -50,7 +52,14 @@ export interface AutomationRepository {
 }
 
 export function createPostgresAutomationRepository():AutomationRepository{return {
-  async listDefinitions(tx,org){return (await tx.query<DefinitionRow>(`select ${definitionColumns} from automation_definitions where organization_id=$1 order by updated_at desc limit 200`,[org])).rows;},
+  async listDefinitions(tx,org,options){
+    const rows=(await tx.query<DefinitionPageRow>(`select ${definitionColumns},to_char(updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "cursorUpdatedAt"
+      from automation_definitions where organization_id=$1
+      and ($2::timestamptz is null or (updated_at,id)<($2::timestamptz,$3::uuid))
+      order by updated_at desc,id desc limit $4`,
+      [org,options.cursor?.updatedAt??null,options.cursor?.id??null,options.pageSize+1])).rows;
+    return {rows:rows.slice(0,options.pageSize),hasMore:rows.length>options.pageSize};
+  },
   async getDefinition(tx,org,id,lock=false){return (await tx.query<DefinitionRow>(`select ${definitionColumns} from automation_definitions where organization_id=$1 and id=$2 ${lock?'for update':''}`,[org,id])).rows[0]??null;},
   async insertDefinition(tx,row){return (await tx.query<DefinitionRow>(`insert into automation_definitions(organization_id,id,name,draft_graph) values($1,$2,$3,$4) returning ${definitionColumns}`,[row.org,row.id,row.name,JSON.stringify(row.graph)])).rows[0]!;},
   async updateDefinition(tx,row){return (await tx.query<DefinitionRow>(`update automation_definitions set name=$3,draft_graph=$4,draft_revision=draft_revision+1,updated_at=now() where organization_id=$1 and id=$2 and draft_revision=$5 and lifecycle_status<>'ARCHIVED' returning ${definitionColumns}`,[row.org,row.id,row.name,JSON.stringify(row.graph),row.revision])).rows[0]??null;},

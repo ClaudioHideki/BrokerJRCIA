@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AUTOMATION_ORIGIN, AutomationGraphV1Schema, type AutomationGraphV1 } from '@jrc/contracts';
+import { z } from 'zod';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import { executeAutomation, validateAutomationGraph } from './engine.js';
-import { createPostgresAutomationRepository, type AutomationRepository, type DefinitionRow, type ExecutionRow, type OutboxKind, type OutboxRow, type VersionRow } from './repository.js';
+import { createPostgresAutomationRepository, type AutomationRepository, type DefinitionPageCursor, type DefinitionRow, type ExecutionRow, type OutboxKind, type OutboxRow, type VersionRow } from './repository.js';
 import type { AutomationSummary, PublishedAutomation, RuntimeState } from './types.js';
 import { createPostgresMessagingRepository, type MessagingRepository } from '../messaging/repository.js';
+import { claimIdempotency, completeIdempotencyRecord, hashIdempotencyRequest } from '../instances/idempotency.js';
 
 export class AutomationError extends Error{constructor(readonly code:string,readonly statusCode=422,readonly details:string[]=[]){super(code);}}
 export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean}
@@ -20,6 +22,16 @@ const redact=(value:unknown):unknown=>Array.isArray(value)?value.map(redact):val
 const stable=(value:unknown):unknown=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'
   ? Object.fromEntries(Object.entries(value as Record<string,unknown>).sort(([a],[b])=>a.localeCompare(b)).map(([key,child])=>[key,stable(child)])):value;
 const canonical=(value:unknown):string=>JSON.stringify(stable(value));
+const automationCursorSchema=z.strictObject({updatedAt:z.iso.datetime(),id:z.uuid()});
+const readAutomationCursor=(value:string):DefinitionPageCursor=>{
+  if(!/^[A-Za-z0-9_-]{1,256}$/.test(value))throw new AutomationError('AUTOMATION_CURSOR_INVALID',400);
+  try{const cursor=automationCursorSchema.parse(JSON.parse(Buffer.from(value,'base64url').toString('utf8')));
+    const parsed=new Date(cursor.updatedAt);
+    if(!Number.isFinite(parsed.valueOf())||parsed.toISOString().slice(0,19)!==cursor.updatedAt.slice(0,19))throw new Error('invalid calendar date');
+    return cursor;}
+  catch{throw new AutomationError('AUTOMATION_CURSOR_INVALID',400);}
+};
+const writeAutomationCursor=(row:{cursorUpdatedAt:string;id:string})=>Buffer.from(JSON.stringify({updatedAt:row.cursorUpdatedAt,id:row.id})).toString('base64url');
 
 export function createAutomationService(options:AutomationServiceOptions){
   const repository=options.repository??createPostgresAutomationRepository(),messaging=options.messaging??createPostgresMessagingRepository(),enabled=options.enabled??true;
@@ -39,12 +51,22 @@ export function createAutomationService(options:AutomationServiceOptions){
   };
   return {
     status:()=>({enabled,engine:'AUTOMATION_RUNTIME_V2' as const}),
-    list:(org:string)=>{available();return options.transact(org,async tx=>({data:(await repository.listDefinitions(tx,org)).map(definition)}));},
+    list:(org:string,input:{pageSize?:number;cursor?:string}={})=>{available();const pageSize=input.pageSize??200,cursor=input.cursor?readAutomationCursor(input.cursor):undefined;
+      return options.transact(org,async tx=>{const page=await repository.listDefinitions(tx,org,{pageSize,...(cursor?{cursor}:{})});return {data:page.rows.map(definition),nextCursor:page.hasMore?writeAutomationCursor(page.rows.at(-1)!):null};});},
     get:(org:string,id:string)=>{available();return options.transact(org,async tx=>definition(await getDefinition(tx,org,id)));},
-    create:(org:string,input:{name:string;graph:AutomationGraphV1})=>{available();return options.transact(org,async tx=>{
+    create:(org:string,input:{name:string;graph:AutomationGraphV1},idempotencyKey?:string)=>{available();return options.transact(org,async tx=>{
       const graph=AutomationGraphV1Schema.parse(input.graph),name=input.name.trim();if(!name)throw new AutomationError('AUTOMATION_NAME_INVALID',400);
+      const claim=idempotencyKey?await claimIdempotency(tx,{organizationId:org,route:'POST /v1/automations',key:idempotencyKey,
+        requestHash:hashIdempotencyRequest({name,graph}),expiresAt:new Date(Date.now()+7*24*60*60*1000)}):null;
+      if(claim?.kind==='REPLAY'){
+        const id=z.uuid().safeParse(claim.record.responseMetadata.definitionId);
+        if(claim.record.status!=='COMPLETED'||!id.success)throw new AutomationError('AUTOMATION_CREATE_REPLAY_UNAVAILABLE',503);
+        return definition(await getDefinition(tx,org,id.data));
+      }
       // A draft is editable work in progress. Semantic validation gates publication and simulation.
-      return definition(await repository.insertDefinition(tx,{org,id:randomUUID(),name,graph}));});},
+      const created=await repository.insertDefinition(tx,{org,id:randomUUID(),name,graph});
+      if(claim?.kind==='CLAIMED')await completeIdempotencyRecord(tx,{organizationId:org,recordId:claim.recordId,status:'COMPLETED',responseMetadata:{definitionId:created.id}});
+      return definition(created);});},
     save:(org:string,id:string,input:{name:string;graph:AutomationGraphV1;revision:number})=>{available();return options.transact(org,async tx=>{
       const graph=AutomationGraphV1Schema.parse(input.graph);
       const updated=await repository.updateDefinition(tx,{org,id,name:input.name.trim(),graph,revision:input.revision});if(!updated)throw new AutomationError('AUTOMATION_CHANGED',409);return definition(updated);});},

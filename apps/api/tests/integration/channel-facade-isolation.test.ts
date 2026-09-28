@@ -93,6 +93,29 @@ describe('isolamento PostgreSQL da fachada canônica de canais', () => {
     await expect(facade.getAutomation(tenantA.organizationId, a.instance.id))
       .resolves.toMatchObject({ binding: { automationId, channelId } });
   });
+
+  it('pagina as caixas no PostgreSQL sem repetir registros ou misturar empresas', async () => {
+    await instances.createInstance(context(tenantA), { name: 'Canal paginado 1', provider: 'BAILEYS',
+      providerAccountId: tenantA.accountId, idempotencyKey: 'channel-page-1' });
+    await instances.createInstance(context(tenantA), { name: 'Canal paginado 2', provider: 'BAILEYS',
+      providerAccountId: tenantA.accountId, idempotencyKey: 'channel-page-2' });
+    const expected = (await facade.list(tenantA.organizationId)).data.map(channel => channel.id);
+    expect(expected.length).toBeGreaterThan(1);
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await facade.list(tenantA.organizationId, false, { pageSize: 1, ...(cursor ? { cursor } : {}) });
+      expect(page.data).toHaveLength(1);
+      expect(page.data[0]?.organizationId).toBe(tenantA.organizationId);
+      seen.push(page.data[0]!.id);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect(seen).toHaveLength(expected.length);
+    expect(new Set(seen)).toEqual(new Set(expected));
+    expect((await facade.list(tenantB.organizationId, false, { pageSize: 1 })).data.every(
+      channel => channel.organizationId === tenantB.organizationId)).toBe(true);
+  });
+
   it('archives a disconnected instance, preserves its record and prevents tenant/provider operations',async()=>{
     const result=await instances.createInstance(context(tenantA),{name:'Cadastro a arquivar',provider:'BAILEYS',providerAccountId:tenantA.accountId,idempotencyKey:'archive-fixture'});
     await expect(facade.setArchived(tenantB.organizationId,result.instance.id,true,tenantB.ownerId)).rejects.toMatchObject({code:'CHANNEL_NOT_FOUND'});

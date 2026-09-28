@@ -10,6 +10,7 @@ import { createOrganization, runInAdminTransaction } from '../../src/modules/org
 import { createMessagingMembershipResolver } from '../../src/modules/messaging/membership.js';
 import { createChatwootControlAuth, type ChatwootControlPrincipal } from '../../src/modules/integrations/chatwoot-control-auth.js';
 import { createChatwootControlService } from '../../src/modules/integrations/chatwoot-control-service.js';
+import { createPairActionStore } from '../../src/modules/integrations/chatwoot-pair-action-store.js';
 import { createChatwootHealth } from '../../src/modules/integrations/chatwoot-health.js';
 import { createChatwootService, type ChatwootOptions } from '../../src/modules/integrations/chatwoot-service.js';
 import { createInstanceService } from '../../src/modules/instances/service.js';
@@ -30,6 +31,19 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
   const disconnect = vi.fn(async () => undefined);
   let providerState = 'DISCONNECTED', providerPhone: string | null = null, rejectRemote = false;
   const key = Buffer.alloc(32, 8).toString('base64'), vault = createIntegrationSecrets(key);
+  const transient = new Map<string, string>();
+  const encryptedPairActions = createPairActionStore({ encryptionKey: key, client: {
+    async set(cacheKey, value) { if (transient.has(cacheKey)) return null; transient.set(cacheKey, value); return 'OK'; },
+    async getDel(cacheKey) { const value = transient.get(cacheKey) ?? null; transient.delete(cacheKey); return value; },
+  } });
+  let rejectPairCache = false;
+  const pairActions = {
+    async save(input: Parameters<typeof encryptedPairActions.save>[0]) {
+      if (rejectPairCache) throw new Error('SYNTHETIC_REDIS_OUTAGE');
+      return encryptedPairActions.save(input);
+    },
+    take: encryptedPairActions.take,
+  };
   beforeAll(async () => {
     const admin = requireTestDatabaseAdminUrl(); db = await createIsolatedPostgresDatabase(admin);
     await withGlobalRoleLock(admin, () => runMigrations(db.connectionString));
@@ -63,7 +77,7 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
     health = createChatwootHealth({ transact, encryptionKey: key, readIdentity: async () => ({ connected: providerState === 'CONNECTED', phone: providerPhone }) });
     const instances = createInstanceService({ repository: createPostgresInstanceRepository(), providers: { getProvider: () => ({ beginConnection: pair, disconnect, getStatus: async () => providerState }) as unknown as WhatsAppProvider }, runInOrganizationTransaction: transact, writeAudit: writeTenantAudit });
     chatwoot = createChatwootService(options);
-    control = createChatwootControlService({ ...options, auth, instances, health, chatwoot });
+    control = createChatwootControlService({ ...options, auth, instances, health, chatwoot, pairActions });
     principal = await auth.authorize({ kind: 'JWT', organizationId: org, actorId: owner, role: 'OWNER' }, 'chatwoot:manage');
     await auth.setOperatorGrants(principal.authentication, integration, { grants: [{ userId: viewer, canPair: true }] }, randomUUID());
     agent = await auth.authorize({ kind: 'JWT', organizationId: org, actorId: viewer, role: 'VIEWER' }, 'chatwoot:read', integration);
@@ -82,14 +96,46 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
     const firstKey = randomUUID();
     const results = await Promise.all([control.pair(principal, integration, firstKey), control.pair(principal, integration, randomUUID())]);
     expect(pair).toHaveBeenCalledTimes(1); expect(results.some(r => r.action.type === 'QR_CODE')).toBe(true);
+    const operationId = results.find(r => r.operationId)?.operationId;
+    expect(operationId).toEqual(expect.any(String));
+    await expect(control.pairOperation(agent, integration, operationId!)).rejects.toMatchObject({ status: 403 });
+    const progress = await control.pairOperation(principal, integration, operationId!);
+    expect(progress).toMatchObject({ operationId, state: 'SUCCEEDED', instanceStatus: 'AWAITING_ACTION', reconciliationRequired: false, lastError: null,
+      action: { type: 'QR_CODE', value: 'synthetic-ephemeral-qr' } });
+    expect((await control.pairOperation(principal, integration, operationId!)).action).toBeNull();
+    await expect(control.pairOperation(principal, integration, randomUUID())).rejects.toMatchObject({ status: 404 });
+    await expect(control.pairOperation(principal, randomUUID(), operationId!)).rejects.toMatchObject({ status: 404 });
     const persisted = await transact(org, async t => ({ audits: (await t.query('SELECT * FROM integration_audit')).rows,
       health: (await t.query('SELECT * FROM chatwoot_connection_health')).rows, idempotency: (await t.query('SELECT * FROM idempotency_records')).rows }));
     expect(JSON.stringify(persisted)).not.toContain('synthetic-ephemeral-qr');
     await transact(org, t => t.query("UPDATE chatwoot_connection_health SET pair_window_expires_at=now()-interval '1 second' WHERE integration_id=$1", [integration]));
     expect((await control.pair(principal, integration, firstKey)).action.type).toBe('NONE');
     expect(pair).toHaveBeenCalledTimes(1);
-    expect((await control.pair(principal, integration, randomUUID())).action.type).toBe('QR_CODE');
+    rejectPairCache = true;
+    try {
+      expect((await control.pair(principal, integration, randomUUID())).action.type).toBe('QR_CODE');
+    } finally { rejectPairCache = false; }
     expect(pair).toHaveBeenCalledTimes(2);
+    await encryptedPairActions.save({ organizationId: org, integrationId: integration, operationId: operationId!,
+      action: { type: 'QR_CODE', encoding: 'BASE64', value: 'synthetic-stale-qr',
+        expiresAt: new Date(Date.now() + 30_000).toISOString() } });
+    expect((await control.pairOperation(principal, integration, operationId!)).action).toBeNull();
+  });
+  it('does not return a QR when the integration is disabled while the provider connects', async () => {
+    await transact(org, async t => {
+      await t.query("UPDATE instances SET status='DISCONNECTED' WHERE organization_id=$1 AND id=$2", [org, instance]);
+      await t.query("UPDATE chatwoot_connection_health SET pair_window_expires_at=now()-interval '1 second' WHERE organization_id=$1 AND integration_id=$2", [org, integration]);
+    });
+    pair.mockImplementationOnce(async () => {
+      await transact(org, t => t.query("UPDATE chatwoot_connections SET status='DISABLED' WHERE organization_id=$1 AND id=$2", [org, integration]));
+      return { type: 'QR_CODE', encoding: 'BASE64', value: 'synthetic-racing-qr', expiresAt: new Date(Date.now() + 60_000).toISOString() };
+    });
+    try {
+      await expect(control.pair(principal, integration, randomUUID()))
+        .rejects.toMatchObject({ code: 'CHATWOOT_WEBHOOK_NOT_READY', status: 409 });
+    } finally {
+      await transact(org, t => t.query("UPDATE chatwoot_connections SET status='READY' WHERE organization_id=$1 AND id=$2", [org, integration]));
+    }
   });
   it('requires explicit admin approval of the observed number and blocks a changed identity before outgoing claims', async () => {
     providerState = 'CONNECTED'; providerPhone = '15555550100';

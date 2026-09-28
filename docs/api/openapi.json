@@ -1552,6 +1552,69 @@
         ]
       }
     },
+    "/v1/automation-imports/preview": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "maxLength": 2000000,
+                    "minLength": 2,
+                    "type": "string"
+                  },
+                  "formatVersion": {
+                    "maxLength": 80,
+                    "type": "string"
+                  },
+                  "source": {
+                    "default": "AUTO",
+                    "enum": [
+                      "AUTO",
+                      "JRC",
+                      "N8N",
+                      "TYPEBOT"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
     "/v1/automation-nodes": {
       "get": {
         "responses": {
@@ -1582,6 +1645,28 @@
     },
     "/v1/automations": {
       "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Default Response",
@@ -2935,6 +3020,26 @@
               ],
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3322,6 +3427,12 @@
                         ]
                       },
                       "type": "array"
+                    },
+                    "nextCursor": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "nullable": true,
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -21217,6 +21328,204 @@
         ]
       }
     },
+    "/v1/integrations/chatwoot/control/connections/{integrationId}/pair-operations/{operationId}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integrationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "nullable": true,
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "encoding": {
+                              "enum": [
+                                "DATA_URL",
+                                "BASE64"
+                              ],
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                              "type": "string"
+                            },
+                            "type": {
+                              "enum": [
+                                "QR_CODE"
+                              ],
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000000,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "encoding",
+                            "value",
+                            "expiresAt"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "maxLength": 64,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                              "type": "string"
+                            },
+                            "type": {
+                              "enum": [
+                                "PAIRING_CODE"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "code",
+                            "expiresAt"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "instanceStatus": {
+                      "enum": [
+                        "PROVISIONING",
+                        "CREATED",
+                        "PROVISIONING_FAILED",
+                        "CONNECTING",
+                        "AWAITING_ACTION",
+                        "CONNECTED",
+                        "DISCONNECTING",
+                        "DISCONNECTED",
+                        "ERROR"
+                      ],
+                      "type": "string"
+                    },
+                    "lastError": {
+                      "nullable": true,
+                      "pattern": "^[A-Z][A-Z0-9_]{0,127}$",
+                      "type": "string"
+                    },
+                    "operationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "reconciliationRequired": {
+                      "type": "boolean"
+                    },
+                    "state": {
+                      "enum": [
+                        "PENDING",
+                        "SUCCEEDED",
+                        "FAILED",
+                        "UNKNOWN"
+                      ],
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "state",
+                    "instanceStatus",
+                    "reconciliationRequired",
+                    "lastError",
+                    "updatedAt",
+                    "action"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
     "/v1/integrations/chatwoot/control/connections/{integrationId}/status": {
       "get": {
         "parameters": [
@@ -23457,6 +23766,264 @@
             "bearerAuth": []
           }
         ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "category": {
+                    "enum": [
+                      "UTILITY",
+                      "MARKETING"
+                    ],
+                    "type": "string"
+                  },
+                  "language": {
+                    "pattern": "^[a-z]{2,3}(?:_[A-Z]{2})?$",
+                    "type": "string"
+                  },
+                  "name": {
+                    "pattern": "^[a-z0-9_]{1,512}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "language",
+                  "category",
+                  "body"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "language",
+                    "category",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/messaging/channels/{id}/templates/{templateId}/status": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9]\\d{4,63}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "checkedAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "pattern": "^[1-9]\\d{4,63}$",
+                          "type": "string"
+                        },
+                        "observation": {
+                          "enum": [
+                            "OBSERVED"
+                          ],
+                          "type": "string"
+                        },
+                        "template": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bodyVariableCount": {
+                              "maximum": 100,
+                              "minimum": 0,
+                              "nullable": true,
+                              "type": "integer"
+                            },
+                            "category": {
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "language": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "language",
+                            "status",
+                            "category",
+                            "bodyVariableCount"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "observation",
+                        "id",
+                        "checkedAt",
+                        "template"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "checkedAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "pattern": "^[1-9]\\d{4,63}$",
+                          "type": "string"
+                        },
+                        "observation": {
+                          "enum": [
+                            "NOT_OBSERVED"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "observation",
+                        "id",
+                        "checkedAt"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/v1/messaging/channels/{id}/text": {
@@ -25005,6 +25572,18 @@
     },
     "/v1/platform/groups": {
       "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -25048,6 +25627,9 @@
                         "type": "object"
                       },
                       "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -25271,6 +25853,18 @@
     },
     "/v1/platform/organizations": {
       "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -25278,6 +25872,9 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
+                    "nextCursor": {
+                      "type": "string"
+                    },
                     "organizations": {
                       "items": {
                         "additionalProperties": false,
@@ -25704,6 +26301,26 @@
     "/v1/platform/organizations/{id}/channels": {
       "get": {
         "parameters": [
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "id",

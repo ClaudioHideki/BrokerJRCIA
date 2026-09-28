@@ -1,10 +1,10 @@
-import { useEffect,useState,type FormEvent } from 'react';
+import { useEffect,useRef,useState,type FormEvent } from 'react';
 import { Link,Navigate,useLocation,useNavigate,useParams } from 'react-router';
 import { welcomeFlow,type AutomationDefinitionV1,type AutomationGraphV1 } from '@jrc/contracts';
 import { ApiClientError } from '../api/client.js';
 import { useApiClient,useSession } from '../auth/SessionProvider.js';
 import { FlowCanvas } from '../flows/FlowCanvas.js';
-import { createAutomation,getAutomation,listAutomationNodes,listAutomations,listExecutions,listVersions,saveAutomation,type AutomationExecution,type AutomationNodeCatalogItem } from '../automations/api.js';
+import { createAutomation,getAutomation,listAutomationNodes,listAutomationsPage,listExecutions,listVersions,saveAutomation,type AutomationExecution,type AutomationNodeCatalogItem } from '../automations/api.js';
 import { ImportReview, type ImportReport } from '../automations/ImportReview.js';
 import { LegacyMigrationPanel } from '../automations/LegacyMigrationPanel.js';
 import '../flows/flows.css';import '../automations/studio.css';
@@ -14,18 +14,24 @@ const statusLabel=(status:string)=>({DRAFT:'Rascunho',PUBLISHED:'Publicada',ARCH
 const defaultGraph=()=>welcomeFlow() as AutomationGraphV1;
 
 export function AutomationsPage(){
- const client=useApiClient(),{session}=useSession(),[items,setItems]=useState<AutomationDefinitionV1[]>([]),[enabled,setEnabled]=useState<boolean|null>(null),[error,setError]=useState(''),[showArchived,setShowArchived]=useState(false),[busy,setBusy]=useState(false);
+ const client=useApiClient(),{session}=useSession(),[items,setItems]=useState<AutomationDefinitionV1[]>([]),[enabled,setEnabled]=useState<boolean|null>(null),[error,setError]=useState(''),[showArchived,setShowArchived]=useState(false),[busy,setBusy]=useState(false),[loadingMore,setLoadingMore]=useState(false),[nextCursor,setNextCursor]=useState<string|null>(null),generation=useRef(0);
  const editable=Boolean(session&&['OWNER','ADMIN'].includes(session.activeOrganization.role));
- useEffect(()=>{let live=true;void Promise.all([client.request<{enabled:boolean}>('/v1/automations/status'),listAutomations(client)]).then(([status,list])=>{if(live){setEnabled(status.enabled);setItems(list);}}).catch(reason=>{if(live)setError(errorMessage(reason));});return()=>{live=false;};},[client]);
+ const organizationId=session?.activeOrganization.id;
+ useEffect(()=>{let live=true;generation.current++;setItems([]);setNextCursor(null);setEnabled(null);setError('');setLoadingMore(false);setBusy(false);
+  // Wait for the active organization before fetching or exposing a page of tenant data.
+  if(organizationId)void Promise.all([client.request<{enabled:boolean}>('/v1/automations/status'),listAutomationsPage(client)]).then(([status,page])=>{if(live){setEnabled(status.enabled);setItems(page.data);setNextCursor(page.nextCursor);}}).catch(reason=>{if(live)setError(errorMessage(reason));});
+  return()=>{live=false;generation.current++;};},[client,organizationId]);
+ async function loadMore(){if(!nextCursor||loadingMore)return;const current=generation.current;setLoadingMore(true);setError('');try{const page=await listAutomationsPage(client,nextCursor);if(current!==generation.current)return;setItems(previous=>{const seen=new Set(previous.map(item=>item.id));return [...previous,...page.data.filter(item=>!seen.has(item.id))];});setNextCursor(page.nextCursor);}catch(reason){if(current===generation.current)setError(errorMessage(reason));}finally{if(current===generation.current)setLoadingMore(false);}}
  async function archive(item:AutomationDefinitionV1){const archived=item.lifecycleStatus!=='ARCHIVED';if(busy||!window.confirm(archived?'Arquivar esta automação? Os vínculos serão desativados e o histórico preservado. Execuções pendentes precisam ser concluídas ou canceladas antes.':'Restaurar para edição? As caixas precisam ser vinculadas novamente.'))return;
-  setBusy(true);setError('');try{await client.request(`/v1/automations/${item.id}/archive`,{method:'POST',body:JSON.stringify({archived})});setItems(await listAutomations(client));}catch(reason){setError(errorMessage(reason));}finally{setBusy(false);}}
+  const current=generation.current;setBusy(true);setError('');try{const updated=await client.request<AutomationDefinitionV1>(`/v1/automations/${item.id}/archive`,{method:'POST',body:JSON.stringify({archived})});if(current===generation.current)setItems(previous=>previous.map(entry=>entry.id===item.id?updated:entry));}catch(reason){if(current===generation.current)setError(errorMessage(reason));}finally{if(current===generation.current)setBusy(false);}}
  const visible=items.filter(item=>showArchived||item.lifecycleStatus!=='ARCHIVED');
  return <section className="automation-page"><header className="automation-page-header"><div><span>AUTOMAÇÃO JRC</span><h1>Automações</h1><p>Crie ou importe um chatbot, teste, publique e vincule a uma caixa de entrada.</p></div>{editable&&<Link className="flows-primary automation-link-button" to="/automations/new">Nova automação</Link>}</header>
  {enabled===false&&<p role="alert">Automações temporariamente desativadas. Contate a administração JRC.</p>}
  {error&&<p role="alert" className="flows-alert flows-alert--error">{error}</p>}
  <label><input type="checkbox" checked={showArchived} onChange={event=>setShowArchived(event.target.checked)}/> Mostrar arquivadas</label>
  {enabled===null&&!error?<p>Carregando…</p>:visible.length?<div className="automation-cards">{visible.map(item=><article key={item.id}><span className="flows-badge">{statusLabel(item.lifecycleStatus)}</span><h2>{item.name}</h2><p>{item.draft.graph.nodes.length} blocos · {item.activeVersion?`Versão publicada: ${item.activeVersion}`:'Ainda não publicada'}</p><div className="flows-actions"><Link to={`/automations/${item.id}/edit`}>{item.lifecycleStatus==='ARCHIVED'?'Consultar':'Editar'}</Link><Link to={`/automations/${item.id}/executions`}>Execuções</Link>{editable&&<button disabled={busy} onClick={()=>void archive(item)}>{item.lifecycleStatus==='ARCHIVED'?'Restaurar':'Arquivar'}</button>}</div></article>)}</div>:enabled&&<div className="flows-empty"><h2>Nenhuma automação nesta lista</h2><p>Crie uma nova ou importe um JSON para começar.</p></div>}
- {session&&enabled&&<details><summary>Recuperar automações da versão anterior</summary><LegacyMigrationPanel client={client} role={session.activeOrganization.role} onChanged={()=>{void listAutomations(client).then(setItems).catch(reason=>setError(errorMessage(reason)));}}/></details>}
+ {nextCursor&&<button type="button" disabled={loadingMore} onClick={()=>void loadMore()}>{loadingMore?'Carregando…':'Carregar mais automações'}</button>}
+ {session&&enabled&&<details><summary>Recuperar automações da versão anterior</summary><LegacyMigrationPanel client={client} role={session.activeOrganization.role} onChanged={()=>{const current=generation.current;void listAutomationsPage(client).then(page=>{if(current===generation.current){setItems(page.data);setNextCursor(page.nextCursor);}}).catch(reason=>{if(current===generation.current)setError(errorMessage(reason));});}}/></details>}
  </section>;
 }
 

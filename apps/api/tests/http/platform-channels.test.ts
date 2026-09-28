@@ -12,7 +12,7 @@ it('requires platform auth, CSRF, reason and audited authority for tenant channe
  const headers={cookie:'platform_session='+ 'a'.repeat(43),origin:'https://console.example.test','x-csrf-token':'csrf','x-platform-reason':'Review customer registration'};
  try{
   expect((await app.inject({method:'GET',url:'/v1/platform/organizations/'+org+'/channels',headers})).statusCode).toBe(200);
-  expect(channels.list).toHaveBeenCalledWith(org,true);
+  expect(channels.list).toHaveBeenCalledWith(org,true,{pageSize:50});
   const url='/v1/platform/organizations/'+org+'/channels/'+id+'/archive';
   expect((await app.inject({method:'POST',url,headers:{...headers,'x-csrf-token':'wrong'},payload:{archived:true}})).statusCode).toBe(403);
   support=true;expect((await app.inject({method:'POST',url,headers,payload:{archived:true}})).statusCode).toBe(403);expect(channels.setArchived).not.toHaveBeenCalled();

@@ -202,14 +202,26 @@ export function PlatformPage() {
     setCompaniesLoading(true);
     setCompaniesLoaded(false);
     try {
-      const data = await request<{ organizations: Company[] }>(
-        "/organizations",
-        "GET",
-        undefined,
-        active,
-      );
+      const organizations: Company[] = [];
+      const seen = new Set<string>();
+      let cursor: string | undefined;
+      do {
+        const data: { organizations: Company[]; nextCursor?: string } = await request(
+          `/organizations${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+          "GET",
+          undefined,
+          active,
+        );
+        if (version !== listVersion.current) return;
+        organizations.push(...data.organizations);
+        cursor = data.nextCursor;
+        if (cursor) {
+          if (seen.has(cursor)) throw new Error("A lista de empresas não avançou. Atualize e tente novamente.");
+          seen.add(cursor);
+        }
+      } while (cursor);
       if (version === listVersion.current) {
-        setCompanies(data.organizations);
+        setCompanies(organizations);
         setCompaniesLoaded(true);
       }
     } finally {

@@ -5,12 +5,34 @@ import { digest, decryptSeed, verifyTotp } from './crypto.js';
 import {platformMfaRequired,type PlatformLoginPolicy} from './login-policy.js';
 import { normalizeChatwootOrigin } from '../integrations/chatwoot-destination.js';
 import { CreateEconomicGroupSchema, AssignGroupOrganizationsSchema } from '@jrc/contracts';
+import { z } from 'zod';
 
 export class PlatformError extends Error { constructor(public statusCode:number, public code:string) {super(code);} }
 export type PlatformAction = 'list'|'create'|'update'|'memberships'|'membership'|'monitor'|'acknowledge';
 export interface PlatformSession { user:{id:string;email:string;role:'SUPER_ADMIN'|'SUPPORT'};csrfToken:string;expiresAt:string }
 export interface Limits {maxInstances:number;maxUsers:number;messagesPerDay:number;maxPendingMessages:number}
 export interface PlatformInput {name?:string;slug?:string;ownerEmail?:string;ownerPassword?:string;plan?:string;status?:string;limits?:Limits;email?:string;password?:string;role?:string;flowsEnabled?:boolean}
+const PLATFORM_PAGE_SIZE=200;
+const cursorSchema=z.strictObject({version:z.literal(1),kind:z.enum(['groups','organizations']),sort:z.string(),id:z.uuid()});
+function readPageCursor(kind:'groups'|'organizations',cursor?:string) {
+ if(cursor===undefined) return undefined;
+ try {
+  if(cursor.length>1024||!/^[A-Za-z0-9_-]+$/.test(cursor)) throw new Error('Invalid cursor encoding');
+  const value=cursorSchema.parse(JSON.parse(Buffer.from(cursor,'base64url').toString('utf8')));
+  if(value.kind!==kind) throw new Error('Wrong cursor kind');
+  if(kind==='groups') {
+   if(value.sort.length<1||value.sort.length>120) throw new Error('Invalid group sort');
+  } else {
+   if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(value.sort)) throw new Error('Invalid date format');
+   const date=new Date(value.sort);
+   if(Number.isNaN(date.getTime())||date.toISOString().slice(0,19)!==value.sort.slice(0,19)) throw new Error('Invalid calendar date');
+  }
+  return value;
+ } catch { throw new PlatformError(400,'PLATFORM_INVALID_CURSOR'); }
+}
+function writePageCursor(kind:'groups'|'organizations',sort:string,id:string) {
+ return Buffer.from(JSON.stringify({version:1,kind,sort,id})).toString('base64url');
+}
 export class PlatformService {
  private verifier=initializePasswordVerifier();
  readonly mfaRequired:boolean;
@@ -55,14 +77,19 @@ export class PlatformService {
   return {user:{id:r.id,email:r.email,role:r.role},csrfToken:r.csrf_token,expiresAt:new Date(r.expires_at).toISOString()};
  }
  session(token:string) {return this.transaction(c=>this.readSession(c,token));}
- async listGroups(token:string,reason:string) {
+ async listGroups(token:string,reason:string,cursor?:string) {
   if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  const after=readPageCursor('groups',cursor);
   return this.transaction(async c=>{
    const session=await this.readSession(c,token);
-   const data=(await c.query(`SELECT g.id,g.name,g.revision,
+   const rows=(await c.query(`SELECT g.id,g.name,g.revision,
     COALESCE((SELECT json_agg(m.organization_id ORDER BY m.organization_id) FROM economic_group_organizations m WHERE m.group_id=g.id),'[]') AS "organizationIds"
-    FROM economic_groups g ORDER BY g.name,g.id LIMIT 200`)).rows;
-   await this.audit(c,session.user.id,null,'economic-groups-read',reason);return {data};
+    FROM economic_groups g WHERE ($1::text IS NULL OR (g.name,g.id)>($1::text,$2::uuid))
+    ORDER BY g.name,g.id LIMIT $3`,[after?.sort??null,after?.id??null,PLATFORM_PAGE_SIZE+1])).rows;
+   const data=rows.slice(0,PLATFORM_PAGE_SIZE);
+   const last=data.at(-1);
+   const nextCursor=rows.length>PLATFORM_PAGE_SIZE&&last?writePageCursor('groups',last.name,last.id):undefined;
+   await this.audit(c,session.user.id,null,'economic-groups-read',reason);return {data,...(nextCursor?{nextCursor}:{})};
   });
  }
  async createGroup(token:string,reason:string,value:{name:string}) {
@@ -139,8 +166,9 @@ export class PlatformService {
   await c.query(`insert into organization_limits(organization_id,max_instances,max_users,messages_per_day,max_pending_messages) values($1,$2,$3,$4,$5)
    on conflict(organization_id) do update set max_instances=$2,max_users=$3,messages_per_day=$4,max_pending_messages=$5,updated_at=now()`,[id,l.maxInstances,l.maxUsers,l.messagesPerDay,l.maxPendingMessages]);
  }
- async execute(token:string,reason:string,action:PlatformAction,id?:string,input:PlatformInput={}) {
+ async execute(token:string,reason:string,action:PlatformAction,id?:string,input:PlatformInput={},cursor?:string) {
   if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  const after=action==='list'?readPageCursor('organizations',cursor):undefined;
   return this.transaction(async c=>{
    const s=await this.readSession(c,token);
    if(!['list','memberships','monitor','acknowledge'].includes(action)&&s.user.role!=='SUPER_ADMIN') throw new PlatformError(403,'PLATFORM_FORBIDDEN');
@@ -148,9 +176,18 @@ export class PlatformService {
    let result:unknown;
    switch(action) {
     case 'acknowledge':result={ok:true};break;
-    case 'list':result={organizations:(await c.query(`select o.id,o.name,o.slug,o.status,o.plan,coalesce(f.enabled,false) AS "flowsEnabled",
-      json_build_object('maxInstances',l.max_instances,'maxUsers',l.max_users,'messagesPerDay',l.messages_per_day,'maxPendingMessages',l.max_pending_messages) as limits
-      from organizations o left join organization_limits l on l.organization_id=o.id left join flow_features f on f.organization_id=o.id order by o.created_at desc limit 200`)).rows};break;
+    case 'list':{
+     const rows=(await c.query(`select o.id,o.name,o.slug,o.status,o.plan,coalesce(f.enabled,false) AS "flowsEnabled",
+      json_build_object('maxInstances',l.max_instances,'maxUsers',l.max_users,'messagesPerDay',l.messages_per_day,'maxPendingMessages',l.max_pending_messages) as limits,
+      to_char(o.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "cursorSort"
+      from organizations o left join organization_limits l on l.organization_id=o.id left join flow_features f on f.organization_id=o.id
+      where ($1::timestamptz IS NULL OR (o.created_at,o.id)<($1::timestamptz,$2::uuid))
+      order by o.created_at desc,o.id desc limit $3`,[after?.sort??null,after?.id??null,PLATFORM_PAGE_SIZE+1])).rows;
+     const page=rows.slice(0,PLATFORM_PAGE_SIZE);
+     const last=page.at(-1);
+     const nextCursor=rows.length>PLATFORM_PAGE_SIZE&&last?writePageCursor('organizations',last.cursorSort,last.id):undefined;
+     result={organizations:page.map(({cursorSort:_,...organization})=>organization),...(nextCursor?{nextCursor}:{})};break;
+    }
     case 'create': {
      const org=(await c.query('insert into organizations(name,slug,plan) values($1,$2,$3) returning id,name,slug,status,plan',[input.name,input.slug,input.plan??'STANDARD'])).rows[0];id=org.id;
      // Creating a new organization never changes an existing user's password.

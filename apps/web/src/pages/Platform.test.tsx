@@ -292,6 +292,17 @@ function platformFetch(overrides: Record<string, unknown> = {}) {
   }));
 }
 
+it('loads later company pages so a tenant beyond the first page remains manageable', async () => {
+  const fetcher = platformFetch({
+    '/v1/platform/organizations': { organizations: [organization], nextCursor: 'page-2' },
+    '/v1/platform/organizations?cursor=page-2': { organizations: [{ ...organization, id: 'company-b', name: 'Empresa B', slug: 'empresa-b' }] },
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<MemoryRouter initialEntries={['/jrc/empresas']}><PlatformPage /></MemoryRouter>);
+  expect(await screen.findByRole('button', { name: 'Abrir Empresa B' })).toBeVisible();
+  expect(fetcher).toHaveBeenCalledWith('/v1/platform/organizations?cursor=page-2', expect.any(Object));
+});
+
 it("opens the executive admin shell with real company totals and dedicated navigation", async () => {
   vi.stubGlobal("fetch", platformFetch());
   render(
@@ -499,6 +510,8 @@ it("creates a company with its owner and limits using the audited admin endpoint
   fireEvent.click(
     await screen.findByRole("button", { name: "Cadastrar empresa" }),
   );
+  expect(screen.getByText(/Cada empresa é uma organização isolada/)).toBeVisible();
+  expect(screen.getByText(/grupo econômico.*sem compartilhar dados ou acessos/i)).toBeVisible();
   fireEvent.change(screen.getByLabelText("Nome da empresa"), {
     target: { value: "Nova Empresa" },
   });
@@ -553,6 +566,7 @@ it("saves a membership for the selected company and clears the password field", 
     await screen.findByRole("button", { name: "Abrir Empresa B" }),
   );
   await screen.findByText("owner@example.test");
+  expect(screen.getByText(/Mesmo dentro de um grupo econômico.*acesso.*cada empresa/i)).toBeVisible();
   fireEvent.change(screen.getByLabelText("E-mail do usuário"), {
     target: { value: "new-user@example.test" },
   });

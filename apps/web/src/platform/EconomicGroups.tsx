@@ -25,8 +25,20 @@ export function EconomicGroups({ request, companies, admin, disabled }: Props) {
     const version = ++current.current;
     setBusy(true); setError(''); setNotice(''); setSelected(null);
     try {
-      const result = await api.current<{ data: Group[] }>('/groups');
-      if (version === current.current) setGroups(result.data);
+      const loaded: Group[] = [];
+      const seen = new Set<string>();
+      let cursor: string | undefined;
+      do {
+        const result: { data: Group[]; nextCursor?: string } = await api.current(`/groups${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
+        if (version !== current.current) return;
+        loaded.push(...result.data);
+        cursor = result.nextCursor;
+        if (cursor) {
+          if (seen.has(cursor)) throw new Error('A lista de grupos não avançou. Atualize e tente novamente.');
+          seen.add(cursor);
+        }
+      } while (cursor);
+      if (version === current.current) setGroups(loaded);
     } catch (e) {
       if (version === current.current) setError((e as Error).message);
     } finally { if (version === current.current) setBusy(false); }
@@ -50,7 +62,12 @@ export function EconomicGroups({ request, companies, admin, disabled }: Props) {
   }
 
   return <section className="panel" aria-label="Grupos econômicos">
-    <p>O grupo organiza empresas. Cada empresa mantém suas caixas, contatos, automações e permissões independentes.</p>
+    <section aria-label="Como funcionam grupos e empresas">
+      <h2>Como funcionam grupos e empresas</h2>
+      <p><strong>Empresa:</strong> é uma organização (tenant) isolada. Caixas de entrada, contatos, automações, credenciais e limites pertencem a ela.</p>
+      <p><strong>Grupo econômico:</strong> reúne empresas para organização administrativa. O grupo econômico não concede acesso nem compartilha dados entre elas.</p>
+      <p><strong>Usuários e acessos:</strong> conceda o papel necessário em Usuários e acessos de cada empresa que a pessoa deve operar.</p>
+    </section>
     <button className="button button--ghost" disabled={locked} onClick={() => void load()}>Atualizar grupos</button>
     {error && <p className="notice notice--error" role="alert">{error} Atualize os grupos antes de tentar novamente.</p>}
     {notice && <p className="notice" role="status">{notice}</p>}

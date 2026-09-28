@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { AUTOMATION_ORIGIN, type AutomationBindingV1, type BindChannelAutomationV1,
   type BindChannelDestinationV1, type ChannelV1, type CreateChannelV1, type Instance,
   type PatchChannelV1 } from '@jrc/contracts';
@@ -8,8 +9,17 @@ import type { createMetaOnboardingService } from '../meta-onboarding/service.js'
 import type { ChatwootService } from '../integrations/chatwoot-service.js';
 
 export class ChannelFacadeError extends Error {
-  constructor(readonly code: string, readonly status: 404 | 409 | 503) { super(code); }
+  constructor(readonly code: string, readonly status: 400 | 404 | 409 | 503) { super(code); }
 }
+
+const channelCursorSchema = z.strictObject({ updatedAt: z.iso.datetime(), id: z.uuid() });
+type ChannelCursor = z.infer<typeof channelCursorSchema>;
+const readChannelCursor = (value: string): ChannelCursor => {
+  if (!/^[A-Za-z0-9_-]{1,256}$/.test(value)) throw new ChannelFacadeError('CHANNEL_CURSOR_INVALID', 400);
+  try { return channelCursorSchema.parse(JSON.parse(Buffer.from(value, 'base64url').toString('utf8'))); }
+  catch { throw new ChannelFacadeError('CHANNEL_CURSOR_INVALID', 400); }
+};
+const writeChannelCursor = (row: ChannelRow) => Buffer.from(JSON.stringify({ updatedAt: iso(row.updated_at), id: row.id })).toString('base64url');
 
 interface ChannelRow {
   id: string; organization_id: string; provider: 'BAILEYS' | 'META'; provider_account_id: string;
@@ -107,8 +117,10 @@ export interface ChannelFacadeOptions {
 }
 
 export function createChannelFacade(options: ChannelFacadeOptions) {
-  async function rows(org: string): Promise<ChannelRow[]> {
-    return options.transact(org, async tx => (await tx.query<ChannelRow>(`
+  async function rows(org: string, id?: string, page?: { pageSize: number; cursor?: ChannelCursor; includeArchived: boolean }): Promise<ChannelRow[]> {
+    const params: unknown[] = [org];
+    if (id) params.push(id);
+    const union = `
       SELECT i.id,i.organization_id,'BAILEYS'::text AS provider,i.provider_account_id,i.id AS instance_id,
         NULL::uuid AS connection_id,i.name,i.status::text AS instance_status,NULL::text AS meta_status,
         c.bot_public_id,c.bot_origin_reference,f.published_version AS flow_published_version,ff.enabled AS flow_enabled,
@@ -124,7 +136,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
       LEFT JOIN chatwoot_connection_health h ON h.organization_id=c.organization_id AND h.channel_id=c.id
       LEFT JOIN automation_bindings ab ON ab.organization_id=c.organization_id AND ab.channel_id=c.id AND ab.status IN ('ACTIVE','PAUSED') AND ab.automation_id::text=c.bot_public_id
       LEFT JOIN automation_definitions ad ON ad.organization_id=ab.organization_id AND ad.id=ab.automation_id
-      WHERE i.organization_id=$1
+      WHERE i.organization_id=$1 ${id ? 'AND i.id=$2' : ''}
       UNION ALL
       SELECT m.id,m.organization_id,'META'::text,c.provider_account_id,NULL::uuid,m.id,'WhatsApp oficial',NULL::text,m.status,
         c.bot_public_id,c.bot_origin_reference,f.published_version,ff.enabled,cw.status,c.created_at,GREATEST(m.updated_at,c.updated_at,COALESCE(cw.updated_at,m.updated_at)),
@@ -136,11 +148,22 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
       LEFT JOIN chatwoot_connections cw ON cw.organization_id=c.organization_id AND cw.channel_id=c.id
       LEFT JOIN automation_bindings ab ON ab.organization_id=c.organization_id AND ab.channel_id=c.id AND ab.status IN ('ACTIVE','PAUSED') AND ab.automation_id::text=c.bot_public_id
       LEFT JOIN automation_definitions ad ON ad.organization_id=ab.organization_id AND ad.id=ab.automation_id
-      WHERE m.organization_id=$1
-      ORDER BY updated_at DESC,id`, [org])).rows);
+      WHERE m.organization_id=$1 ${id ? 'AND m.id=$2' : ''}`;
+    if (!page) return options.transact(org, async tx => (await tx.query<ChannelRow>(`${union} ORDER BY updated_at DESC,id`, params)).rows);
+    const conditions = page.includeArchived ? [] : ['channel_rows.archived_at IS NULL'];
+    if (page.cursor) {
+      const timeIndex = params.push(page.cursor.updatedAt);
+      const idIndex = params.push(page.cursor.id);
+      const time = `date_trunc('milliseconds', channel_rows.updated_at)`;
+      conditions.push(`(${time} < $${timeIndex}::timestamptz OR (${time} = $${timeIndex}::timestamptz AND channel_rows.id > $${idIndex}::uuid))`);
+    }
+    const limitIndex = params.push(page.pageSize + 1);
+    const sql = `SELECT * FROM (${union}) AS channel_rows ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+      ORDER BY date_trunc('milliseconds', channel_rows.updated_at) DESC,channel_rows.id LIMIT $${limitIndex}`;
+    return options.transact(org, async tx => (await tx.query<ChannelRow>(sql, params)).rows);
   }
   async function get(org: string, id: string) {
-    const found = (await rows(org)).find(row => row.id === id);
+    const found = (await rows(org, id))[0];
     if (!found) throw new ChannelFacadeError('CHANNEL_NOT_FOUND', 404);
     return channelView(found);
   }
@@ -160,7 +183,13 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
     replayed: result.replayed, pending: result.pending, reconciliationRequired: result.reconciliationRequired,
   });
   return {
-    async list(org: string,includeArchived=false) { return { data: (await rows(org)).filter(row=>includeArchived||!row.archived_at).map(channelView) }; },
+    async list(org: string,includeArchived=false,page:{pageSize:number;cursor?:string}={pageSize:50}) {
+      if (!Number.isInteger(page.pageSize) || page.pageSize < 1 || page.pageSize > 100) throw new ChannelFacadeError('CHANNEL_PAGE_SIZE_INVALID',400);
+      const cursor = page.cursor ? readChannelCursor(page.cursor) : undefined;
+      const found = await rows(org, undefined, { pageSize: page.pageSize, includeArchived, ...(cursor ? { cursor } : {}) });
+      const data = found.slice(0,page.pageSize);
+      return { data: data.map(channelView), nextCursor: found.length > page.pageSize ? writeChannelCursor(data.at(-1)!) : null };
+    },
     get,
     async setArchived(org:string,id:string,archived:boolean,actorId?:string,platformActorId?:string){
       await options.transact(org,async tx=>{

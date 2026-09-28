@@ -25,6 +25,8 @@ const ROUTE_POLICIES = Object.freeze({
   )])),
   'POST /v1/automation-imports': policy('apps/api/src/http/routes/automation-imports.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
     'IDEMPOTENCY_KEY_DRAFT_ONLY','ENCRYPTED_ORIGINAL_CREDENTIALS_STRIPPED','RLS_CURRENT_ORGANIZATION_IMPORT_ARTIFACT'),
+  'POST /v1/automation-imports/preview': policy('apps/api/src/http/routes/automation-imports.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'NO_EXTERNAL_EFFECT','CREDENTIALS_STRIPPED_NO_PERSISTENCE','CURRENT_ORGANIZATION_IMPORT_PREVIEW_ONLY'),
   'GET /v1/automation-nodes': policy('apps/api/src/http/routes/automations.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_MEMBER',
     true, 'READ_ONLY', 'NONE', 'STATIC_EXECUTABLE_NODE_CATALOG'),
   ...Object.fromEntries([
@@ -105,6 +107,10 @@ const ROUTE_POLICIES = Object.freeze({
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/status': policy(
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
     true, 'READ_ONLY_PROVIDER_STATUS', 'NONE', 'RLS_ACCOUNT_REVISION_CONNECTION_GRANT',
+  ),
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/pair-operations/{operationId}': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_PAIR',
+    true, 'READ_ONLY_ONE_TIME_QR', 'TEMPORARY_QR_REDIS_GETDEL', 'RLS_CURRENT_CONNECTION_GRANT_OPERATION_AND_PROVIDER_IDENTITY',
   ),
   'POST /v1/integrations/chatwoot/control/connections/{integrationId}/pair': policy(
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CHATWOOT_PAIR_AND_FIRST_BINDING_ADMIN',
@@ -678,6 +684,24 @@ const ROUTE_POLICIES = Object.freeze({
     "NOT_APPLICABLE",
     "NONE",
     "RLS_ORGANIZATION_AND_CHANNEL_ID_BEFORE_META",
+  ),
+  "GET /v1/messaging/channels/{id}/templates/{templateId}/status": policy(
+    "apps/api/src/http/routes/messaging.ts",
+    "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "OWNER_ADMIN_OPERATOR_VIEWER",
+    true,
+    "READ_ONLY_META_STATUS",
+    "NONE",
+    "RLS_ORGANIZATION_CHANNEL_AND_WABA_BEFORE_META",
+  ),
+  "POST /v1/messaging/channels/{id}/templates": policy(
+    "apps/api/src/http/routes/messaging.ts",
+    "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "OWNER_ADMIN",
+    true,
+    "META_SUBMISSION_UNKNOWN_RECONCILE",
+    "NONE",
+    "RLS_ORGANIZATION_CHANNEL_AND_WABA_BEFORE_META",
   ),
   "GET /v1/messaging/channels/{id}/conversations": policy(
     "apps/api/src/http/routes/messaging.ts",

@@ -432,7 +432,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         messagingEnvironment,
         metaOnboardingService.resolveCredential,
       ),
-      { auth: controlAuth, instances: instances.service },
+      { auth: controlAuth, instances: instances.service, pairActionRedis: redisClient },
     );
     channels = {
       jwtSecret: config.jwtSecret,
@@ -546,7 +546,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     if(vaultKeys){const credentialService=createCredentialService({transact:automationOptions.transact,vault:createCredentialVault(vaultKeys),tester:createCredentialTester()}),membership=createMessagingMembershipResolver(pools.authPool),authentication={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:membership};
       credentials={...authentication,service:credentialService};
       automationWebhooks={...authentication,service:createWebhookService({pool:pools.appPool,transact:automationOptions.transact,credentials:credentialService,router:createEventRouter(automationOptions)})};
-      automationImports={...authentication,service:createAutomationImporter({transact:automationOptions.transact,keyring:vaultKeys})};
+      automationImports={...authentication,service:createAutomationImporter({transact:automationOptions.transact,keyring:vaultKeys,enabled:config.automationRuntimeV2Enabled})};
     }
     messaging = {
       resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),

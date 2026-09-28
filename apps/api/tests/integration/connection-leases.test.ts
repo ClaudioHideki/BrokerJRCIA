@@ -72,6 +72,9 @@ describe('lease e fencing de conexão com PostgreSQL real', () => {
       return { organizationId: organization.id, ownerId: owner.id, accountId: account.id };
     });
     ({ organizationId, ownerId, accountId } = seeded);
+    await runInAdminTransaction(database.pool, transaction => transaction.query(
+      'UPDATE organization_limits SET max_instances = 20 WHERE organization_id = $1', [organizationId],
+    ));
     appPool = new Pool({
       connectionString: connectionStringForRole(database.connectionString, 'jrc_app'),
       max: 1,
@@ -146,6 +149,7 @@ describe('lease e fencing de conexão com PostgreSQL real', () => {
       idempotencyKey: `create-uncertain-${randomUUID()}`,
     });
     const original = provider.beginConnection.bind(provider);
+    const originalStatus = provider.responses.getStatus;
     let firstCall = true;
     provider.beginConnection = async (...args) => {
       const response = await original(...args);
@@ -170,8 +174,8 @@ describe('lease e fencing de conexão com PostgreSQL real', () => {
           `SELECT status FROM instances WHERE organization_id = $1 AND id = $2`,
           [organizationId, created.instance.id],
         );
-        const operationResult = await transaction.query<{ status: string; canonicalErrorCode: string | null }>(
-          `SELECT status, canonical_error_code AS "canonicalErrorCode"
+        const operationResult = await transaction.query<{ status: string; canonicalErrorCode: string | null; reconciliationRequired: boolean }>(
+          `SELECT status, canonical_error_code AS "canonicalErrorCode", reconciliation_required AS "reconciliationRequired"
              FROM provider_operations
             WHERE organization_id = $1 AND instance_id = $2 AND operation_type = 'CONNECT'
             ORDER BY created_at DESC, id DESC LIMIT 1`,
@@ -184,12 +188,13 @@ describe('lease e fencing de conexão com PostgreSQL real', () => {
       });
       expect(persisted).toEqual({
         instance: { status: 'CONNECTING' },
-        operation: { status: 'PENDING', canonicalErrorCode: 'PROVIDER_TIMEOUT' },
+        operation: { status: 'PENDING', canonicalErrorCode: 'PROVIDER_TIMEOUT', reconciliationRequired: true },
       });
 
       await expect(service.connectInstance(context(), command)).resolves.toMatchObject({
         replayed: true,
         pending: true,
+        reconciliationRequired: true,
         action: { type: 'NONE', reason: 'CONNECTION_PENDING' },
       });
       await expect(service.connectInstance(context(), {
@@ -197,11 +202,62 @@ describe('lease e fencing de conexão com PostgreSQL real', () => {
         idempotencyKey: `timeout-second-${randomUUID()}`,
       })).resolves.toMatchObject({
         pending: true,
+        reconciliationRequired: true,
         action: { type: 'NONE', reason: 'CONNECTION_PENDING' },
       });
       expect(provider.calls.beginConnection).toHaveLength(before + 1);
+
+      await withOrganizationTransaction(appPool, organizationId, transaction => transaction.query(
+        `UPDATE provider_operations SET updated_at = now() - interval '2 minutes'
+          WHERE organization_id = $1 AND instance_id = $2 AND operation_type = 'CONNECT' AND status = 'PENDING'`,
+        [organizationId, created.instance.id],
+      ));
+      await expect(service.connectInstance(context(), {
+        instanceId: created.instance.id,
+        idempotencyKey: `timeout-stale-${randomUUID()}`,
+      })).rejects.toMatchObject({ code: 'CONNECT_RECONCILIATION_REQUIRED', status: 409 });
+      expect(provider.calls.beginConnection).toHaveLength(before + 1);
+      provider.responses.getStatus = 'CONNECTING';
+      await expect(service.getInstanceStatus(context(), created.instance.id))
+        .resolves.toMatchObject({ status: 'CONNECTING' });
+      const expired = await withOrganizationTransaction(appPool, organizationId, async transaction => (
+        (await transaction.query<{ status: string; canonicalErrorCode: string | null; reconciliationRequired: boolean }>(
+          `SELECT status, canonical_error_code AS "canonicalErrorCode", reconciliation_required AS "reconciliationRequired"
+             FROM provider_operations WHERE organization_id = $1 AND instance_id = $2 AND operation_type = 'CONNECT'
+             ORDER BY created_at DESC, id DESC LIMIT 1`,
+          [organizationId, created.instance.id],
+        )).rows[0]
+      ));
+      expect(expired).toEqual({ status: 'UNKNOWN', canonicalErrorCode: 'PROVIDER_TIMEOUT', reconciliationRequired: true });
+      await expect(service.connectInstance(context(), {
+        instanceId: created.instance.id,
+        idempotencyKey: `timeout-after-expiry-${randomUUID()}`,
+      })).rejects.toMatchObject({ code: 'CONNECT_RECONCILIATION_REQUIRED', status: 409 });
+      expect(provider.calls.beginConnection).toHaveLength(before + 1);
+      provider.responses.getStatus = 'DISCONNECTED';
+      await expect(service.getInstanceStatus(context(), created.instance.id))
+        .resolves.toMatchObject({ status: 'DISCONNECTED' });
+      await expect(service.connectInstance(context(), {
+        instanceId: created.instance.id,
+        idempotencyKey: `timeout-after-disconnected-${randomUUID()}`,
+      })).rejects.toMatchObject({ code: 'CONNECT_RECONCILIATION_REQUIRED', status: 409 });
+      expect(provider.calls.beginConnection).toHaveLength(before + 1);
+      provider.responses.getStatus = 'CONNECTED';
+      await expect(service.getInstanceStatus(context(), created.instance.id))
+        .resolves.toMatchObject({ status: 'CONNECTED' });
+      const confirmed = await withOrganizationTransaction(appPool, organizationId, async transaction => (
+        (await transaction.query<{ status: string; reconciliationRequired: boolean }>(
+          `SELECT status, reconciliation_required AS "reconciliationRequired" FROM provider_operations
+            WHERE organization_id = $1 AND instance_id = $2 AND operation_type = 'CONNECT'
+            ORDER BY created_at DESC, id DESC LIMIT 1`,
+          [organizationId, created.instance.id],
+        )).rows[0]
+      ));
+      expect(confirmed).toEqual({ status: 'SUCCEEDED', reconciliationRequired: false });
+      expect(provider.calls.beginConnection).toHaveLength(before + 1);
     } finally {
       provider.beginConnection = original;
+      provider.responses.getStatus = originalStatus;
     }
   });
 
@@ -471,7 +527,7 @@ describe('lease e fencing de conexão com PostgreSQL real', () => {
     }
   });
 
-  it('uma lease expirada produz um único vencedor sob duas novas chaves', async () => {
+  it('uma lease CONNECT expirada bloqueia duas novas chaves sem chamar o provider', async () => {
     await withOrganizationTransaction(appPool, organizationId, async (transaction) => {
       await transaction.query(
         `UPDATE instances SET status = 'CONNECTING' WHERE organization_id = $1 AND id = $2`,
@@ -485,33 +541,52 @@ describe('lease e fencing de conexão com PostgreSQL real', () => {
       );
     });
     const before = provider.calls.beginConnection.length;
-    const original = provider.beginConnection.bind(provider);
-    let release: ((action: ConnectionAction) => void) | undefined;
-    provider.beginConnection = async (providerContext, input) => {
-      await original(providerContext, input);
-      return new Promise<ConnectionAction>((resolve) => { release = resolve; });
-    };
     const first = service.connectInstance(context(), {
       instanceId,
       idempotencyKey: `expired-a-${randomUUID()}`,
     });
-    while (!release) await new Promise<void>((resolve) => setImmediate(resolve));
-    const second = await service.connectInstance(context(), {
+    const second = service.connectInstance(context(), {
       instanceId,
       idempotencyKey: `expired-b-${randomUUID()}`,
     });
-    expect(second.action).toEqual({ type: 'NONE', reason: 'CONNECTION_PENDING' });
-    expect(provider.calls.beginConnection).toHaveLength(before + 1);
-    release({ type: 'NONE', reason: 'CONNECTION_PENDING' });
-    await first;
-    provider.beginConnection = original;
+    const settled = await Promise.allSettled([first, second]);
+    expect(settled).toEqual([
+      expect.objectContaining({ status: 'rejected', reason: expect.objectContaining({ code: 'CONNECT_RECONCILIATION_REQUIRED', status: 409 }) }),
+      expect.objectContaining({ status: 'rejected', reason: expect.objectContaining({ code: 'CONNECT_RECONCILIATION_REQUIRED', status: 409 }) }),
+    ]);
+    expect(provider.calls.beginConnection).toHaveLength(before);
+  });
+
+  it('não reinicia CONNECT pendente quando webhook observou DISCONNECTED', async () => {
+    const created = await service.createInstance(context(), {
+      name: 'Webhook changed instance', provider: 'BAILEYS', providerAccountId: accountId,
+      idempotencyKey: `create-webhook-race-${randomUUID()}`,
+    });
+    await withOrganizationTransaction(appPool, organizationId, async transaction => {
+      await transaction.query(`UPDATE instances SET status = 'DISCONNECTED'
+        WHERE organization_id = $1 AND id = $2`, [organizationId, created.instance.id]);
+      await transaction.query(`INSERT INTO provider_operations
+        (organization_id, instance_id, operation_type, status)
+        VALUES ($1, $2, 'CONNECT', 'PENDING')`, [organizationId, created.instance.id]);
+    });
+    const before = provider.calls.beginConnection.length;
+    await expect(service.connectInstance(context(), {
+      instanceId: created.instance.id,
+      idempotencyKey: `webhook-race-${randomUUID()}`,
+    })).rejects.toMatchObject({ code: 'CONNECT_RECONCILIATION_REQUIRED', status: 409 });
+    expect(provider.calls.beginConnection).toHaveLength(before);
   });
 
   it('descarta resposta tardia quando a operação perde o fencing', async () => {
+    const created = await service.createInstance(context(), {
+      name: 'Late response instance', provider: 'BAILEYS', providerAccountId: accountId,
+      idempotencyKey: `create-late-${randomUUID()}`,
+    });
+    const lateInstanceId = created.instance.id;
     await withOrganizationTransaction(appPool, organizationId, async (transaction) => {
       await transaction.query(
         `UPDATE instances SET status = 'AWAITING_ACTION' WHERE organization_id = $1 AND id = $2`,
-        [organizationId, instanceId],
+        [organizationId, lateInstanceId],
       );
     });
     const original = provider.beginConnection.bind(provider);
@@ -521,7 +596,7 @@ describe('lease e fencing de conexão com PostgreSQL real', () => {
       return new Promise<ConnectionAction>((resolve) => { release = resolve; });
     };
     const late = service.connectInstance(context(), {
-      instanceId,
+      instanceId: lateInstanceId,
       idempotencyKey: `late-${randomUUID()}`,
     });
     while (!release) await new Promise<void>((resolve) => setImmediate(resolve));
@@ -530,13 +605,13 @@ describe('lease e fencing de conexão com PostgreSQL real', () => {
         `UPDATE provider_operations SET status = 'UNKNOWN'
           WHERE organization_id = $1 AND instance_id = $2
             AND operation_type = 'CONNECT' AND status = 'PENDING'`,
-        [organizationId, instanceId],
+        [organizationId, lateInstanceId],
       );
       await transaction.query(
         `INSERT INTO provider_operations
            (organization_id, instance_id, operation_type, status)
          VALUES ($1, $2, 'CONNECT', 'PENDING')`,
-        [organizationId, instanceId],
+        [organizationId, lateInstanceId],
       );
     });
     release({

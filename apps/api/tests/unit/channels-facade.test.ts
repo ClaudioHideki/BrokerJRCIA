@@ -9,6 +9,50 @@ const id = '519b77a6-a4e5-409a-85c8-d78fc155c525';
 const now = '2030-01-01T12:00:00.000Z';
 
 describe('channel facade', () => {
+  it('selects a channel by ID in PostgreSQL instead of scanning every channel in the organization', async () => {
+    const query = vi.fn(async (_sql: string, params: unknown[]) => ({ rows: params[1] === id ? [{
+      id, organization_id: org, provider: 'BAILEYS', provider_account_id: account, instance_id: id,
+      connection_id: null, name: 'Atendimento', instance_status: 'CONNECTED', meta_status: null,
+      bot_public_id: null, bot_origin_reference: null, flow_published_version: null, flow_enabled: null,
+      human_status: null, created_at: now, updated_at: now,
+    }] : [] }));
+    const service = createChannelFacade({ instances: {} as InstanceService, meta: { start: vi.fn() },
+      transact: async (_org, work) => work({ query } as never) });
+
+    await expect(service.get(org, id)).resolves.toMatchObject({ id, provider: 'QR' });
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0]?.[1]).toEqual([org, id]);
+    expect(query.mock.calls[0]?.[0]).toMatch(/WHERE i\.organization_id=\$1 AND i\.id=\$2/);
+    expect(query.mock.calls[0]?.[0]).toMatch(/WHERE m\.organization_id=\$1 AND m\.id=\$2/);
+  });
+  it('pages inboxes in PostgreSQL with a bounded keyset cursor, including archived filtering', async () => {
+    const older = 'f1654439-24f2-4cde-927a-e11754028789';
+    const oldest = 'fb3b1266-8e55-46d8-9d61-f3aba8931086';
+    const row = (channelId: string, updatedAt: string) => ({
+      id: channelId, organization_id: org, provider: 'BAILEYS', provider_account_id: account,
+      instance_id: channelId, connection_id: null, name: 'Atendimento', instance_status: 'CONNECTED', meta_status: null,
+      bot_public_id: null, bot_origin_reference: null, flow_published_version: null, flow_enabled: null,
+      human_status: null, created_at: now, updated_at: updatedAt,
+    });
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [row(id, '2030-01-03T12:00:00.000Z'), row(older, '2030-01-02T12:00:00.000Z'), row(oldest, now)] })
+      .mockResolvedValueOnce({ rows: [row(oldest, now)] });
+    const service = createChannelFacade({ instances: {} as InstanceService, meta: { start: vi.fn() },
+      transact: async (_org, work) => work({ query } as never) });
+
+    const first = await service.list(org, false, { pageSize: 2 });
+    expect(first.data.map(channel => channel.id)).toEqual([id, older]);
+    expect(first.nextCursor).toBeTruthy();
+    expect(query.mock.calls[0]?.[0]).toMatch(/WHERE channel_rows\.archived_at IS NULL/);
+    expect(query.mock.calls[0]?.[0]).toMatch(/LIMIT \$2/);
+    expect(query.mock.calls[0]?.[1]).toEqual([org, 3]);
+
+    const second = await service.list(org, false, { pageSize: 2, cursor: first.nextCursor });
+    expect(second.data.map(channel => channel.id)).toEqual([oldest]);
+    expect(second.nextCursor).toBeNull();
+    expect(query.mock.calls[1]?.[0]).toMatch(/date_trunc\('milliseconds', channel_rows\.updated_at\) < \$2/);
+    expect(query.mock.calls[1]?.[1]).toEqual([org, '2030-01-02T12:00:00.000Z', older, 3]);
+  });
   it('shows the actual paused binding, inbox and masked observed identity', () => {
     expect(channelView({id,organization_id:org,provider:'BAILEYS',provider_account_id:account,
       instance_id:id,connection_id:null,name:'Comercial',instance_status:'CONNECTED',meta_status:null,

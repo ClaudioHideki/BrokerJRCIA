@@ -9,6 +9,8 @@ const apps: ReturnType<typeof buildApp>[] = [];
 async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER') {
   const organizations: string[] = [];
   const botConfigurations: unknown[] = [];
+  const templateSubmissions: unknown[] = [];
+  const templateStatusLookups: unknown[] = [];
   let mutations = 0;
   let currentRole: typeof role | null = role;
   const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ async verifyPasswordOrDummy() { return false; } }), messaging: {
@@ -17,6 +19,14 @@ async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER'
     service: {
       async listChannels(organizationId: string) { organizations.push(organizationId); return { data: [{ id: channel, provider: 'META' as const, botPublicId: null, credentialReference: 'must-not-leak' }] }; },
       async listTemplates() { return { data: [] }; }, async listConversations() { return { data: [] }; }, async listMessages() { return { data: [] }; },
+      async getTemplateStatus(organizationId, channelId, templateId) {
+        templateStatusLookups.push({ organizationId, channelId, templateId });
+        return { observation: 'NOT_OBSERVED' as const, id: templateId, checkedAt: '2026-09-25T12:00:00.000Z' };
+      },
+      async createTextTemplate(organizationId, channelId, input, idempotencyKey) {
+        mutations++; templateSubmissions.push({ organizationId, channelId, input, idempotencyKey });
+        return { id: '123456789012345', name: input.name, language: input.language, category: input.category, status: 'PENDING' };
+      },
       async sendTemplate() { mutations++; return { id: channel, direction: 'OUTGOING' as const, state: 'ACCEPTED' as const, text: 'boas_vindas' }; },
       async sendText(organizationId,channelId,input){organizations.push(organizationId);mutations++;return {id:channelId,direction:'OUTGOING' as const,state:'ACCEPTED' as const,text:input.text};},
       async readMedia(organizationId){organizations.push(organizationId);return {bytes:new Uint8Array([1,2]),mimeType:'image/png',kind:'image' as const,fileName:'foto.png'};},
@@ -29,7 +39,7 @@ async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER'
   } });
   apps.push(app);
   const token = await issueAccessToken({ userId: channel, organizationId: org, role }, secret);
-  return { app, headers: { authorization: `Bearer ${token}` }, organizations, botConfigurations, mutations: () => mutations,
+  return { app, headers: { authorization: `Bearer ${token}` }, organizations, botConfigurations, templateSubmissions, templateStatusLookups, mutations: () => mutations,
     setCurrentRole(value: typeof role | null) { currentRole = value; } };
 }
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
@@ -68,6 +78,62 @@ it('não amplia os privilégios de uma API key válida de instâncias', async ()
   expect(h.organizations).toEqual([]);
 });
 describe('API JRC de mensageria', () => {
+  it('consulta status sem aceitar WABA forjada e bloqueia chave de instância', async () => {
+    const h = await harness();
+    const url = `/v1/messaging/channels/${channel}/templates/123456789012345/status`;
+    const observed = await h.app.inject({ url, headers: h.headers });
+    expect(observed.statusCode).toBe(200);
+    expect(observed.json()).toEqual({ observation: 'NOT_OBSERVED', id: '123456789012345', checkedAt: '2026-09-25T12:00:00.000Z' });
+    expect(h.templateStatusLookups).toEqual([{ organizationId: org, channelId: channel, templateId: '123456789012345' }]);
+    expect((await h.app.inject({ url: `${url}?wabaId=other`, headers: h.headers })).statusCode).toBe(400);
+    expect((await h.app.inject({ url, headers: { 'x-jrc-api-key': 'existing-instance-key' } })).statusCode).toBe(403);
+    expect((await h.app.inject({ url: `/v1/messaging/channels/${channel}/templates/not-an-id/status`, headers: h.headers })).statusCode).toBe(400);
+    expect(h.templateStatusLookups).toHaveLength(1);
+  });
+  it.each(['OWNER', 'ADMIN'] as const)('submete template Meta como %s para a empresa do JWT', async role => {
+    const h = await harness(role);
+    const payload = { name: 'aviso_entrega', language: 'pt_BR', category: 'UTILITY', body: 'Seu pedido está pronto.' };
+    const response = await h.app.inject({ method: 'POST', url: `/v1/messaging/channels/${channel}/templates`, headers: { ...h.headers, 'idempotency-key': 'submit-123' }, payload });
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ id: '123456789012345', name: payload.name, language: payload.language, category: payload.category, status: 'PENDING' });
+    expect(h.templateSubmissions).toEqual([{ organizationId: org, channelId: channel, input: payload, idempotencyKey: 'submit-123' }]);
+    expect(response.body).not.toContain('token');
+  });
+  it('exige chave de idempotência para evitar reenvio incerto à Meta', async () => {
+    const h = await harness();
+    const payload = { name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá' };
+    const response = await h.app.inject({ method: 'POST', url: `/v1/messaging/channels/${channel}/templates`, headers: h.headers, payload });
+    expect(response.statusCode).toBe(400);
+    expect(h.templateSubmissions).toHaveLength(0);
+  });
+  it.each(['OPERATOR', 'VIEWER'] as const)('impede %s de criar template', async role => {
+    const h = await harness(role);
+    const response = await h.app.inject({ method: 'POST', url: `/v1/messaging/channels/${channel}/templates`, headers: { ...h.headers, 'idempotency-key': 'forbidden-key' },
+      payload: { name: 'aviso', language: 'pt_BR', category: 'MARKETING', body: 'Olá' } });
+    expect(response.statusCode).toBe(403);
+    expect(h.mutations()).toBe(0);
+  });
+  it('não concede criação de template à chave de instância', async () => {
+    const h = await harness();
+    const response = await h.app.inject({ method: 'POST', url: `/v1/messaging/channels/${channel}/templates`,
+      headers: { 'x-jrc-api-key': 'existing-instance-key', 'idempotency-key': 'instance-key' },
+      payload: { name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá' } });
+    expect(response.statusCode).toBe(403);
+    expect(h.mutations()).toBe(0);
+  });
+  it('bloqueia privilégio revogado e dados de outro tenant na criação de template', async () => {
+    const h = await harness('OWNER');
+    h.setCurrentRole('OPERATOR');
+    const url = `/v1/messaging/channels/${channel}/templates`;
+    expect((await h.app.inject({ method: 'POST', url, headers: { ...h.headers, 'idempotency-key': 'revoked-key' },
+      payload: { name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá' } })).statusCode).toBe(403);
+    h.setCurrentRole('OWNER');
+    for (const extra of [{ organizationId: org }, { accessToken: 'secret' }, { wabaId: '987654321098765' }]) {
+      expect((await h.app.inject({ method: 'POST', url, headers: { ...h.headers, 'idempotency-key': 'invalid-body-key' },
+        payload: { name: 'aviso', language: 'pt_BR', category: 'UTILITY', body: 'Olá', ...extra } })).statusCode).toBe(400);
+    }
+    expect(h.mutations()).toBe(0);
+  });
   it('preserva erros de JSON inválido como erro do cliente', async () => {
     const h = await harness();
     const response = await h.app.inject({ method: 'PATCH', url: `/v1/messaging/conversations/${channel}/mode`, headers: { ...h.headers, 'content-type': 'application/json' }, payload: '{broken' });

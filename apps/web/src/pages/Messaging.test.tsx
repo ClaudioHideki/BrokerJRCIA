@@ -3,7 +3,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { ApiClient } from '../api/client.js';
+import { ApiClientError, type ApiClient } from '../api/client.js';
 import { SessionProvider } from '../auth/SessionProvider.js';
 import { MessagingPage } from './Messaging.js';
 
@@ -56,6 +56,7 @@ function renderPage(client: ApiClient) {
 
 function loadedRequest(overrides: {
   mode?: 'BOT' | 'HUMAN';
+  provider?: 'META' | 'BAILEYS';
   templateBodyVariableCount?: number;
   templateStatus?: string;
   onMutation?: (path: string, init?: RequestInit) => unknown;
@@ -63,7 +64,7 @@ function loadedRequest(overrides: {
   return vi.fn(async (path: string, init?: RequestInit) => {
     if (init?.method && init.method !== 'GET') return overrides.onMutation?.(path, init);
     if (path === '/v1/messaging/channels') {
-      return { data: [{ id: CHANNEL_ID, provider: 'META', botPublicId: 'jrc-welcome' }] };
+      return { data: [{ id: CHANNEL_ID, provider: overrides.provider ?? 'META', botPublicId: 'jrc-welcome' }] };
     }
     if (path === `/v1/messaging/channels/${CHANNEL_ID}/templates`) {
       return { data: [
@@ -114,6 +115,99 @@ function loadedRequest(overrides: {
 }
 
 describe('MessagingPage', () => {
+  it('submete modelo de texto para revisão Meta e apresenta estado pendente', async () => {
+    const mutations: Array<{ path: string; init?: RequestInit }> = [];
+    const request = loadedRequest({ onMutation(path, init) {
+      mutations.push({ path, ...(init ? { init } : {}) });
+      return { id: '123456789012345', name: 'aviso_entrega', language: 'pt_BR', category: 'UTILITY', status: 'PENDING' };
+    } });
+    renderPage(clientFor(request, 'ADMIN'));
+    await screen.findByText('Olá, preciso de ajuda');
+    fireEvent.change(screen.getByLabelText('Nome do novo template'), { target: { value: 'aviso_entrega' } });
+    fireEvent.change(screen.getByLabelText('Texto do novo template'), { target: { value: 'Seu pedido está pronto.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar para aprovação da Meta' }));
+    await waitFor(() => expect(mutations).toHaveLength(1));
+    expect(mutations[0]?.path).toBe(`/v1/messaging/channels/${CHANNEL_ID}/templates`);
+    expect(mutations[0]?.init?.method).toBe('POST');
+    expect(new Headers(mutations[0]?.init?.headers).get('Idempotency-Key')).toMatch(/^[a-f0-9-]{36}$/i);
+    expect(JSON.parse(String(mutations[0]?.init?.body))).toEqual({
+      name: 'aviso_entrega', language: 'pt_BR', category: 'UTILITY', body: 'Seu pedido está pronto.',
+    });
+    expect(await screen.findByText(/aviso_entrega.*PENDING/i)).toBeVisible();
+  });
+  it('não apresenta aprovação presumida quando Graph confirmou apenas o ID', async () => {
+    const request = loadedRequest({ onMutation() {
+      return { id: '123456789012346', name: 'aviso_entrega', language: 'pt_BR', category: 'UTILITY', status: 'STATUS_NOT_RETURNED' };
+    } });
+    renderPage(clientFor(request, 'ADMIN'));
+    await screen.findByText('Olá, preciso de ajuda');
+    fireEvent.change(screen.getByLabelText('Nome do novo template'), { target: { value: 'aviso_entrega' } });
+    fireEvent.change(screen.getByLabelText('Texto do novo template'), { target: { value: 'Seu pedido está pronto.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar para aprovação da Meta' }));
+    expect(await screen.findByText(/status ainda não confirmado/i)).toBeVisible();
+    expect(screen.queryByText(/aviso_entrega.*APPROVED/i)).not.toBeInTheDocument();
+  });
+  it('consulta a revisão oficial do template e distingue aprovação de ID ainda não observado', async () => {
+    const submittedId = '123456789012346';
+    const base = loadedRequest({ onMutation() {
+      return { id: submittedId, name: 'aviso_entrega', language: 'pt_BR', category: 'UTILITY', status: 'STATUS_NOT_RETURNED' };
+    } });
+    let observed = false;
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === `/v1/messaging/channels/${CHANNEL_ID}/templates/${submittedId}/status`) {
+        return observed
+          ? { observation: 'OBSERVED', id: submittedId, checkedAt: '2026-09-25T12:00:00.000Z',
+            template: { id: submittedId, name: 'aviso_entrega', language: 'pt_BR', category: 'UTILITY', status: 'APPROVED', bodyVariableCount: 0 } }
+          : { observation: 'NOT_OBSERVED', id: submittedId, checkedAt: '2026-09-25T11:00:00.000Z' };
+      }
+      return base(path, init);
+    }) as ApiClient['request'];
+    renderPage(clientFor(request, 'ADMIN'));
+    await screen.findByText('Olá, preciso de ajuda');
+    fireEvent.change(screen.getByLabelText('Nome do novo template'), { target: { value: 'aviso_entrega' } });
+    fireEvent.change(screen.getByLabelText('Texto do novo template'), { target: { value: 'Seu pedido está pronto.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar para aprovação da Meta' }));
+    const check = await screen.findByRole('button', { name: 'Consultar status de aviso_entrega' });
+    fireEvent.click(check);
+    expect(await screen.findByText(/ainda não aparece na WABA/i)).toBeVisible();
+    const pendingRow = screen.getByText('aviso_entrega').closest('li');
+    expect(pendingRow).not.toBeNull();
+    expect(within(pendingRow!).queryByText('APPROVED')).not.toBeInTheDocument();
+    observed = true;
+    fireEvent.click(check);
+    expect(await screen.findByText(/status consultado na Meta/i)).toBeVisible();
+    const approvedRow = screen.getByText('aviso_entrega').closest('li');
+    expect(approvedRow).not.toBeNull();
+    expect(within(approvedRow!).getByText('APPROVED')).toBeVisible();
+  });
+  it('orienta consulta da lista após resposta incerta sem repetir a submissão automaticamente', async () => {
+    const request = loadedRequest({ onMutation() {
+      throw new ApiClientError('Serviço temporariamente indisponível.', 503, undefined, 'META_TEMPLATE_SUBMISSION_UNKNOWN');
+    } });
+    renderPage(clientFor(request));
+    await screen.findByText('Olá, preciso de ajuda');
+    fireEvent.change(screen.getByLabelText('Nome do novo template'), { target: { value: 'aviso_entrega' } });
+    fireEvent.change(screen.getByLabelText('Texto do novo template'), { target: { value: 'Seu pedido está pronto.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar para aprovação da Meta' }));
+    expect(await screen.findByText(/Atualize a lista antes de tentar novamente/i)).toBeVisible();
+    const submissions = () => vi.mocked(request).mock.calls.filter(([path, init]) => path === `/v1/messaging/channels/${CHANNEL_ID}/templates` && init?.method === 'POST');
+    expect(submissions()).toHaveLength(1);
+    const firstKey = new Headers(submissions()[0]?.[1]?.headers).get('Idempotency-Key');
+    expect(firstKey).toMatch(/^[a-f0-9-]{36}$/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar para aprovação da Meta' }));
+    await waitFor(() => expect(submissions()).toHaveLength(2));
+    expect(new Headers(submissions()[1]?.[1]?.headers).get('Idempotency-Key')).toBe(firstKey);
+  });
+  it.each(['OPERATOR', 'VIEWER'] as const)('oculta criação de template para %s', async role => {
+    renderPage(clientFor(loadedRequest(), role));
+    await screen.findByText('Olá, preciso de ajuda');
+    expect(screen.queryByRole('button', { name: 'Enviar para aprovação da Meta' })).not.toBeInTheDocument();
+  });
+  it('não oferece criação de template para caixa QR', async () => {
+    renderPage(clientFor(loadedRequest({ provider: 'BAILEYS' })));
+    await screen.findByText('Olá, preciso de ajuda');
+    expect(screen.queryByRole('button', { name: 'Enviar para aprovação da Meta' })).not.toBeInTheDocument();
+  });
   it('shows the honest empty state when no Meta channel is configured', async () => {
     const request = vi.fn(async (path: string) => {
       if (path === '/v1/messaging/channels') return { data: [] };
