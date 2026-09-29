@@ -493,9 +493,9 @@ it("preserves support permissions in every company tab", async () => {
   expect(
     screen.queryByRole("button", { name: "Salvar situação e plano" }),
   ).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("tab", { name: "Suporte" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Intervenção administrativa" }));
   expect(
-    screen.getByRole("button", { name: "Registrar atendimento de suporte" }),
+    screen.getByRole("button", { name: "Registrar intervenção" }),
   ).toBeEnabled();
 });
 

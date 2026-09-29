@@ -25,12 +25,28 @@ function client(request:ApiClient['request']):ApiClient {
 }
 
 function mountEditor(request:ApiClient['request']) {
-  return render(<SessionProvider client={client(request)}><MemoryRouter initialEntries={[`/automations/${automationId}/edit`]}><Routes><Route path="/automations/:id/edit" element={<AutomationEditorPage/>}/></Routes></MemoryRouter></SessionProvider>);
+  const withStatus=((path:string,init?:RequestInit)=>path==='/v1/automations/status'?Promise.resolve({enabled:true,canEdit:true,canSimulate:true,canPublish:true,reasons:[]}):request(path,init)) as ApiClient['request'];
+  return render(<SessionProvider client={client(withStatus)}><MemoryRouter initialEntries={[`/automations/${automationId}/edit`]}><Routes><Route path="/automations/:id/edit" element={<AutomationEditorPage/>}/></Routes></MemoryRouter></SessionProvider>);
 }
 
 beforeEach(()=>sessionStorage.clear());
 
 describe('Automation Studio',()=>{
+  it('keeps offline drafts visible and editable with an explicit publication pause',async()=>{
+    const request=vi.fn(async(path:string)=>path==='/v1/automations/status'?{enabled:false,canRead:true,canEdit:true,canSimulate:true,canPublish:false,reasons:['AUTOMATION_RUNTIME_DISABLED']}:path==='/v1/automations'?{data:[definition]}:Promise.reject(new Error(path))) as ApiClient['request'];
+    render(<SessionProvider client={client(request)}><MemoryRouter><AutomationsPage/></MemoryRouter></SessionProvider>);
+    expect(await screen.findByRole('heading',{name:'Atendimento principal'})).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('A execução de bots está pausada pela administração JRC');
+    expect(screen.getByRole('link',{name:'Nova automação'})).toBeVisible();
+  });
+  it('creates drafts while publication is paused and explains the capability separately',async()=>{
+    const request=vi.fn(async(path:string)=>path==='/v1/automations/status'?{enabled:false,canRead:true,canEdit:true,canSimulate:true,canPublish:false,reasons:['AUTOMATION_RUNTIME_DISABLED']}:Promise.reject(new Error(path))) as ApiClient['request'];
+    render(<SessionProvider client={client(request)}><MemoryRouter><NewAutomationPage/></MemoryRouter></SessionProvider>);
+    await waitFor(()=>expect(screen.getByLabelText('Arquivo JSON')).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('Nome da automação'),{target:{value:'Meu bot'}});
+    expect(screen.getByRole('button',{name:'Criar e abrir editor'})).toBeEnabled();
+    expect(screen.getByRole('status')).toHaveTextContent('rascunhos');
+  });
   it('previews JSON automatically and lets the user cancel before creating an automation',async()=>{
     const request=vi.fn(async(path:string)=>{
       if(path==='/v1/automations/status')return {enabled:true};
@@ -79,7 +95,7 @@ describe('Automation Studio',()=>{
       throw new Error(`Unexpected ${path}`);
     }) as ApiClient['request'];
     render(<SessionProvider client={client(request)}><MemoryRouter><NewAutomationPage/></MemoryRouter></SessionProvider>);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Automações temporariamente desativadas');
+    expect(await screen.findByRole('status')).toHaveTextContent('A execução de bots está pausada');
     const input=screen.getByLabelText('Arquivo JSON');
     expect(input).toBeDisabled();
     fireEvent.change(input,{target:{files:[{name:'chatbot.json',size:50,text:async()=>'{"format":"jrc-flows/1"}'}]}});
@@ -151,6 +167,20 @@ describe('Automation Studio',()=>{
     const block=await screen.findByRole('button',{name:'Configurar Mensagem recebida'});
     fireEvent.keyDown(block,{key:'ArrowRight'});
     expect(screen.getByText(/alterações locais preservadas/)).toBeInTheDocument();
+  });
+  it('continues a menu simulation using the conversation transcript',async()=>{
+    const request=vi.fn(async(path:string,init?:RequestInit)=>{
+      if(path===`/v1/automations/${automationId}`)return definition;
+      if(path==='/v1/automation-nodes')return {data:AUTOMATION_NODE_CATALOG_V1};
+      if(path.endsWith('/simulate')){const input=JSON.parse(String(init?.body));return {status:input.replies?.length?'HANDOFF':'WAITING',wait:input.replies?.length?undefined:{kind:'EVENT',nodeId:'menu'},state:{variables:{}},effects:[{kind:'SEND_TEXT',payload:{text:input.replies?.length?'Atendimento selecionado':'1 - Atendimento'}}],trace:[]};}
+      throw new Error(path);
+    }) as ApiClient['request'];
+    mountEditor(request);fireEvent.click(await screen.findByRole('button',{name:'Testar'}));
+    expect(await screen.findByText('1 - Atendimento')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Próxima resposta'),{target:{value:'1'}});
+    fireEvent.click(screen.getByRole('button',{name:'Enviar resposta no teste'}));
+    expect(await screen.findByText('Atendimento selecionado')).toBeVisible();
+    expect(request).toHaveBeenCalledWith(`/v1/automations/${automationId}/simulate`,expect.objectContaining({body:JSON.stringify({text:'Olá',replies:['1']})}));
   });
 });
 

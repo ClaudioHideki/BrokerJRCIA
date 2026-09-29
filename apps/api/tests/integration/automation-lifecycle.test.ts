@@ -16,7 +16,7 @@ describe('automation lifecycle with tenant isolation',()=>{
  const service=createAutomationService({transact}),executions=createExecutionService({transact});
  beforeAll(async()=>{const url=requireTestDatabaseAdminUrl();db=await createIsolatedPostgresDatabase(url);await withGlobalRoleLock(url,()=>runMigrations(db.connectionString));
   const seed=await db.pool.connect();try{await seed.query('begin');await seed.query("insert into organizations(id,name,slug) values($1::uuid,'QA A',$1::text),($2::uuid,'QA B',$2::text)",[a,b]);
- const user=(await seed.query("insert into users(email,password_hash) values($1,'no-login') returning id",[a+'@example.test'])).rows[0];await seed.query("insert into memberships(organization_id,user_id,role) values($1,$3,'OWNER'),($2,$3,'OWNER')",[a,b,user.id]);await seed.query('commit');}finally{seed.release();}
+ const user=(await seed.query("insert into users(email,password_hash) values($1,'no-login') returning id",[a+'@example.test'])).rows[0];await seed.query("insert into memberships(organization_id,user_id,role) values($1,$3,'OWNER'),($2,$3,'OWNER')",[a,b,user.id]);await seed.query('insert into flow_features(organization_id,enabled) values($1,true),($2,true)',[a,b]);await seed.query('commit');}finally{seed.release();}
   pool=new Pool({connectionString:connectionStringForRole(db.connectionString,'jrc_app')});
  },60000);
  afterAll(async()=>{await pool?.end();await db?.dispose();});

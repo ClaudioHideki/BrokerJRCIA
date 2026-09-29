@@ -7,7 +7,7 @@ interface SnapshotRow {
   queueDepth:number;oldestOutboxSeconds:number|null;failedExecutions:number;unknownExecutions:number;
   metaReady:number;evolutionReady:number;chatwootReady:number;chatwootDegraded:number;
 }
-interface HeartbeatRow {component:string;status:'UP'|'DEGRADED';observedAt:Date}
+interface HeartbeatRow {component:string;status:'UP'|'DEGRADED';observedAt:Date;detailCode?:string|null}
 export interface ObservabilityRepository {
  snapshot(tx:TenantTransaction,org:string):Promise<SnapshotRow>;
  heartbeats(tx:TenantTransaction,org:string):Promise<HeartbeatRow[]>;
@@ -26,7 +26,7 @@ export function createPostgresObservabilityRepository():ObservabilityRepository{
   (select count(*)::int from instances where organization_id=$1 and status='CONNECTED') as "evolutionReady",
   (select count(*)::int from chatwoot_destinations where organization_id=$1 and approval_status='APPROVED') as "chatwootReady",
   (select count(*)::int from chatwoot_connection_health where organization_id=$1 and (identity_error is not null or access_error is not null or not observed_connected)) as "chatwootDegraded"`,[org])).rows[0]!;},
- async heartbeats(tx,org){return (await tx.query<HeartbeatRow>(`select distinct on(component) component,status,observed_at as "observedAt" from operational_heartbeats where organization_id=$1 order by component,observed_at desc`,[org])).rows;},
+ async heartbeats(tx,org){return (await tx.query<HeartbeatRow>(`select distinct on(component) component,status,observed_at as "observedAt",detail_code as "detailCode" from operational_heartbeats where organization_id=$1 order by component,observed_at desc`,[org])).rows;},
 };}
 export interface ObservabilityOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:ObservabilityRepository;probeRedis?():Promise<boolean>;schemaCurrent?():Promise<boolean>;now?:()=>Date;heartbeatMaxAgeMs?:number}
 export function createObservabilityService(options:ObservabilityOptions){const repo=options.repository??createPostgresObservabilityRepository(),now=options.now??(()=>new Date()),maxAge=options.heartbeatMaxAgeMs??45_000;
@@ -37,7 +37,8 @@ export function createObservabilityService(options:ObservabilityOptions){const r
    const {snapshot,heartbeats}=await options.transact(org,async tx=>({snapshot:await repo.snapshot(tx,org),heartbeats:await repo.heartbeats(tx,org)}));
    const beats=new Map(heartbeats.map(item=>[item.component,item]));
    const worker=(key:string,label:string)=>{const beat=beats.get(key),age=beat?now().getTime()-new Date(beat.observedAt).getTime():Infinity;
-     return component(key,label,!beat?'UNKNOWN':age>maxAge?'DOWN':beat.status,'WORKER_'+(!beat?'NEVER_OBSERVED':age>maxAge?'HEARTBEAT_STALE':'HEALTHY'),beat?new Date(beat.observedAt).toISOString():null,Number.isFinite(age)?Math.round(age/1000):undefined,'seconds');};
+     const code=!beat?'WORKER_NEVER_OBSERVED':age>maxAge?'WORKER_HEARTBEAT_STALE':beat.status==='DEGRADED'?(beat.detailCode==='AUTOMATION_RUNTIME_DISABLED'?beat.detailCode:'WORKER_DEGRADED'):'WORKER_HEALTHY';
+     return component(key,label,!beat?'UNKNOWN':age>maxAge?'DOWN':beat.status,code,beat?new Date(beat.observedAt).toISOString():null,Number.isFinite(age)?Math.round(age/1000):undefined,'seconds');};
    const components=[component('API','API','UP','API_RESPONDING',observedAt),component('DATABASE','Banco de dados','UP','DATABASE_QUERY_OK',observedAt),component('SCHEMA','Schema',schema?'UP':'DOWN',schema?'SCHEMA_REQUIRED_OBJECTS_PRESENT':'SCHEMA_INCOMPATIBLE',observedAt),component('REDIS','Redis',redis?'UP':'DOWN',redis?'REDIS_PING_OK':'REDIS_UNAVAILABLE',observedAt),
     worker('MESSAGING_WORKER','Worker de mensagens'),worker('AUTOMATION_WORKER','Worker de automação'),worker('AUTOMATION_IO_WORKER','Worker de integrações'),worker('SCHEDULER','Scheduler'),
     component('EVOLUTION','Evolution',snapshot.evolutionReady?'UP':'UNKNOWN',snapshot.evolutionReady?'EVOLUTION_CHANNEL_READY':'EVOLUTION_NOT_OBSERVED',observedAt,snapshot.evolutionReady,'channels'),

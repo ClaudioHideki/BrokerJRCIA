@@ -1,4 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { registerPlatformSupportRoutes } from './support.js';
+import { SupportError, type SupportService } from '../../modules/support/service.js';
 import { tenantOperationalProblem } from "../../modules/tenancy/operational-limits.js";
 import { z } from "zod";
 import { CreateEconomicGroupSchema, AssignGroupOrganizationsSchema, EconomicGroupSchema } from '@jrc/contracts';
@@ -32,7 +34,11 @@ import {
   type PlatformInput,
 } from "../../modules/platform/service.js";
 import {ChannelFacadeError,type ChannelFacade} from '../../modules/channels/facade.js';
+import {LifecycleError,type LifecycleService} from '../../modules/lifecycle/service.js';
+import {DeletionPreviewSchema,DeletionRequestedSchema,DeletionStatusSchema,RequestDeletionSchema} from '@jrc/contracts';
 export interface PlatformRouteOptions {
+  support?: SupportService;
+  lifecycle?: LifecycleService;
   channels?:ChannelFacade;
   service: PlatformService;
   origin: string;
@@ -138,7 +144,7 @@ export async function registerPlatformRoutes(
           return reply.code(operationalProblem.status).send(operationalProblem);
         const duplicate = (error as { code?: string }).code === "23505";
         const status =
-          error instanceof PlatformError
+          error instanceof LifecycleError ? error.status : error instanceof PlatformError
             ? error.statusCode
             : error instanceof ChannelFacadeError || error instanceof IntegrationError || error instanceof ChatwootDestinationError
               ? error.status
@@ -151,7 +157,7 @@ export async function registerPlatformRoutes(
                     ? 409
                     : 500;
         const code =
-          error instanceof PlatformError || error instanceof ChannelFacadeError ||
+          error instanceof LifecycleError || error instanceof PlatformError || error instanceof ChannelFacadeError ||
           error instanceof IntegrationError ||
           error instanceof ChatwootDestinationError ||
           error instanceof ChatwootError
@@ -246,6 +252,49 @@ export async function registerPlatformRoutes(
         );
       };
       const groupReason = (req: FastifyRequest) => z.string().trim().min(5).max(500).parse(req.headers['x-platform-reason']);
+      if(options.lifecycle){
+        const channelDeletionParams=idParams.extend({channelId:z.uuid()});
+        const companyStatusParams=idParams.extend({operationId:z.uuid()});
+        const channelStatusParams=channelDeletionParams.extend({operationId:z.uuid()});
+        const globalActor=async(req:FastifyRequest,write=false)=>{
+          const session=await options.service.session(write?await mutation(req):cookie(req));
+          if(session.user.role!=='SUPER_ADMIN')throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+          return session.user.id;
+        };
+        scoped.get('/organizations/:id/deletion-preview',{schema:{params:idParams,querystring:z.strictObject({}),response:{200:DeletionPreviewSchema}}},
+          async req=>{await globalActor(req);return options.lifecycle!.previewOrganization(idParams.parse(req.params).id);});
+        scoped.post('/organizations/:id/deletion',{schema:{params:idParams,querystring:z.strictObject({}),body:RequestDeletionSchema,response:{202:DeletionRequestedSchema}}},
+          async(req,reply)=>{
+            const actor=await globalActor(req,true),input=RequestDeletionSchema.parse(req.body);
+            return reply.code(202).send(await options.lifecycle!.requestOrganization(idParams.parse(req.params).id,
+              input.confirmationName,input.reason,actor));
+          });
+        scoped.get('/organizations/:id/deletion/:operationId',{schema:{params:companyStatusParams,querystring:z.strictObject({}),response:{200:DeletionStatusSchema}}},
+          async req=>{await globalActor(req);const params=companyStatusParams.parse(req.params);
+            return options.lifecycle!.status(params.id,params.id,params.operationId);});
+        scoped.get('/organizations/:id/channels/:channelId/deletion-preview',{schema:{params:channelDeletionParams,querystring:z.strictObject({}),response:{200:DeletionPreviewSchema}}},
+          async req=>{await globalActor(req);const params=channelDeletionParams.parse(req.params);
+            return options.lifecycle!.previewChannel(params.id,params.channelId);});
+        scoped.post('/organizations/:id/channels/:channelId/deletion',{schema:{params:channelDeletionParams,querystring:z.strictObject({}),body:RequestDeletionSchema,response:{202:DeletionRequestedSchema}}},
+          async(req,reply)=>{const actor=await globalActor(req,true),params=channelDeletionParams.parse(req.params),input=RequestDeletionSchema.parse(req.body);
+            return reply.code(202).send(await options.lifecycle!.requestChannel(params.id,params.channelId,input.confirmationName,input.reason,'PLATFORM',actor));});
+        scoped.get('/organizations/:id/channels/:channelId/deletion/:operationId',{schema:{params:channelStatusParams,querystring:z.strictObject({}),response:{200:DeletionStatusSchema}}},
+          async req=>{await globalActor(req);const params=channelStatusParams.parse(req.params);
+            return options.lifecycle!.status(params.id,params.channelId,params.operationId);});
+      }
+      if (options.support) await registerPlatformSupportRoutes(scoped, {
+        service: options.support,
+        authorize: async (req, write) => {
+          try {
+            const token = write ? await mutation(req) : cookie(req);
+            const session = await options.service.session(token);
+            return { kind: 'PLATFORM', actorId: session.user.id };
+          } catch (error) {
+            if (error instanceof PlatformError) throw new SupportError(error.code,error.statusCode);
+            throw error;
+          }
+        },
+      });
       scoped.get('/groups', { schema: { querystring: z.strictObject({cursor:z.string().min(1).max(1024).optional()}), response: { 200: z.strictObject({ data: z.array(EconomicGroupSchema), nextCursor:z.string().optional() }) } } },
         req => options.service.listGroups(cookie(req), groupReason(req), (req.query as {cursor?:string}).cursor));
       scoped.post('/groups', { schema: { querystring: z.strictObject({}), body: CreateEconomicGroupSchema, response: { 201: EconomicGroupSchema } } },

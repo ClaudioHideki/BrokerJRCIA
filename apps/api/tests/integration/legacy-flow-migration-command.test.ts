@@ -45,6 +45,7 @@ describe('legacy flow migration command', () => {
            from generate_series(1, 205) item`,
         [organizationId],
       );
+      await seed.query('insert into flow_features(organization_id,enabled) values($1,true)',[organizationId]);
       await seed.query('commit');
     } catch (error) {
       await seed.query('rollback');
@@ -67,6 +68,7 @@ describe('legacy flow migration command', () => {
     try {
       await runLegacyFlowMigration({
         DATABASE_URL: connectionStringForRole(database.connectionString, 'jrc_app'),
+        AUTOMATION_RUNTIME_V2_ENABLED:'true',
       } as NodeJS.ProcessEnv);
     } finally {
       write.mockRestore();

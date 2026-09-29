@@ -7,7 +7,8 @@ import { withOrganizationTransaction } from '../db/tenant-transaction.js';
 import { createExecutionService, createOutboxDispatcher } from '../modules/automations/service.js';
 import { createPostgresAutomationRepository } from '../modules/automations/repository.js';
 import { createPostgresMessagingRepository } from '../modules/messaging/repository.js';
-import { recordHeartbeat, workerInstanceId } from '../modules/observability/service.js';
+import { workerInstanceId } from '../modules/observability/service.js';
+import { automationRuntimeEnabled, recordAutomationHeartbeat } from '../modules/automations/availability.js';
 
 export function loadAutomationWorkerConfig(environment:NodeJS.ProcessEnv){const databaseUrl=z.string().url().parse(environment.DATABASE_URL);
   if(new URL(databaseUrl).username!=='jrc_app')throw new Error('AUTOMATION_WORKER_REQUIRES_APP_ROLE');return {databaseUrl,intervalMs:z.coerce.number().int().min(100).max(60000).default(1000).parse(environment.AUTOMATION_WORKER_INTERVAL_MS)};}
@@ -31,8 +32,8 @@ export async function scanOperationalOrganizations(
 }
 export async function runAutomationWorker(environment:NodeJS.ProcessEnv=process.env,watch=false){const config=loadAutomationWorkerConfig(environment),pool=new Pool({connectionString:config.databaseUrl,max:4,connectionTimeoutMillis:5000,statement_timeout:30000});
   const instanceId=workerInstanceId();
-  const repository=createPostgresAutomationRepository(),transact=<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pool,org,work),execution=createExecutionService({transact,repository});
-  const messaging=createPostgresMessagingRepository(),outbox=createOutboxDispatcher({transact,repository},{dispatch:async item=>{
+  const enabled=automationRuntimeEnabled(environment),repository=createPostgresAutomationRepository(),transact=<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pool,org,work),execution=createExecutionService({transact,repository,enabled});
+  const messaging=createPostgresMessagingRepository(),outbox=createOutboxDispatcher({transact,repository,enabled},{dispatch:async item=>{
     if(!item.conversationId)return {kind:'FAILED' as const,error:'AUTOMATION_CONVERSATION_REQUIRED'};
     try{if(item.kind==='HANDOFF'){await transact(item.organizationId,tx=>messaging.setConversationMode(tx,{organizationId:item.organizationId,conversationId:item.conversationId!,mode:'HUMAN'}));return {kind:'SENT' as const,remoteReference:`handoff:${item.conversationId}`};}
       const text=typeof item.payload.text==='string'?item.payload.text:'';if(!text)return {kind:'FAILED' as const,error:'AUTOMATION_TEXT_REQUIRED'};
@@ -42,7 +43,7 @@ export async function runAutomationWorker(environment:NodeJS.ProcessEnv=process.
   }});
   const abort=new AbortController(),stop=()=>abort.abort();process.once('SIGINT',stop);process.once('SIGTERM',stop);
   try{do{await scanOperationalOrganizations(async(cursor,batchSize)=>(await pool.query<{organization_id:string}>('select * from operational_worker_organizations($1,$2)',[cursor,batchSize])).rows.map(row=>row.organization_id),
-    async org=>{await transact(org,tx=>recordHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId));await execution.runOnce(org);await outbox.runOnce(org);},abort.signal,
+    async org=>{await transact(org,tx=>recordAutomationHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId,enabled));await execution.runOnce(org);await outbox.runOnce(org);},abort.signal,
     (_error,org)=>process.stderr.write(JSON.stringify({event:'AUTOMATION_WORKER_ORGANIZATION_FAILED',organizationId:org})+'\n'));
     if(watch&&!abort.signal.aborted)await setTimeout(config.intervalMs,undefined,{signal:abort.signal}).catch(()=>undefined);
   }while(watch&&!abort.signal.aborted);}finally{process.off('SIGINT',stop);process.off('SIGTERM',stop);await pool.end();}}

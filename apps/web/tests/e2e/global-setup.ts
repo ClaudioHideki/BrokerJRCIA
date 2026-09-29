@@ -20,6 +20,7 @@ import {ensureQrChannel} from '../../../api/src/modules/messaging/qr-service.js'
 import {createAutomationService,createExecutionService} from '../../../api/src/modules/automations/service.js';
 import {createAutomationImporter} from '../../../api/src/modules/automation-integrations/importer.js';
 import {createLegacyFlowMigrationService} from '../../../api/src/modules/automations/legacy-migration.js';
+import {createSupportService} from '../../../api/src/modules/support/service.js';
 import type {OrganizationTransaction} from '../../../api/src/db/tenant-transaction.js';
 import { buildApp } from '../../../api/src/app.js';
 import { runMigrations } from '../../../api/src/db/migrate.js';
@@ -215,6 +216,13 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
       requestId: randomUUID(),
     });
 
+    // These synthetic companies exercise the contracted Flow journey. New
+    // companies intentionally start without the module; the fixture must opt in
+    // just as administration does before allowing draft edits or publication.
+    await database.pool.query(`INSERT INTO flow_features(organization_id,enabled)
+      SELECT id,true FROM organizations WHERE name IN ('JRC E2E Matriz','JRC E2E Filial')
+      ON CONFLICT(organization_id) DO UPDATE SET enabled=excluded.enabled`);
+
     appPool = new Pool({
       connectionString: roleConnectionString(database.connectionString, 'jrc_app'),
       max: 4,
@@ -289,6 +297,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     const transact=<T>(org:string,work:OrganizationTransaction<T>)=>withOrganizationTransaction(appPool!,org,work);
     const automationOptions={transact},routeAuth={jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(authPool)};
     app = buildApp({
+      support:{...routeAuth,service:createSupportService({transact})},
       channels:{...routeAuth,service:createChannelFacade({instances,meta:{start:async()=>{throw new Error('Meta real não configurada no E2E');}},transact,activateQr:(org,id)=>transact(org,tx=>ensureQrChannel(tx,org,id))})},
       automations:{...routeAuth,service:createAutomationService(automationOptions),executions:createExecutionService(automationOptions),migration:createLegacyFlowMigrationService(automationOptions)},
       automationImports:{...routeAuth,service:createAutomationImporter({transact,keyring:JSON.stringify({'1':Buffer.alloc(32,22).toString('base64')})})},

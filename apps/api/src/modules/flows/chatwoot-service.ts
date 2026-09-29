@@ -136,8 +136,16 @@ export function createFlowChatwootService(options: Options) {
         if (Number(a.account_id) !== Number(b.account_id) || a.destination?.revision !== b.destination_revision) throw new FlowError('FLOW_BINDING_CHANGED', 409);
         const client = env.client(a), current = await client.inboxFlowBot(Number(b.account_id), Number(b.inbox_id));
         if (current?.id === Number(b.bot_id)) await client.setInboxFlowBot(Number(b.account_id), Number(b.inbox_id), null);
+        const confirmed = await client.inboxFlowBot(Number(b.account_id), Number(b.inbox_id));
+        if (b.bot_id !== null && confirmed?.id === Number(b.bot_id)) throw new FlowError('FLOW_REMOTE_BOT_DETACH_UNVERIFIED', 409);
+        await transact(org, tx => tx.query(`update flow_chatwoot_bindings
+          set bot_id=null,encrypted_credentials=null,last_error=null,updated_at=now()
+          where organization_id=$1 and id=$2 and status='DISABLED' and bot_id is not distinct from $3`, [org, id, b.bot_id]));
         return { ok: true, remoteDetached: true };
       } catch {
+        await transact(org, tx => tx.query(`update flow_chatwoot_bindings
+          set last_error='FLOW_REMOTE_BOT_DETACH_UNVERIFIED',updated_at=now()
+          where organization_id=$1 and id=$2 and status='DISABLED' and bot_id is not null`, [org, id]));
         return { ok: true, remoteDetached: false, code: 'FLOW_REMOVE_REMOTE_BOT_MANUALLY' };
       }
     },

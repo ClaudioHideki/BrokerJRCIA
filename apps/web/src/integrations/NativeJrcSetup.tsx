@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { IssuedControlCredentialSchema } from '@jrc/contracts';
 import type { IntegrationRequest } from './ChatwootPanel.js';
 
-export function NativeJrcSetup({ request, accountId, baseUrl }: {
-  request: IntegrationRequest; accountId: number; baseUrl: string;
+export function NativeJrcSetup({ request, accountId, baseUrl, external = false }: {
+  request: IntegrationRequest; accountId: number; baseUrl: string; external?: boolean;
 }) {
   const [issued, setIssued] = useState<ReturnType<typeof IssuedControlCredentialSchema.parse> | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -36,8 +36,9 @@ export function NativeJrcSetup({ request, accountId, baseUrl }: {
   }
   const accountUrl = `${baseUrl.replace(/\/$/, '')}/app/accounts/${accountId}`;
   return <section className="panel form-stack">
-    <h3>Módulo nativo JRC Conversas</h3>
+    <h3>{external ? 'Conector para seu Chatwoot' : 'Módulo nativo JRC Conversas'}</h3>
     <p>O módulo dentro do sistema de atendimento precisa ser instalado separadamente. Emitir uma chave não instala botões ou telas no JRC Conversas ou no Chatwoot.</p>
+    {external && <p>A integração de mensagens por caixa API funciona pelo Broker. Para exibir QR Code dentro do seu Chatwoot, instale o conector compatível com a versão da sua central e valide o acesso dos agentes.</p>}
     <ol><li>Para usar agora, conecte o WhatsApp em Caixas de entrada e vincule a caixa API pela seção abaixo.</li><li>Para uma experiência dentro da central, a equipe técnica deve instalar o conector JRC no servidor da central, com o endereço HTTPS do Broker, o ID da empresa e uma chave restrita à conta.</li><li>O conector valida o usuário e a caixa antes de exibir o QR temporário. O módulo Automações usa os fluxos publicados no Broker.</li></ol>
     <p>A chave permite controlar somente a conta {accountId}. Guarde-a no servidor do JRC Conversas; os agentes não precisam recebê-la. A chave completa aparece apenas nesta emissão.</p>
     {error && <p role="alert">{error} <a href="/chaves-api">Abrir Chaves de API</a></p>}

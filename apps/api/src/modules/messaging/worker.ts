@@ -9,6 +9,7 @@ import { dispatchClaim, type DispatchPorts } from "./dispatcher.js";
 import { runBotTurn } from "./bot-runner.js";
 
 export interface MessagingWorkerOptions {
+  automationRuntimeEnabled?:boolean;
   automations?:{route(organizationId:string,event:{channelId:string;conversationId:string;eventKey:string;text:string;payload?:Record<string,unknown>}):Promise<unknown>};
   flows?: Pick<ReturnType<typeof createFlowService>,'runTurn'|'settleHandoffs'>;
   prepareMedia?: DispatchPorts["prepareMedia"];
@@ -43,6 +44,7 @@ export function createMessagingWorker(options: MessagingWorkerOptions) {
           workerId: randomUUID(),
           now: new Date(),
           leaseMs: 120_000,
+          automationRuntimeEnabled:options.automationRuntimeEnabled??true,
         }),
       );
       if (botClaim) {

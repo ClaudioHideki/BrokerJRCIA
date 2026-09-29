@@ -1,9 +1,14 @@
 import swagger from "@fastify/swagger";
+import { randomUUID } from 'node:crypto';
+import { registerSupportRoutes, type SupportRouteOptions } from './http/routes/support.js';
+import { createSupportService, withSupportPlatformTransaction } from './modules/support/service.js';
+import { createLifecycleService, withLifecyclePlatformTransaction } from './modules/lifecycle/service.js';
 import { registerFlowRoutes, type FlowRouteOptions } from './http/routes/flows.js';
 import { createFlowService } from './modules/flows/service.js';
 import { registerAutomationRoutes, type AutomationRouteOptions } from './http/routes/automations.js';
 import { registerObservabilityRoutes, type ObservabilityRouteOptions } from './http/routes/observability.js';
 import { createAutomationService, createEventRouter, createExecutionService } from './modules/automations/service.js';
+import { createAutomationRuntimeReadiness } from './modules/automations/availability.js';
 import { createPostgresAutomationRepository } from './modules/automations/repository.js';
 import { createLegacyFlowMigrationService } from './modules/automations/legacy-migration.js';
 import { createObservabilityService } from './modules/observability/service.js';
@@ -92,6 +97,7 @@ import {
   type ProviderAccountRouteOptions,
 } from "./http/routes/provider-accounts.js";
 import { resolveRequestId } from "./http/request-id.js";
+import { registerPublicIngressRateLimit } from './http/plugins/public-ingress-rate-limit.js';
 import { loadAppConfig } from "./config/env.js";
 import { createDatabasePools } from "./db/pools.js";
 import { probeRequiredRuntimeSchema } from "./db/runtime-schema.js";
@@ -136,6 +142,7 @@ declare module "fastify" {
 }
 
 export interface BuildAppOptions {
+  support?: SupportRouteOptions;
   readinessCheck?: () => Promise<void>;
   loggerDestination?: LoggerDestination;
   passwordVerifierInitializer?: () => Promise<PasswordVerifier>;
@@ -208,6 +215,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   if (
     nodeEnv !== "test" &&
     (options.auth !== undefined ||
+      options.support !== undefined ||
       options.readinessCheck !== undefined ||
       options.consoleAuth !== undefined ||
       options.apiKeys !== undefined ||
@@ -236,6 +244,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     );
   }
   let auth = nodeEnv === "test" ? options.auth : undefined;
+  let support = nodeEnv === 'test' ? options.support : undefined;
   let consoleAuth = nodeEnv === "test" ? options.consoleAuth : undefined;
   let apiKeys = nodeEnv === "test" ? options.apiKeys : undefined;
   let providerAccounts =
@@ -283,6 +292,12 @@ export function buildApp(options: BuildAppOptions = {}) {
     });
     const rateLimitStore = new RedisRateLimitStore(redisClient, {
       deadlineMs: config.redisFailurePolicy.commandDeadlineMs,
+    });
+    registerPublicIngressRateLimit(app, {
+      store: new RedisRateLimitStore(redisClient, { prefix: 'jrc:ingress:rate:', deadlineMs: config.redisFailurePolicy.commandDeadlineMs }),
+      secret: config.ipRateLimitHmacSecret,
+      trustedProxyCidrs: config.trustedProxyCidrs,
+      ...config.publicIngressRateLimit,
     });
     const repository = createPostgresAuthRepository(pools.authPool);
     // Revalidate all tenant JWTs before route RBAC, including tokens issued before a role change.
@@ -439,6 +454,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       authenticateApiKey: apiKeys.authenticateApiKey,
       resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
       service: createChannelFacade({
+        automationStatus: org => automations!.service.status(org,'ADMIN'),
         instances: instances.service,
         meta: metaOnboardingService,
         ...(integrationRuntime.qr?{activateQr:integrationRuntime.qr.activate}:{}),
@@ -481,6 +497,12 @@ export function buildApp(options: BuildAppOptions = {}) {
       transact: (organizationId, operation) =>
         withOrganizationTransaction(pools.appPool, organizationId, operation),
     };
+    const supportOptions = {
+      transact: <T>(org: string, work: Parameters<typeof withOrganizationTransaction<T>>[2]) => withOrganizationTransaction(pools.appPool,org,work),
+      responseHours: z.coerce.number().int().min(1).max(720).default(24).parse(messagingEnvironment.SUPPORT_RESPONSE_HOURS),
+    };
+    support = { jwtSecret: config.jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey,
+      resolveCurrentRole: createMessagingMembershipResolver(pools.authPool), service: createSupportService(supportOptions) };
     if (
       messagingEnvironment.PLATFORM_DATABASE_URL ||
       messagingEnvironment.PLATFORM_MFA_KEY ||
@@ -503,7 +525,19 @@ export function buildApp(options: BuildAppOptions = {}) {
         connectionTimeoutMillis: 5000,
         statement_timeout: 30000,
       });
+      const lifecycle = createLifecycleService({
+        transact: work => withLifecyclePlatformTransaction(platformPool,work),
+        deprovision: async (organizationId,upstreamKey) => {
+          const evolution = new EvolutionProviderAdapter({baseUrl:config.evolutionBaseUrl,apiKey:config.evolutionApiKey});
+          const controller = new AbortController();
+          await evolution.deprovisionInstance({organizationId,requestId:randomUUID(),
+            deadline:new Date(Date.now()+30000),signal:controller.signal},{id:upstreamKey});
+        },
+      });
+      if(channels)channels.lifecycle=lifecycle;
       platform = {
+        lifecycle,
+        support: createSupportService({ ...supportOptions, staffTransact: work => withSupportPlatformTransaction(platformPool,work) }),
         service: new PlatformService(
           platformPool,
           Buffer.from(messagingEnvironment.PLATFORM_MFA_KEY, "base64"),
@@ -529,21 +563,22 @@ export function buildApp(options: BuildAppOptions = {}) {
       service: createFlowService({transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work)}),
       ...(integrationRuntime.flowChatwoot ? { chatwoot: integrationRuntime.flowChatwoot } : {}),
     };
+    const schemaObjectsReady = () => probeRequiredRuntimeSchema(sql => pools.appPool.query(sql));
     const automationRepository=createPostgresAutomationRepository();
     const automationOptions={transact:<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pools.appPool,org,work),repository:automationRepository,enabled:config.automationRuntimeV2Enabled};
+    const automationRuntimeReady=createAutomationRuntimeReadiness({transact:automationOptions.transact,schemaCurrent:schemaObjectsReady,probeRedis:async()=>redisClient.isReady&&(await redisClient.ping())==='PONG'});
     automations={
       jwtSecret:config.jwtSecret,
       authenticateApiKey:apiKeys.authenticateApiKey,
       resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),
-      service:createAutomationService(automationOptions),
+      service:createAutomationService({...automationOptions,runtimeReady:automationRuntimeReady}),
       executions:createExecutionService(automationOptions),
-      migration:createLegacyFlowMigrationService(automationOptions),
+      migration:createLegacyFlowMigrationService({...automationOptions,runtimeReady:automationRuntimeReady}),
     };
-    const schemaObjectsReady = () => probeRequiredRuntimeSchema(sql => pools.appPool.query(sql));
     observability={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createObservabilityService({transact:automationOptions.transact,probeRedis:async()=>redisClient.isReady&&(await redisClient.ping())==='PONG',schemaCurrent:schemaObjectsReady})};
     const vaultKeys=messagingEnvironment.CREDENTIAL_VAULT_KEYS_JSON??(messagingEnvironment.INTEGRATION_ENCRYPTION_KEY?JSON.stringify({1:messagingEnvironment.INTEGRATION_ENCRYPTION_KEY}):undefined);
     if(config.automationRuntimeV2Enabled&&!vaultKeys)throw new Error('CREDENTIAL_VAULT_KEYS_REQUIRED');
-    if(vaultKeys){const credentialService=createCredentialService({transact:automationOptions.transact,vault:createCredentialVault(vaultKeys),tester:createCredentialTester()}),membership=createMessagingMembershipResolver(pools.authPool),authentication={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:membership};
+    if(vaultKeys){const credentialService=createCredentialService({transact:automationOptions.transact,vault:createCredentialVault(vaultKeys),tester:createCredentialTester(),testBudget:{store:rateLimitStore,secret:config.identityRateLimitHmacSecret}}),membership=createMessagingMembershipResolver(pools.authPool),authentication={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:membership};
       credentials={...authentication,service:credentialService};
       automationWebhooks={...authentication,service:createWebhookService({pool:pools.appPool,transact:automationOptions.transact,credentials:credentialService,router:createEventRouter(automationOptions)})};
       automationImports={...authentication,service:createAutomationImporter({transact:automationOptions.transact,keyring:vaultKeys,enabled:config.automationRuntimeV2Enabled})};
@@ -803,6 +838,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     void app.register(async (scope) =>
       registerChannelRoutes(scope, configuredChannels),
     );
+  }
+  if (support) {
+    const configured = support;
+    void app.register(scope => registerSupportRoutes(scope,configured));
   }
 
   if (instanceWorkspace) {

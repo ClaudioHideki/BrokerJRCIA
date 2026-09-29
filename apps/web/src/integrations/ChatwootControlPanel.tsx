@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConnectionHealthSchema, ConnectionResponseSchema, OperatorGrantViewSchema, type ConnectionAction, type ConnectionHealth } from '@jrc/contracts';
 import { ChallengePanel } from '../connections/components/ChallengePanel.js';
 import type { IntegrationRequest } from './ChatwootPanel.js';
+import { ConnectionHealthSummary } from './ConnectionHealthSummary.js';
 
 function ConnectionControls({ id, request, canManage }: { id: string; request: IntegrationRequest; canManage: boolean }) {
   const api = useRef(request); api.current = request;
@@ -58,11 +59,10 @@ function ConnectionControls({ id, request, canManage }: { id: string; request: I
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     <button className="button button--secondary" onClick={() => void refresh()}>Conferir estado</button>
     {health && <>
-      <p>Sessão WhatsApp: {health.instanceStatus} · Transporte: {health.transportStatus}</p>
-      <p>Identidade: {health.identityStatus}{health.observedNumberSuffix && ` · Final observado: ${health.observedNumberSuffix}`}</p>
+      <ConnectionHealthSummary health={health} />
       {health.allowedActions.includes('pair') && <button className="button button--primary" disabled={busy} onClick={() => void perform('pair')}>Conectar ou reconectar</button>}
       {canManage && health.identityStatus === 'CONFIRMATION_REQUIRED' && <fieldset disabled={busy}>
-        <label><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Conferi o número e autorizo esta identidade</label>
+        <label className="integration-check"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Conferi o número e autorizo esta identidade</label>
         <button className="button button--primary" disabled={!confirmed} onClick={() => void perform('confirm-identity')}>Aprovar identidade observada</button>
       </fieldset>}
       {canManage && permissions && <fieldset disabled={busy}><legend>Permissões por usuário do Broker</legend>
@@ -70,8 +70,8 @@ function ConnectionControls({ id, request, canManage }: { id: string; request: I
         {permissions.members.filter(member => !['OWNER', 'ADMIN'].includes(member.role)).map(member => {
           const grant = grants.find(g => g.userId === member.userId);
           return <div key={member.userId}>
-            <label><input type="checkbox" aria-label={`Acesso de ${member.email}`} checked={Boolean(grant)} onChange={e => setGrants(values => e.target.checked ? [...values, { userId: member.userId, canPair: false }] : values.filter(g => g.userId !== member.userId))} />{member.email} · consultar</label>
-            <label><input type="checkbox" aria-label={`Reconexão de ${member.email}`} disabled={!grant} checked={grant?.canPair ?? false} onChange={e => setGrants(values => values.map(g => g.userId === member.userId ? { ...g, canPair: e.target.checked } : g))} />Permitir reconexão</label>
+            <label className="integration-check"><input type="checkbox" aria-label={`Acesso de ${member.email}`} checked={Boolean(grant)} onChange={e => setGrants(values => e.target.checked ? [...values, { userId: member.userId, canPair: false }] : values.filter(g => g.userId !== member.userId))} />{member.email} · consultar</label>
+            <label className="integration-check"><input type="checkbox" aria-label={`Reconexão de ${member.email}`} disabled={!grant} checked={grant?.canPair ?? false} onChange={e => setGrants(values => values.map(g => g.userId === member.userId ? { ...g, canPair: e.target.checked } : g))} />Permitir reconexão</label>
           </div>;
         })}
         <button className="button button--secondary" onClick={() => void perform('grants')}>Salvar permissões</button>
@@ -84,7 +84,7 @@ export function ChatwootControlPanel({ request, canManage, connections }: { requ
   const [open, setOpen] = useState(false), [selected, setSelected] = useState(connections[0]?.id ?? '');
   return <section className="panel"><h3>Controle das conexões</h3>
     <p>Conecte, confira a identidade e autorize usuários sem abrir uma conversa no Chatwoot.</p>
-    {canManage && <a href="/conexoes/nova">Criar uma conexão WhatsApp</a>}
+    {canManage && <p><a href="/channels/new">Criar uma conexão WhatsApp</a></p>}
     <button className="button button--secondary" onClick={() => setOpen(value => !value)}>{open ? 'Fechar controle de conexões' : 'Abrir controle de conexões'}</button>
     {open && <>
       <label>Caixa para controlar<select value={selected} onChange={e => setSelected(e.target.value)}>

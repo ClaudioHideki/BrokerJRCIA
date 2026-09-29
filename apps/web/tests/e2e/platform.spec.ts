@@ -17,14 +17,14 @@ test('administração JRC: senha, empresa, integração, limites e suporte audit
  await expect(page.getByText('Empresa cadastrada com responsável e limites.')).toBeVisible();
  await page.getByRole('button',{name:`Abrir ${name}`}).click();
  await page.getByRole('tab',{name:'JRC Conversas',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Integração com o JRC Conversas'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Central de atendimento — JRC Conversas / Chatwoot'})).toBeVisible();
  await expect(page.getByText(/aguardando configuração no servidor/)).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
  await page.getByRole('tab',{name:'Plano e limites',exact:true}).click();
  await page.getByRole('combobox',{name:'Situação',exact:true}).selectOption('SUSPENDED');await page.getByRole('button',{name:'Salvar situação e plano'}).click();
  await expect(page.getByText('Configuração da empresa atualizada e auditada.')).toBeVisible();
- await page.getByRole('tab',{name:'Suporte',exact:true}).click();
- await page.getByRole('button',{name:'Registrar atendimento de suporte'}).click();await expect(page.getByText('Atendimento registrado na auditoria da empresa.')).toBeVisible();
+ await page.getByRole('tab',{name:'Intervenção administrativa',exact:true}).click();
+ await page.getByRole('button',{name:'Registrar intervenção'}).click();await expect(page.getByText('Intervenção registrada na auditoria da empresa.')).toBeVisible();
  await expectNoAutomaticAccessibilityViolations(page);
  await page.screenshot({path:`test-results/saas-platform-${testInfo.project.name}.png`,fullPage:true});
  await page.getByRole('button',{name:'Sair da administração'}).click();await expect(page.getByRole('heading',{name:'Administração JRC'})).toBeVisible();

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChannelV1 } from '@jrc/contracts';
 import type { IntegrationRequest } from '../integrations/ChatwootPanel.js';
-import { statusLabel } from '../pages/Channels.js';
+import { statusLabel, destinationStatusLabel } from '../pages/Channels.js';
 import { ApiClientError } from '../api/client.js';
+import { ChannelDeletion } from '../channels/ChannelDeletion.js';
 
 const stalledCursor = 'A lista de caixas não avançou. Atualize e tente novamente.';
 
@@ -113,11 +114,11 @@ export function CompanyChannels({ request, admin, disabled }: {
       <tbody>{items.map(item => <tr key={item.id}>
         <td>{item.identity.displayName}<small>{item.provider === 'QR' ? 'WhatsApp QR Code' : 'WhatsApp oficial Meta'}</small></td>
         <td>{statusLabel[item.transportStatus]}</td>
-        <td>{item.destination?.name ?? 'Sem vínculo'}</td>
+        <td>{item.destination?.name ?? 'Sem vínculo'}<small>{item.humanStatus ? destinationStatusLabel(item.humanStatus) : 'Entrega a verificar'}</small></td>
         <td>{item.archivedAt ? 'Arquivado' : 'Ativo'}</td>
         {admin && <td>{item.provider === 'QR'
           ? <button className="button button--secondary" disabled={busy || disabled} onClick={() => void archive(item)}>{item.archivedAt ? 'Restaurar cadastro' : 'Arquivar cadastro'}</button>
-          : <span>Revogar autorização no portal</span>}</td>}
+          : <span>Revogar autorização no portal</span>}<ChannelDeletion request={request} path={`/${item.id}`} disabled={busy || disabled} onCompleted={()=>void refresh()}/></td>}
       </tr>)}</tbody>
     </table></div> : error ? null : <p>Nenhuma caixa cadastrada.</p>}
     {nextCursor && !loading && <button className="button button--secondary" disabled={loadingMore || busy || disabled} onClick={() => void loadMore()}>{loadingMore ? 'Carregando mais caixas…' : 'Carregar mais caixas'}</button>}

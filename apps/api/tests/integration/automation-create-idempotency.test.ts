@@ -30,6 +30,7 @@ describe('idempotência PostgreSQL da criação de automações', () => {
       const secondOwner = await createUser(tx, { email: 'automation-two@example.test', passwordHash: 'argon2id-test-hash' });
       await createOwnerMembership(tx, { organizationId: first.id, userId: firstOwner.id });
       await createOwnerMembership(tx, { organizationId: second.id, userId: secondOwner.id });
+      await tx.query('insert into flow_features(organization_id,enabled) values($1,true),($2,true)',[first.id,second.id]);
       return [first.id, second.id];
     });
     appPool = new Pool({ connectionString: connectionStringForRole(database.connectionString, 'jrc_app') });

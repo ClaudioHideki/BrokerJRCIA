@@ -27,6 +27,7 @@ import {
   NewAutomationPage,
 } from '../pages/AutomationStudio.js';
 import { PlatformPage } from '../pages/Platform.js';
+import { SupportPage } from '../pages/Support.js';
 import { MetaConnectPage } from '../pages/MetaConnect.js';
 import { CompanyPage } from '../pages/Company.js';
 import { DashboardPage } from '../pages/Dashboard.js';
@@ -67,6 +68,7 @@ function AppRoutes() {
         }
       >
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/suporte" element={<SupportPage />} />
         <Route path="/providers" element={<Navigate replace to="/channels" />} />
         <Route path="/provisionamento" element={<ProvisioningPage />} />
         <Route path="/health" element={<OperationalHealthPage />} />

@@ -4,7 +4,7 @@ import {z} from 'zod';
 import type {OrganizationTransaction} from '../../db/tenant-transaction.js';
 import {createIntegrationSecrets} from '../integrations/secrets.js';
 import { convertLocalJrcFlow, isLocalJrcFlow } from './jrc-flow-converter.js';
-import { AutomationError } from '../automations/service.js';
+import { AutomationError, requireAutomationDraftAccess } from '../automations/service.js';
 import { claimIdempotency, completeIdempotencyRecord, hashIdempotencyRequest } from '../instances/idempotency.js';
 
 export type ImportSource='JRC'|'N8N'|'TYPEBOT';
@@ -55,13 +55,12 @@ export function convertAutomationArtifact(requestedSource:ImportSource|'AUTO',ra
  return {...converted,source,report:{schemaVersion:1,summary,nodes:converted.nodes,warnings:['O artefato foi importado como rascunho e nunca é publicado automaticamente.','Credenciais da origem não foram copiadas.',...importWarnings,...(isLocalJrcFlow(document)?['Caixas, gatilhos, horários, retomada e permissões devem ser configurados nesta empresa.']:[])]}};
 }
 export function createAutomationImporter(options:{transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;keyring:string;enabled?:boolean}){const keys=z.record(z.string().regex(/^\d+$/),z.string()).parse(JSON.parse(options.keyring)) as Record<string,string>,versions=Object.keys(keys).map(Number).sort((a,b)=>a-b),keyVersion=versions.at(-1);if(!keyVersion)throw new Error('CREDENTIAL_VAULT_KEYRING_EMPTY');const vault=createIntegrationSecrets(keys[String(keyVersion)]!);
- const available=()=>{if(options.enabled===false)throw new AutomationError('AUTOMATION_RUNTIME_DISABLED',503);};
  return {
-  preview:(_org:string,input:{source:ImportSource|'AUTO';content:string;formatVersion?:string})=>{available();const converted=convertAutomationArtifact(input.source,input.content);return {schemaVersion:1,name:converted.name,source:converted.source,graph:converted.graph,report:{...converted.report,warnings:['Prévia sem gravação. Confirme a importação para salvar o rascunho.',...converted.report.warnings.slice(1)]},createdAsDraft:false};},
+  preview:(_org:string,input:{source:ImportSource|'AUTO';content:string;formatVersion?:string})=>{const converted=convertAutomationArtifact(input.source,input.content);return {schemaVersion:1,name:converted.name,source:converted.source,graph:converted.graph,report:{...converted.report,warnings:['Prévia sem gravação. Confirme a importação para salvar o rascunho.',...converted.report.warnings.slice(1)]},createdAsDraft:false};},
   import:(org:string,input:{source:ImportSource|'AUTO';content:string;formatVersion?:string},idempotencyKey:string)=>{
-   available();
    const requestHash=hashIdempotencyRequest({source:input.source,content:input.content,formatVersion:input.formatVersion??null});
    return options.transact(org,async tx=>{
+    await requireAutomationDraftAccess(tx,org);
     const claim=await claimIdempotency(tx,{organizationId:org,route:'POST /v1/automation-imports',key:idempotencyKey,requestHash,expiresAt:new Date(Date.now()+7*24*60*60*1000)});
     if(claim.kind==='REPLAY'){
      const artifactId=z.uuid().safeParse(claim.record.responseMetadata.artifactId);

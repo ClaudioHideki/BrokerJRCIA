@@ -32,6 +32,7 @@ services:
       JRC_APP_PASSWORD: container-test-app-password-0000000000
       JRC_AUTH_PASSWORD: container-test-auth-password-0000000000
       JRC_PLATFORM_PASSWORD: container-test-platform-password-0000000000
+      JRC_LIFECYCLE_PASSWORD: container-test-lifecycle-password-0000000000
       EVOLUTION_DB_PASSWORD: container-test-engine-password-0000000000
 
   api:

@@ -350,6 +350,15 @@ describe('migrations PostgreSQL', () => {
   });
 
   it('mantém policies limitadas aos comandos previstos', async () => {
+    const catalogue=(await database.pool.query<{table_name:string}>(
+      'select table_name from lifecycle_purge_catalogue order by table_name')).rows.map(row=>row.table_name);
+    const tenantTables=(await database.pool.query<{table_name:string}>(`
+      select c.relname as table_name from pg_class c join pg_namespace n on n.oid=c.relnamespace
+      join pg_attribute a on a.attrelid=c.oid and a.attname='organization_id' and not a.attisdropped
+      where n.nspname='public' and c.relkind='r' and c.relname not in ('lifecycle_deletions','lifecycle_cleanup_items')
+      order by c.relname`)).rows.map(row=>row.table_name);
+    expect(catalogue).toEqual(tenantTables);
+    const lifecycleManaged=catalogue.filter(table=>!['support_tickets','support_messages'].includes(table)).length+1;
     const result = await database.pool.query<{
       policyname: string;
       roles: string[];
@@ -367,6 +376,18 @@ describe('migrations PostgreSQL', () => {
       ...Array.from({length:8},()=>({policyname:'automation_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'operational_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'legacy_flow_discovery',roles:['jrc_migrator'],cmd:'SELECT'},
+      {policyname:'lifecycle_catalogue_migrator',roles:['jrc_migrator'],cmd:'ALL'},
+      {policyname:'lifecycle_cleanup_migrator',roles:['jrc_migrator'],cmd:'ALL'},
+      {policyname:'lifecycle_cleanup_worker',roles:['jrc_lifecycle'],cmd:'ALL'},
+      {policyname:'lifecycle_login_sessions_migrator',roles:['jrc_migrator'],cmd:'ALL'},
+      {policyname:'lifecycle_memberships_worker',roles:['jrc_lifecycle'],cmd:'SELECT'},
+      ...Array.from({length:lifecycleManaged},()=>({policyname:'lifecycle_migrator',roles:['jrc_migrator'],cmd:'ALL'})),
+      {policyname:'lifecycle_platform',roles:['jrc_platform'],cmd:'SELECT'},
+      {policyname:'lifecycle_platform_users_migrator',roles:['jrc_migrator'],cmd:'SELECT'},
+      {policyname:'lifecycle_platform_users_worker',roles:['jrc_lifecycle'],cmd:'SELECT'},
+      {policyname:'lifecycle_users_migrator',roles:['jrc_migrator'],cmd:'ALL'},
+      {policyname:'lifecycle_users_worker',roles:['jrc_lifecycle'],cmd:'SELECT'},
+      {policyname:'lifecycle_worker',roles:['jrc_lifecycle'],cmd:'ALL'},
       ...Array.from({length:10},()=>({policyname:'flow_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'flow_platform',roles:['jrc_platform'],cmd:'ALL'},
       {policyname:'flow_ingress_resolution',roles:['jrc_migrator'],cmd:'SELECT'},
@@ -396,6 +417,9 @@ describe('migrations PostgreSQL', () => {
       ...Array.from({length:6},()=>({policyname:'platform_boundary',roles:['jrc_platform'],cmd:'ALL'})),
       ...Array.from({length:3},()=>({policyname:'platform_administration',roles:['jrc_platform'],cmd:'ALL'})),
       ...Array.from({length:4},()=>({policyname:'platform_monitor',roles:['jrc_platform'],cmd:'SELECT'})),
+      ...Array.from({length:2},()=>({policyname:'maintenance_boundary',roles:['jrc_migrator'],cmd:'ALL'})),
+      ...Array.from({length:2},()=>({policyname:'platform_boundary',roles:['jrc_platform'],cmd:'ALL'})),
+      ...Array.from({length:2},()=>({policyname:'tenant_boundary',roles:['jrc_app'],cmd:'ALL'})),
       { policyname:'platform_provider_bootstrap',roles:['jrc_platform'],cmd:'INSERT' },
       { policyname:'platform_channel_monitor',roles:['jrc_platform'],cmd:'SELECT' },
       { policyname: 'api_keys_tenant_isolation', roles: ['jrc_app'], cmd: 'ALL' },

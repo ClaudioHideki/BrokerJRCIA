@@ -9,7 +9,7 @@ import type { createMetaOnboardingService } from '../meta-onboarding/service.js'
 import type { ChatwootService } from '../integrations/chatwoot-service.js';
 
 export class ChannelFacadeError extends Error {
-  constructor(readonly code: string, readonly status: 400 | 404 | 409 | 503) { super(code); }
+  constructor(readonly code: string, readonly status: 400 | 403 | 404 | 409 | 503) { super(code); }
 }
 
 const channelCursorSchema = z.strictObject({ updatedAt: z.iso.datetime(), id: z.uuid() });
@@ -109,6 +109,7 @@ function bindingView(row: AutomationBindingRow): AutomationBindingV1 {
 }
 
 export interface ChannelFacadeOptions {
+  automationStatus?(org:string):Promise<{canPublish:boolean;reasons:string[]}>;
   instances: InstanceService;
   meta: Pick<ReturnType<typeof createMetaOnboardingService>, 'start'>;
   activateQr?(org:string,instanceId:string):Promise<{id:string}>;
@@ -272,6 +273,10 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
       return { binding: binding ? bindingView(binding) : null };
     },
     async bindAutomation(org: string, id: string, input: BindChannelAutomationV1) {
+      if(options.automationStatus){const availability=await options.automationStatus(org);if(!availability.canPublish){
+        const code=availability.reasons[0]??'AUTOMATION_DEPENDENCY_UNAVAILABLE';
+        throw new ChannelFacadeError(code,code==='AUTOMATION_DEPENDENCY_UNAVAILABLE'?503:code==='AUTOMATION_RUNTIME_DISABLED'?409:403);
+      }}
       const channel = await get(org, id), channelId = await messagingChannelId(org, channel,true);
       return options.transact(org, async tx => {
         const definition = (await tx.query<{ activeVersion: number | null;lifecycleStatus:string }>(

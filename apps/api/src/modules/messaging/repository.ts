@@ -1,4 +1,5 @@
 import { isOrganizationActive } from "../tenancy/operational-limits.js";
+import { AUTOMATION_ORIGIN } from '@jrc/contracts';
 import type { QueryResultRow } from "pg";
 
 import type { TenantTransaction } from "../../db/tenant-transaction.js";
@@ -536,6 +537,7 @@ export interface MessagingRepository {
       workerId: string;
       now: Date;
       leaseMs: number;
+      automationRuntimeEnabled?: boolean;
     },
   ): Promise<BotTurnClaim | null>;
   completeBotTurn(
@@ -1677,6 +1679,13 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                ON job_message.organization_id = job.organization_id AND job_message.id = job.message_id
             WHERE job.organization_id = $1 AND job.status = 'PENDING'
               AND job_message.created_at <= $3
+              AND EXISTS (
+                SELECT 1 FROM messaging_conversations automation_conversation
+                WHERE automation_conversation.organization_id=job.organization_id
+                  AND automation_conversation.id=job.conversation_id
+                  AND (automation_conversation.bot_origin_reference IS DISTINCT FROM $6
+                    OR ($5::boolean AND EXISTS (SELECT 1 FROM flow_features feature WHERE feature.organization_id=job.organization_id AND feature.enabled)))
+              )
               AND (job_message.created_at > $3 - interval '24 hours' OR EXISTS (SELECT 1 FROM messaging_channels channel WHERE channel.organization_id=job_message.organization_id AND channel.id=job_message.channel_id AND channel.provider='BAILEYS'))
               AND NOT EXISTS (
                 SELECT 1 FROM messaging_bot_jobs blocker
@@ -1720,7 +1729,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
            CROSS JOIN LATERAL (
              SELECT bot_job.lease_token, 0::integer AS attempt_count
            ) outbox`,
-        [input.organizationId, input.workerId, input.now, input.leaseMs],
+        [input.organizationId, input.workerId, input.now, input.leaseMs,input.automationRuntimeEnabled??true,AUTOMATION_ORIGIN],
       );
       const row = first(result);
       return row ? asBotClaim(row) : null;

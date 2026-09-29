@@ -5,19 +5,22 @@ import { useApiClient, useSession } from '../auth/SessionProvider.js';
 import { createAutomation } from '../automations/api.js';
 import { ImportReview, type ImportReport } from '../automations/ImportReview.js';
 import { ApiClientError } from '../api/client.js';
+import { AutomationAvailabilityNotice, type AutomationAvailability } from '../automations/AvailabilityNotice.js';
+import '../flows/flows.css';
+import '../automations/studio.css';
 
 type Preview={name:string;graph:AutomationGraphV1;report:ImportReport};
 type PendingImport={content:string;idempotencyKey:string;persisted:Preview|null};
 type PendingCreation={signature:string;idempotencyKey:string};
 export function NewAutomationPage(){
   const client=useApiClient(),navigate=useNavigate(),{session,tenantRevision}=useSession();
-  const [name,setName]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[preview,setPreview]=useState<Preview|null>(null),[runtimeEnabled,setRuntimeEnabled]=useState<boolean|null>(null);
+  const [name,setName]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[preview,setPreview]=useState<Preview|null>(null),[availability,setAvailability]=useState<AutomationAvailability|null>(null);
   const generation=useRef(0),pending=useRef(false),pendingImport=useRef<PendingImport|null>(null),pendingCreation=useRef<PendingCreation|null>(null);
-  useEffect(()=>{generation.current++;const current=generation.current;setName('');setPreview(null);setError('');setBusy(false);setRuntimeEnabled(null);pending.current=false;pendingImport.current=null;pendingCreation.current=null;
-    if(session)void client.request<{enabled:boolean}>('/v1/automations/status').then(status=>{if(current===generation.current)setRuntimeEnabled(status.enabled);}).catch(reason=>{if(current===generation.current)setError(reason instanceof ApiClientError?`${reason.message}${reason.requestId?` Solicitação: ${reason.requestId}`:''}`:'Não foi possível verificar a disponibilidade das automações. Recarregue a página.');});
+  useEffect(()=>{generation.current++;const current=generation.current;setName('');setPreview(null);setError('');setBusy(false);setAvailability(null);pending.current=false;pendingImport.current=null;pendingCreation.current=null;
+    if(session)void client.request<AutomationAvailability>('/v1/automations/status').then(status=>{if(current===generation.current)setAvailability(status);}).catch(reason=>{if(current===generation.current)setError(reason instanceof ApiClientError?`${reason.message}${reason.requestId?` Solicitação: ${reason.requestId}`:''}`:'Não foi possível verificar a disponibilidade das automações. Recarregue a página.');});
     return()=>{generation.current++;pendingImport.current=null;pendingCreation.current=null;};},[client,session?.activeOrganization.id,tenantRevision]);
   const writable=Boolean(session&&['OWNER','ADMIN'].includes(session.activeOrganization.role));
-  const canCreate=writable&&runtimeEnabled===true;
+  const canCreate=writable&&Boolean(availability?.canEdit??availability?.enabled);
   const fail=(reason:unknown)=>setError(reason instanceof ApiClientError?`${reason.message}${reason.requestId?` Solicitação: ${reason.requestId}`:''}`:reason instanceof Error?reason.message:'Não foi possível importar o arquivo.');
   async function importFile(file:File){
     if(pending.current||!canCreate)return;pending.current=true;setBusy(true);setError('');setPreview(null);pendingImport.current=null;pendingCreation.current=null;const current=generation.current;
@@ -50,8 +53,8 @@ export function NewAutomationPage(){
   return <section className="automation-page automation-narrow"><Link to="/automations">← Voltar para automações</Link><h1>Nova automação</h1>
     <p>Crie um chatbot JRC ou importe um arquivo JSON para continuar a edição.</p>
     {error&&<p role="alert" className="flows-alert flows-alert--error">{error}</p>}
-    {runtimeEnabled===false&&<p role="alert">Automações temporariamente desativadas. Contate a administração JRC.</p>}
-    {runtimeEnabled===null&&!error&&<p>Verificando disponibilidade das automações…</p>}
+    <AutomationAvailabilityNotice status={availability}/>
+    {availability===null&&!error&&<p>Verificando disponibilidade das automações…</p>}
     {!writable?<p>Somente administradores da empresa podem criar automações.</p>:<>
       <label>Arquivo JSON<input type="file" accept="application/json,.json" disabled={busy||!canCreate} onChange={event=>{const file=event.target.files?.[0];if(file)void importFile(file);event.target.value='';}}/></label>
       <p>O formato é identificado automaticamente. Arquivos com recursos externos podem exigir adaptação.</p>

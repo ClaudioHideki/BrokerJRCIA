@@ -1,4 +1,4 @@
-export const RUNTIME_SCHEMA_BASELINE = '0031_economic_groups';
+export const RUNTIME_SCHEMA_BASELINE = '0033_support_tickets';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -42,6 +42,30 @@ const requiredObjectsSql = `SELECT
   )
   AND pg_catalog.to_regclass('public.economic_groups') IS NOT NULL
   AND pg_catalog.to_regclass('public.economic_group_organizations') IS NOT NULL
+  AND pg_catalog.to_regclass('public.lifecycle_deletions') IS NOT NULL
+  AND pg_catalog.to_regclass('public.lifecycle_cleanup_items') IS NOT NULL
+  AND pg_catalog.to_regclass('public.lifecycle_purge_catalogue') IS NOT NULL
+  AND pg_catalog.to_regclass('public.support_tickets') IS NOT NULL
+  AND pg_catalog.to_regclass('public.support_messages') IS NOT NULL
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.lifecycle_purge_organization(uuid,uuid)') AND prosecdef)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.lifecycle_purge_channel(uuid,uuid)') AND prosecdef)
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES
+      ('public.messaging_messages','lifecycle_messages_block'),
+      ('public.messaging_inbox_events','lifecycle_inbox_block'),
+      ('public.messaging_status_events','lifecycle_status_block'),
+      ('public.messaging_media','lifecycle_media_block'),
+      ('public.automation_executions','lifecycle_automation_block'),
+      ('public.automation_bindings','lifecycle_binding_block'),
+      ('public.instances','lifecycle_instance_restore_block'),
+      ('public.meta_connections','lifecycle_meta_restore_block'),
+      ('public.support_tickets','support_ticket_admission'),
+      ('public.support_messages','support_message_admission')
+    ) AS required(relation_name,trigger_name)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t
+      WHERE t.tgrelid=pg_catalog.to_regclass(required.relation_name)
+        AND t.tgname=required.trigger_name AND t.tgenabled IN ('O','A') AND NOT t.tgisinternal)
+  )
   AND NOT EXISTS (
     SELECT 1 FROM (VALUES
       ('public.economic_groups'),

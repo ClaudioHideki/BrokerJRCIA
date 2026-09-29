@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import {CompanyChannels} from './CompanyChannels.js';
+import {CompanyDeletion} from './CompanyDeletion.js';
 import { Metric, number } from "../broker/components.js";
 import { Icon } from "../broker/Icon.js";
 import { CompanyMark, Status } from "./components.js";
@@ -22,7 +23,7 @@ const tabs: [DetailTab, string][] = [
   ["plan", "Plano e limites"],
   ["users", "Usuários e acessos"],
   ["monitor", "Monitoramento"],
-  ["support", "Suporte"],
+  ["support", "Intervenção administrativa"],
   ["chatwoot", "JRC Conversas"],
 ];
 const monitoring = [
@@ -58,6 +59,8 @@ export function CompanyWorkspace({
   refresh,
   integrationRequest,
   channelRequest,
+  deletionRequest,
+  onDeleted,
 }: {
   company: Company;
   members: Member[] | null;
@@ -72,6 +75,8 @@ export function CompanyWorkspace({
   refresh: () => void;
   integrationRequest?: IntegrationRequest;
   channelRequest?:IntegrationRequest;
+  deletionRequest?:IntegrationRequest;
+  onDeleted?:()=>void;
 }) {
   const [tab, setTab] = useState(defaultTab);
   const memberList = (
@@ -247,6 +252,7 @@ export function CompanyWorkspace({
           </div>
         )}
         {tab === "plan" && (
+          <>
           <section className="panel">
             <div className="admin-panel-heading">
               <div>
@@ -343,6 +349,9 @@ export function CompanyWorkspace({
               </dl>
             )}
           </section>
+          {admin&&deletionRequest&&onDeleted&&<CompanyDeletion companyName={company.name}
+            request={deletionRequest} onDeleted={onDeleted} disabled={disabled}/>}
+          </>
         )}
         {tab === "users" && (
           <>
@@ -431,17 +440,17 @@ export function CompanyWorkspace({
               <Icon name="messages" size={28} />
             </span>
             <div>
-              <h2>Atendimento à empresa</h2>
+              <h2>Intervenção administrativa</h2>
               <p>
-                Registre o atendimento de {company.name}. O motivo informado no
-                contexto abaixo acompanhará o registro de auditoria.
+                Registre uma intervenção administrativa para {company.name}. O motivo
+                informado no contexto abaixo acompanhará o registro de auditoria.
               </p>
               <button
                 className="button button--primary"
                 disabled={disabled}
                 onClick={acknowledge}
               >
-                Registrar atendimento de suporte
+                Registrar intervenção
               </button>
             </div>
           </section>

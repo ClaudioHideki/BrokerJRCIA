@@ -19,6 +19,17 @@ const status = {
   jobs: {},
 };
 afterEach(cleanup);
+it('describes configured bindings without advertising unverified delivery as ready', async () => {
+  const request = vi.fn(async (path: string) => path === '' ? { ...status,
+    account: { accountId: 1, status: 'READY', lastError: null, hasCredential: true },
+    connections: [{ id, channelId: id, name: 'Comercial', inboxId: 31, status: 'READY', webhookUrl: 'https://broker.test/events', lastError: null }],
+  } : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform={false} />);
+  expect(await screen.findByText('Vínculos configurados')).toBeVisible();
+  expect(screen.queryByText('Caixas prontas')).not.toBeInTheDocument();
+  expect(screen.getByText(/A configuração da caixa não confirma/)).toBeVisible();
+  expect(screen.getByRole('list', { name: 'Etapas para integrar a central' })).toBeVisible();
+});
 it('keeps new control/embed surfaces hidden when flags are off without hiding the integration', async () => {
   const request = vi.fn(async (path: string) => path === '' ? { ...status, controlEnabled: false, embedEnabled: false,
     account: { accountId: 1, status: 'READY', lastError: null, hasCredential: true } } : { data: [] });

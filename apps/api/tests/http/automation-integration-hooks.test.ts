@@ -18,23 +18,24 @@ it.each(['/v1/automation-imports','/v1/credentials','/v1/webhooks'])('completes 
  }finally{clearTimeout(timer);await app.close();}
 });
 
-it('rejects imports while the automation runtime is disabled before storing the source artifact',async()=>{
+it('rejects draft imports when the company module is disabled before storing the source artifact',async()=>{
  const org='11111111-1111-4111-8111-111111111111',user='22222222-2222-4222-8222-222222222222',secret='qa-route-hook-test-32-characters-secret';
- const transact=vi.fn(async()=>{throw new Error('IMPORT_SHOULD_NOT_TOUCH_STORAGE');});
+ const query=vi.fn(async()=>({rows:[{status:'ACTIVE',moduleEnabled:false}]}));
+ const transact=vi.fn(async(_org:string,work:(tx:never)=>Promise<unknown>)=>work({query} as never));
  const importer=createAutomationImporter({transact,keyring:JSON.stringify({1:Buffer.alloc(32,8).toString('base64')}),enabled:false});
  const app=buildApp({nodeEnv:'test',passwordVerifierInitializer:async()=>({verifyPasswordOrDummy:async()=>false}),automationImports:{jwtSecret:secret,authenticateApiKey:async()=>null,resolveCurrentRole:async()=> 'OWNER' as const,service:importer}});
  const authorization='Bearer '+await issueAccessToken({userId:user,organizationId:org,role:'OWNER'},secret);
  try{const response=await app.inject({method:'POST',url:'/v1/automation-imports',headers:{authorization,'idempotency-key':'disabled-import'},payload:{source:'AUTO',content:'{}'}});
-  expect(response.statusCode).toBe(503);
-  expect(response.json()).toMatchObject({code:'AUTOMATION_RUNTIME_DISABLED',requestId:expect.any(String)});
-  expect(transact).not.toHaveBeenCalled();
+  expect(response.statusCode).toBe(403);
+  expect(response.json()).toMatchObject({code:'AUTOMATION_MODULE_DISABLED',requestId:expect.any(String)});
+  expect(query).toHaveBeenCalledTimes(1);
  }finally{await app.close();}
 });
 
 it('previews an automation without persisting its source artifact',async()=>{
  const org='11111111-1111-4111-8111-111111111111',user='22222222-2222-4222-8222-222222222222',secret='qa-route-hook-test-32-characters-secret';
  const transact=vi.fn(async()=>{throw new Error('PREVIEW_SHOULD_NOT_TOUCH_STORAGE');});
- const importer=createAutomationImporter({transact,keyring:JSON.stringify({1:Buffer.alloc(32,8).toString('base64')}),enabled:true});
+ const importer=createAutomationImporter({transact,keyring:JSON.stringify({1:Buffer.alloc(32,8).toString('base64')}),enabled:false});
  const app=buildApp({nodeEnv:'test',passwordVerifierInitializer:async()=>({verifyPasswordOrDummy:async()=>false}),automationImports:{jwtSecret:secret,authenticateApiKey:async()=>null,resolveCurrentRole:async()=> 'OWNER' as const,service:importer}});
  const authorization='Bearer '+await issueAccessToken({userId:user,organizationId:org,role:'OWNER'},secret);
  const content=JSON.stringify({format:'jrc-flows/1',flow:{name:'Prévia',graph:welcomeFlow()}});

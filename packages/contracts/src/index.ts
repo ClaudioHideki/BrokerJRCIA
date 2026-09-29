@@ -15,3 +15,5 @@ export * from './flows.js';
 export * from './channels-v1.js';
 export * from './automations-v1.js';
 export * from './economic-groups.js';
+export * from './support.js';
+export * from './lifecycle.js';

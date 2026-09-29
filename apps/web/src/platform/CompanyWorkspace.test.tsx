@@ -23,3 +23,15 @@ it('uses the same flag meaning while editing the company plan', () => {
   expect(screen.queryByText('Manter fluxos da versão anterior')).not.toBeInTheDocument();
   expect(screen.getByText(/desativar interrompe novas execuções/i)).toBeVisible();
 });
+
+it('labels the audit acknowledgment as an administrative intervention, not a support ticket', () => {
+  render(<CompanyWorkspace
+    company={{ id: 'org-a', name: 'Empresa A', slug: 'empresa-a', status: 'ACTIVE', plan: 'Inicial' }}
+    members={[]} monitor={null} loading={false} admin disabled={false} defaultTab="support"
+    saveCompany={vi.fn().mockResolvedValue(undefined)} saveMember={vi.fn().mockResolvedValue(undefined)}
+    acknowledge={vi.fn()} refresh={vi.fn()}
+  />);
+  expect(screen.getByRole('heading', { name: 'Intervenção administrativa' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Registrar intervenção' })).toBeVisible();
+  expect(screen.queryByText('Registrar atendimento de suporte')).not.toBeInTheDocument();
+});
