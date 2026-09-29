@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { createObservabilityService, type ObservabilityRepository } from '../../src/modules/observability/service.js';
 
 describe('operational observability',()=>{
+ it('identifies an intentionally paused worker instead of calling its heartbeat healthy',async()=>{
+  const now=new Date(),repository:ObservabilityRepository={snapshot:async()=>({queueDepth:0,oldestOutboxSeconds:null,failedExecutions:0,unknownExecutions:0,metaReady:0,evolutionReady:0,chatwootReady:0,chatwootDegraded:0}),heartbeats:async()=>[{component:'AUTOMATION_WORKER',status:'DEGRADED',observedAt:now,detailCode:'AUTOMATION_RUNTIME_DISABLED'}]};
+  const health=await createObservabilityService({repository,transact:async(_org,work)=>work({} as never),probeRedis:async()=>true,now:()=>now}).health('tenant');
+  expect(health.components.find(item=>item.key==='AUTOMATION_WORKER')).toMatchObject({state:'DEGRADED',code:'AUTOMATION_RUNTIME_DISABLED'});
+ });
  it('separa componentes, detecta heartbeat vencido e produz alertas locais',async()=>{const now=new Date('2026-09-21T15:00:00Z'),repository:ObservabilityRepository={
   snapshot:vi.fn().mockResolvedValue({queueDepth:12,oldestOutboxSeconds:420,failedExecutions:1,unknownExecutions:2,metaReady:1,evolutionReady:0,chatwootReady:1,chatwootDegraded:1}),
   heartbeats:vi.fn().mockResolvedValue([{component:'MESSAGING_WORKER',status:'UP',observedAt:new Date(now.getTime()-5_000)},{component:'AUTOMATION_WORKER',status:'UP',observedAt:new Date(now.getTime()-60_000)},{component:'AUTOMATION_IO_WORKER',status:'UP',observedAt:new Date(now.getTime()-5_000)},{component:'SCHEDULER',status:'UP',observedAt:new Date(now.getTime()-5_000)}]),

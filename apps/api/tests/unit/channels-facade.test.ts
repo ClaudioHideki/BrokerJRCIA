@@ -9,6 +9,13 @@ const id = '519b77a6-a4e5-409a-85c8-d78fc155c525';
 const now = '2030-01-01T12:00:00.000Z';
 
 describe('channel facade', () => {
+  it.each(['AUTOMATION_RUNTIME_DISABLED','AUTOMATION_MODULE_DISABLED','AUTOMATION_DEPENDENCY_UNAVAILABLE'])('does not bypass %s when binding from a channel',async code=>{
+    const transact=vi.fn(async()=>{throw new Error('BINDING_MUST_NOT_MUTATE');});
+    const service=createChannelFacade({instances:{} as InstanceService,meta:{start:vi.fn()},transact,
+      automationStatus:async()=>({canPublish:false,reasons:[code]})});
+    await expect(service.bindAutomation(org,id,{automationId:account})).rejects.toMatchObject({code});
+    expect(transact).not.toHaveBeenCalled();
+  });
   it('selects a channel by ID in PostgreSQL instead of scanning every channel in the organization', async () => {
     const query = vi.fn(async (_sql: string, params: unknown[]) => ({ rows: params[1] === id ? [{
       id, organization_id: org, provider: 'BAILEYS', provider_account_id: account, instance_id: id,

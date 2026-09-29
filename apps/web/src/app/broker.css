@@ -6,6 +6,10 @@
 
 .channel-cards { display: grid; gap: 18px; margin-top: 20px; }
 .channel-cards .metric strong { font-size: 14px; }
+.channel-cards .metric > strong, .channel-cards .metric > span,
+.channel-detail .metric > strong, .channel-detail .metric > span { display: block; margin-top: 6px; }
+.channel-detail .metric > strong { font-size: 16px; }
+.channel-cards .metric-grid, .channel-detail .metric-grid { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
 .channel-qr { display: block; width: min(280px, 100%); margin: 18px 0; border-radius: 12px; }
 .pairing-code { font-size: 20px; letter-spacing: .08em; }
 .provider-card { cursor: pointer; text-align: left; display: grid; gap: 8px; color: inherit; }

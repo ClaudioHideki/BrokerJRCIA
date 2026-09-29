@@ -91,13 +91,14 @@ describe('canonical channels UI', () => {
     expect(screen.getByRole('button', { name: 'Carregar mais caixas' })).toBeEnabled();
   });
 
-  it('offers both providers and three customer setup steps', async () => {
+  it('offers both providers and includes identity and delivery verification in setup', async () => {
     const request = vi.fn(async (path: string) => path === '/v1/flows/status' ? { enabled: true } : {}) as ApiClient['request'];
     render(<App client={client(request)} initialEntries={['/channels/new']} />);
     expect(await screen.findByRole('heading', { name: 'Configurar canal' })).toBeVisible();
     expect(screen.getByRole('button', { name: /WhatsApp por QR Code/ })).toBeVisible();
     expect(screen.getByRole('button', { name: /WhatsApp oficial Meta/ })).toBeVisible();
-    expect(screen.getByRole('list', { name: 'Etapas da configuração' }).children).toHaveLength(3);
+    expect(screen.getByRole('list', { name: 'Etapas da configuração' }).children).toHaveLength(5);
+    expect(screen.getByText('Confirmar número e testar')).toBeVisible();
   });
 
   it('exposes status, reconnection, disconnection, rename and published automation controls', async () => {

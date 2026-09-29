@@ -4,6 +4,28 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  ...Object.fromEntries(['GET /v1/channels/{id}/deletion-preview','GET /v1/channels/{id}/deletion/{operationId}'].map(route=>[route,policy(
+    'apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'READ_ONLY','NO_STORE','ORGANIZATION_RESOURCE_OPERATION_SCOPE',
+  )])),
+  'POST /v1/channels/{id}/deletion': policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'UNIQUE_KIND_RESOURCE_DURABLE_OPERATION','NO_STORE','EXACT_NAME_CURRENT_ACTOR_DATABASE_AUTHORIZATION_AND_WORK_FENCE'),
+  ...Object.fromEntries(['GET /v1/platform/organizations/{id}/channels/{channelId}/deletion-preview','GET /v1/platform/organizations/{id}/channels/{channelId}/deletion/{operationId}','GET /v1/platform/organizations/{id}/deletion-preview','GET /v1/platform/organizations/{id}/deletion/{operationId}'].map(route=>[route,policy(
+    'apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_COOKIE','SUPER_ADMIN',true,'READ_ONLY','NO_STORE','DEDICATED_PLATFORM_ROLE_RESOURCE_OPERATION_SCOPE',
+  )])),
+  ...Object.fromEntries(['POST /v1/platform/organizations/{id}/channels/{channelId}/deletion','POST /v1/platform/organizations/{id}/deletion'].map(route=>[route,policy(
+    'apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN',true,'UNIQUE_KIND_RESOURCE_DURABLE_OPERATION','NO_STORE','EXACT_NAME_CURRENT_ACTOR_DATABASE_AUTHORIZATION_AND_WORK_FENCE',
+  )])),
+  ...Object.fromEntries(['GET /v1/support/tickets','GET /v1/support/tickets/{id}'].map(route=>[route,policy(
+    'apps/api/src/http/routes/support.ts','JWT_CURRENT_MEMBERSHIP','CURRENT_MEMBER',true,'READ_ONLY','NO_STORE_TEXT_ONLY','RLS_ORGANIZATION_TICKET_AND_MESSAGES',
+  )])),
+  ...Object.fromEntries(['POST /v1/support/tickets','POST /v1/support/tickets/{id}/replies','PATCH /v1/support/tickets/{id}'].map(route=>[route,policy(
+    'apps/api/src/http/routes/support.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR',true,'REQUEST_UUID_HASH_OR_OPTIMISTIC_REVISION','NO_STORE_TEXT_ONLY','RLS_ORGANIZATION_TICKET_AND_MESSAGES_STATUS_ADMISSION',
+  )])),
+  ...Object.fromEntries(['GET /v1/platform/support/tickets','GET /v1/platform/support/tickets/{id}'].map(route=>[route,policy(
+    'apps/api/src/http/routes/support.ts','PLATFORM_SESSION_COOKIE','SUPER_ADMIN_OR_SUPPORT',true,'READ_ONLY','NO_STORE_TEXT_ONLY','DEDICATED_PLATFORM_ROLE_FORCED_RLS',
+  )])),
+  ...Object.fromEntries(['POST /v1/platform/support/tickets/{id}/replies','PATCH /v1/platform/support/tickets/{id}'].map(route=>[route,policy(
+    'apps/api/src/http/routes/support.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN_OR_SUPPORT',true,'REQUEST_UUID_HASH_OR_OPTIMISTIC_REVISION','NO_STORE_TEXT_ONLY','DEDICATED_PLATFORM_ROLE_TICKET_LOCK_REVISION_AND_STATUS_ADMISSION',
+  )])),
   'GET /v1/platform/groups': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_COOKIE','SUPER_ADMIN_OR_SUPPORT',true,'READ_ONLY','NONE','PLATFORM_ONLY_RLS_NO_TENANT_ACCESS_AUDITED'),
   'POST /v1/platform/groups': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN',true,'CREATE_NEW_GROUP','NONE','PLATFORM_ONLY_RLS_NO_MEMBERSHIP_PROPAGATION_AUDITED'),
   'PUT /v1/platform/groups/{id}/organizations': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN',true,'ROW_LOCK_AND_OPTIMISTIC_REVISION','NONE','PLATFORM_ONLY_RLS_UNIQUE_ORGANIZATION_GROUP_NO_MEMBERSHIP_PROPAGATION_AUDITED'),

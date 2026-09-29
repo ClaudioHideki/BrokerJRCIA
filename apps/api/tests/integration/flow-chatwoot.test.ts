@@ -135,6 +135,21 @@ describe('durable Flow Agent Bot transport', () => {
     if (kind === 'disabled') await f.service.disable(f.org, b.id);
     await f.service.runOnce(f.org); expect(f.deliveries).toEqual([]);
   });
+  it('retains the remote bot marker on uncertain detach until a retry verifies it',async()=>{
+    const f=await fixture(),binding=await f.service.bind(f.org,f.flow.id,7);
+    f.failAssign();
+    expect(await f.service.disable(f.org,binding.id)).toMatchObject({remoteDetached:false});
+    let stored=(await db.pool.query('select status,bot_id,last_error from flow_chatwoot_bindings where organization_id=$1 and id=$2',
+      [f.org,binding.id])).rows[0];
+    expect(stored).toMatchObject({status:'DISABLED',last_error:'FLOW_REMOTE_BOT_DETACH_UNVERIFIED'});
+    expect(stored.bot_id).not.toBeNull();
+    expect((await db.pool.query('select lifecycle_pending_count($1,null,null)::int as n',[f.org])).rows[0].n).toBe(1);
+    expect(await f.service.disable(f.org,binding.id)).toMatchObject({remoteDetached:true});
+    stored=(await db.pool.query('select status,bot_id,last_error,encrypted_credentials from flow_chatwoot_bindings where organization_id=$1 and id=$2',
+      [f.org,binding.id])).rows[0];
+    expect(stored).toMatchObject({status:'DISABLED',bot_id:null,last_error:null,encrypted_credentials:null});
+    expect((await db.pool.query('select lifecycle_pending_count($1,null,null)::int as n',[f.org])).rows[0].n).toBe(0);
+  });
   it('records uncertain delivery and never automatically repeats it', async () => {
     const f = await fixture(), b = await f.service.bind(f.org, f.flow.id, 7); await f.event(b.id); f.failSend();
     await f.service.runOnce(f.org); await f.service.runOnce(f.org);

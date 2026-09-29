@@ -47,7 +47,12 @@ function documentationOptions() {
     },
   ) as ProviderAccountService;
   return {
+    support: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
+      service: new Proxy({}, {get(){return unavailable;}}) as import('../modules/support/service.js').SupportService,
+    },
     channels: {
+      lifecycle: new Proxy({}, {get(){return unavailable;}}) as import('../modules/lifecycle/service.js').LifecycleService,
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`,
       authenticateApiKey: unavailable,
       resolveCurrentRole: unavailable,
@@ -103,6 +108,8 @@ function documentationOptions() {
       ) as import("../modules/integrations/chatwoot-service.js").ChatwootService,
     },
     platform: {
+      lifecycle: new Proxy({}, {get(){return unavailable;}}) as import('../modules/lifecycle/service.js').LifecycleService,
+      support: new Proxy({}, {get(){return unavailable;}}) as import('../modules/support/service.js').SupportService,
       service: new Proxy(
         {},
         {
@@ -307,6 +314,9 @@ function normalizeDocument(document: JsonObject): JsonObject {
       }
       if (path.startsWith("/v1/messaging/"))
         operation.security = [{ bearerAuth: [] }];
+      if (['/v1/channels', '/v1/credentials', '/v1/automations', '/v1/automation-nodes', '/v1/automation-imports', '/v1/executions', '/v1/operations', '/v1/webhooks', '/v1/support']
+        .some(prefix => path === prefix || path.startsWith(`${prefix}/`)))
+        operation.security = [{ bearerAuth: [] }];
       if (path.startsWith('/v1/automations/migrations/legacy')) {
         operation.security = [{ bearerAuth: [] }];
         operation.description = method === 'get'
@@ -328,11 +338,11 @@ function normalizeDocument(document: JsonObject): JsonObject {
         operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
       if (
         path.startsWith("/v1/meta-onboarding") ||
-        path === "/v1/organization/operations"
+        path.startsWith("/v1/organization/")
       )
         operation.security = [{ bearerAuth: [] }];
       if (path.startsWith("/v1/platform/"))
-        operation.security = path.endsWith("/auth/login")
+        operation.security = path.endsWith("/auth/login") || path.endsWith('/auth/config')
           ? []
           : method === "get"
             ? [{ platformSession: [] }]

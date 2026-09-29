@@ -7,9 +7,15 @@ import { createPostgresAutomationRepository, type AutomationRepository, type Def
 import type { AutomationSummary, PublishedAutomation, RuntimeState } from './types.js';
 import { createPostgresMessagingRepository, type MessagingRepository } from '../messaging/repository.js';
 import { claimIdempotency, completeIdempotencyRecord, hashIdempotencyRequest } from '../instances/idempotency.js';
+import { automationAvailability, readAutomationAccess } from './availability.js';
 
 export class AutomationError extends Error{constructor(readonly code:string,readonly statusCode=422,readonly details:string[]=[]){super(code);}}
-export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean}
+export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean;runtimeReady?(org:string):Promise<boolean>}
+export async function requireAutomationDraftAccess(tx:TenantTransaction,org:string){
+ const access=await readAutomationAccess(tx,org);
+ if(access?.status!=='ACTIVE')throw new AutomationError('ORGANIZATION_NOT_ACTIVE',403);
+ if(!access.moduleEnabled)throw new AutomationError('AUTOMATION_MODULE_DISABLED',403);
+}
 const iso=(value:Date|string)=>value instanceof Date?value.toISOString():value;
 const definition=(row:DefinitionRow):AutomationSummary=>({schemaVersion:1 as const,id:row.id,organizationId:row.organizationId,name:row.name,lifecycleStatus:row.lifecycleStatus,
   draft:{revision:row.draftRevision,graph:row.draftGraph},activeVersion:row.activeVersion,updatedAt:iso(row.updatedAt)});
@@ -35,7 +41,7 @@ const writeAutomationCursor=(row:{cursorUpdatedAt:string;id:string})=>Buffer.fro
 
 export function createAutomationService(options:AutomationServiceOptions){
   const repository=options.repository??createPostgresAutomationRepository(),messaging=options.messaging??createPostgresMessagingRepository(),enabled=options.enabled??true;
-  const available=()=>{if(!enabled)throw new AutomationError('AUTOMATION_RUNTIME_DISABLED',503);};
+  const available=async(org:string)=>{if(!enabled)throw new AutomationError('AUTOMATION_RUNTIME_DISABLED',409);if(options.runtimeReady&&!await options.runtimeReady(org))throw new AutomationError('AUTOMATION_DEPENDENCY_UNAVAILABLE',503);};
   const getDefinition=async(tx:TenantTransaction,org:string,id:string,lock=false)=>{
     const row=await repository.getDefinition(tx,org,id,lock);if(!row)throw new AutomationError('AUTOMATION_NOT_FOUND',404);return row;};
   const resolveVersion=async(tx:TenantTransaction,org:string,id:string,number:number):Promise<PublishedAutomation>=>{
@@ -50,11 +56,11 @@ export function createAutomationService(options:AutomationServiceOptions){
     }};await visit(graph);
   };
   return {
-    status:()=>({enabled,engine:'AUTOMATION_RUNTIME_V2' as const}),
-    list:(org:string,input:{pageSize?:number;cursor?:string}={})=>{available();const pageSize=input.pageSize??200,cursor=input.cursor?readAutomationCursor(input.cursor):undefined;
+    status:async(org:string,role='OWNER')=>{const access=await options.transact(org,tx=>readAutomationAccess(tx,org));let ready=true;if(enabled&&options.runtimeReady)try{ready=await options.runtimeReady(org);}catch{ready=false;}return automationAvailability(access,enabled,role,ready);},
+    list:(org:string,input:{pageSize?:number;cursor?:string}={})=>{const pageSize=input.pageSize??200,cursor=input.cursor?readAutomationCursor(input.cursor):undefined;
       return options.transact(org,async tx=>{const page=await repository.listDefinitions(tx,org,{pageSize,...(cursor?{cursor}:{})});return {data:page.rows.map(definition),nextCursor:page.hasMore?writeAutomationCursor(page.rows.at(-1)!):null};});},
-    get:(org:string,id:string)=>{available();return options.transact(org,async tx=>definition(await getDefinition(tx,org,id)));},
-    create:(org:string,input:{name:string;graph:AutomationGraphV1},idempotencyKey?:string)=>{available();return options.transact(org,async tx=>{
+    get:(org:string,id:string)=>options.transact(org,async tx=>definition(await getDefinition(tx,org,id))),
+    create:(org:string,input:{name:string;graph:AutomationGraphV1},idempotencyKey?:string)=>{return options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);
       const graph=AutomationGraphV1Schema.parse(input.graph),name=input.name.trim();if(!name)throw new AutomationError('AUTOMATION_NAME_INVALID',400);
       const claim=idempotencyKey?await claimIdempotency(tx,{organizationId:org,route:'POST /v1/automations',key:idempotencyKey,
         requestHash:hashIdempotencyRequest({name,graph}),expiresAt:new Date(Date.now()+7*24*60*60*1000)}):null;
@@ -67,16 +73,21 @@ export function createAutomationService(options:AutomationServiceOptions){
       const created=await repository.insertDefinition(tx,{org,id:randomUUID(),name,graph});
       if(claim?.kind==='CLAIMED')await completeIdempotencyRecord(tx,{organizationId:org,recordId:claim.recordId,status:'COMPLETED',responseMetadata:{definitionId:created.id}});
       return definition(created);});},
-    save:(org:string,id:string,input:{name:string;graph:AutomationGraphV1;revision:number})=>{available();return options.transact(org,async tx=>{
+    save:(org:string,id:string,input:{name:string;graph:AutomationGraphV1;revision:number})=>{return options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);
       const graph=AutomationGraphV1Schema.parse(input.graph);
       const updated=await repository.updateDefinition(tx,{org,id,name:input.name.trim(),graph,revision:input.revision});if(!updated)throw new AutomationError('AUTOMATION_CHANGED',409);return definition(updated);});},
-    validate:(org:string,id:string)=>{available();return options.transact(org,async tx=>{const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(!errors.length)await validateDependencies(tx,org,id,row.draftGraph);return {valid:errors.length===0,errors};});},
-    simulate:(org:string,id:string,input:{text:string})=>{available();return options.transact(org,async tx=>{const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);
-      return executeAutomation({automationId:id,version:row.activeVersion??1,graph:row.draftGraph},{text:input.text,eventType:'MESSAGE',now:new Date()},(child,childVersion)=>resolveVersion(tx,org,child,childVersion));});},
-    publish:(org:string,id:string,revision:number)=>{available();return options.transact(org,async tx=>{const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
+    validate:(org:string,id:string)=>options.transact(org,async tx=>{const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(!errors.length)await validateDependencies(tx,org,id,row.draftGraph);return {valid:errors.length===0,errors};}),
+    simulate:(org:string,id:string,input:{text:string;replies?:string[]})=>options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);
+      const replies=z.array(z.string().max(4096)).max(30).parse(input.replies??[]),root={automationId:id,version:row.activeVersion??1,graph:row.draftGraph},resolve=(child:string,childVersion:number)=>resolveVersion(tx,org,child,childVersion);
+      let result=await executeAutomation(root,{text:input.text,eventType:'MESSAGE',now:new Date()},resolve);
+      const effects=[...result.effects],trace=[...result.trace];
+      for(const text of replies){if(result.status!=='WAITING'||result.wait?.kind!=='EVENT')throw new AutomationError('AUTOMATION_SIMULATION_NOT_WAITING',409);
+        result=await executeAutomation(root,{text,eventType:'MESSAGE',now:new Date()},resolve,result.state);effects.push(...result.effects);trace.push(...result.trace);}
+      return {...result,effects,trace};}),
+    publish:async(org:string,id:string,revision:number)=>{await available(org);return options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
       const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);await validateDependencies(tx,org,id,row.draftGraph);
       const next=(row.activeVersion??0)+1,checksum=createHash('sha256').update(canonical(row.draftGraph)).digest('hex');const published=await repository.insertVersion(tx,{org,id,version:next,graph:row.draftGraph,checksum});await repository.activateVersion(tx,org,id,next);return version(published);});},
-    setArchived:(org:string,id:string,archived:boolean,actorId?:string)=>{available();return options.transact(org,async tx=>{
+    setArchived:(org:string,id:string,archived:boolean,actorId?:string)=>{return options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);
       const row=await getDefinition(tx,org,id,true);
       if((row.lifecycleStatus==='ARCHIVED')===archived)return definition(row);
       if(archived){
@@ -93,13 +104,13 @@ export function createAutomationService(options:AutomationServiceOptions){
       await tx.query(`insert into audit_logs(organization_id,actor_id,event_type,resource_type,resource_id,request_id,outcome,metadata) values($1,$2,$3,'automation',$4,$5,'SUCCESS','{}')`,[org,actorId??null,archived?'AUTOMATION_ARCHIVED':'AUTOMATION_RESTORED',id,randomUUID()]);
       return definition(await getDefinition(tx,org,id));
     });},
-    versions:(org:string,id:string)=>{available();return options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listVersions(tx,org,id)).map(version)};});},
-    bindings:(org:string,id:string)=>{available();return options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listBindings(tx,org,id)).map(row=>({...row,createdAt:iso(row.createdAt),updatedAt:iso(row.updatedAt),schemaVersion:1}))};});},
-    bind:(org:string,id:string,input:{channelId:string;version?:number;humanDestinationId?:string|null})=>{available();return options.transact(org,async tx=>{const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);const selected=input.version??row.activeVersion;if(!selected)throw new AutomationError('AUTOMATION_NOT_PUBLISHED',409);if(!await repository.getVersion(tx,org,id,selected))throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);
+    versions:(org:string,id:string)=>options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listVersions(tx,org,id)).map(version)};}),
+    bindings:(org:string,id:string)=>options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listBindings(tx,org,id)).map(row=>({...row,createdAt:iso(row.createdAt),updatedAt:iso(row.updatedAt),schemaVersion:1}))};}),
+    bind:async(org:string,id:string,input:{channelId:string;version?:number;humanDestinationId?:string|null})=>{await available(org);return options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);const selected=input.version??row.activeVersion;if(!selected)throw new AutomationError('AUTOMATION_NOT_PUBLISHED',409);if(!await repository.getVersion(tx,org,id,selected))throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);
       const channel=await messaging.findChannel(tx,org,input.channelId);if(!channel)throw new AutomationError('CHANNEL_NOT_FOUND',404);
       const binding=await repository.insertBinding(tx,{org,id:randomUUID(),automationId:id,version:selected,channelId:input.channelId,humanDestinationId:input.humanDestinationId??null});
       await messaging.setChannelBot(tx,{organizationId:org,channelId:input.channelId,botPublicId:id,botOriginReference:AUTOMATION_ORIGIN});return {...binding,createdAt:iso(binding.createdAt),updatedAt:iso(binding.updatedAt),schemaVersion:1};});},
-    setBindingStatus:(org:string,bindingId:string,input:{status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number},automationId:string)=>{available();return options.transact(org,async tx=>{
+    setBindingStatus:async(org:string,bindingId:string,input:{status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number},automationId:string)=>{if(input.status==='ACTIVE')await available(org);return options.transact(org,async tx=>{if(input.status==='ACTIVE')await requireAutomationDraftAccess(tx,org);
       const automation=await getDefinition(tx,org,automationId,true);if(automation.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);
       const current=(await repository.listBindings(tx,org,automationId)).find(item=>item.id===bindingId);
       if(!current)throw new AutomationError('AUTOMATION_BINDING_NOT_FOUND',404);
@@ -115,7 +126,7 @@ export function createAutomationService(options:AutomationServiceOptions){
 export type AutomationService=ReturnType<typeof createAutomationService>;
 export interface RouteAutomationEvent {channelId:string;conversationId?:string|null;eventKey:string;text:string;payload?:Record<string,unknown>}
 export function createEventRouter(options:AutomationServiceOptions){
-  const repository=options.repository??createPostgresAutomationRepository();return {route:(org:string,event:RouteAutomationEvent)=>options.transact(org,async tx=>{
+  const repository=options.repository??createPostgresAutomationRepository();return {route:(org:string,event:RouteAutomationEvent)=>options.enabled===false?Promise.resolve({duplicate:false,execution:null}):options.transact(org,async tx=>{
     const eventId=randomUUID();const inserted=await repository.insertEvent(tx,{org,id:eventId,eventKey:event.eventKey,type:'MESSAGE',payload:event.payload??{text:event.text}});if(!inserted)return {duplicate:true,execution:null};
     const routed=await repository.routeEvent(tx,{org,eventId,executionId:randomUUID(),correlationId:randomUUID(),channelId:event.channelId,conversationId:event.conversationId??null,eventKey:event.eventKey,input:{text:event.text,eventType:'MESSAGE',...(event.payload??{})}});
     return routed?{duplicate:false,execution:execution(routed.execution),resumed:routed.resumed}:{duplicate:false,execution:null};})};
@@ -126,8 +137,8 @@ export function createExecutionService(options:AutomationServiceOptions){
   const resolve=async(tx:TenantTransaction,org:string,id:string,v:number)=>{const row=await repository.getVersion(tx,org,id,v);if(!row)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return {automationId:id,version:v,graph:row.graph};};
   return {
     list:(org:string,automationId?:string)=>options.transact(org,async tx=>({data:(await repository.listExecutions(tx,org,automationId)).map(execution)})),
-    get:(org:string,id:string)=>options.transact(org,async tx=>{const row=await repository.getExecution(tx,org,id);if(!row)throw new AutomationError('AUTOMATION_EXECUTION_NOT_FOUND',404);const [nodes,outbox,context]=await Promise.all([repository.listNodeExecutions(tx,org,id),repository.listExecutionOutbox(tx,org,id),repository.getExecutionContext(tx,org,id)]);return {...execution(row),conversationRef:context.conversationId,contactRef:context.contactId,state:redact(row.state),errorCode:row.errorCode,input:redact(row.input),durationMs:(row.completedAt?new Date(row.completedAt):new Date()).getTime()-new Date(row.startedAt).getTime(),nodes:nodes.map(node=>({...node,attempt:Math.floor(node.ordinal/1000)+1,durationMs:node.completedAt?Math.max(0,new Date(node.completedAt).getTime()-new Date(node.startedAt).getTime()):null,input:redact(node.input),output:redact(node.output),startedAt:iso(node.startedAt),completedAt:node.completedAt?iso(node.completedAt):null})),outbox:outbox.map(item=>({...item,lastError:item.lastError,createdAt:iso(item.createdAt),updatedAt:iso(item.updatedAt)}))};}),
-    runOnce:(org:string)=>options.transact(org,async tx=>{const leaseToken=randomUUID(),claimed=await repository.claimExecution(tx,org,leaseToken,120000);if(!claimed)return {processed:false};
+    get:(org:string,id:string)=>options.transact(org,async tx=>{const row=await repository.getExecution(tx,org,id);if(!row)throw new AutomationError('AUTOMATION_EXECUTION_NOT_FOUND',404);const nodes=await repository.listNodeExecutions(tx,org,id),outbox=await repository.listExecutionOutbox(tx,org,id),context=await repository.getExecutionContext(tx,org,id);return {...execution(row),conversationRef:context.conversationId,contactRef:context.contactId,state:redact(row.state),errorCode:row.errorCode,input:redact(row.input),durationMs:(row.completedAt?new Date(row.completedAt):new Date()).getTime()-new Date(row.startedAt).getTime(),nodes:nodes.map(node=>({...node,attempt:Math.floor(node.ordinal/1000)+1,durationMs:node.completedAt?Math.max(0,new Date(node.completedAt).getTime()-new Date(node.startedAt).getTime()):null,input:redact(node.input),output:redact(node.output),startedAt:iso(node.startedAt),completedAt:node.completedAt?iso(node.completedAt):null})),outbox:outbox.map(item=>({...item,lastError:item.lastError,createdAt:iso(item.createdAt),updatedAt:iso(item.updatedAt)}))};}),
+    runOnce:(org:string)=>options.enabled===false?Promise.resolve({processed:false}):options.transact(org,async tx=>{const leaseToken=randomUUID(),claimed=await repository.claimExecution(tx,org,leaseToken,120000);if(!claimed)return {processed:false};
       try{const root=await resolve(tx,org,claimed.automationId,claimed.version),kind=String(claimed.input.eventType??'MESSAGE') as 'MESSAGE'|'RESUME'|'TIMER';
         const result=await executeAutomation(root,{text:String(claimed.input.text??''),eventType:kind,now:new Date(),payload:claimed.input},(id,v)=>resolve(tx,org,id,v),Object.keys(claimed.state??{}).length?claimed.state as RuntimeState:undefined);
         await repository.saveExecutionResult(tx,claimed,result);return {processed:true,executionId:claimed.id,status:result.status};
@@ -136,13 +147,14 @@ export function createExecutionService(options:AutomationServiceOptions){
     retry:(org:string,id:string)=>options.transact(org,async tx=>{const row=await repository.getExecution(tx,org,id);if(!row)throw new AutomationError('AUTOMATION_EXECUTION_NOT_FOUND',404);if(row.status==='UNKNOWN')throw new AutomationError('AUTOMATION_EXECUTION_RECONCILIATION_REQUIRED',409);if(!await repository.retryExecution(tx,org,id))throw new AutomationError('AUTOMATION_EXECUTION_NOT_RETRYABLE',409);return {ok:true};}),
     reconcile:(org:string,id:string,actorId:string,input:{outboxId:string;outcome:'CONFIRMED_SENT'|'CONFIRMED_NOT_SENT'|'UNRESOLVED';evidenceCode:string;providerReference?:string})=>options.transact(org,async tx=>{const row=await repository.getExecution(tx,org,id);if(!row)throw new AutomationError('AUTOMATION_EXECUTION_NOT_FOUND',404);if(!await repository.reconcileUnknownOutbox(tx,{org,executionId:id,actorId,...input}))throw new AutomationError('AUTOMATION_EFFECT_NOT_RECONCILABLE',409);return {ok:true,outcome:input.outcome,automaticResend:false};}),
     resume:(org:string,id:string,eventKey:string,payload:Record<string,unknown>)=>options.transact(org,async tx=>{if(!await repository.resumeExecution(tx,{org,id,eventId:randomUUID(),eventKey,payload}))throw new AutomationError('AUTOMATION_EXECUTION_NOT_RESUMABLE',409);return {ok:true};}),
-    releaseDueWaits:(org:string,limit=100)=>options.transact(org,tx=>repository.releaseDueWaits(tx,org,limit)),
+    releaseDueWaits:(org:string,limit=100)=>options.enabled===false?Promise.resolve(0):options.transact(org,tx=>repository.releaseDueWaits(tx,org,limit)),
   };
 }
 
 export type OutboxDispatchResult={kind:'SENT';remoteReference?:string;resumePayload?:Record<string,unknown>}|{kind:'NOT_SENT';retryAt:Date;error:string}|{kind:'FAILED';error:string;resumePayload?:Record<string,unknown>};
 export interface ExternalEffectDispatcher {dispatch(item:OutboxRow):Promise<OutboxDispatchResult>}
 export function createOutboxDispatcher(options:AutomationServiceOptions,external:ExternalEffectDispatcher,kinds:OutboxKind[]=['SEND_TEXT','HANDOFF','RESUME_EVENT']){const repository=options.repository??createPostgresAutomationRepository();return {runOnce:async(org:string)=>{
+  if(options.enabled===false)return {processed:false};
   const leaseToken=randomUUID(),item=await options.transact(org,tx=>repository.claimOutbox(tx,org,leaseToken,120000,kinds));if(!item)return {processed:false};
   // The row is already UNKNOWN before the external call. A process crash can therefore never cause a blind replay.
   let result:OutboxDispatchResult;try{result=await external.dispatch(item);}catch{return {processed:true,id:item.id,status:'UNKNOWN' as const};}

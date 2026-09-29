@@ -5,6 +5,8 @@ import { BindChannelAutomationV1Schema, BindChannelDestinationV1Schema, ChannelA
   ChannelListV1Schema, ChannelMutationV1Schema, ChannelV1Schema, CreateChannelResponseV1Schema,
   CreateChannelV1Schema, IdempotencyHeadersSchema, PairChannelResponseV1Schema, PatchChannelV1Schema,
   PROBLEM_CONTENT_TYPE, ProblemDetailsSchema } from '@jrc/contracts';
+import { DeletionPreviewSchema, DeletionRequestedSchema, DeletionStatusSchema, RequestDeletionSchema } from '@jrc/contracts';
+import { LifecycleError, type LifecycleService } from '../../modules/lifecycle/service.js';
 import type { ChannelFacade } from '../../modules/channels/facade.js';
 import { ChannelFacadeError } from '../../modules/channels/facade.js';
 import type { Role } from '../plugins/authorization.js';
@@ -14,6 +16,7 @@ import { tenantOperationalProblem } from '../../modules/tenancy/operational-limi
 
 export interface ChannelRouteOptions extends AuthenticationOptions {
   service: ChannelFacade;
+  lifecycle?: LifecycleService;
   resolveCurrentRole(userId: string, organizationId: string): Promise<Role | null>;
   now?: () => Date;
   requestTimeoutMs?: number;
@@ -28,9 +31,9 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
     const operational = tenantOperationalProblem(error, request.id);
     if (operational) return reply.code(operational.status).type(PROBLEM_CONTENT_TYPE).send(operational);
     const candidate = error as { validation?: unknown; statusCode?: number; code?: string };
-    const status = error instanceof ChannelFacadeError ? error.status : candidate.validation || error instanceof z.ZodError ? 400
+    const status = error instanceof LifecycleError ? error.status : error instanceof ChannelFacadeError ? error.status : candidate.validation || error instanceof z.ZodError ? 400
       : [400, 404, 409, 503].includes(candidate.statusCode ?? 0) ? candidate.statusCode! : 500;
-    const code = error instanceof ChannelFacadeError ? error.code : status === 400 ? 'INVALID_REQUEST'
+    const code = error instanceof LifecycleError || error instanceof ChannelFacadeError ? error.code : status === 400 ? 'INVALID_REQUEST'
       : typeof candidate.code === 'string' && /^[A-Z][A-Z0-9_]{0,127}$/.test(candidate.code) ? candidate.code : 'CHANNEL_OPERATION_FAILED';
     return reply.code(status).type(PROBLEM_CONTENT_TYPE).send({ type: 'about:blank', title: code, status, code,
       requestId: request.id });
@@ -49,6 +52,20 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
   const actor = (request: FastifyRequest) => request.authentication!.actorId!;
   const context = (request: FastifyRequest) => ({ credentialKind: 'JWT' as const, organizationId: org(request), actorId: actor(request),
     requestId: request.id, deadline: request.operationDeadline, signal: request.operationSignal });
+
+  if(options.lifecycle){
+    const operationParams=params.extend({operationId:z.uuid()});
+    api.get('/v1/channels/:id/deletion-preview',{preHandler:manage,schema:{params,querystring:empty,
+      response:{200:DeletionPreviewSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,404:ProblemDetailsSchema,503:ProblemDetailsSchema}}},
+    request=>options.lifecycle!.previewChannel(org(request),request.params.id));
+    api.post('/v1/channels/:id/deletion',{preHandler:manage,schema:{params,querystring:empty,body:RequestDeletionSchema,
+      response:{202:DeletionRequestedSchema,400:ProblemDetailsSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,404:ProblemDetailsSchema,409:ProblemDetailsSchema,503:ProblemDetailsSchema}}},
+    async(request,reply)=>reply.code(202).send(await options.lifecycle!.requestChannel(org(request),request.params.id,
+      request.body.confirmationName,request.body.reason,'TENANT',actor(request))));
+    api.get('/v1/channels/:id/deletion/:operationId',{preHandler:manage,schema:{params:operationParams,querystring:empty,
+      response:{200:DeletionStatusSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,404:ProblemDetailsSchema,503:ProblemDetailsSchema}}},
+    request=>options.lifecycle!.status(org(request),request.params.id,request.params.operationId));
+  }
 
   api.get('/v1/channels', { preHandler: read, schema: { querystring: z.strictObject({includeArchived:z.enum(['true','false']).optional(),
     pageSize:z.coerce.number().int().min(1).max(100).optional(),cursor:z.string().min(1).max(256).optional()}), response: { 200: ChannelListV1Schema,

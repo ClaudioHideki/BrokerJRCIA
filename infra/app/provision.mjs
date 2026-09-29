@@ -8,7 +8,7 @@ await runMigrations(url);
 const client = new Client({ connectionString: url });
 await client.connect();
 try {
-  for (const [role, variable] of [['jrc_app', 'JRC_APP_PASSWORD'], ['jrc_auth', 'JRC_AUTH_PASSWORD'], ['jrc_platform', 'JRC_PLATFORM_PASSWORD']]) {
+  for (const [role, variable] of [['jrc_app', 'JRC_APP_PASSWORD'], ['jrc_auth', 'JRC_AUTH_PASSWORD'], ['jrc_platform', 'JRC_PLATFORM_PASSWORD'], ['jrc_lifecycle', 'JRC_LIFECYCLE_PASSWORD']]) {
     const password = process.env[variable];
     if (!password || password.length < 32) throw new Error(`${variable} requires at least 32 characters`);
     const result = await client.query('select format(\'ALTER ROLE %I PASSWORD %L\', $1::text, $2::text) as command', [role, password]);

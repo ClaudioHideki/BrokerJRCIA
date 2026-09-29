@@ -12,6 +12,7 @@ import { ChatwootDestinationPanel } from './ChatwootDestinationPanel.js';
 import { DashboardAppSetup } from './DashboardAppSetup.js';
 import { ChatwootControlPanel } from './ChatwootControlPanel.js';
 import { NativeJrcSetup } from './NativeJrcSetup.js';
+import { ChatwootOnboarding } from './ChatwootOnboarding.js';
 
 export type IntegrationRequest = (
   path: string,
@@ -31,7 +32,7 @@ interface Inbox {
   hasWebhook: boolean;
 }
 const states: Record<string, string> = {
-  READY: "Pronta",
+  READY: "Configurada",
   PENDING: "Pendente",
   RUNNING: "Processando",
   FAILED: "Falha",
@@ -253,7 +254,7 @@ export function ChatwootPanel({
     <div className="jrc-integration">
       <div className="integration-toolbar">
         <div>
-          <h2>Integração com o JRC Conversas</h2>
+          <h2>Central de atendimento — JRC Conversas / Chatwoot</h2>
           <p>
             Uma conta por empresa e uma caixa de atendimento para cada WhatsApp.
           </p>
@@ -291,10 +292,25 @@ export function ChatwootPanel({
       )}
       {data?.configured && (
         <>
+          <section className="panel integration-guide" aria-label="Configuração passo a passo">
+            <h3>Conecte sua empresa à central de atendimento</h3>
+            <p>O WhatsApp é a conexão. A caixa é onde os atendentes recebem as conversas. O vínculo liga os dois.</p>
+            <ol aria-label="Etapas para integrar a central">
+              <li><strong>Escolha a central.</strong> Use o JRC Conversas gerenciado ou solicite a autorização do endereço HTTPS do seu Chatwoot.</li>
+              <li><strong>Vincule a conta.</strong> Informe o ID da conta e o token de um administrador dessa conta.</li>
+              <li><strong>Crie ou selecione uma conexão WhatsApp.</strong> Leia o QR Code ou conclua a autorização Meta no Broker.</li>
+              <li><strong>Escolha a caixa de destino.</strong> Crie uma caixa API ou selecione uma existente. Autorize a troca do webhook apenas quando for assumir a integração.</li>
+              <li><strong>Confirme o número e teste ida e volta.</strong> Consulte o estado, envie uma mensagem e responda publicamente pela central.</li>
+              <li><strong>Ative o Flow, se desejar.</strong> Publique o bot e vincule-o à conexão no Broker.</li>
+            </ol>
+            <p>Contas e vínculos já salvos são recuperados ao voltar à tela. Se houver uma operação pendente, confira seu estado antes de criar outro vínculo.</p>
+            {!platform && <a className="button button--secondary" href="/channels">Abrir conexões WhatsApp e Flow</a>}
+          </section>
           {data.externalDestinationsEnabled && <ChatwootDestinationPanel key={`${data.destination?.baseUrl}:${data.destination?.revision}`}
             data={data} platform={platform} canManage={canManage} blocked={blocked} action={action} />}
           {!platform && accountReady && data.controlEnabled && <ChatwootControlPanel request={request} canManage={canManage} connections={data.connections} />}
-          {!platform && canManage && accountReady && data.controlEnabled && data.baseUrl && data.destination?.mode !== 'EXTERNAL' && <NativeJrcSetup key={`${data.account!.accountId}:${data.destination?.revision}:${data.baseUrl}`} request={request} accountId={data.account!.accountId!} baseUrl={data.baseUrl} />}
+          {!platform && canManage && accountReady && data.controlEnabled && !disabled && <ChatwootOnboarding request={request} />}
+          {!platform && canManage && accountReady && data.controlEnabled && data.baseUrl && <NativeJrcSetup key={`${data.account!.accountId}:${data.destination?.revision}:${data.baseUrl}`} request={request} accountId={data.account!.accountId!} baseUrl={data.baseUrl} external={data.destination?.mode === 'EXTERNAL'} />}
           {!platform && accountReady && data.controlEnabled && data.embedEnabled && canManage && <DashboardAppSetup request={request} />}
           <div className="metric-grid metric-grid--four">
             <Metric
@@ -310,11 +326,11 @@ export function ChatwootPanel({
               icon="providers"
             />
             <Metric
-              label="Caixas prontas"
+              label="Vínculos configurados"
               value={String(
                 data.connections.filter((c) => c.status === "READY").length,
               )}
-              note="Conexões configuradas"
+              note="Entrega ainda precisa ser verificada"
               tone="green"
               icon="connections"
             />
@@ -572,6 +588,7 @@ export function ChatwootPanel({
               O broker recebe as mensagens do WhatsApp, entrega nesta caixa e
               encaminha as respostas públicas dos atendentes.
             </p>
+            <p>A configuração da caixa não confirma que o WhatsApp está conectado ou que as mensagens estão sendo entregues. Confira a sessão, a identidade e as evidências no controle de conexões.</p>
             {canManage && accountReady && (
               <form
                 className="integration-form integration-form--connection"

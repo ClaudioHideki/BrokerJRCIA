@@ -22,6 +22,7 @@
     "start:automation-worker": "node apps/api/dist/commands/automation-worker.js",
     "start:automation-io-worker": "node apps/api/dist/commands/automation-io-worker.js",
     "start:scheduler-worker": "node apps/api/dist/commands/scheduler-worker.js",
+    "start:lifecycle-worker": "node apps/api/dist/commands/lifecycle-worker.js",
     "start:automation-sandbox": "node apps/api/dist/commands/automation-sandbox.js",
     "migrate:legacy-flows": "node apps/api/dist/commands/legacy-flow-migrate.js",
     "messaging:channel:create": "node apps/api/dist/commands/messaging-channel-create.js",

@@ -28,7 +28,7 @@ it('does not offer management or legacy instance access to a delegated viewer', 
   const request = vi.fn().mockResolvedValue({ ...health, allowedActions: ['status'], identityStatus: 'CONFIRMED', identityApproved: true });
   render(<ChatwootControlPanel request={request} canManage={false} connections={[{ id, name: 'Atendimento' }]} />);
   fireEvent.click(screen.getByRole('button', { name: 'Abrir controle de conexões' }));
-  expect(await screen.findByText(/Sessão WhatsApp: CONNECTED/)).toBeVisible();
+  expect(await screen.findByText('Conectada')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Conectar ou reconectar' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Salvar permissões' })).not.toBeInTheDocument();
   expect(request).toHaveBeenCalledTimes(1);

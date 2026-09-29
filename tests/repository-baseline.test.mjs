@@ -9,7 +9,7 @@ describe('repository baseline', () => {
     expect(result.forbiddenTrackedFiles).toEqual([]);
   });
 
-  it('contains the complete phase 9 migration chain and one authoritative root manifest', async () => {
+  it('contains the current migration chain and one authoritative root manifest', async () => {
     const migrations = (await readdir('apps/api/drizzle/migrations'))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
@@ -19,11 +19,11 @@ describe('repository baseline', () => {
 
     expect(migrations.slice(-5)).toEqual([
 
-      '0027_automation_integrations.sql',
-      '0028_operational_observability.sql',
       '0029_legacy_flow_migration.sql',
       '0030_instance_archive.sql',
       '0031_economic_groups.sql',
+      '0032_lifecycle_deletion.sql',
+      '0033_support_tickets.sql',
     ]);
     expect(rootManifests).toEqual(['MANIFESTO_ARQUIVOS_SHA256.txt']);
   });

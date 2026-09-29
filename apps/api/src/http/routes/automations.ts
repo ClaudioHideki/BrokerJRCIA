@@ -26,7 +26,7 @@ export async function registerAutomationRoutes(app:FastifyInstance,options:Autom
     if(!role||(write&&!['OWNER','ADMIN'].includes(role)))return problem(reply,request,403,'FORBIDDEN');};
   const read=[auth,guard(false)],write=[auth,guard(true)],api=app.withTypeProvider<ZodTypeProvider>();
   const org=(request:FastifyRequest)=>request.authentication!.organizationId;
-  api.get('/v1/automations/status',{preHandler:read,schema:{querystring:empty}},()=>options.service.status());
+  api.get('/v1/automations/status',{preHandler:read,schema:{querystring:empty}},async request=>options.service.status(org(request),(await options.resolveCurrentRole(request.authentication!.actorId!,org(request)))??'VIEWER'));
   api.get('/v1/automation-nodes',{preHandler:read,schema:{querystring:empty}},()=>({schemaVersion:1,data:AUTOMATION_NODE_CATALOG_V1}));
   api.get('/v1/automations',{preHandler:read,schema:{querystring:z.strictObject({pageSize:z.coerce.number().int().min(1).max(200).optional(),cursor:z.string().min(1).max(256).optional()})}},request=>options.service.list(org(request),{
     ...(request.query.pageSize===undefined?{}:{pageSize:request.query.pageSize}),
@@ -42,7 +42,7 @@ export async function registerAutomationRoutes(app:FastifyInstance,options:Autom
   api.get('/v1/automations/:id',{preHandler:read,schema:{params,querystring:empty}},request=>options.service.get(org(request),request.params.id));
   api.put('/v1/automations/:id',{preHandler:write,schema:{params,querystring:empty,body:draft.extend({revision:z.number().int().positive()})}},request=>options.service.save(org(request),request.params.id,request.body));
   api.post('/v1/automations/:id/validate',{preHandler:read,schema:{params,querystring:empty,body:empty}},request=>options.service.validate(org(request),request.params.id));
-  api.post('/v1/automations/:id/simulate',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({text:z.string().max(4096)})}},request=>options.service.simulate(org(request),request.params.id,request.body));
+  api.post('/v1/automations/:id/simulate',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({text:z.string().max(4096),replies:z.array(z.string().max(4096)).max(30).optional()})}},request=>options.service.simulate(org(request),request.params.id,{text:request.body.text,...(request.body.replies?{replies:request.body.replies}:{})}));
   api.post('/v1/automations/:id/publish',{preHandler:write,schema:{params,headers:IdempotencyHeadersSchema,querystring:empty,body:z.strictObject({revision:z.number().int().positive()})}},request=>options.service.publish(org(request),request.params.id,request.body.revision));
   api.post('/v1/automations/:id/archive',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({archived:z.boolean()})}},request=>options.service.setArchived(org(request),request.params.id,request.body.archived,request.authentication!.actorId!));
   api.get('/v1/automations/:id/versions',{preHandler:read,schema:{params,querystring:empty}},request=>options.service.versions(org(request),request.params.id));

@@ -218,6 +218,20 @@
       "when": 1790203200000,
       "tag": "0031_economic_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790289600000,
+      "tag": "0032_lifecycle_deletion",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790376000000,
+      "tag": "0033_support_tickets",
+      "breakpoints": true
     }
   ]
 }

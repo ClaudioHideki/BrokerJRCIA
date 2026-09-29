@@ -18,6 +18,9 @@ describe('runtime schema probe', () => {
     expect(sql).toContain('archived_at');
     expect(sql).toContain('economic_groups');
     expect(sql).toContain('economic_group_organizations');
+    expect(sql).toContain('lifecycle_deletions');
+    expect(sql).toContain('support_tickets');
+    expect(sql).toContain('support_messages');
   });
 
   it('requires the archival triggers and forced group policies, not only their tables', async () => {

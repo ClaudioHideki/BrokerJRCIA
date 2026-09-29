@@ -10,7 +10,7 @@ describe('editable automation drafts', () => {
       draftGraph:graph(), draftRevision:1, activeVersion:null, updatedAt:new Date() };
     const repository = { insertDefinition:vi.fn().mockResolvedValue(row), updateDefinition:vi.fn().mockResolvedValue(row),
       getDefinition:vi.fn().mockResolvedValue(row), insertVersion:vi.fn() } as unknown as AutomationRepository;
-    return { repository, service:createAutomationService({ repository, transact:async (_org, work) => work({} as never) }) };
+    return { repository, service:createAutomationService({ repository, transact:async (_org, work) => work({query:async()=>({rows:[{status:'ACTIVE',moduleEnabled:true}]})} as never) }) };
   }
   it('stores structurally valid but incomplete imports as editable drafts', async () => {
     const {service, repository} = setup();

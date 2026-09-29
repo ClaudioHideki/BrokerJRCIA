@@ -2,6 +2,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import { createIntegrationSecrets } from '../integrations/secrets.js';
+import type { RateLimitStore } from '../auth/rate-limit/store.js';
 
 export const CredentialTypeSchema=z.enum(['HTTP_HEADER','BEARER','BASIC','POSTGRES','MYSQL','AI_PROVIDER','GENERIC_JSON']);
 export type CredentialType=z.infer<typeof CredentialTypeSchema>;
@@ -34,13 +35,28 @@ export function createCredentialVault(serialized:string):CredentialVault{
 export class CredentialError extends Error{constructor(readonly code:string,readonly statusCode=422){super(code);}}
 export interface CredentialTester {test(type:CredentialType,secret:Record<string,unknown>,metadata:Record<string,unknown>):Promise<void>}
 const view=(row:CredentialRow)=>({schemaVersion:1 as const,id:row.id,organizationId:row.organizationId,name:row.name,type:row.type,status:row.status,revision:row.revision,keyVersion:row.keyVersion,fingerprint:row.fingerprint.slice(0,12),metadata:row.metadata,lastTestedAt:row.lastTestedAt?.toISOString()??null,createdAt:row.createdAt.toISOString(),updatedAt:row.updatedAt.toISOString()});
-export function createCredentialService(options:{transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;vault:CredentialVault;repository?:CredentialRepository;tester?:CredentialTester}){
+export function createCredentialService(options:{transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;vault:CredentialVault;repository?:CredentialRepository;tester?:CredentialTester;testBudget?:{store:RateLimitStore;secret:string}}){
+ const activeTests=new Set<string>();
  const repository=options.repository??createPostgresCredentialRepository();const get=async(tx:TenantTransaction,org:string,id:string,lock=false)=>{const row=await repository.get(tx,org,id,lock);if(!row)throw new CredentialError('CREDENTIAL_NOT_FOUND',404);return row;};
  return {list:(org:string)=>options.transact(org,async tx=>({data:(await repository.list(tx,org)).map(view)})),get:(org:string,id:string)=>options.transact(org,async tx=>view(await get(tx,org,id))),
   create:(org:string,input:{name:string;type:CredentialType;secret:Record<string,unknown>;metadata:Record<string,unknown>})=>options.transact(org,async tx=>{const id=randomUUID(),sealed=options.vault.seal(org,input.type,id,input.secret);return view(await repository.insert(tx,{org,id,name:input.name.trim(),type:input.type,...sealed,metadata:input.metadata}));}),
   rotate:(org:string,id:string,input:{revision:number;secret:Record<string,unknown>})=>options.transact(org,async tx=>{const current=await get(tx,org,id,true),sealed=options.vault.seal(org,current.type,id,input.secret),row=await repository.rotate(tx,{org,id,revision:input.revision,...sealed});if(!row)throw new CredentialError('CREDENTIAL_CHANGED',409);return view(row);}),
   revoke:(org:string,id:string,revision:number)=>options.transact(org,async tx=>{await get(tx,org,id,true);const row=await repository.revoke(tx,org,id,revision);if(!row)throw new CredentialError('CREDENTIAL_CHANGED',409);return view(row);}),
-  test:(org:string,id:string)=>options.transact(org,async tx=>{const row=await get(tx,org,id);if(!options.tester)throw new CredentialError('CREDENTIAL_TEST_UNAVAILABLE',503);await options.tester.test(row.type,options.vault.open(row),row.metadata);return view(await repository.tested(tx,org,id));}),
+  test:async(org:string,id:string)=>{
+   if(!options.tester)throw new CredentialError('CREDENTIAL_TEST_UNAVAILABLE',503);
+   if(activeTests.has(org)||activeTests.size>=8)throw new CredentialError('CREDENTIAL_TEST_BUSY',429);
+   activeTests.add(org);
+   try{
+    if(options.testBudget){
+     const key=`identity:${createHmac('sha256',options.testBudget.secret).update(`credential-test:${org}`).digest('hex')}`;
+     const decision=await options.testBudget.store.consume(key,10,60_000).catch(()=>{throw new CredentialError('CREDENTIAL_TEST_UNAVAILABLE',503);});
+     if(!decision.allowed)throw new CredentialError('CREDENTIAL_TEST_RATE_LIMITED',429);
+    }
+    const snapshot=await options.transact(org,async tx=>{const row=await get(tx,org,id);if(row.status!=='ACTIVE')throw new CredentialError('CREDENTIAL_REVOKED',409);return {type:row.type,secret:options.vault.open(row),metadata:row.metadata,revision:row.revision};});
+    await options.tester.test(snapshot.type,snapshot.secret,snapshot.metadata);
+    return await options.transact(org,async tx=>{const current=await get(tx,org,id,true);if(current.status!=='ACTIVE'||current.revision!==snapshot.revision)throw new CredentialError('CREDENTIAL_CHANGED',409);return view(await repository.tested(tx,org,id));});
+   }finally{activeTests.delete(org);}
+  },
   resolve:(org:string,id:string)=>options.transact(org,async tx=>{const row=await get(tx,org,id);return {type:row.type,secret:options.vault.open(row),metadata:row.metadata};}),_repository:repository};
 }
 export type CredentialService=ReturnType<typeof createCredentialService>;

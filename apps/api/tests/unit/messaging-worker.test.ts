@@ -5,6 +5,13 @@ import type { TenantTransaction } from '../../src/db/tenant-transaction.js';
 import { AUTOMATION_ORIGIN } from '@jrc/contracts';
 
 describe('composição do worker durável', () => {
+  it('preserves the runtime pause in the bot claim while still processing ordinary outbound work',async()=>{
+    const repository={
+      async claimBotTurn(_tx:unknown,input:{automationRuntimeEnabled?:boolean}){expect(input.automationRuntimeEnabled).toBe(false);return null;},
+      async claimOutgoing(){return [];},
+    } as unknown as MessagingRepository;
+    await createMessagingWorker({repository,automationRuntimeEnabled:false,transact:(_org,work)=>work({} as TenantTransaction),async resolveMetaClient(){throw new Error('unexpected');},async resolveTypebotClient(){throw new Error('unexpected');}}).runOnce('tenant');
+  });
   it('bounds each organization turn to one bot claim and one outbound claim', async () => {
     const turns: string[] = [];
     const repository = {

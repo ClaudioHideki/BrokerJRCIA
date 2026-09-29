@@ -68,7 +68,7 @@ export function ChannelsPage() {
         <div className="metric-grid" aria-label="Estados da caixa de entrada">
           <div className="metric"><small>WhatsApp</small><strong>{statusLabel[item.transportStatus]}</strong></div>
           <div className="metric"><small>Automação JRC</small><strong>{item.automationName??'Nenhuma selecionada'}</strong><span>{statusLabel[item.automationStatus]}</span></div>
-          <div className="metric"><small>JRC Conversas / Chatwoot</small><strong>{item.destination?.name??'Sem caixa vinculada'}</strong><span>{statusLabel[item.humanStatus]}</span></div>
+          <div className="metric"><small>Central de atendimento</small><strong>{item.destination?.name??'Sem caixa vinculada'}</strong><span>{destinationStatusLabel(item.humanStatus)}</span></div>
         </div>
         <details><summary>Detalhes técnicos</summary><p>Serviço WhatsApp: {statusLabel[item.providerStatus]} · Atualizado em {new Date(item.updatedAt).toLocaleString('pt-BR')}</p></details>
       </article>)}
@@ -79,3 +79,7 @@ export function ChannelsPage() {
 }
 
 export { statusLabel };
+
+export function destinationStatusLabel(status: ChannelV1['humanStatus']) {
+  return status === 'READY' ? 'Vínculo configurado · entrega a verificar' : statusLabel[status];
+}

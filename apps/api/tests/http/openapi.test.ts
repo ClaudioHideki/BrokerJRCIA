@@ -10,6 +10,19 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/channels/{id}/deletion-preview',
+  'POST /v1/channels/{id}/deletion',
+  'GET /v1/channels/{id}/deletion/{operationId}',
+  'GET /v1/platform/organizations/{id}/deletion-preview',
+  'POST /v1/platform/organizations/{id}/deletion',
+  'GET /v1/platform/organizations/{id}/deletion/{operationId}',
+  'GET /v1/platform/organizations/{id}/channels/{channelId}/deletion-preview',
+  'POST /v1/platform/organizations/{id}/channels/{channelId}/deletion',
+  'GET /v1/platform/organizations/{id}/channels/{channelId}/deletion/{operationId}',
+  'GET /v1/support/tickets', 'POST /v1/support/tickets', 'GET /v1/support/tickets/{id}',
+  'POST /v1/support/tickets/{id}/replies', 'PATCH /v1/support/tickets/{id}',
+  'GET /v1/platform/support/tickets', 'GET /v1/platform/support/tickets/{id}',
+  'POST /v1/platform/support/tickets/{id}/replies', 'PATCH /v1/platform/support/tickets/{id}',
   'GET /v1/platform/groups', 'POST /v1/platform/groups', 'PUT /v1/platform/groups/{id}/organizations',
   'GET /v1/platform/organizations/{id}/channels',
   'POST /v1/platform/organizations/{id}/channels/{channelId}/archive',

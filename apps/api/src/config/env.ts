@@ -24,6 +24,8 @@ const EnvironmentSchema = z.object({
   AUTH_DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
   AUTH_RATE_LIMIT_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(1_000).default(10),
+  PUBLIC_INGRESS_IP_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).max(1_000_000).default(6000),
+  PUBLIC_INGRESS_RESOURCE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).max(1_000_000).default(6000),
   AUTH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1).max(86_400_000).default(60_000),
   AUTH_PROGRESSIVE_DELAY_BASE_MS: z.coerce.number().int().min(0).max(10_000).default(100),
   AUTH_PROGRESSIVE_DELAY_MAX_MS: z.coerce.number().int().min(0).max(10_000).default(2_000),
@@ -144,6 +146,7 @@ export interface AppConfig {
   authDatabaseUrl: string;
   redisUrl: string;
   authRateLimit: { limit: number; ttlMs: number };
+  publicIngressRateLimit: { ipLimit: number; resourceLimit: number };
   authProgressiveDelay: { baseDelayMs: number; maximumDelayMs: number };
   redisFailurePolicy: {
     commandDeadlineMs: number;
@@ -200,6 +203,10 @@ export function loadAppConfig(
     authRateLimit: {
       limit: parsed.AUTH_RATE_LIMIT_MAX_ATTEMPTS,
       ttlMs: parsed.AUTH_RATE_LIMIT_WINDOW_MS,
+    },
+    publicIngressRateLimit: {
+      ipLimit: parsed.PUBLIC_INGRESS_IP_LIMIT_PER_MINUTE,
+      resourceLimit: parsed.PUBLIC_INGRESS_RESOURCE_LIMIT_PER_MINUTE,
     },
     authProgressiveDelay: {
       baseDelayMs: parsed.AUTH_PROGRESSIVE_DELAY_BASE_MS,

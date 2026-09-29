@@ -4,6 +4,7 @@ import { Icon } from "../broker/Icon.js";
 import { ApiClientError } from '../api/client.js';
 import { PlatformShell } from "../layout/PlatformShell.js";
 import { EconomicGroups } from '../platform/EconomicGroups.js';
+import { SupportDesk } from '../support/SupportDesk.js';
 import {
   AdminCharts,
   AdminMetrics,
@@ -539,7 +540,9 @@ export function PlatformPage() {
           {notice}
         </div>
       )}
-      {section.path === '/jrc/grupos' ? (
+      {section.path === '/jrc/suporte' ? (
+        <SupportDesk key={session.user.id} request={request} staff canWrite scopeKey={session.user.id} />
+      ) : section.path === '/jrc/grupos' ? (
         <EconomicGroups key={session.user.id} request={request} companies={companies} admin={!!admin} disabled={disabled || !companiesLoaded} />
       ) : creating && admin ? (
         <NewCompany
@@ -612,6 +615,9 @@ export function PlatformPage() {
                     saveMember={saveMember}
                     refresh={() => void inspect(selected)}
                     channelRequest={(path,method,body)=>request('/organizations/'+selected.id+'/channels'+path,method,body)}
+                    deletionRequest={(path,method,body)=>request('/organizations/'+selected.id+path,method,body)}
+                    onDeleted={()=>{setCompanies(current=>current.filter(item=>item.id!==selected.id));
+                      closeCompany();setNotice('Empresa excluída definitivamente do Broker.');}}
                     integrationRequest={(path,method,body)=>request('/organizations/'+selected.id+'/chatwoot'+path,method,body)}
                     acknowledge={() =>
                       void action(async () => {
@@ -623,7 +629,7 @@ export function PlatformPage() {
                           {},
                         );
                         setNotice(
-                          "Atendimento registrado na auditoria da empresa.",
+                          "Intervenção registrada na auditoria da empresa.",
                         );
                       })
                     }

@@ -162,6 +162,19 @@
 .jrc-integration .metric-grid {
   margin: 0;
 }
+.integration-guide li { margin: 10px 0; line-height: 1.6; }
+.integration-actions { flex-wrap: wrap; }
+.connection-health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.connection-health-grid > div { border: 1px solid #e0e6ef; padding: 12px; border-radius: 8px; }
+.connection-health dt { color: #596b83; font-size: 12px; }
+.connection-health dd { margin: 5px 0 0; overflow-wrap: anywhere; }
+.connection-evidence { display: grid; gap: 10px; }
+.jrc-integration input:not([type="checkbox"]), .jrc-integration select, .jrc-integration textarea {
+  box-sizing: border-box; padding: 9px 11px; border: 1px solid #cad7e9; border-radius: 6px;
+  background: #fff; color: inherit; font: inherit; max-width: 100%;
+}
+.jrc-integration .integration-check input { margin: 0; flex: 0 0 auto; }
+.jrc-integration fieldset { border: 1px solid #e0e6ef; border-radius: 8px; padding: 14px; }
 @media (max-width: 1000px) {
   .integration-account,
   .integration-connections {
@@ -169,6 +182,7 @@
   }
 }
 @media (max-width: 650px) {
+  .connection-health-grid { grid-template-columns: minmax(0, 1fr); }
   .integration-toolbar {
     align-items: flex-start;
     flex-direction: column;

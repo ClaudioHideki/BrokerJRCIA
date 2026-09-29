@@ -21,6 +21,7 @@ import { writeTenantAudit } from '../modules/audit/audit.js';
 import { createChatwootControlAuth } from '../modules/integrations/chatwoot-control-auth.js';
 import { createMessagingMembershipResolver } from '../modules/messaging/membership.js';
 import { createEventRouter } from '../modules/automations/service.js';
+import { automationRuntimeEnabled } from '../modules/automations/availability.js';
 import { createPostgresAutomationRepository } from '../modules/automations/repository.js';
 import { recordHeartbeat, workerInstanceId } from '../modules/observability/service.js';
 
@@ -126,7 +127,8 @@ export async function runMessagingWorker(
   process.once("SIGTERM", stop);
   try {
     const worker = createMessagingWorker({
-      automations:createEventRouter({repository:createPostgresAutomationRepository(),transact:(org,work)=>withOrganizationTransaction(pool,org,work)}),
+      automationRuntimeEnabled:automationRuntimeEnabled(environment),
+      automations:createEventRouter({repository:createPostgresAutomationRepository(),enabled:automationRuntimeEnabled(environment),transact:(org,work)=>withOrganizationTransaction(pool,org,work)}),
       flows:createFlowService({transact:(org,work)=>withOrganizationTransaction(pool,org,work)}),
       repository: createPostgresMessagingRepository(),
       transact: (organizationId, operation) =>

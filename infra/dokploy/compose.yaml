@@ -21,6 +21,9 @@ x-runtime: &runtime
   IDENTITY_RATE_LIMIT_HMAC_SECRET: ${IDENTITY_RATE_LIMIT_HMAC_SECRET:?required}
   CHALLENGE_ENCRYPTION_KEY: ${CHALLENGE_ENCRYPTION_KEY:?required}
   BROWSER_CSRF_SECRET: ${BROWSER_CSRF_SECRET:?required}
+  PUBLIC_INGRESS_IP_LIMIT_PER_MINUTE: ${PUBLIC_INGRESS_IP_LIMIT_PER_MINUTE:-6000}
+  PUBLIC_INGRESS_RESOURCE_LIMIT_PER_MINUTE: ${PUBLIC_INGRESS_RESOURCE_LIMIT_PER_MINUTE:-6000}
+  SUPPORT_RESPONSE_HOURS: ${SUPPORT_RESPONSE_HOURS:-24}
 
   # Console
   CONSOLE_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:?required}
@@ -287,6 +290,34 @@ services:
     mem_limit: 256m
     cpus: 0.25
 
+  lifecycle-worker:
+    image: ${JRC_API_IMAGE:?required}
+    entrypoint:
+      - node
+      - apps/api/dist/commands/lifecycle-worker.js
+      - --watch
+    restart: unless-stopped
+    environment:
+      LIFECYCLE_DATABASE_URL: postgresql://jrc_lifecycle:${JRC_LIFECYCLE_PASSWORD:?required}@postgres:5432/jrc_broker
+      EVOLUTION_BASE_URL: http://evolution:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?required}
+      LIFECYCLE_WORKER_INTERVAL_MS: ${LIFECYCLE_WORKER_INTERVAL_MS:-3000}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - backend
+      - egress
+    read_only: true
+    tmpfs:
+      - /tmp:size=1m,uid=1000,gid=1000,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 0.25
+
 
   automation-sandbox:
     image: ${JRC_API_IMAGE:?required}
@@ -331,6 +362,7 @@ services:
       JRC_APP_PASSWORD: ${JRC_APP_PASSWORD:?required}
       JRC_AUTH_PASSWORD: ${JRC_AUTH_PASSWORD:?required}
       JRC_PLATFORM_PASSWORD: ${JRC_PLATFORM_PASSWORD:?required}
+      JRC_LIFECYCLE_PASSWORD: ${JRC_LIFECYCLE_PASSWORD:?required}
       EVOLUTION_DB_PASSWORD: ${EVOLUTION_DB_PASSWORD:?required}
 
     depends_on:
