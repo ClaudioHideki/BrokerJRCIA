@@ -99,6 +99,7 @@ export function createQrMessagingService(options: QrServiceOptions) {
       return {
         id: channel.id,
         provider: "BAILEYS" as const,
+        ownerRevision: channel.ownerRevision ?? 0,
         botPublicId: channel.botPublicId,
       };
     },
@@ -171,6 +172,7 @@ export function createQrMessagingService(options: QrServiceOptions) {
             });
             continue;
           }
+          await repository.findChannel(tx,binding.organizationId,channelId,{lock:true});
           const contact = await repository.upsertContact(tx, {
             id: randomUUID(),
             organizationId: binding.organizationId,

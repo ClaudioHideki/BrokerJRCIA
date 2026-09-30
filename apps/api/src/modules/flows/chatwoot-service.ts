@@ -1,4 +1,6 @@
 import { executeFlow, type FlowGraph, type FlowState } from '@jrc/contracts';
+import { randomUUID } from 'node:crypto';
+import { lockOwnershipMutations, readOwnerRevision, revokeRemoteFlowBinding, transitionChannelOwner } from '../attendance/transition.js';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import { chatwootEnvironment, type ChatwootOptions } from '../integrations/chatwoot-service.js';
 import { readChatwootAccount, type AccountRow } from '../integrations/chatwoot-context.js';
@@ -12,12 +14,14 @@ interface Binding {
   destination_revision: number; credential_version: number; feature_revision: number;
   name: string; channel_type: string; bot_id: string | null; encrypted_credentials: string | null;
   status: string; last_error: string | null;
+  operation_revision:number; operation_token:string|null; operation_expires_at:Date|null;
+  operation_state:'IDLE'|'RESERVED'|'DISPATCHED'|'UNKNOWN';
 }
 interface EventRow { id: string; binding_id: string; conversation_id: string; payload: FlowChatwootEvent; attempts: number }
 interface Output { id: string; binding_id: string; conversation_id: string; kind: 'TEXT' | 'HANDOFF'; content: string; attempts: number }
 type Options = ChatwootOptions & { resolveBinding(id: string): Promise<string | undefined> };
 const view = (b: Binding) => ({ id: b.id, flowId: b.flow_id, inboxId: Number(b.inbox_id), accountId: Number(b.account_id),
-  name: b.name, channelType: b.channel_type, status: b.status, lastError: b.last_error });
+  name: b.name, channelType: b.channel_type, status: b.status, lastError: b.last_error, revision:b.operation_revision });
 const errorCode = (e: unknown) => e instanceof FlowError || e instanceof ChatwootError ? e.code : 'FLOW_CHATWOOT_UNAVAILABLE';
 
 export function createFlowChatwootService(options: Options) {
@@ -62,6 +66,18 @@ export function createFlowChatwootService(options: Options) {
       where i.organization_id=$1 and i.inbox_id=$2 and i.status<>'DISABLED' and c.bot_public_id is not null`, [org, inboxId]);
     if (conflicts.rowCount) throw new FlowError('FLOW_CHANNEL_HAS_AUTOMATION', 409);
   }
+  async function channelForInbox(tx:TenantTransaction,org:string,inboxId:number) {
+    return (await tx.query<{channel_id:string}>('select channel_id from chatwoot_connections where organization_id=$1 and inbox_id=$2',[org,inboxId])).rows[0]?.channel_id;
+  }
+  async function inboxRevision(tx:TenantTransaction,org:string,inboxId:number) {
+    const channel=await channelForInbox(tx,org,inboxId);
+    return channel?readOwnerRevision(tx,org,channel):(await tx.query<{revision:number}>('select coalesce(max(operation_revision),0)::int revision from flow_chatwoot_bindings where organization_id=$1 and inbox_id=$2',[org,inboxId])).rows[0]!.revision;
+  }
+  async function expectedRevision(tx:TenantTransaction,org:string,inboxId:number,expected?:number) {
+    const revision=await inboxRevision(tx,org,inboxId);
+    if(expected!==undefined&&revision!==expected)throw new FlowError('ATTENDANCE_OWNER_CHANGED',409);
+    return revision;
+  }
   async function pause(tx: TenantTransaction, org: string, bindingId: string, conversationId: string | number) {
     await tx.query(`insert into flow_chatwoot_sessions(organization_id,binding_id,conversation_id,human) values($1,$2,$3,true)
       on conflict(organization_id,binding_id,conversation_id) do update set human=true,updated_at=now()`, [org, bindingId, conversationId]);
@@ -80,74 +96,138 @@ export function createFlowChatwootService(options: Options) {
   }
   const service = {
     async inboxes(org: string) {
-      const a = await transact(org, async tx => { await feature(tx, org); return account(tx, org); });
-      const inboxes = await env.client(a).listInboxes(Number(a.account_id));
-      const bindings = await transact(org, tx => tx.query<Binding>("select * from flow_chatwoot_bindings where organization_id=$1 and status<>'DISABLED' order by created_at", [org]));
-      return { accountId: Number(a.account_id), data: inboxes.map(i => ({ id: i.id, name: i.name, channelType: i.channel_type,
-        binding: bindings.rows.find(b => Number(b.inbox_id) === i.id) ? view(bindings.rows.find(b => Number(b.inbox_id) === i.id)!) : null })) };
+      const stored=await transact(org,tx=>tx.query<Binding>("select * from flow_chatwoot_bindings where organization_id=$1 and (status<>'DISABLED' or operation_state<>'IDLE' or bot_id is not null) order by created_at desc",[org]));
+      let accountId=Number(stored.rows[0]?.account_id??0),inboxes:{id:number;name:string;channel_type:string}[];
+      try{const a=await transact(org,tx=>account(tx,org));accountId=Number(a.account_id);inboxes=await env.client(a).listInboxes(accountId);}
+      catch(error){if(!stored.rows.length)throw error;inboxes=stored.rows.map(b=>({id:Number(b.inbox_id),name:b.name,channel_type:b.channel_type}));}
+      return transact(org,async tx=>({accountId,data:await Promise.all(inboxes.map(async i=>({id:i.id,name:i.name,channelType:i.channel_type,
+        ownerRevision:await inboxRevision(tx,org,i.id),binding:stored.rows.find(b=>Number(b.inbox_id)===i.id)?view(stored.rows.find(b=>Number(b.inbox_id)===i.id)!):null})))}));
     },
-    async bind(org: string, flowId: string, inboxId: number) {
-      const saved = await transact(org, async tx => {
-        await tx.query("select pg_advisory_xact_lock(hashtextextended('flow-inbox:'||$1,0))", [org]);
-        const f = await feature(tx, org), a = await account(tx, org);
-        const flow = (await tx.query('select published_version from flows where organization_id=$1 and id=$2', [org, flowId])).rows[0];
-        if (!flow?.published_version) throw new FlowError('FLOW_NOT_PUBLISHED', 409);
-        await noDirectAutomation(tx, org, inboxId);
-        const old = (await tx.query<Binding>("select * from flow_chatwoot_bindings where organization_id=$1 and inbox_id=$2 and status<>'DISABLED'", [org, inboxId])).rows[0];
-        if (old) { if (old.flow_id !== flowId) throw new FlowError('FLOW_INBOX_ALREADY_BOUND', 409); await context(tx, old); return old; }
-        const inbox = (await env.client(a).listInboxes(Number(a.account_id))).find(i => i.id === inboxId);
-        if (!inbox) throw new FlowError('FLOW_INBOX_NOT_FOUND', 404);
-        return (await tx.query<Binding>(`insert into flow_chatwoot_bindings(organization_id,flow_id,inbox_id,account_id,destination_revision,credential_version,feature_revision,name,channel_type)
-          values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`, [org, flowId, inboxId, a.account_id, a.destination!.revision, a.credential_version, f.revision, inbox.name, inbox.channel_type])).rows[0]!;
+    async bind(org:string,flowId:string,inboxId:number,expectedOwnerRevision?:number) {
+      // Discovery does not hold an ownership/advisory/row lock.
+      const observed=await transact(org,async tx=>{await feature(tx,org);return account(tx,org);});
+      const inbox=(await env.client(observed).listInboxes(Number(observed.account_id))).find(i=>i.id===inboxId);
+      if(!inbox)throw new FlowError('FLOW_INBOX_NOT_FOUND',404);
+      const reserved=await transact(org,async tx=>{
+        await lockOwnershipMutations(tx,org);
+        await tx.query('select tenant_is_active($1)',[org]);
+        const f=await feature(tx,org),a=await account(tx,org);
+        if(a.account_id!==observed.account_id||a.destination?.revision!==observed.destination?.revision||a.credential_version!==observed.credential_version)throw new FlowError('FLOW_BINDING_CHANGED',409);
+        const revision=await expectedRevision(tx,org,inboxId,expectedOwnerRevision);
+        if(!(await tx.query('select 1 from flows where organization_id=$1 and id=$2 and published_version is not null',[org,flowId])).rowCount)throw new FlowError('FLOW_NOT_PUBLISHED',409);
+        await noDirectAutomation(tx,org,inboxId);
+        const old=(await tx.query<Binding>(`select * from flow_chatwoot_bindings where organization_id=$1 and inbox_id=$2
+          and (status<>'DISABLED' or operation_state<>'IDLE' or bot_id is not null) order by created_at desc limit 1`,[org,inboxId])).rows[0];
+        if(old?.flow_id&&old.flow_id!==flowId)throw new FlowError('FLOW_INBOX_ALREADY_BOUND',409);
+        if(old?.status==='DISABLED')throw new FlowError('FLOW_OPERATION_RECONCILIATION_REQUIRED',409);
+        if(old){
+          await context(tx,old);
+          if(old.status==='READY'&&old.operation_state==='IDLE')return {b:old,a,token:null,reconcile:false,ownerRevision:revision};
+          if(old.operation_token&&old.operation_expires_at&&old.operation_expires_at.getTime()>Date.now())throw new FlowError('FLOW_OPERATION_IN_PROGRESS',409);
+        }
+        const reconcile=old?.operation_state==='UNKNOWN'||old?.operation_state==='DISPATCHED';
+        const token=randomUUID();
+        const b=old?(await tx.query<Binding>(`update flow_chatwoot_bindings set operation_token=$3,operation_expires_at=now()+interval '2 minutes',
+          operation_state=$4,operation_revision=operation_revision+1,status='PENDING',updated_at=now() where organization_id=$1 and id=$2 returning *`,[org,old.id,token,reconcile?'UNKNOWN':'RESERVED'])).rows[0]!:
+          (await tx.query<Binding>(`insert into flow_chatwoot_bindings(organization_id,flow_id,inbox_id,account_id,destination_revision,credential_version,feature_revision,name,channel_type,
+            operation_revision,operation_token,operation_expires_at,operation_state) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now()+interval '2 minutes','RESERVED') returning *`,
+          [org,flowId,inboxId,a.account_id,a.destination!.revision,a.credential_version,f.revision,inbox.name,inbox.channel_type,revision+1,token])).rows[0]!;
+        const channel=await channelForInbox(tx,org,inboxId);
+        let ownerRevision=b.operation_revision;
+        if(channel)ownerRevision=(await transitionChannelOwner(tx,org,{channelId:channel,botPublicId:null,botOriginReference:null,executor:'BROKER',remoteBindingId:b.id,expectedOwnerRevision:revision})).ownerRevision;
+        return {b,a,token,reconcile,ownerRevision};
       });
-      try {
-        return await transact(org, async tx => {
-          const b = await binding(tx, org, saved.id), a = await context(tx, b), client = env.client(a);
-          await noDirectAutomation(tx, org, inboxId);
-          const current = await client.inboxFlowBot(Number(b.account_id), inboxId);
-          if (current && (b.bot_id !== null && current.id !== Number(b.bot_id) || current.outgoing_url !== callback(b.id)))
-            throw new FlowError('FLOW_INBOX_HAS_BOT', 409);
-          const bots = (await client.listFlowBots(Number(b.account_id))).filter(bot => bot.outgoing_url === callback(b.id));
-          if (bots.length > 1) throw new FlowError('FLOW_BOT_AMBIGUOUS', 409);
-          const bot = bots[0] ?? await client.createFlowBot(Number(b.account_id), `JRC Flow — ${b.name}`, callback(b.id));
-          if (!bot.secret || !bot.token) throw new FlowError('FLOW_CHATWOOT_SIGNING_REQUIRED', 409);
-          const encrypted = env.vault.encrypt(`${org}:flow-bot:${b.id}`, JSON.stringify({ secret: bot.secret, token: bot.token }));
-          // Store and assignment commit together locally. On uncertain remote creation the callback URL reconciles the next attempt.
-          await client.setInboxFlowBot(Number(b.account_id), inboxId, bot.id);
-          await context(tx, b);
-          const updated = (await tx.query<Binding>("update flow_chatwoot_bindings set bot_id=$3,encrypted_credentials=$4,status='READY',last_error=null,updated_at=now() where organization_id=$1 and id=$2 returning *", [org, b.id, bot.id, encrypted])).rows[0]!;
-          return view(updated);
+      if(!reserved.token)return {...view(reserved.b),ownerRevision:reserved.ownerRevision};
+      const {b,a,token}=reserved,client=env.client(a);
+      // Every write/settle uses both token and revision; disable invalidates the token.
+      async function guarded<T>(work:(tx:TenantTransaction,current:Binding)=>Promise<T>) {
+        return transact(org,async tx=>{
+          await lockOwnershipMutations(tx,org);
+          await tx.query('select tenant_is_active($1)',[org]);
+          const current=await binding(tx,org,b.id);
+          if(current.operation_token!==token||current.operation_revision!==b.operation_revision||current.status==='DISABLED'||!current.operation_expires_at||current.operation_expires_at.getTime()<=Date.now())throw new FlowError('FLOW_OPERATION_CHANGED',409);
+          await context(tx,current);
+          return work(tx,current);
         });
-      } catch (e) {
-        await transact(org, tx => tx.query("update flow_chatwoot_bindings set status=$3,last_error=$4 where organization_id=$1 and id=$2 and status<>'DISABLED'", [org, saved.id, e instanceof ChatwootError && e.uncertain ? 'UNKNOWN' : 'FAILED', errorCode(e)]));
-        throw e;
+      }
+      try {
+        const current=await client.inboxFlowBot(Number(b.account_id),inboxId);
+        if(current&&(current.outgoing_url!==callback(b.id)||(b.bot_id!==null&&current.id!==Number(b.bot_id))))throw new FlowError('FLOW_INBOX_HAS_BOT',409);
+        const bots=(await client.listFlowBots(Number(b.account_id))).filter(bot=>bot.outgoing_url===callback(b.id));
+        if(bots.length>1)throw new FlowError('FLOW_BOT_AMBIGUOUS',409);
+        let bot=bots[0];
+        if(reserved.reconcile&&(!bot||!current||current.id!==bot.id))throw new FlowError('FLOW_OPERATION_RECONCILIATION_REQUIRED',409);
+        if(!reserved.reconcile)await guarded(tx=>tx.query("update flow_chatwoot_bindings set operation_state='DISPATCHED' where organization_id=$1 and id=$2",[org,b.id]));
+        bot??=await client.createFlowBot(Number(b.account_id),`JRC Flow — ${b.name}`,callback(b.id));
+        if(!bot.secret||!bot.token)throw new FlowError('FLOW_CHATWOOT_SIGNING_REQUIRED',409);
+        const encrypted=env.vault.encrypt(`${org}:flow-bot:${b.id}`,JSON.stringify({secret:bot.secret,token:bot.token}));
+        await guarded(tx=>tx.query('update flow_chatwoot_bindings set bot_id=$3,encrypted_credentials=$4 where organization_id=$1 and id=$2',[org,b.id,bot.id,encrypted]));
+        if(!reserved.reconcile)await client.setInboxFlowBot(Number(b.account_id),inboxId,bot.id);
+        return await guarded(async tx=>{
+          const updated=(await tx.query<Binding>(`update flow_chatwoot_bindings set status='READY',last_error=null,operation_state='IDLE',operation_token=null,operation_expires_at=null,updated_at=now()
+            where organization_id=$1 and id=$2 returning *`,[org,b.id])).rows[0]!;
+          return {...view(updated),ownerRevision:await inboxRevision(tx,org,inboxId)};
+        });
+      }catch(error){
+        await transact(org,async tx=>{
+          await lockOwnershipMutations(tx,org);
+          await tx.query(`update flow_chatwoot_bindings set status=case when operation_state in ('DISPATCHED','UNKNOWN') then 'UNKNOWN' else 'FAILED' end,
+            operation_state=case when operation_state in ('DISPATCHED','UNKNOWN') then 'UNKNOWN' else 'IDLE' end,
+            last_error=$4,operation_token=null,operation_expires_at=null,updated_at=now()
+            where organization_id=$1 and id=$2 and operation_token=$3 and operation_revision=$5 and status<>'DISABLED'`,[org,b.id,token,errorCode(error),b.operation_revision]);
+        });
+        throw error;
       }
     },
-    async disable(org: string, id: string) {
-      const b = await transact(org, async tx => {
-        const row = await binding(tx, org, id);
-        await tx.query("update flow_chatwoot_bindings set status='DISABLED',updated_at=now() where organization_id=$1 and id=$2", [org, id]);
-        await tx.query("update flow_chatwoot_events set status='PAUSED' where organization_id=$1 and binding_id=$2 and status='PENDING'", [org, id]);
-        await tx.query("update flow_chatwoot_outbox set status='CANCELED' where organization_id=$1 and binding_id=$2 and status='PENDING'", [org, id]);
-        return row;
+    async disable(org:string,id:string,expectedOwnerRevision?:number) {
+      const {b,released}=await transact(org,async tx=>{
+        await lockOwnershipMutations(tx,org);
+        await tx.query('select tenant_is_active($1)',[org]);
+        const row=await binding(tx,org,id);
+        const revision=await expectedRevision(tx,org,Number(row.inbox_id),expectedOwnerRevision);
+        const channel=await channelForInbox(tx,org,Number(row.inbox_id));
+        if(channel){
+          const owner=(await tx.query<{remote_binding_id:string|null}>('select remote_binding_id from attendance_owners where organization_id=$1 and channel_id=$2',[org,channel])).rows[0];
+          if(owner?.remote_binding_id===id)await transitionChannelOwner(tx,org,{channelId:channel,botPublicId:null,botOriginReference:null,expectedOwnerRevision:revision});
+          else if(row.status!=='DISABLED')throw new FlowError('ATTENDANCE_OWNER_CHANGED',409);
+        }
+        // Channel-backed release may already have revoked this reservation.
+        // Reuse its revision so retries cannot revive or increment it again.
+        return {b:row,released:await revokeRemoteFlowBinding(tx,org,id)};
       });
+      if(released.operation_state==='UNKNOWN')return {ok:true,remoteDetached:false,code:'FLOW_OPERATION_RECONCILIATION_REQUIRED'};
       try {
-        const a = await transact(org, tx => account(tx, org));
-        if (Number(a.account_id) !== Number(b.account_id) || a.destination?.revision !== b.destination_revision) throw new FlowError('FLOW_BINDING_CHANGED', 409);
-        const client = env.client(a), current = await client.inboxFlowBot(Number(b.account_id), Number(b.inbox_id));
-        if (current?.id === Number(b.bot_id)) await client.setInboxFlowBot(Number(b.account_id), Number(b.inbox_id), null);
-        const confirmed = await client.inboxFlowBot(Number(b.account_id), Number(b.inbox_id));
-        if (b.bot_id !== null && confirmed?.id === Number(b.bot_id)) throw new FlowError('FLOW_REMOTE_BOT_DETACH_UNVERIFIED', 409);
-        await transact(org, tx => tx.query(`update flow_chatwoot_bindings
-          set bot_id=null,encrypted_credentials=null,last_error=null,updated_at=now()
-          where organization_id=$1 and id=$2 and status='DISABLED' and bot_id is not distinct from $3`, [org, id, b.bot_id]));
-        return { ok: true, remoteDetached: true };
-      } catch {
-        await transact(org, tx => tx.query(`update flow_chatwoot_bindings
-          set last_error='FLOW_REMOTE_BOT_DETACH_UNVERIFIED',updated_at=now()
-          where organization_id=$1 and id=$2 and status='DISABLED' and bot_id is not null`, [org, id]));
-        return { ok: true, remoteDetached: false, code: 'FLOW_REMOVE_REMOTE_BOT_MANUALLY' };
+        const a=await transact(org,tx=>account(tx,org));
+        if(Number(a.account_id)!==Number(b.account_id)||a.destination?.revision!==b.destination_revision)throw new FlowError('FLOW_BINDING_CHANGED',409);
+        const client=env.client(a),current=await client.inboxFlowBot(Number(b.account_id),Number(b.inbox_id));
+        if(current?.id===Number(b.bot_id)&&current.outgoing_url===callback(b.id))await client.setInboxFlowBot(Number(b.account_id),Number(b.inbox_id),null);
+        const confirmed=await client.inboxFlowBot(Number(b.account_id),Number(b.inbox_id));
+        if(b.bot_id!==null&&confirmed?.id===Number(b.bot_id))throw new FlowError('FLOW_REMOTE_BOT_DETACH_UNVERIFIED',409);
+        await transact(org,async tx=>{
+          await lockOwnershipMutations(tx,org);
+          await tx.query(`update flow_chatwoot_bindings set bot_id=null,encrypted_credentials=null,last_error=null,updated_at=now()
+            where organization_id=$1 and id=$2 and status='DISABLED' and operation_revision=$3 and operation_state='IDLE'`,[org,id,released.operation_revision]);
+        });
+        return {ok:true,remoteDetached:true};
+      }catch{
+        await transact(org,tx=>tx.query(`update flow_chatwoot_bindings set last_error='FLOW_REMOTE_BOT_DETACH_UNVERIFIED',updated_at=now()
+          where organization_id=$1 and id=$2 and status='DISABLED' and operation_revision=$3`,[org,id,released.operation_revision]));
+        return {ok:true,remoteDetached:false,code:'FLOW_REMOVE_REMOTE_BOT_MANUALLY'};
       }
+    },
+    async reconcile(org:string,id:string,expectedOwnerRevision:number){
+      const b=await transact(org,async tx=>{await expectedRevision(tx,org,Number((await binding(tx,org,id)).inbox_id),expectedOwnerRevision);return binding(tx,org,id);});
+      if(b.status!=='DISABLED'){
+        if(!['UNKNOWN','DISPATCHED'].includes(b.operation_state))throw new FlowError('FLOW_OPERATION_NOT_UNCERTAIN',409);
+        return service.bind(org,b.flow_id,Number(b.inbox_id),expectedOwnerRevision);
+      }
+      // A disabled uncertain operation is never reactivated or dispatched. R1c is
+      // responsible for proving external exclusion; expose a safe observation now.
+      const a=await transact(org,tx=>account(tx,org));
+      if(Number(a.account_id)!==Number(b.account_id)||a.destination?.revision!==b.destination_revision)throw new FlowError('FLOW_BINDING_CHANGED',409);
+      const current=await env.client(a).inboxFlowBot(Number(b.account_id),Number(b.inbox_id));
+      return {ok:true,remoteDetached:false,status:'UNKNOWN',code:'FLOW_OPERATION_RECONCILIATION_REQUIRED',
+        observation:current?.outgoing_url===callback(b.id)?'BROKER_BOT_ATTACHED':current?'OTHER_BOT_ATTACHED':'NO_BOT_OBSERVED'};
     },
     async ingest(id: string, raw: Buffer, timestamp?: string, signature?: string) {
       const org = await options.resolveBinding(id);

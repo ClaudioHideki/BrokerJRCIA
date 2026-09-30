@@ -125,6 +125,7 @@ export function createMetaIngestor(options: MetaIngestOptions) {
             tx,
             binding.organizationId,
             binding.channelId,
+            { lock: true },
           );
           if (
             !channel ||

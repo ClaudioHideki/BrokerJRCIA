@@ -3,7 +3,7 @@ import { useApiClient } from '../auth/SessionProvider.js';
 import { ApiClientError } from '../api/client.js';
 
 interface Binding { id: string; flowId: string; status: string; lastError: string | null }
-interface Inbox { id: number; name: string; channelType: string; binding: Binding | null }
+interface Inbox { ownerRevision: number; id: number; name: string; channelType: string; binding: Binding | null }
 interface Run { id: string; inboxName: string; conversationId: number; status: string; errorCode: string | null;
   createdAt: string; deliveries: { id: string; status: string; errorCode: string | null }[] | null }
 const labels: Record<string, string> = {
@@ -15,6 +15,9 @@ const labels: Record<string, string> = {
   FLOW_INBOX_ALREADY_BOUND: 'Esta caixa já está vinculada a outro Flow. Abra esse Flow e desative o vínculo primeiro.',
   FLOW_CHATWOOT_SIGNING_REQUIRED: 'Esta instalação não fornece o segredo de assinatura do Agent Bot. A ativação exige uma versão compatível.',
   FLOW_BINDING_CHANGED: 'A configuração da empresa mudou. Desative o vínculo antigo e configure a caixa novamente.',
+  ATTENDANCE_OWNER_CHANGED: 'O responsável por esta caixa mudou. Atualize a lista antes de tentar novamente.',
+  FLOW_OPERATION_IN_PROGRESS: 'Há uma ativação em andamento. Atualize a lista para acompanhar.',
+  FLOW_OPERATION_RECONCILIATION_REQUIRED: 'Uma operação teve resultado incerto. Verifique a associação; ela não será repetida automaticamente.',
 };
 const statusLabel = (v: string) => ({ READY: 'Ativo', PENDING: 'Pendente', UNKNOWN: 'Resultado incerto — conferir no Chatwoot',
   FAILED: 'Falhou', DONE: 'Processado', PAUSED: 'Pausado', SENT: 'Entregue à API do Chatwoot', CANCELED: 'Cancelado', SENDING: 'Enviando' }[v] ?? v);
@@ -49,13 +52,17 @@ export function ChatwootFlowConnections({ flowId, published, editable }: { flowI
         {inbox?.binding && <p>{statusLabel(inbox.binding.status)}{inbox.binding.lastError ? ' · ' + (labels[inbox.binding.lastError] ?? inbox.binding.lastError) : ''}</p>}
         {editable && <div className="flows-actions">
           <button type="button" className="flows-primary" disabled={busy || !published || !inbox || Boolean(inbox.binding && inbox.binding.flowId !== flowId)} onClick={() => void action(async () => {
-            await client.request('/v1/flows/' + flowId + '/chatwoot/bind', { method: 'POST', body: JSON.stringify({ inboxId: Number(selected) }) });
+            await client.request('/v1/flows/' + flowId + '/chatwoot/bind', { method: 'POST', body: JSON.stringify({ inboxId: Number(selected), expectedOwnerRevision: inbox!.ownerRevision }) });
             await load(); setNotice('Chatbot ativado. Novas conversas pendentes nesta caixa serão atendidas pelo Flow.');
           })}>Ativar chatbot nesta caixa</button>
           {inbox?.binding?.flowId === flowId && <button type="button" disabled={busy} onClick={() => void action(async () => {
-            const result = await client.request<{ remoteDetached: boolean }>('/v1/flows/chatwoot/' + inbox.binding!.id + '/disable', { method: 'POST', body: '{}' });
+            const result = await client.request<{ remoteDetached: boolean }>('/v1/flows/chatwoot/' + inbox.binding!.id + '/disable', { method: 'POST', body: JSON.stringify({ expectedOwnerRevision: inbox.ownerRevision }) });
             await load(); setNotice(result.remoteDetached ? 'Chatbot desativado nesta caixa.' : 'Flow desativado no Broker. Remova também o Agent Bot na configuração desta caixa no Chatwoot.');
           })}>Desativar chatbot da caixa</button>}
+          {inbox?.binding?.flowId===flowId && ['UNKNOWN','DISABLED'].includes(inbox.binding.status) && <button type="button" disabled={busy} onClick={()=>void action(async()=>{
+            const result=await client.request<{status?:string}>('/v1/flows/chatwoot/'+inbox.binding!.id+'/reconcile',{method:'POST',body:JSON.stringify({expectedOwnerRevision:inbox.ownerRevision})});
+            await load();setNotice(result.status==='READY'?'Associação existente confirmada.':'Verificação registrada. A operação permanece incerta e exige reconciliação; nenhuma associação foi enviada.');
+          })}>Verificar associação incerta</button>}
         </div>}
       </> : !busy && !error && <p>Nenhuma caixa disponível na conta vinculada.</p>}
       <p className="flows-help">O Broker cria e associa um Agent Bot à caixa. Mensagens de texto iniciam o atendimento enquanto a conversa está pendente; uma resposta humana ou a abertura da conversa interrompe o bot. Esta versão não interpreta anexos nem executa código do JSON.</p>

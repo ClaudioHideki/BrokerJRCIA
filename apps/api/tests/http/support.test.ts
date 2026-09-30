@@ -14,10 +14,29 @@ it('takes the organization from authenticated membership and denies a downgraded
   try {
     const authorization = `Bearer ${await issueAccessToken({ userId: user, organizationId: org, role: 'ADMIN' }, secret)}`;
     const listResponse = await app.inject({ url: '/v1/support/tickets', headers: { authorization } });
-    expect(listResponse.statusCode).toBe(200); expect(list).toHaveBeenCalledWith({kind:'TENANT',actorId:user,organizationId:org,canWrite:false},undefined);
+    expect(listResponse.statusCode).toBe(200); expect(list).toHaveBeenCalledWith({kind:'TENANT',actorId:user,organizationId:org,canWrite:false},{});
     const denied = await app.inject({ method:'POST', url:'/v1/support/tickets', headers:{authorization}, payload:{title:'Canal sem conexão',message:'Preciso de suporte.',requestId:randomUUID()} });
     expect(denied.statusCode).toBe(403); expect(create).not.toHaveBeenCalled();
     expect((await app.inject('/v1/support/tickets')).statusCode).toBe(401);
     expect((await app.inject({url:`/v1/support/tickets?organizationId=${randomUUID()}`,headers:{authorization}})).statusCode).toBe(400);
+    expect((await app.inject({url:'/v1/support/tickets?company=Another',headers:{authorization}})).statusCode).toBe(400);
   } finally { await app.close(); }
+});
+it('does not turn a shared user membership or a tenant API key into access to a third company',async()=>{
+  const secret='support-route-secret-with-at-least-32-bytes';
+  const [one,two,three]=[randomUUID(),randomUUID(),randomUUID()],user=randomUUID();
+  const list=vi.fn(async()=>({data:[]}));
+  const app=buildApp({nodeEnv:'test',passwordVerifierInitializer:async()=>({verifyPasswordOrDummy:async()=>false}),support:{
+    jwtSecret:secret,authenticateApiKey:async()=>null,resolveCurrentRole:async(_user,org)=>org===one||org===two?'ADMIN':null,
+    service:{list} as unknown as SupportService,
+  }});
+  try{
+    for(const org of [one,two]){
+      const authorization=`Bearer ${await issueAccessToken({userId:user,organizationId:org,role:'ADMIN'},secret)}`;
+      expect((await app.inject({url:'/v1/support/tickets',headers:{authorization}})).statusCode).toBe(200);
+    }
+    const authorization=`Bearer ${await issueAccessToken({userId:user,organizationId:three,role:'ADMIN'},secret)}`;
+    expect((await app.inject({url:'/v1/support/tickets',headers:{authorization}})).statusCode).toBe(403);
+    expect(list).toHaveBeenCalledTimes(2);
+  }finally{await app.close();}
 });

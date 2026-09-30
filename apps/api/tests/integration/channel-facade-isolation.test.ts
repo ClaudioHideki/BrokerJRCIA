@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Pool } from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { FakeProviderAdapter, ProviderRegistry } from '@jrc/providers';
 import { runMigrations } from '../../src/db/migrate.js';
@@ -31,13 +31,18 @@ describe('isolamento PostgreSQL da fachada canônica de canais', () => {
   let tenantB: typeof tenantA;
 
   async function seedTenant(slug: string) {
-    return runInAdminTransaction(database.pool, async tx => {
+    const tenant = await runInAdminTransaction(database.pool, async tx => {
       const organization = await createOrganization(tx, { name: slug, slug });
       const owner = await createUser(tx, { email: `${slug}@example.test`, passwordHash: 'argon2id-test-hash' });
       await createOwnerMembership(tx, { organizationId: organization.id, userId: owner.id });
       const account = await ensureLogicalBaileysAccount(tx, organization.id);
       return { organizationId: organization.id, ownerId: owner.id, accountId: account.id };
     });
+    // Fixture provisioning is administrative. Never grant the tenant role permission
+    // to enable its own module, and never infer this flag from a plan label.
+    await database.pool.query(`INSERT INTO flow_features(organization_id,enabled) VALUES($1,true)
+      ON CONFLICT(organization_id) DO UPDATE SET enabled=true`, [tenant.organizationId]);
+    return tenant;
   }
 
   const context = (tenant: typeof tenantA) => ({ credentialKind: 'JWT' as const, organizationId: tenant.organizationId,
@@ -48,8 +53,6 @@ describe('isolamento PostgreSQL da fachada canônica de canais', () => {
     const adminUrl = requireTestDatabaseAdminUrl();
     database = await createIsolatedPostgresDatabase(adminUrl);
     await withGlobalRoleLock(adminUrl, async () => runMigrations(database.connectionString));
-    tenantA = await seedTenant('channel-facade-a');
-    tenantB = await seedTenant('channel-facade-b');
     appPool = new Pool({ connectionString: connectionStringForRole(database.connectionString, 'jrc_app') });
     const provider = new FakeProviderAdapter({ now: () => NOW, responses: { getStatus: 'CONNECTED' } });
     instances = createInstanceService({ repository: createPostgresInstanceRepository(),
@@ -60,38 +63,69 @@ describe('isolamento PostgreSQL da fachada canônica de canais', () => {
       transact: (org, work) => withOrganizationTransaction(appPool, org, work) });
   }, 60_000);
 
+  beforeEach(async () => {
+    // Each scenario owns its fixtures. A failed/filtered test must not affect another.
+    const suffix = randomUUID();
+    tenantA = await seedTenant(`channel-facade-a-${suffix}`);
+    tenantB = await seedTenant(`channel-facade-b-${suffix}`);
+  });
+
   afterAll(async () => {
     await appPool?.end();
     await database?.dispose();
   });
+
+  async function seedPublishedAutomation(tenant: typeof tenantA, instanceId: string) {
+    const channelId = randomUUID(), automationId = randomUUID();
+    await withOrganizationTransaction(appPool, tenant.organizationId, async tx => {
+      await tx.query(`INSERT INTO messaging_channels(id,organization_id,provider_account_id,provider,instance_id,credential_reference)
+        VALUES($1,$2,$3,'BAILEYS',$4,'qr-engine')`, [channelId, tenant.organizationId, tenant.accountId, instanceId]);
+      await tx.query(`INSERT INTO automation_definitions(organization_id,id,name,draft_graph)
+        VALUES($1,$2,'Triagem','{"nodes":[],"edges":[]}')`, [tenant.organizationId, automationId]);
+      await tx.query(`INSERT INTO automation_versions(organization_id,automation_id,version,graph,checksum)
+        VALUES($1,$2,1,'{"nodes":[],"edges":[]}',$3)`, [tenant.organizationId, automationId, 'a'.repeat(64)]);
+      await tx.query('UPDATE automation_definitions SET active_version=1,lifecycle_status=\'PUBLISHED\' WHERE organization_id=$1 AND id=$2',
+        [tenant.organizationId, automationId]);
+    });
+    return { channelId, automationId };
+  }
 
   it('separa listagem, consulta e vínculo de automação entre duas empresas', async () => {
     const a = await instances.createInstance(context(tenantA), { name: 'Canal A', provider: 'BAILEYS',
       providerAccountId: tenantA.accountId, idempotencyKey: 'channel-a' });
     const b = await instances.createInstance(context(tenantB), { name: 'Canal B', provider: 'BAILEYS',
       providerAccountId: tenantB.accountId, idempotencyKey: 'channel-b' });
-    await expect(facade.getAutomation(tenantA.organizationId,a.instance.id)).resolves.toEqual({binding:null});
+    await expect(facade.getAutomation(tenantA.organizationId,a.instance.id)).resolves.toEqual({binding:null,ownerRevision:0});
     await expect(facade.list(tenantA.organizationId)).resolves.toMatchObject({ data: [{ id: a.instance.id }] });
     await expect(facade.list(tenantB.organizationId)).resolves.toMatchObject({ data: [{ id: b.instance.id }] });
     await expect(facade.get(tenantB.organizationId, a.instance.id)).rejects.toMatchObject({ code: 'CHANNEL_NOT_FOUND' });
 
-    const channelId = randomUUID(), automationId = randomUUID();
-    await withOrganizationTransaction(appPool, tenantA.organizationId, async tx => {
-      await tx.query(`INSERT INTO messaging_channels(id,organization_id,provider_account_id,provider,instance_id,credential_reference)
-        VALUES($1,$2,$3,'BAILEYS',$4,'qr-engine')`, [channelId, tenantA.organizationId, tenantA.accountId, a.instance.id]);
-      await tx.query(`INSERT INTO automation_definitions(organization_id,id,name,draft_graph)
-        VALUES($1,$2,'Triagem','{"nodes":[],"edges":[]}')`, [tenantA.organizationId, automationId]);
-      await tx.query(`INSERT INTO automation_versions(organization_id,automation_id,version,graph,checksum)
-        VALUES($1,$2,1,'{"nodes":[],"edges":[]}',$3)`, [tenantA.organizationId, automationId, 'a'.repeat(64)]);
-      await tx.query('UPDATE automation_definitions SET active_version=1,lifecycle_status=\'PUBLISHED\' WHERE organization_id=$1 AND id=$2',
-        [tenantA.organizationId, automationId]);
-    });
-    await expect(facade.bindAutomation(tenantA.organizationId, a.instance.id, { automationId }))
+    const { channelId, automationId } = await seedPublishedAutomation(tenantA, a.instance.id);
+    await expect(facade.bindAutomation(tenantA.organizationId, a.instance.id, { automationId, expectedOwnerRevision: 0 }))
       .resolves.toMatchObject({ binding: { automationId, channelId, version: 1, status: 'ACTIVE' } });
-    await expect(facade.bindAutomation(tenantB.organizationId, a.instance.id, { automationId }))
+    await expect(facade.bindAutomation(tenantB.organizationId, a.instance.id, { automationId, expectedOwnerRevision: 0 }))
       .rejects.toMatchObject({ code: 'CHANNEL_NOT_FOUND' });
     await expect(facade.getAutomation(tenantA.organizationId, a.instance.id))
       .resolves.toMatchObject({ binding: { automationId, channelId } });
+  });
+
+  it('denies binding when the module is disabled and leaves ownership unchanged', async () => {
+    const created = await instances.createInstance(context(tenantA), {
+      name: 'Disabled module fixture', provider: 'BAILEYS',
+      providerAccountId: tenantA.accountId, idempotencyKey: 'disabled-module-fixture',
+    });
+    const { channelId, automationId } = await seedPublishedAutomation(tenantA, created.instance.id);
+    await database.pool.query('UPDATE flow_features SET enabled=false,revision=revision+1 WHERE organization_id=$1',
+      [tenantA.organizationId]);
+    const previous = await facade.getAutomation(tenantA.organizationId, created.instance.id);
+    await expect(facade.bindAutomation(tenantA.organizationId, created.instance.id,
+      { automationId, expectedOwnerRevision: previous.ownerRevision }))
+      .rejects.toMatchObject({ code: 'AUTOMATION_MODULE_DISABLED', status: 403 });
+    expect(await facade.getAutomation(tenantA.organizationId, created.instance.id)).toEqual(previous);
+    expect((await database.pool.query('SELECT id FROM automation_bindings WHERE organization_id=$1 AND channel_id=$2',
+      [tenantA.organizationId, channelId])).rows).toEqual([]);
+    expect((await database.pool.query('SELECT bot_public_id FROM messaging_channels WHERE organization_id=$1 AND id=$2',
+      [tenantA.organizationId, channelId])).rows[0]).toEqual({ bot_public_id: null });
   });
 
   it('pagina as caixas no PostgreSQL sem repetir registros ou misturar empresas', async () => {
@@ -134,12 +168,18 @@ describe('isolamento PostgreSQL da fachada canônica de canais', () => {
   });
 
   it('removes an unused disabled inbox binding only within its organization, without calling the remote system',async()=>{
-    const channel=(await database.pool.query('select id from messaging_channels where organization_id=$1 limit 1',[tenantA.organizationId])).rows[0].id;
+    const created = await instances.createInstance(context(tenantA), {
+      name: 'Unused inbox fixture', provider: 'BAILEYS',
+      providerAccountId: tenantA.accountId, idempotencyKey: 'unused-inbox-fixture',
+    });
+    const { channelId: channel, automationId } = await seedPublishedAutomation(tenantA, created.instance.id);
+    const { binding } = await facade.bindAutomation(tenantA.organizationId, created.instance.id,
+      { automationId, expectedOwnerRevision: 0 });
+    expect(binding).toMatchObject({ automationId, channelId: channel, status: 'ACTIVE' });
     const connection=randomUUID();await database.pool.query("insert into chatwoot_accounts(organization_id,base_url,status) values($1,'https://qa.example.test','READY')",[tenantA.organizationId]);
     await database.pool.query("insert into chatwoot_connections(id,organization_id,channel_id,name,status) values($1,$2,$3,'Cadastro errado','DISABLED')",[connection,tenantA.organizationId,channel]);
     const service=createChatwootService({publicOrigin:'https://broker.example.test',baseUrl:'https://qa.example.test',encryptionKey:Buffer.alloc(32,1).toString('base64'),transact:(org,work)=>withOrganizationTransaction(appPool,org,work),resolveIntegration:async()=>undefined,fetch:async()=>{throw new Error('Must not call remote');}});
     await expect(service.removeUnusedConnection(tenantB.organizationId,connection,tenantB.ownerId)).rejects.toMatchObject({code:'INTEGRATION_NOT_FOUND'});
-    const binding=(await database.pool.query('select id from automation_bindings where organization_id=$1 and channel_id=$2 limit 1',[tenantA.organizationId,channel])).rows[0];
     await database.pool.query('update automation_bindings set human_destination_id=$3 where organization_id=$1 and id=$2',[tenantA.organizationId,binding.id,connection]);
     await expect(service.removeUnusedConnection(tenantA.organizationId,connection,tenantA.ownerId)).rejects.toMatchObject({code:'INTEGRATION_HAS_HISTORY'});
     await database.pool.query('update automation_bindings set human_destination_id=null where organization_id=$1 and id=$2',[tenantA.organizationId,binding.id]);

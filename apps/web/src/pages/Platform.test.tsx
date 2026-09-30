@@ -341,7 +341,7 @@ it("opens the executive admin shell with real company totals and dedicated navig
   expect(screen.getByRole("button", { name: "Abrir Empresa B" })).toBeVisible();
 });
 
-it("loads company management and saves the existing limits through the admin API", async () => {
+it("saves company status without replacing its commercial assignment", async () => {
   const fetcher = platformFetch();
   vi.stubGlobal("fetch", fetcher);
   render(
@@ -354,13 +354,12 @@ it("loads company management and saves the existing limits through the admin API
   );
   await screen.findByText("owner@example.test");
   fireEvent.click(screen.getByRole("tab", { name: "Plano e limites" }));
-  expect(screen.getByLabelText("Conexões")).toHaveValue(2);
-  fireEvent.change(screen.getByLabelText("Conexões"), {
-    target: { value: "4" },
+  fireEvent.change(screen.getByLabelText("Situação"), {
+    target: { value: "SUSPENDED" },
   });
   fireEvent.submit(
     screen
-      .getByRole("button", { name: "Salvar situação e plano" })
+      .getByRole("button", { name: "Salvar situação" })
       .closest("form")!,
   );
   await waitFor(() =>
@@ -370,10 +369,7 @@ it("loads company management and saves the existing limits through the admin API
         method: "PATCH",
         headers: expect.objectContaining({ "x-csrf-token": "nonce" }),
         body: JSON.stringify({
-          status: "ACTIVE",
-          plan: "Teste",
-          limits: { ...organization.limits, maxInstances: 4 },
-          flowsEnabled: false,
+          status: "SUSPENDED",
         }),
       }),
     ),

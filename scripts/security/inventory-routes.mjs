@@ -4,6 +4,16 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  ...Object.fromEntries(['GET /v1/platform/groups/{id}/company-removals','GET /v1/platform/group-company-removals/{operationId}'].map(route=>[route,policy(
+    'apps/api/src/http/routes/group-removal.ts','PLATFORM_SESSION_COOKIE','SUPER_ADMIN',true,'READ_ONLY','NO_STORE','CURRENT_PLATFORM_ACTOR_PERSISTED_GROUP_OPERATION',
+  )])),
+  ...Object.fromEntries(['POST /v1/platform/groups/{id}/company-removal-preview','POST /v1/platform/groups/{id}/company-removals'].map(route=>[route,policy(
+    'apps/api/src/http/routes/group-removal.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN',true,'PREVIEW_REVISION_AND_REQUEST_HASH','NO_STORE','EXPLICIT_COMPANY_SELECTION_EXACT_NAMES_PERSISTED_CHILD_OPERATIONS',
+  )])),
+  ...Object.fromEntries(['POST /v1/platform/organizations/{id}/deletion/{operationId}/reconcile','POST /v1/platform/organizations/{id}/channels/{channelId}/deletion/{operationId}/reconcile'].map(route=>[route,policy(
+    'apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN',true,'DURABLE_RECONCILIATION_REQUEST','NO_STORE','CURRENT_ACTOR_RESOURCE_OPERATION_EXTERNAL_STATE_RECHECK',
+  )])),
+  'POST /v1/channels/{id}/deletion/{operationId}/reconcile': policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'DURABLE_RECONCILIATION_REQUEST','NO_STORE','CURRENT_ACTOR_ORGANIZATION_RESOURCE_OPERATION_EXTERNAL_STATE_RECHECK'),
   ...Object.fromEntries(['GET /v1/channels/{id}/deletion-preview','GET /v1/channels/{id}/deletion/{operationId}'].map(route=>[route,policy(
     'apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'READ_ONLY','NO_STORE','ORGANIZATION_RESOURCE_OPERATION_SCOPE',
   )])),
@@ -28,6 +38,9 @@ const ROUTE_POLICIES = Object.freeze({
   )])),
   'GET /v1/platform/groups': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_COOKIE','SUPER_ADMIN_OR_SUPPORT',true,'READ_ONLY','NONE','PLATFORM_ONLY_RLS_NO_TENANT_ACCESS_AUDITED'),
   'POST /v1/platform/groups': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN',true,'CREATE_NEW_GROUP','NONE','PLATFORM_ONLY_RLS_NO_MEMBERSHIP_PROPAGATION_AUDITED'),
+  'PATCH /v1/platform/groups/{id}': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN',true,'ROW_LOCK_AND_OPTIMISTIC_REVISION','NO_STORE','CURRENT_PLATFORM_ACTOR_GROUP_REVISION_AND_ATOMIC_AUDIT'),
+  'GET /v1/platform/groups/{id}/removal-preview': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_COOKIE','SUPER_ADMIN',true,'READ_ONLY','NO_STORE','CURRENT_PLATFORM_ACTOR_GROUP_SCOPE_PRESERVED_COMPANIES'),
+  'DELETE /v1/platform/groups/{id}': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN',true,'ROW_LOCK_AND_OPTIMISTIC_REVISION','NO_STORE','CURRENT_PLATFORM_ACTOR_EXPLICIT_DETACH_PRESERVED_COMPANIES_ATOMIC_AUDIT'),
   'PUT /v1/platform/groups/{id}/organizations': policy('apps/api/src/http/routes/platform.ts','PLATFORM_SESSION_CSRF_EXACT_ORIGIN','SUPER_ADMIN',true,'ROW_LOCK_AND_OPTIMISTIC_REVISION','NONE','PLATFORM_ONLY_RLS_UNIQUE_ORGANIZATION_GROUP_NO_MEMBERSHIP_PROPAGATION_AUDITED'),
   'POST /v1/automations/{id}/archive': policy('apps/api/src/http/routes/automations.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'IDEMPOTENT_LIFECYCLE_TRANSITION','NONE','RLS_ORGANIZATION_LOCKED_DEFINITION_BINDINGS_EXECUTIONS_AUDIT'),
   'POST /v1/channels/{id}/archive': policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'IDEMPOTENT_LIFECYCLE_TRANSITION','NONE','RLS_ORGANIZATION_DISCONNECTED_INSTANCE_PENDING_WORK_GUARD_AUDIT'),
@@ -51,6 +64,7 @@ const ROUTE_POLICIES = Object.freeze({
     'NO_EXTERNAL_EFFECT','CREDENTIALS_STRIPPED_NO_PERSISTENCE','CURRENT_ORGANIZATION_IMPORT_PREVIEW_ONLY'),
   'GET /v1/automation-nodes': policy('apps/api/src/http/routes/automations.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_MEMBER',
     true, 'READ_ONLY', 'NONE', 'STATIC_EXECUTABLE_NODE_CATALOG'),
+  'GET /v1/integrations/chatwoot/connections/{id}/attendance-catalog': policy('apps/api/src/http/routes/integrations.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_CHANNEL_ACCOUNT_INBOX_APPROVED_DESTINATION_CREDENTIAL_REVISION_RECHECK'),
   ...Object.fromEntries([
     'GET /v1/automations/status', 'GET /v1/automations', 'GET /v1/automations/{id}',
     'GET /v1/automations/migrations/legacy',
@@ -78,6 +92,7 @@ const ROUTE_POLICIES = Object.freeze({
     'POST /v1/flows', 'PUT /v1/flows/{id}', 'POST /v1/flows/{id}/publish',
     'POST /v1/flows/{id}/bind', 'POST /v1/flows/{id}/unbind', 'POST /v1/flows/import-preview',
     'POST /v1/flows/{id}/simulate', 'POST /v1/flows/{id}/chatwoot/bind', 'POST /v1/flows/chatwoot/{id}/disable',
+    'POST /v1/flows/chatwoot/{id}/reconcile',
   ].map(route => [route, policy('apps/api/src/http/routes/flows.ts', 'JWT_CURRENT_MEMBERSHIP', 'OWNER_ADMIN',
     true, 'NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION', 'NONE', 'RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING')])),
   'POST /v1/flows/chatwoot/{id}/events': policy('apps/api/src/http/routes/flows.ts', 'HMAC_TIMESTAMP_RAW_BODY', 'BOUND_AGENT_BOT',
@@ -360,6 +375,31 @@ const ROUTE_POLICIES = Object.freeze({
         "GET /v1/platform/organizations",
         "PLATFORM_SESSION_COOKIE",
         "SUPER_ADMIN_SUPPORT_AUDITED",
+      ],
+      [
+        "GET /v1/platform/commercial-plans",
+        "PLATFORM_SESSION_COOKIE",
+        "SUPER_ADMIN_SUPPORT_AUDITED",
+      ],
+      [
+        "POST /v1/platform/commercial-plans",
+        "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+        "SUPER_ADMIN_AUDITED",
+      ],
+      [
+        "POST /v1/platform/commercial-plans/{id}/versions",
+        "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+        "SUPER_ADMIN_AUDITED",
+      ],
+      [
+        "GET /v1/platform/organizations/{id}/commercial-plan",
+        "PLATFORM_SESSION_COOKIE",
+        "SUPER_ADMIN_SUPPORT_AUDITED",
+      ],
+      [
+        "PUT /v1/platform/organizations/{id}/commercial-plan",
+        "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+        "SUPER_ADMIN_AUDITED",
       ],
       [
         "POST /v1/platform/organizations",

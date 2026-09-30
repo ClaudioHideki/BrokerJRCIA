@@ -9,7 +9,16 @@ import {
   type BinaryMedia,
 } from "@jrc/providers";
 
-const integer = z.number().int().positive();
+const integer = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+const catalogName=z.string().max(1000);
+const workingHour=z.object({day_of_week:z.number().int().min(0).max(6),closed_all_day:z.boolean(),open_all_day:z.boolean().optional(),
+  open_hour:z.number().int().min(0).max(23).nullable().optional(),open_minutes:z.number().int().min(0).max(59).nullable().optional(),
+  close_hour:z.number().int().min(0).max(23).nullable().optional(),close_minutes:z.number().int().min(0).max(59).nullable().optional()});
+function parseCatalog<T>(schema:z.ZodType<T>,value:unknown):T {
+  const result=schema.safeParse(value);
+  if(!result.success)throw new ChatwootError('CHATWOOT_INVALID_RESPONSE',true);
+  return result.data;
+}
 const dashboardApp = z.object({ id: integer, title: z.string().max(1000),
   content: z.array(z.object({ type: z.string().max(100), url: z.string().max(4096) })).max(100) });
 export type DashboardApp = z.infer<typeof dashboardApp>;
@@ -167,8 +176,9 @@ export class ChatwootClient {
       { name, description: 'Automação JRC Broker', outgoing_url: outgoingUrl, bot_type: 'webhook' }));
   }
   async inboxFlowBot(accountId: number, inboxId: number) {
-    const data = record(await this.request('GET', this.account(accountId) + `/inboxes/${integer.parse(inboxId)}/agent_bot`));
-    return data.agent_bot == null ? null : flowBot.parse(data.agent_bot);
+    const data = parseCatalog(z.object({agent_bot:flowBot.nullable()}),
+      await this.request('GET', this.account(accountId) + `/inboxes/${integer.parse(inboxId)}/agent_bot`));
+    return data.agent_bot;
   }
   async setInboxFlowBot(accountId: number, inboxId: number, botId: number | null) {
     await this.request('POST', this.account(accountId) + `/inboxes/${integer.parse(inboxId)}/set_agent_bot`,
@@ -239,6 +249,31 @@ export class ChatwootClient {
       .array(z.object({ id: integer, name: z.string(), email: z.email() }))
       .max(10000)
       .parse(await this.request("GET", this.account(accountId) + "/agents"));
+  }
+  async teams(accountId:number) {
+    const teams=parseCatalog(z.array(z.object({id:integer,name:catalogName,account_id:integer,allow_auto_assign:z.boolean().optional()})).max(10000),
+      await this.request('GET',this.account(accountId)+'/teams'));
+    if(teams.some(team=>team.account_id!==accountId))throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
+    return teams;
+  }
+  async teamAgents(accountId:number,teamId:number) {
+    return parseCatalog(z.array(z.object({id:integer,name:catalogName})).max(10000),
+      await this.request('GET',this.account(accountId)+`/teams/${integer.parse(teamId)}/team_members`));
+  }
+  async labels(accountId:number) {
+    return parseCatalog(z.array(z.object({id:integer,title:catalogName})).max(10000),
+      record(await this.request('GET',this.account(accountId)+'/labels')).payload);
+  }
+  async attributeDefinitions(accountId:number) {
+    return parseCatalog(z.array(z.object({id:integer,attribute_key:catalogName,attribute_display_name:catalogName,
+      attribute_display_type:z.string().max(100),attribute_model:z.string().max(100),attribute_values:z.array(catalogName).max(1000).nullable().optional()})).max(10000),
+      await this.request('GET',this.account(accountId)+'/custom_attribute_definitions'));
+  }
+  async attendanceInbox(accountId:number,inboxId:number) {
+    return parseCatalog(z.object({id:integer,name:catalogName,channel_type:z.string().max(100),
+      greeting_enabled:z.boolean().optional(),enable_auto_assignment:z.boolean().optional(),working_hours_enabled:z.boolean().optional(),
+      timezone:z.string().max(200).nullable().optional(),working_hours:z.array(workingHour).max(7).optional()}),
+      await this.request('GET',this.account(accountId)+`/inboxes/${integer.parse(inboxId)}`));
   }
   async inboxAgents(accountId: number, inboxId: number) {
     const result = record(
@@ -422,6 +457,15 @@ export class ChatwootClient {
           .default([]),
       })
       .parse(result.payload);
+  }
+  async attendanceConversation(accountId:number,conversationId:number) {
+    const result=parseCatalog(z.object({id:integer,account_id:integer,inbox_id:integer,status:z.enum(['pending','open','resolved','snoozed']),
+      updated_at:z.number().finite().nonnegative().optional(),
+      meta:z.object({sender:z.object({id:integer}),assignee:z.object({id:integer,type:z.string().optional()}).nullable(),
+        assignee_type:z.enum(['User','AgentBot']).nullable().optional(),team:z.object({id:integer}).nullable()})}),
+    await this.request('GET',this.account(accountId)+`/conversations/${integer.parse(conversationId)}`));
+    if(result.id!==conversationId||result.account_id!==accountId)throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
+    return result;
   }
   async conversation(accountId: number, conversationId: number) {
     return z

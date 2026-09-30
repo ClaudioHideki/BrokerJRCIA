@@ -45,7 +45,7 @@ describe('lifecycle deletion orchestration', () => {
     let checks=0;
     const query=vi.fn().mockImplementation(async(sql:string)=>{
       if(sql.includes("status='CLEANING_EXTERNAL'"))return {rows:[{id:'operation-1',organization_id:'org-1',kind:'ORGANIZATION',resource_id:'org-1',lease_token:'lease-1'}]};
-      if(sql.includes('AS authorized'))return {rows:[{authorized:++checks<3}]};
+      if(sql.includes('AS authorized'))return {rows:[{authorized:++checks<4}]};
       if(sql.includes('FROM lifecycle_cleanup_items WHERE deletion_id='))return {rows:[
         {instance_id:'instance-1',upstream_key:'qr-1',status:'PENDING'},
         {instance_id:'instance-2',upstream_key:'qr-2',status:'PENDING'},

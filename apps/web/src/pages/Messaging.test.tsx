@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { MessagingChannelsResponseSchema } from '@jrc/contracts';
 
 import { ApiClientError, type ApiClient } from '../api/client.js';
 import { SessionProvider } from '../auth/SessionProvider.js';
@@ -64,7 +65,9 @@ function loadedRequest(overrides: {
   return vi.fn(async (path: string, init?: RequestInit) => {
     if (init?.method && init.method !== 'GET') return overrides.onMutation?.(path, init);
     if (path === '/v1/messaging/channels') {
-      return { data: [{ id: CHANNEL_ID, provider: overrides.provider ?? 'META', botPublicId: 'jrc-welcome' }] };
+      return MessagingChannelsResponseSchema.parse({ data: [{
+        id: CHANNEL_ID, provider: overrides.provider ?? 'META', botPublicId: 'jrc-welcome', ownerRevision: 3,
+      }] });
     }
     if (path === `/v1/messaging/channels/${CHANNEL_ID}/templates`) {
       return { data: [
@@ -115,6 +118,20 @@ function loadedRequest(overrides: {
 }
 
 describe('MessagingPage', () => {
+  it('rejects a channel response without ownerRevision before loading history or enabling mutations', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path === '/v1/messaging/channels') return { data: [{
+        id: CHANNEL_ID, provider: 'META', botPublicId: 'jrc-welcome',
+      }] };
+      throw new Error(`Unexpected request after invalid channel response: ${path}`);
+    }) as ApiClient['request'];
+    renderPage(clientFor(request, 'ADMIN'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/resposta inv\u00e1lida/);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Enviar mensagem' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Assumir atendimento' })).not.toBeInTheDocument();
+  });
+
   it('submete modelo de texto para revisão Meta e apresenta estado pendente', async () => {
     const mutations: Array<{ path: string; init?: RequestInit }> = [];
     const request = loadedRequest({ onMutation(path, init) {

@@ -6,6 +6,10 @@ export interface AutomationAccess {status:string;moduleEnabled:boolean}
 
 /** Read at each write boundary: changing the plan or disabling a company must take effect immediately. */
 export async function readAutomationAccess(tx:TenantTransaction,org:string):Promise<AutomationAccess|null>{
+ // The context-bound function holds the existing organization SHARE lock through
+ // commit. A commercial downgrade must wait for an already admitted draft/import.
+ // Read the module in a subsequent statement so a preceding downgrade is visible.
+ await tx.query('SELECT tenant_is_active($1::uuid) AS active',[org]);
  const result=await tx.query<AutomationAccess>(`select o.status,coalesce(f.enabled,false) as "moduleEnabled"
   from organizations o left join flow_features f on f.organization_id=o.id where o.id=$1`,[org]);
  return result.rows[0]??null;

@@ -1,40 +1,14 @@
 import { z } from 'zod';
 
 import { FlowGraphSchema, type FlowGraph } from './flows.js';
-import { flowPorts, type FlowNode } from './flows.js';
+import { type FlowNode } from './flows.js';
+import { AUTOMATION_NODE_DEFINITIONS, getNodeDefinition, type NodeDiagnostic } from './automation-node-definitions.js';
+export { nodeDiagnosticsToStrings } from './automation-node-definitions.js';
 
 export const AUTOMATION_CONTRACT_VERSION = 1 as const;
 export const AUTOMATION_ORIGIN = 'jrc-automation-v2' as const;
-export const AUTOMATION_NODE_CATALOG_V1 = [
-  { type:'start', category:'TRIGGERS', label:'Mensagem recebida', description:'Inicia quando o canal recebe uma mensagem.' },
-  { type:'message', category:'CONVERSATION', label:'Enviar texto', description:'Envia texto com variáveis da conversa.' },
-  { type:'input', category:'INPUTS', label:'Capturar resposta', description:'Faz uma pergunta e espera a próxima mensagem.' },
-  { type:'menu', category:'INPUTS', label:'Menu textual', description:'Exibe opções numeradas compatíveis com todos os canais.' },
-  { type:'condition', category:'LOGIC', label:'Condição', description:'Escolhe o caminho Sim ou Não.' },
-  { type:'variable', category:'DATA', label:'Definir variável', description:'Guarda um valor no estado da execução.' },
-  { type:'data-set', category:'DATA', label:'Definir dado', description:'Define um valor JSON sem executar código.' },
-  { type:'data-rename', category:'DATA', label:'Renomear dado', description:'Move um valor entre variáveis.' },
-  { type:'data-pick', category:'DATA', label:'Selecionar campos', description:'Seleciona campos permitidos de um objeto.' },
-  { type:'data-merge', category:'DATA', label:'Mesclar objetos', description:'Mescla objetos JSON em ordem declarada.' },
-  { type:'data-map', category:'DATA', label:'Mapear lista', description:'Projeta um campo seguro de cada item.' },
-  { type:'data-filter', category:'DATA', label:'Filtrar lista', description:'Filtra itens por comparação declarativa.' },
-  { type:'json-parse', category:'DATA', label:'Ler JSON', description:'Converte texto JSON em dado estruturado.' },
-  { type:'json-stringify', category:'DATA', label:'Gerar JSON', description:'Converte dado estruturado em texto JSON.' },
-  { type:'expression', category:'LOGIC', label:'Expressão segura', description:'Avalia literais, referências e funções permitidas.' },
-  { type:'http', category:'INTEGRATIONS', label:'HTTP seguro', description:'Chama uma API HTTPS com credencial do cofre.' },
-  { type:'sql', category:'INTEGRATIONS', label:'Consulta SQL', description:'Executa consulta parametrizada e somente leitura.' },
-  { type:'code', category:'LOGIC', label:'JavaScript isolado', description:'Executa transformação JavaScript sem rede, arquivos ou ambiente.' },
-  { type:'ai-generate', category:'AI', label:'IA: gerar', description:'Gera conteúdo com provedor configurado no cofre.' },
-  { type:'ai-classify', category:'AI', label:'IA: classificar', description:'Classifica conteúdo com saída controlada.' },
-  { type:'ai-extract', category:'AI', label:'IA: extrair', description:'Extrai JSON conforme o schema informado.' },
-  { type:'ai-summarize', category:'AI', label:'IA: resumir', description:'Resume conteúdo sem persistir o texto no log.' },
-  { type:'ai-agent', category:'AI', label:'Agente de IA', description:'Executa apenas ferramentas explicitamente autorizadas.' },
-  { type:'delay', category:'LOGIC', label:'Aguardar', description:'Persiste um atraso de 1 segundo a 7 dias.' },
-  { type:'subflow', category:'LOGIC', label:'Subflow versionado', description:'Executa uma versão imutável de outra automação.' },
-  { type:'handoff', category:'HUMAN', label:'Atendimento humano', description:'Pausa o bot e entrega a conversa ao atendimento.' },
-  { type:'end', category:'LOGIC', label:'Encerrar', description:'Conclui a execução.' },
-] as const;
-export function automationNodePorts(node:FlowNode):string[]{if(node.type==='http')return ['success','client_error','server_error','timeout','unknown'];if(['sql','code','ai-generate','ai-classify','ai-extract','ai-summarize','ai-agent'].includes(node.type))return ['success','error'];return ['delay','subflow','data-set','data-rename','data-pick','data-merge','data-map','data-filter','json-parse','json-stringify','expression'].includes(node.type)?['next']:flowPorts(node);}
+export const AUTOMATION_NODE_CATALOG_V1 = AUTOMATION_NODE_DEFINITIONS.map(({ type, version, label, category, description, availability, unavailableReason, capabilitiesRequired, runtimeSupported }) => ({ type, version, label, category, description, availability, unavailableReason, capabilitiesRequired, runtimeSupported }));
+export function automationNodePorts(node: FlowNode): string[] { return getNodeDefinition(node.type, 1)?.ports(node) ?? ['next']; }
 
 const forbiddenSecretKey = /(?:access.?token|token|api.?key|secret|password|authorization|private.?key|connection.?string|credential)$/iu;
 
@@ -59,6 +33,55 @@ export const AutomationGraphV1Schema = FlowGraphSchema.superRefine((graph, conte
   const key = findSecretKey(graph);
   if (key) context.addIssue({ code: 'custom', message: `Secret field is not allowed in automation DTO: ${key}` });
 });
+
+/** Version-1 graph semantics. Creation availability never rejects existing nodes. */
+export function validateAutomationGraph(input: unknown): NodeDiagnostic[] {
+  const parsed = AutomationGraphV1Schema.safeParse(input);
+  if (!parsed.success) return parsed.error.issues.map(issue => ({ nodeId: null, field: issue.path.join('.'), code: 'INVALID_GRAPH', message: issue.message }));
+  const graph = parsed.data, diagnostics: NodeDiagnostic[] = [];
+  const add = (nodeId: string | null, field: string, code: string, message: string) => {
+    const node = graph.nodes.find(item => item.id === nodeId);
+    diagnostics.push({ nodeId, field, code, message: node ? `${node.label}: ${message}` : message });
+  };
+  const ids = new Set<string>(), edgeIds = new Set<string>(), connected = new Set<string>();
+  for (const node of graph.nodes) {
+    if (ids.has(node.id)) add(node.id, 'id', 'DUPLICATE_NODE_ID', 'Os identificadores dos blocos devem ser únicos.');
+    ids.add(node.id);
+  }
+  if (graph.nodes.filter(node => node.type === 'start').length !== 1) add(null, 'nodes', 'START_COUNT', 'O fluxo precisa de exatamente um início.');
+  for (const edge of graph.edges) {
+    if (edgeIds.has(edge.id)) add(edge.source, `edges.${edge.id}.id`, 'DUPLICATE_EDGE_ID', 'Os identificadores das conexões devem ser únicos.');
+    edgeIds.add(edge.id);
+    if (!ids.has(edge.source) || !ids.has(edge.target)) add(ids.has(edge.source) ? edge.source : null, `edges.${edge.id}`, 'MISSING_NODE', 'Conexão aponta para um bloco inexistente.');
+    const key = JSON.stringify([edge.source, edge.port]);
+    if (connected.has(key)) add(edge.source, `edges.${edge.id}.port`, 'DUPLICATE_PORT', 'Cada saída permite uma única conexão.');
+    connected.add(key);
+    const source = graph.nodes.find(node => node.id === edge.source), target = graph.nodes.find(node => node.id === edge.target);
+    if (source && !automationNodePorts(source).includes(edge.port)) add(source.id, `edges.${edge.id}.port`, 'INVALID_PORT', 'saída inválida.');
+    if (target?.type === 'start') add(edge.source, `edges.${edge.id}.target`, 'START_REENTRY', 'Uma conexão não pode retornar ao início.');
+  }
+  for (const node of graph.nodes) {
+    const definition = getNodeDefinition(node.type, 1);
+    if (!definition) { add(node.id, 'type', 'UNKNOWN_NODE_TYPE', `tipo ${node.type} ainda não suportado.`); continue; }
+    if (!definition.runtimeSupported) add(node.id, 'type', 'RUNTIME_UNAVAILABLE', definition.unavailableReason!);
+    for (const port of definition.ports(node)) if (!connected.has(JSON.stringify([node.id, port]))) add(node.id, `ports.${port}`, 'MISSING_CONNECTION', `conecte a saída ${port}.`);
+    const configured = definition.schema.safeParse(node.data);
+    if (!configured.success) for (const issue of configured.error.issues) add(node.id, ['data', ...issue.path].join('.'), 'INVALID_CONFIG', issue.message);
+  }
+  const reachable = new Set<string>(), active = new Set<string>(), visited = new Set<string>();
+  const walk = (id: string) => { if (reachable.has(id)) return; reachable.add(id); for (const edge of graph.edges.filter(item => item.source === id)) walk(edge.target); };
+  const start = graph.nodes.find(node => node.type === 'start'); if (start) walk(start.id);
+  for (const node of graph.nodes) if (!reachable.has(node.id)) add(node.id, 'id', 'UNREACHABLE_NODE', 'Há blocos sem caminho a partir do início.');
+  const cycles = (id: string): boolean => {
+    if (active.has(id)) return true; if (visited.has(id)) return false;
+    visited.add(id); active.add(id);
+    // Keep the historical version-1 rule; changing menu/delay cycle semantics requires an explicit migration.
+    if (graph.nodes.find(node => node.id === id)?.type !== 'input') for (const edge of graph.edges.filter(item => item.source === id)) if (cycles(edge.target)) return true;
+    active.delete(id); return false;
+  };
+  if (graph.nodes.some(node => cycles(node.id))) add(null, 'edges', 'CYCLE_WITHOUT_INPUT', 'Há um ciclo sem captura de resposta. Inclua uma espera por nova mensagem.');
+  return diagnostics;
+}
 
 export const AutomationLifecycleStatusV1Schema = z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']);
 

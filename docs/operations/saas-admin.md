@@ -20,7 +20,7 @@ Não existe reset MFA por email nem senha de recuperação. Operador autorizado 
 
 - `POST /v1/platform/auth/login`: `{email,password,totp}`. Retorna `{user:{id,email,role},csrfToken,expiresAt}`; cookie `platform_session` HttpOnly, SameSite=Strict, Path `/v1/platform`, duração 15 minutos. Token aleatório de 256 bits; somente SHA-256 armazenado no banco.
 - `GET /auth/session`: mesmo DTO de sessão; `POST /auth/logout`: revoga o token no banco.
-- `GET /organizations`: `{organizations:[{id,name,slug,status,plan,limits}]}` (até 200 organizações mais recentes).
+- `GET /organizations`: `{organizations:[{id,name,slug,status,plan,limits}],nextCursor?}`; páginas de até 200 organizações. Continuar com `?cursor=...` enquanto houver `nextCursor`.
 - `POST /organizations`: `{name,slug,ownerEmail,ownerPassword,plan?,limits?}` cria empresa, novo usuário responsável OWNER e conta lógica Baileys. Email existente causa conflito sem alterar senha de outro usuário.
 - `PATCH /organizations/:id`: `{status?,plan?,limits?}`; status ACTIVE/SUSPENDED/DISABLED, `limits={maxInstances,maxUsers,messagesPerDay,maxPendingMessages}` positivos. As regras de enforcement estão na migration 0011.
 - `GET /organizations/:id/memberships`: `{memberships:[{userId,email,role,status}]}`.
@@ -38,4 +38,16 @@ TDD observado para ausência inicial de módulos, acknowledgment SUPPORT negado 
 
 `npx tsc -b apps/api --pretty false`: passou. `npx vitest run apps/api/src/modules/platform/crypto.test.ts apps/api/src/http/routes/platform.test.ts`: 3 testes passaram. `npx vitest run --config vitest.integration.config.ts apps/api/tests/integration/platform.test.ts` com PostgreSQL isolado: 5 testes passaram. Nenhum comando de matrícula real, envio, commit, push ou deploy executado.
 
-Limitações explícitas: listagem limitada a 200 (sem paginação), suporte não altera tenant, configuração de limites por empresa (sem catálogo comercial de planos), sem UI de recuperação MFA, dados de monitor agregados cumulativos. A administração depende de provisionamento de credencial PostgreSQL dedicada e HTTPS operacional antes de publicação.
+Limitações explícitas: suporte não altera plano nem exclui tenant, configuração de limites por empresa (sem catálogo comercial de planos), sem UI de recuperação MFA, dados de monitor agregados cumulativos. Listagens de empresas e grupos têm paginação por cursor; o console carrega as páginas necessárias. A administração depende de provisionamento de credencial PostgreSQL dedicada e HTTPS operacional antes de publicação.
+
+## Organização por grupos econômicos
+
+Grupo econômico é um agrupamento administrativo. Uma empresa mantém seus usuários, caixas, credenciais e limites próprios. Pertencer ao mesmo grupo não compartilha dados nem concede acesso.
+
+Em **Grupos econômicos**, crie o grupo, selecione as empresas e salve. Para mover uma empresa, desmarque-a no grupo atual, salve, abra o destino e associe-a. **Renomear grupo** preserva os identificadores de grupo e empresas. Todas as alterações verificam a revisão atual no servidor; uma alteração concorrente exige atualizar a tela.
+
+**Remover grupo** abre uma prévia com as empresas vinculadas. Com empresas presentes, é obrigatório confirmar que elas serão preservadas e ficarão sem grupo. Essa ação remove somente o agrupamento e os vínculos administrativos; a exclusão de uma empresa segue a operação de lifecycle e sua própria prévia. Remover o grupo não apaga Account, Inbox ou histórico no JRC Conversas/Chatwoot.
+
+Somente SUPER_ADMIN altera ou remove grupos. As rotas `PATCH /groups/:id`, `GET /groups/:id/removal-preview` e `DELETE /groups/:id` exigem sessão de plataforma; mutações também exigem Origin, CSRF e motivo. Remoção recebe `{expectedRevision,detachCompanies}`; nome/revisão vêm da prévia e a confirmação vem do operador. A migration `0035_economic_group_removal` concede DELETE da tabela de grupos ao papel dedicado, sem ampliar os papéis tenant.
+
+Evidência de desenvolvimento em 30/09/2026: testes locais de grupos verificam preservação das empresas/memberships/provedores, revisão concorrente, revogação de papel, CSRF/origem e rollback quando a auditoria falha. Não representam homologação em produção.

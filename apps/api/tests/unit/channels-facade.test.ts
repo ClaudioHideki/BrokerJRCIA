@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as ownership from '../../src/modules/attendance/transition.js';
+import type { TenantTransaction } from '../../src/db/tenant-transaction.js';
 import { AUTOMATION_ORIGIN } from '@jrc/contracts';
 import type { InstanceService } from '../../src/modules/instances/service.js';
 import { ChannelFacadeError, channelView, createChannelFacade } from '../../src/modules/channels/facade.js';
@@ -7,6 +9,8 @@ const org = '4f2491a2-6853-4ac2-a7ef-c997813a9182';
 const account = '81555d45-b1a2-4a3f-ab95-c1459b0df0d0';
 const id = '519b77a6-a4e5-409a-85c8-d78fc155c525';
 const now = '2030-01-01T12:00:00.000Z';
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('channel facade', () => {
   it.each(['AUTOMATION_RUNTIME_DISABLED','AUTOMATION_MODULE_DISABLED','AUTOMATION_DEPENDENCY_UNAVAILABLE'])('does not bypass %s when binding from a channel',async code=>{
@@ -145,34 +149,79 @@ describe('channel facade', () => {
     expect(query.mock.calls.some(([sql]) => String(sql).includes('UPDATE instances SET name'))).toBe(true);
   });
 
-  it('binds the published automation to the organization channel and replaces the prior binding', async () => {
+  function bindingFixture(access: { status: string; moduleEnabled: boolean } | null = { status: 'ACTIVE', moduleEnabled: true }) {
+    const channelId = '3b5f2c8b-0b7b-47e0-bdc1-972f28ad16b3';
     const bindingId = 'b756303c-0f2d-4898-9a75-8a56ef66d120';
-    const sql: string[] = [];
-    const query = vi.fn(async (statement: string) => {
-      sql.push(statement);
-      if (statement.includes('UNION ALL')) return { rows: [{
-        id, organization_id: org, provider: 'BAILEYS', provider_account_id: account, instance_id: id, connection_id: null,
-        messaging_channel_id:id, name: 'Atendimento', instance_status: 'CONNECTED', meta_status: null, bot_public_id: null, bot_origin_reference: null,
-        flow_published_version: null, flow_enabled: null, human_status: null, created_at: now, updated_at: now,
+    const binding = { id: bindingId, organizationId: org, automationId: account, version: 2,
+      channelId, humanDestinationId: null, status: 'ACTIVE' as const, revision: 1,
+      createdAt: new Date(now), updatedAt: new Date(now) };
+    const query = vi.fn(async (statement: string, params: readonly unknown[] = []) => {
+      const sql = statement.replace(/\s+/g, ' ').trim();
+      expect(params[0]).toBe(org);
+      if (sql.includes('UNION ALL')) return { rows: [{
+        id, organization_id: org, provider: 'BAILEYS', provider_account_id: account, instance_id: id,
+        connection_id: null, messaging_channel_id: channelId, name: 'Atendimento', instance_status: 'CONNECTED',
+        meta_status: null, bot_public_id: null, bot_origin_reference: null, flow_published_version: null,
+        flow_enabled: true, human_status: null, created_at: now, updated_at: now,
       }] };
-      if (statement.includes('SELECT id FROM messaging_channels')) return { rows: [{ id }] };
-      if (statement.includes('FROM automation_definitions')) return { rows: [{ activeVersion: 2 }] };
-      if (statement.includes('FROM automation_versions')) return { rows: [{ version: 2 }] };
-      if (statement.includes('INSERT INTO automation_bindings')) return { rows: [{ id: bindingId, organizationId: org,
-        automationId: account, version: 2, channelId: id, humanDestinationId: null, status: 'ACTIVE', revision: 1,
-        createdAt: now, updatedAt: now }] };
-      if (statement.includes('FROM automation_bindings')) return { rows: [{ id: bindingId, organizationId: org,
-        automationId: account, version: 2, channelId: id, humanDestinationId: null, status: 'ACTIVE', revision: 1,
-        createdAt: now, updatedAt: now }] };
-      return { rows: [] };
+      if (/^SELECT id FROM messaging_channels WHERE organization_id=\$1 AND instance_id=\$2$/i.test(sql)) {
+        expect(params).toEqual([org, id]); return { rows: [{ id: channelId }] };
+      }
+      if (/^select pg_advisory_xact_lock/i.test(sql)) return { rows: [] };
+      if (/^select tenant_is_active\(/i.test(sql)) return { rows: [{ active: access?.status === 'ACTIVE' }] };
+      if (/^select o.status,coalesce\(f.enabled,false\)/i.test(sql)) return { rows: access ? [access] : [] };
+      if (/^SELECT id FROM messaging_channels WHERE organization_id=\$1 AND id=\$2 FOR SHARE$/i.test(sql)) {
+        expect(params).toEqual([org, channelId]); return { rows: [{ id: channelId }] };
+      }
+      if (/^select /i.test(sql) && /FROM automation_bindings/i.test(sql)) {
+        expect(params).toEqual([org, channelId]); return { rows: [binding] };
+      }
+      if (/^select revision from attendance_owners/i.test(sql)) {
+        expect(params).toEqual([org, channelId]); return { rows: [{ revision: 8 }] };
+      }
+      throw new Error(`Unexpected facade query: ${sql}`);
     });
+    const transaction = { query } as unknown as TenantTransaction;
     const service = createChannelFacade({ instances: {} as InstanceService, meta: { start: vi.fn() },
-      transact: async (_org, work) => work({ query } as never) });
-    await expect(service.bindAutomation(org, id, { automationId: account })).resolves.toMatchObject({
-      binding: { id: bindingId, automationId: account, version: 2, channelId: id },
+      transact: async (_org, work) => { expect(_org).toBe(org); return work(transaction); } });
+    return { service, query, transaction, binding, channelId };
+  }
+
+  it('delegates binding to the canonical owner authority with the exact channel and revision', async () => {
+    const f = bindingFixture();
+    const transition = vi.spyOn(ownership, 'transitionChannelOwner')
+      .mockResolvedValue({ binding: f.binding, ownerRevision: 8, changed: true });
+    await expect(f.service.bindAutomation(org, id, { automationId: account, version: 2, expectedOwnerRevision: 7 }))
+      .resolves.toMatchObject({ binding: { id: f.binding.id, automationId: account, version: 2, channelId: f.channelId }, ownerRevision: 8 });
+    expect(transition).toHaveBeenCalledTimes(1);
+    expect(transition).toHaveBeenCalledWith(f.transaction, org, {
+      automationId: account, version: 2, expectedOwnerRevision: 7, channelId: f.channelId,
+      botPublicId: account, botOriginReference: AUTOMATION_ORIGIN,
     });
-    await expect(service.getAutomation(org, id)).resolves.toMatchObject({ binding: { id: bindingId } });
-    expect(sql.some(statement => statement.includes("status='DISABLED'"))).toBe(true);
-    expect(sql.some(statement => statement.includes('bot_origin_reference'))).toBe(true);
+    await expect(f.service.getAutomation(org, id)).resolves.toMatchObject({ binding: { id: f.binding.id }, ownerRevision: 8 });
+    // The facade must not implement a competing binding writer itself.
+    expect(f.query.mock.calls.some(([sql]) => /^\s*(insert|update|delete)\b/i.test(sql))).toBe(false);
+  });
+
+  it.each([
+    { access: null, code: 'ORGANIZATION_NOT_ACTIVE' },
+    { access: { status: 'DISABLED', moduleEnabled: true }, code: 'ORGANIZATION_NOT_ACTIVE' },
+    { access: { status: 'ACTIVE', moduleEnabled: false }, code: 'AUTOMATION_MODULE_DISABLED' },
+  ])('denies $code inside the transaction before ownership mutation', async ({ access, code }) => {
+    const f = bindingFixture(access);
+    const transition = vi.spyOn(ownership, 'transitionChannelOwner');
+    await expect(f.service.bindAutomation(org, id, { automationId: account, expectedOwnerRevision: 7 }))
+      .rejects.toMatchObject({ code, status: 403 });
+    expect(transition).not.toHaveBeenCalled();
+    expect(f.query.mock.calls.some(([sql]) => /^\s*(insert|update|delete)\b/i.test(sql))).toBe(false);
+  });
+
+  it('propagates an owner revision conflict instead of replacing a competing binding', async () => {
+    const f = bindingFixture();
+    const conflict = new ChannelFacadeError('ATTENDANCE_OWNER_CHANGED', 409);
+    const transition = vi.spyOn(ownership, 'transitionChannelOwner').mockRejectedValue(conflict);
+    await expect(f.service.bindAutomation(org, id, { automationId: account, expectedOwnerRevision: 7 })).rejects.toBe(conflict);
+    expect(transition).toHaveBeenCalledTimes(1);
+    expect(f.query.mock.calls.some(([sql]) => /^\s*(insert|update|delete)\b/i.test(sql))).toBe(false);
   });
 });

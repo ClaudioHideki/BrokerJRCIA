@@ -11,6 +11,7 @@ import {
   PROBLEM_CONTENT_TYPE,
   DestinationRequestSchema,
   ChatwootDestinationSchema,
+  attendanceCatalogSchema,
 } from "@jrc/contracts";
 import { ChatwootDestinationError } from '../../modules/integrations/chatwoot-destination.js';
 import {
@@ -111,6 +112,12 @@ export async function registerIntegrationRoutes(
   const read = [authenticateRequest(options), guard(false)],
     write = [authenticateRequest(options), guard(true)];
   const api = app.withTypeProvider<ZodTypeProvider>();
+  api.get('/v1/integrations/chatwoot/connections/:id/attendance-catalog',{
+    preHandler:write,schema:{params,querystring:empty,response:{200:attendanceCatalogSchema}},
+  },async(request,reply)=>{
+    reply.header('Cache-Control','no-store');
+    return service().attendanceCatalog(org(request),request.params.id);
+  });
   api.get('/v1/integrations/chatwoot/destination', {
     preHandler: read, schema: { querystring: empty, response: { 200: ChatwootDestinationSchema.nullable() } },
   }, async request => (await service().destinations.get(org(request))) ?? null);

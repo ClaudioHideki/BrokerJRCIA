@@ -19,11 +19,11 @@ describe('repository baseline', () => {
 
     expect(migrations.slice(-5)).toEqual([
 
-      '0029_legacy_flow_migration.sql',
-      '0030_instance_archive.sql',
-      '0031_economic_groups.sql',
-      '0032_lifecycle_deletion.sql',
-      '0033_support_tickets.sql',
+      '0037_flow_ownership_reservations.sql',
+      '0038_group_company_removal.sql',
+      '0039_chatwoot_attendance_observations.sql',
+      '0040_automation_input_queue.sql',
+      '0041_automation_runtime_versions.sql',
     ]);
     expect(rootManifests).toEqual(['MANIFESTO_ARQUIVOS_SHA256.txt']);
   });

@@ -25,7 +25,7 @@ describe('canonical channel routes', () => {
       create: vi.fn().mockResolvedValue({ provider: 'QR', channel, operationId: null, replayed: false, pending: false, reconciliationRequired: false }),
       pair: vi.fn(), patch: vi.fn().mockResolvedValue({ ...channel, identity: { displayName: 'Comercial', maskedAddress: null } }),
       status: vi.fn().mockResolvedValue(channel), reconnect: vi.fn(), disconnect: vi.fn(),
-      getAutomation: vi.fn().mockResolvedValue({ binding: null }), bindAutomation: vi.fn(),
+      getAutomation: vi.fn().mockResolvedValue({ binding: null, ownerRevision: 0 }), bindAutomation: vi.fn(),
       bindDestination: vi.fn().mockResolvedValue({ ...channel, humanStatus: 'READY' }) } as unknown as ChannelFacade;
     const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ verifyPasswordOrDummy: async () => false }),
       channels: { jwtSecret: secret, authenticateApiKey: async () => null, resolveCurrentRole: async () => role, service } });
@@ -84,8 +84,8 @@ describe('canonical channel routes', () => {
       channelId: id, humanDestinationId: null, status: 'ACTIVE' as const, revision: 1,
       createdAt: timestamp, updatedAt: timestamp };
     const service = { reconnect: vi.fn().mockResolvedValue({ ...mutation, action: { type: 'NONE', reason: 'ALREADY_CONNECTED' } }),
-      disconnect: vi.fn().mockResolvedValue(mutation), bindAutomation: vi.fn().mockResolvedValue({ binding }),
-      getAutomation: vi.fn().mockResolvedValue({ binding }) } as unknown as ChannelFacade;
+      disconnect: vi.fn().mockResolvedValue(mutation), bindAutomation: vi.fn().mockResolvedValue({ binding, ownerRevision: 1 }),
+      getAutomation: vi.fn().mockResolvedValue({ binding, ownerRevision: 1 }) } as unknown as ChannelFacade;
     const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ verifyPasswordOrDummy: async () => false }),
       channels: { jwtSecret: secret, authenticateApiKey: async () => null, resolveCurrentRole: async () => 'OWNER', service } });
     apps.push(app);
@@ -96,7 +96,7 @@ describe('canonical channel routes', () => {
     expect((await app.inject({ method: 'POST', url: `/v1/channels/${id}/disconnect`,
       headers: { authorization, 'idempotency-key': 'disconnect-channel' }, payload: {} })).statusCode).toBe(200);
     const response = await app.inject({ method: 'PUT', url: `/v1/channels/${id}/automation`, headers: { authorization },
-      payload: { automationId: account, version: 2 } });
+      payload: { automationId: account, version: 2, expectedOwnerRevision: 0 } });
     expect(response.statusCode).toBe(200);
     expect(response.json().binding).toMatchObject({ automationId: account, version: 2 });
   });

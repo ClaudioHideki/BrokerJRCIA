@@ -19,8 +19,23 @@ describe('contratos públicos de mensageria', () => {
     expect(SendTemplateRequestSchema.safeParse({ ...request, variables: Array(101).fill('x') }).success).toBe(false);
   });
   it('configura bot por referência aprovada no servidor sem aceitar URL ou segredo', () => {
-    expect(ConfigureBotRequestSchema.parse({ publicId: 'meu-bot', originReference: 'typebot-cloud' })).toEqual({ publicId: 'meu-bot', originReference: 'typebot-cloud' });
-    expect(ConfigureBotRequestSchema.safeParse({ publicId: 'meu-bot', originReference: 'cloud', url: 'http://127.0.0.1' }).success).toBe(false);
+    const input = { expectedOwnerRevision: 3, publicId: 'meu-bot', originReference: 'typebot-cloud' };
+    expect(ConfigureBotRequestSchema.parse(input)).toEqual(input);
+    expect(ConfigureBotRequestSchema.safeParse({ expectedOwnerRevision: 3, publicId: 'meu-bot', originReference: 'cloud', url: 'http://127.0.0.1' }).success).toBe(false);
+  });
+  it.each([undefined, null, -1, 1.5, '1'])('rejects an absent or invalid owner revision: %s', (expectedOwnerRevision) => {
+    expect(ConfigureBotRequestSchema.safeParse({
+      expectedOwnerRevision, publicId: 'meu-bot', originReference: 'typebot-cloud',
+    }).success).toBe(false);
+  });
+  it('accepts the initial owner revision without guessing a later one', () => {
+    const input = { expectedOwnerRevision: 0, publicId: 'meu-bot', originReference: 'typebot-cloud' };
+    expect(ConfigureBotRequestSchema.parse(input)).toEqual(input);
+  });
+  it.each(['accessToken', 'credentialReference', 'organizationId'])('rejects privileged bot configuration field %s with a valid revision', (key) => {
+    expect(ConfigureBotRequestSchema.safeParse({
+      expectedOwnerRevision: 3, publicId: 'meu-bot', originReference: 'typebot-cloud', [key]: 'forged',
+    }).success).toBe(false);
   });
   it('aceita apenas modos explícitos de atendimento', () => {
     expect(ConversationModeRequestSchema.parse({ mode: 'HUMAN' })).toEqual({ mode: 'HUMAN' });

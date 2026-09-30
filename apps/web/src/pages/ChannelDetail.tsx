@@ -13,6 +13,8 @@ const failures:Record<string,string>={
  CHATWOOT_ACCOUNT_NOT_CONFIGURED:'Configure primeiro a conta da central em JRC Conversas / Chatwoot.',CHATWOOT_ACCOUNT_NOT_READY:'Confira a conta e a credencial da central de atendimento.',
  INTEGRATION_HAS_HISTORY:'O vínculo possui histórico. Mantenha-o pausado para preservar mensagens e auditoria.',
  AUTOMATION_BINDING_CHANGED:'O vínculo mudou. Atualize a página antes de tentar novamente.',
+ ATTENDANCE_OWNER_CHANGED:'O responsável pelo canal mudou. Atualize a página antes de tentar novamente.',
+ ATTENDANCE_WORK_RECONCILIATION_REQUIRED:'Há um envio incerto do responsável anterior. Reconcilie o resultado antes de ativar outro chatbot.',
  CONNECT_RECONCILIATION_REQUIRED:'O estado do pareamento anterior ainda não foi confirmado. Atualize o status. Se continuar pendente, peça à equipe JRC a reconciliação antes de tentar outra conexão.',
 };
 export function ChannelDetailPage(){
@@ -21,14 +23,15 @@ export function ChannelDetailPage(){
 }
 function ChannelDetail(){
  const {id=''}=useParams(),client=useApiClient(),{session}=useSession();
+ const [ownerRevision,setOwnerRevision]=useState(0);
  const [channel,setChannel]=useState<ChannelV1|null>(null),[action,setAction]=useState<ConnectionAction|null>(null),[binding,setBinding]=useState<AutomationBindingV1|null>(null);
  const [automations,setAutomations]=useState<AutomationDefinitionV1[]>([]),[automationId,setAutomationId]=useState(''),[displayName,setDisplayName]=useState(''),[destination,setDestination]=useState('');
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[now,setNow]=useState(Date.now());const pending=useRef(false);
  const [deleted,setDeleted]=useState(false);
  const canManage=Boolean(session&&['OWNER','ADMIN'].includes(session.activeOrganization.role)),canPair=Boolean(session&&session.activeOrganization.role!=='VIEWER'),archived=Boolean(channel?.archivedAt);
- async function load(){const value=await getChannel(client,id);setChannel(value);setDisplayName(value.identity.displayName??'');const linked=await getChannelAutomation(client,id);setBinding(linked.binding);setAutomationId(linked.binding?.automationId??'');}
+ async function load(){const value=await getChannel(client,id);setChannel(value);setDisplayName(value.identity.displayName??'');const linked=await getChannelAutomation(client,id);setBinding(linked.binding);setOwnerRevision(linked.ownerRevision);setAutomationId(linked.binding?.automationId??'');}
  useEffect(()=>{let live=true;void getChannel(client,id).then(value=>{if(live){setChannel(value);setDisplayName(value.identity.displayName??'');}}).catch(()=>{if(live)setError('Não foi possível carregar a caixa.');});
- void getChannelAutomation(client,id).then(value=>{if(live){setBinding(value.binding);setAutomationId(value.binding?.automationId??'');}}).catch(()=>{});
+ void getChannelAutomation(client,id).then(value=>{if(live){setBinding(value.binding);setOwnerRevision(value.ownerRevision);setAutomationId(value.binding?.automationId??'');}}).catch(()=>{});
  void listAutomations(client).then(value=>{if(live)setAutomations(value.filter(item=>item.activeVersion!==null&&item.lifecycleStatus!=='ARCHIVED'));}).catch(()=>{});return()=>{live=false;};},[client,id]);
  useEffect(()=>{if(!action||action.type==='NONE')return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[action]);
  const expiresAt=action&&'expiresAt' in action?new Date(action.expiresAt).getTime():0,expired=Boolean(expiresAt&&expiresAt<=now);
@@ -38,8 +41,8 @@ function ChannelDetail(){
  async function disconnect(){if(!window.confirm('Desconectar este WhatsApp? Será necessário parear novamente. O histórico será preservado.'))return;await run(async()=>{const result=await disconnectChannel(client,id,crypto.randomUUID());setChannel(await getChannel(client,id));setAction(null);setNotice(result.pending?'Desconexão em processamento. Atualize o status.':'WhatsApp desconectado.');});}
  async function rename(event:FormEvent){event.preventDefault();await run(async()=>{setChannel(await patchChannel(client,id,{displayName:displayName.trim()}));},'Nome atualizado.');}
  async function bind(event:FormEvent){event.preventDefault();await run(async()=>{setChannel(await bindChannelDestination(client,id,{name:destination.trim(),replaceExistingWebhook:false}));},'Caixa vinculada. Confira a entrega no sistema de atendimento.');}
- async function bindAutomation(event:FormEvent){event.preventDefault();await run(async()=>{await bindChannelAutomation(client,id,{automationId});await load();},'Automação vinculada. Novas mensagens usarão esta versão.');}
- async function changeBinding(status:'ACTIVE'|'PAUSED'|'DISABLED'){if(!binding)return;if(!window.confirm(status==='DISABLED'?'Desvincular a automação? Novas mensagens não iniciarão este chatbot. Execuções já iniciadas continuam e podem ser canceladas em Execuções.':'Alterar recebimento de novas mensagens pelo chatbot? Execuções iniciadas continuam.'))return;await run(async()=>{await client.request(`/v1/automations/${binding.automationId}/bindings/${binding.id}`,{method:'PATCH',body:JSON.stringify({status,revision:binding.revision})});await load();},'Vínculo atualizado.');}
+ async function bindAutomation(event:FormEvent){event.preventDefault();await run(async()=>{await bindChannelAutomation(client,id,{automationId,expectedOwnerRevision:ownerRevision});await load();},'Automação vinculada. Novas mensagens usarão esta versão.');}
+ async function changeBinding(status:'ACTIVE'|'PAUSED'|'DISABLED'){if(!binding)return;if(!window.confirm(status==='DISABLED'?'Desvincular a automação? Novas mensagens não iniciarão este chatbot. Trabalhos ainda não enviados serão interrompidos; envios incertos precisam de reconciliação.':'Alterar recebimento de novas mensagens pelo chatbot? Execuções iniciadas continuam.'))return;await run(async()=>{await client.request(`/v1/automations/${binding.automationId}/bindings/${binding.id}`,{method:'PATCH',body:JSON.stringify({status,revision:binding.revision,expectedOwnerRevision:ownerRevision})});await load();},'Vínculo atualizado.');}
  async function destinationState(){if(!channel?.destination)return;const enabled=channel.humanStatus!=='READY';await run(async()=>{await client.request(`/v1/integrations/chatwoot/connections/${channel.destination!.integrationId}`,{method:'PATCH',body:JSON.stringify({enabled})});await load();},enabled?'Atendimento retomado.':'Atendimento pausado. Entregas pendentes foram preservadas.');}
  async function archive(){if(!window.confirm(archived?'Restaurar esta caixa? A conexão e os vínculos não serão ativados automaticamente.':'Arquivar este cadastro? Desconecte o WhatsApp, desvincule a automação e pause o atendimento antes. O histórico será preservado.'))return;await run(async()=>{await client.request(`/v1/channels/${id}/archive`,{method:'POST',body:JSON.stringify({archived:!archived})});await load();},archived?'Cadastro restaurado.':'Cadastro arquivado.');}
  if(deleted)return <section><h1>Conexão excluída</h1><p>A exclusão foi confirmada pelo servidor.</p><Link to="/channels">Voltar para caixas de entrada</Link></section>;

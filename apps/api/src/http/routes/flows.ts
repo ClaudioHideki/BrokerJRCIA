@@ -1,3 +1,4 @@
+import { AttendanceError } from '../../modules/attendance/types.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -22,7 +23,7 @@ export async function registerFlowRoutes(app:FastifyInstance,options:FlowRouteOp
   app.decorateRequest('authentication',null);
   app.addHook('onRequest',async(_r,reply)=>{reply.header('Cache-Control','no-store');});
   app.setErrorHandler((error,request,reply)=>{
-    const known=error instanceof FlowError||error instanceof IntegrationError||error instanceof ChatwootError||error instanceof MessagingRepositoryError,candidate=error as {validation?:unknown;statusCode?:number};
+    const known=error instanceof AttendanceError||error instanceof FlowError||error instanceof IntegrationError||error instanceof ChatwootError||error instanceof MessagingRepositoryError,candidate=error as {validation?:unknown;statusCode?:number};
     const status=error instanceof MessagingRepositoryError?error.status:error instanceof ChatwootError?502:known?candidate.statusCode!:candidate.validation||error instanceof z.ZodError?400:candidate.statusCode===413?413:500;
     reply.code(status).type('application/problem+json').send({type:'about:blank',title:'Flows request failed',status,code:known?error.code:status===400?'INVALID_REQUEST':'FLOWS_UNAVAILABLE',details:error instanceof FlowError?error.details:[],requestId:request.id});
   });
@@ -35,8 +36,10 @@ export async function registerFlowRoutes(app:FastifyInstance,options:FlowRouteOp
   const api=app.withTypeProvider<ZodTypeProvider>(),service=options.service;
   const remote=()=>{if(!options.chatwoot)throw new FlowError('CHATWOOT_NOT_CONFIGURED',409);return options.chatwoot;};
   api.get('/v1/flows/chatwoot/inboxes',{preHandler:read,schema:{querystring:empty}},req=>remote().inboxes(tenant(req)));
-  api.post('/v1/flows/:id/chatwoot/bind',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({inboxId:z.number().int().positive()})}},req=>remote().bind(tenant(req),req.params.id,req.body.inboxId));
-  api.post('/v1/flows/chatwoot/:id/disable',{preHandler:write,schema:{params,querystring:empty,body:empty}},req=>remote().disable(tenant(req),req.params.id));
+  api.post('/v1/flows/:id/chatwoot/bind',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({inboxId:z.number().int().positive(),expectedOwnerRevision:z.number().int().nonnegative()})}},req=>remote().bind(tenant(req),req.params.id,req.body.inboxId,req.body.expectedOwnerRevision));
+  const ownerCas=z.strictObject({expectedOwnerRevision:z.number().int().nonnegative()});
+  api.post('/v1/flows/chatwoot/:id/disable',{preHandler:write,schema:{params,querystring:empty,body:ownerCas}},req=>remote().disable(tenant(req),req.params.id,req.body.expectedOwnerRevision));
+  api.post('/v1/flows/chatwoot/:id/reconcile',{preHandler:write,schema:{params,querystring:empty,body:ownerCas}},req=>remote().reconcile(tenant(req),req.params.id,req.body.expectedOwnerRevision));
   api.get('/v1/flows/:id/chatwoot/runs',{preHandler:read,schema:{params,querystring:empty}},req=>remote().runs(tenant(req),req.params.id));
   await app.register(async webhook=>{
     webhook.removeContentTypeParser('application/json');
@@ -71,8 +74,8 @@ export async function registerFlowRoutes(app:FastifyInstance,options:FlowRouteOp
     const flow=await service.get(tenant(req),req.params.id);return {errors:validateFlow(flow.graph)};
   });
   api.post('/v1/flows/:id/publish',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({revision:z.number().int().positive()})}},req=>service.publish(tenant(req),req.params.id,req.body.revision));
-  api.post('/v1/flows/:id/bind',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({channelId:z.uuid(),replaceAutomation:z.boolean().default(false)})}},req=>service.bind(tenant(req),req.params.id,req.body.channelId,req.body.replaceAutomation));
-  api.post('/v1/flows/:id/unbind',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({channelId:z.uuid()})}},req=>service.unbind(tenant(req),req.params.id,req.body.channelId));
+  api.post('/v1/flows/:id/bind',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({expectedOwnerRevision:z.number().int().nonnegative(),channelId:z.uuid(),replaceAutomation:z.boolean().default(false)})}},req=>service.bind(tenant(req),req.params.id,req.body.channelId,req.body.replaceAutomation,req.body.expectedOwnerRevision));
+  api.post('/v1/flows/:id/unbind',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({channelId:z.uuid(),expectedOwnerRevision:z.number().int().nonnegative()})}},req=>service.unbind(tenant(req),req.params.id,req.body.channelId,req.body.expectedOwnerRevision));
   api.get('/v1/flows/:id/runs',{preHandler:read,schema:{params,querystring:empty}},req=>service.runs(tenant(req),req.params.id));
   api.post('/v1/flows/:id/simulate',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({text:z.string().max(4096),state:state.optional()})}},async req=>{
     const flow=await service.get(tenant(req),req.params.id),errors=validateFlow(flow.graph);

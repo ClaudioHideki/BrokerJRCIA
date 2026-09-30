@@ -1,11 +1,13 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { hashPassword, initializePasswordVerifier } from '@jrc/security';
 import { digest, decryptSeed, verifyTotp } from './crypto.js';
 import {platformMfaRequired,type PlatformLoginPolicy} from './login-policy.js';
 import { normalizeChatwootOrigin } from '../integrations/chatwoot-destination.js';
-import { CreateEconomicGroupSchema, AssignGroupOrganizationsSchema } from '@jrc/contracts';
+import { CreateEconomicGroupSchema, AssignGroupOrganizationsSchema, UpdateEconomicGroupSchema, RemoveEconomicGroupSchema } from '@jrc/contracts';
 import { z } from 'zod';
+import { CreateCommercialPlanSchema, CreateCommercialPlanVersionSchema, AssignCommercialPlanSchema } from '@jrc/contracts';
+import { listCommercialPlans, insertCommercialVersion, readCommercialAssignment, projectCommercialAssignment, snapshotLegacyCommercialAssignment } from '../commercial-plans/service.js';
 
 export class PlatformError extends Error { constructor(public statusCode:number, public code:string) {super(code);} }
 export type PlatformAction = 'list'|'create'|'update'|'memberships'|'membership'|'monitor'|'acknowledge';
@@ -122,6 +124,52 @@ export class PlatformService {
    return {...group,revision:group.revision+1,organizationIds:input.organizationIds};
   });
  }
+ async updateEconomicGroup(token:string,reason:string,id:string,value:{name:string;expectedRevision:number}) {
+  const input=UpdateEconomicGroupSchema.parse(value);
+  if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  return this.transaction(async c=>{
+   const session=await this.readSession(c,token);
+   if(session.user.role!=='SUPER_ADMIN') throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+   const group=(await c.query('SELECT id,name,revision FROM economic_groups WHERE id=$1 FOR UPDATE',[id])).rows[0];
+   if(!group) throw new PlatformError(404,'GROUP_NOT_FOUND');
+   if(group.revision!==input.expectedRevision) throw new PlatformError(409,'GROUP_REVISION_CHANGED');
+   const updated=(await c.query('UPDATE economic_groups SET name=$2,revision=revision+1 WHERE id=$1 RETURNING id,name,revision',[id,input.name])).rows[0];
+   const members=await c.query<{organization_id:string}>('SELECT organization_id FROM economic_group_organizations WHERE group_id=$1 ORDER BY organization_id',[id]);
+   await this.audit(c,session.user.id,null,`economic-group-update:${id}`,reason);
+   return {...updated,organizationIds:members.rows.map(row=>row.organization_id)};
+  });
+ }
+ async previewEconomicGroupRemoval(token:string,reason:string,id:string) {
+  if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  return this.transaction(async c=>{
+   const session=await this.readSession(c,token);
+   if(session.user.role!=='SUPER_ADMIN') throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+   // Membership writers use the same group lock, so the preview is coherent with its revision.
+   const group=(await c.query('SELECT id,name,revision FROM economic_groups WHERE id=$1 FOR SHARE',[id])).rows[0];
+   if(!group) throw new PlatformError(404,'GROUP_NOT_FOUND');
+   const organizations=(await c.query<{id:string;name:string}>(`SELECT o.id,o.name FROM organizations o JOIN economic_group_organizations m ON m.organization_id=o.id
+    WHERE m.group_id=$1 ORDER BY o.name,o.id`,[id])).rows;
+   await this.audit(c,session.user.id,null,`economic-group-removal-preview:${id}`,reason);
+   return {...group,organizations};
+  });
+ }
+ async removeEconomicGroup(token:string,reason:string,id:string,value:{expectedRevision:number;detachCompanies:boolean}) {
+  const input=RemoveEconomicGroupSchema.parse(value);
+  if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  return this.transaction(async c=>{
+   const session=await this.readSession(c,token);
+   if(session.user.role!=='SUPER_ADMIN') throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+   const group=(await c.query('SELECT revision FROM economic_groups WHERE id=$1 FOR UPDATE',[id])).rows[0];
+   if(!group) throw new PlatformError(404,'GROUP_NOT_FOUND');
+   if(group.revision!==input.expectedRevision) throw new PlatformError(409,'GROUP_REVISION_CHANGED');
+   const members=await c.query<{organization_id:string}>('SELECT organization_id FROM economic_group_organizations WHERE group_id=$1 ORDER BY organization_id',[id]);
+   if(members.rows.length&&!input.detachCompanies) throw new PlatformError(409,'GROUP_DETACH_CONFIRMATION_REQUIRED');
+   await c.query('DELETE FROM economic_group_organizations WHERE group_id=$1',[id]);
+   await c.query('DELETE FROM economic_groups WHERE id=$1',[id]);
+   await this.audit(c,session.user.id,null,`economic-group-remove:${id}`,reason);
+   return {removed:true as const,preservedOrganizationIds:members.rows.map(row=>row.organization_id)};
+  });
+ }
  async approveChatwootDestination(token:string,csrf:string,reason:string,org:string,input:{revision:number;mediaOrigins:string[]}) {
   if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
   const origins=[...new Set(input.mediaOrigins.map(normalizeChatwootOrigin))];
@@ -160,6 +208,46 @@ export class PlatformService {
   });
  }
  async logout(token:string) {await this.transaction(async c=>{const s=await this.readSession(c,token);await c.query('delete from platform_sessions where token_hash=$1',[digest(token)]);await this.audit(c,s.user.id,null,'logout','Explicit session logout');});}
+ private async commercial<T>(token:string,reason:string,write:boolean,org:string|null,action:string,work:(c:PoolClient)=>Promise<T>){
+  if(reason.trim().length<5||reason.length>500)throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  return this.transaction(async c=>{
+   const session=await this.readSession(c,token);
+   if(write&&session.user.role!=='SUPER_ADMIN')throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+   // Lock the actor as well: revocation is ordered against the sensitive transaction.
+   const current=(await c.query('SELECT active,role FROM platform_users WHERE id=$1 FOR SHARE',[session.user.id])).rows[0];
+   if(!current?.active||(write&&current.role!=='SUPER_ADMIN'))throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+   if(org&&!(await c.query(`SELECT id FROM organizations WHERE id=$1 FOR ${write?'UPDATE':'SHARE'}`,[org])).rowCount)throw new PlatformError(404,'ORGANIZATION_NOT_FOUND');
+   const result=await work(c);await this.audit(c,session.user.id,org,action,reason);return result;
+  });
+ }
+ listCommercialPlans(token:string,reason:string){return this.commercial(token,reason,false,null,'commercial-catalog-read',listCommercialPlans);}
+ createCommercialPlan(token:string,reason:string,value:unknown){
+  const input=CreateCommercialPlanSchema.parse(value),id=randomUUID();
+  return this.commercial(token,reason,true,null,`commercial-plan-create:${id}`,async c=>{
+   const plan=(await c.query('INSERT INTO commercial_plans(id,name) VALUES($1,$2) RETURNING id',[id,input.name])).rows[0];
+   return insertCommercialVersion(c,plan.id,1,input.name,input.limits,input.flowsEnabled);
+  });
+ }
+ createCommercialPlanVersion(token:string,reason:string,id:string,value:unknown){
+  const input=CreateCommercialPlanVersionSchema.parse(value);
+  return this.commercial(token,reason,true,null,`commercial-plan-version:${id}:v${input.expectedRevision+1}`,async c=>{
+   const plan=(await c.query('SELECT name,revision FROM commercial_plans WHERE id=$1 AND NOT legacy FOR UPDATE',[id])).rows[0];
+   if(!plan)throw new PlatformError(404,'COMMERCIAL_PLAN_NOT_FOUND');
+   if(plan.revision!==input.expectedRevision)throw new PlatformError(409,'COMMERCIAL_REVISION_CHANGED');
+   await c.query('UPDATE commercial_plans SET revision=revision+1 WHERE id=$1',[id]);
+   return insertCommercialVersion(c,id,plan.revision+1,plan.name,input.limits,input.flowsEnabled);
+  });
+ }
+ getCommercialPlan(token:string,reason:string,org:string){return this.commercial(token,reason,false,org,'commercial-assignment-read',async c=>(await readCommercialAssignment(c,org))!);}
+ assignCommercialPlan(token:string,reason:string,org:string,value:unknown){
+  const input=AssignCommercialPlanSchema.parse(value);
+  return this.commercial(token,reason,true,org,`commercial-plan-assign:${input.planVersionId}:r${input.expectedRevision+1}:${JSON.stringify(input.overrides)}`,async c=>{
+   const current=await readCommercialAssignment(c,org);
+   if(current?.revision!==input.expectedRevision)throw new PlatformError(409,'COMMERCIAL_REVISION_CHANGED');
+   const result=await projectCommercialAssignment(c,org,input.planVersionId,input.overrides);
+   if(!result)throw new PlatformError(404,'COMMERCIAL_PLAN_NOT_FOUND');return result;
+  });
+ }
  private async audit(c:PoolClient,actor:string,org:string|null,action:string,reason:string) {await c.query('insert into platform_audit_logs(actor_id,organization_id,action,reason) values($1,$2,$3,$4)',[actor,org,action,reason]);}
  private async limits(c:PoolClient,id:string,l:Limits) {
   if(!Object.values(l).every(n=>Number.isSafeInteger(n)&&n>0&&n<=100000000)) throw new PlatformError(400,'INVALID_LIMITS');
@@ -221,6 +309,10 @@ export class PlatformService {
     await c.query(`insert into flow_features(organization_id,enabled) values($1,$2)
       on conflict(organization_id) do update set enabled=excluded.enabled,revision=flow_features.revision+1,updated_at=now()
       where flow_features.enabled is distinct from excluded.enabled`,[id,input.flowsEnabled]);
+   }
+   if(action==='create'||(action==='update'&&(input.plan!==undefined||input.limits!==undefined||input.flowsEnabled!==undefined))){
+    const snapshot=await snapshotLegacyCommercialAssignment(c,id!);
+    await this.audit(c,s.user.id,id!,`commercial-legacy-snapshot:${snapshot.planVersionId}:r${snapshot.revision}`,reason);
    }
    await this.audit(c,s.user.id,id??null,action,reason);return result;
   });

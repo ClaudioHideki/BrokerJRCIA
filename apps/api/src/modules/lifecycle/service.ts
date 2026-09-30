@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
+import { createGroupRemovalService } from './group-removal-service.js';
 
 type QueryClient = Pick<PoolClient,'query'>;
 export type LifecycleTransaction = <T>(work:(tx:QueryClient)=>Promise<T>)=>Promise<T>;
@@ -7,7 +8,7 @@ export type DeletionStatus = 'REQUESTED'|'BLOCKING'|'CLEANING_EXTERNAL'|'REMOVIN
 export type DeletionPreview = {resourceId:string;resourceName:string;kind:'CHANNEL'|'ORGANIZATION';canDelete:boolean;
   blockers:string[];counts:Record<string,number>;externalEffects:string[];operationId:string|null;operationStatus:DeletionStatus|null};
 export type DeletionOperation = {operationId:string;status:DeletionStatus;errorCode:string|null;updatedAt:string};
-type WorkRow = {id:string;organization_id:string;kind:'CHANNEL'|'ORGANIZATION';resource_id:string;lease_token:string};
+type WorkRow = {id:string;organization_id:string;kind:'CHANNEL'|'ORGANIZATION';resource_id:string;lease_token:string;reconciliation_requested:boolean};
 type CleanupRow = {instance_id:string;upstream_key:string;status:string};
 
 export class LifecycleError extends Error {
@@ -37,7 +38,8 @@ export const withLifecycleWorkerTransaction=<T>(pool:Pool,work:(tx:QueryClient)=
   withLifecycleTransaction(pool,'jrc_lifecycle',work);
 
 export function createLifecycleService(options:{transact:LifecycleTransaction;
-  deprovision:(organizationId:string,upstreamKey:string)=>Promise<void>;uuid?:()=>string}){
+  deprovision:(organizationId:string,upstreamKey:string)=>Promise<void>;
+  instanceExists?:(organizationId:string,upstreamKey:string)=>Promise<boolean>;uuid?:()=>string}){
   const uuid=options.uuid??randomUUID;
   const translateError=(error:unknown):LifecycleError=>{
     if(error instanceof LifecycleError)return error;
@@ -79,6 +81,11 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
     const row=result.rows[0];if(!row)throw new LifecycleError('LIFECYCLE_RESOURCE_NOT_FOUND',404);
     return {operationId:row.id,status:row.status,errorCode:row.error_code,updatedAt:new Date(row.updated_at).toISOString()};
   }));
+  const requestReconciliation=(org:string,resource:string,operationId:string,reason:string,actorKind:'TENANT'|'PLATFORM',actorId:string)=>secure(async()=>options.transact(async tx=>{
+    const result=await tx.query<{id:string}>('SELECT public.lifecycle_request_reconciliation($1,$2,$3,$4,$5,$6) AS id',[org,resource,operationId,reason,actorKind,actorId]);
+    const current=await tx.query<{status:DeletionStatus}>('SELECT status FROM lifecycle_deletions WHERE id=$1',[result.rows[0]!.id]);
+    return {operationId:result.rows[0]!.id,status:current.rows[0]!.status};
+  }));
   async function processOne():Promise<boolean>{
     const lease=uuid();
     const claimed=await options.transact(async tx=>{
@@ -87,7 +94,7 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
        WHERE id=(SELECT id FROM lifecycle_deletions WHERE status='REQUESTED'
          OR (status IN ('BLOCKING','CLEANING_EXTERNAL','REMOVING_DATA') AND lease_expires_at<now())
          ORDER BY requested_at,id FOR UPDATE SKIP LOCKED LIMIT 1)
-       RETURNING id,organization_id,kind,resource_id,lease_token`,[lease]);
+       RETURNING id,organization_id,kind,resource_id,lease_token,reconciliation_requested`,[lease]);
       return result.rows[0];
     });
     if(!claimed)return false;
@@ -108,6 +115,7 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
       }
       const items=await options.transact(async tx=>(await tx.query<CleanupRow>(
         'SELECT instance_id,upstream_key,status FROM lifecycle_cleanup_items WHERE deletion_id=$1 ORDER BY instance_id',[claimed.id])).rows);
+      const attention=async(code:string)=>options.transact(tx=>tx.query("UPDATE lifecycle_deletions SET status='ACTION_REQUIRED',error_code=$3,reconciliation_requested=false,lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$1 AND lease_token=$2",[claimed.id,lease,code]).then(()=>undefined));
       for(const item of items){
         if(item.status==='DONE')continue;
         const mayDeprovision=await options.transact(async tx=>{
@@ -118,10 +126,35 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
           return false;
         });
         if(!mayDeprovision)return true;
+        if(claimed.reconciliation_requested){
+          // Reconciliation is read-only. A confirmed surviving instance requires a new
+          // nominative deletion request; this job never repeats an uncertain DELETE.
+          if(item.status==='PENDING')continue;
+          if(!options.instanceExists){await attention('EVOLUTION_CLEANUP_UNVERIFIED');return true;}
+          let exists:boolean;
+          try{exists=await options.instanceExists(claimed.organization_id,item.upstream_key);}
+          catch{await attention('EVOLUTION_CLEANUP_UNVERIFIED');return true;}
+          await options.transact(async tx=>{
+            const active=await tx.query('SELECT id FROM lifecycle_deletions WHERE id=$1 AND lease_token=$2 AND lease_expires_at>now() FOR UPDATE',[claimed.id,lease]);
+            if(!active.rowCount)throw new LifecycleError('LIFECYCLE_LEASE_LOST',409);
+            if(!await actorAuthorized(tx))throw new LifecycleError('LIFECYCLE_ACTOR_REVOKED',403);
+            await tx.query('UPDATE lifecycle_cleanup_items SET status=$3,last_error_code=NULL,updated_at=now() WHERE deletion_id=$1 AND instance_id=$2',[claimed.id,item.instance_id,exists?'PENDING':'DONE']);
+          });
+          continue;
+        }
+        if(item.status!=='PENDING'){await attention('EVOLUTION_CLEANUP_UNVERIFIED');return true;}
+        await options.transact(async tx=>{
+          const active=await tx.query('SELECT id FROM lifecycle_deletions WHERE id=$1 AND lease_token=$2 AND lease_expires_at>now() FOR UPDATE',[claimed.id,lease]);
+          if(!active.rowCount)throw new LifecycleError('LIFECYCLE_LEASE_LOST',409);
+          if(!await actorAuthorized(tx))throw new LifecycleError('LIFECYCLE_ACTOR_REVOKED',403);
+          await tx.query("UPDATE lifecycle_cleanup_items SET status='IN_FLIGHT',attempts=attempts+1,updated_at=now() WHERE deletion_id=$1 AND instance_id=$2 AND status='PENDING'",[claimed.id,item.instance_id]);
+        });
         try{await options.deprovision(claimed.organization_id,item.upstream_key);}
         catch{
           await options.transact(async tx=>{
-            await tx.query("UPDATE lifecycle_cleanup_items SET status='ACTION_REQUIRED',attempts=attempts+1,last_error_code='EVOLUTION_CLEANUP_UNVERIFIED',updated_at=now() WHERE deletion_id=$1 AND instance_id=$2",[claimed.id,item.instance_id]);
+            const active=await tx.query('SELECT id FROM lifecycle_deletions WHERE id=$1 AND lease_token=$2 AND lease_expires_at>now() FOR UPDATE',[claimed.id,lease]);
+            if(!active.rowCount)return;
+            await tx.query("UPDATE lifecycle_cleanup_items SET status='ACTION_REQUIRED',last_error_code='EVOLUTION_CLEANUP_UNVERIFIED',updated_at=now() WHERE deletion_id=$1 AND instance_id=$2",[claimed.id,item.instance_id]);
             await tx.query("UPDATE lifecycle_deletions SET status='ACTION_REQUIRED',error_code='EVOLUTION_CLEANUP_UNVERIFIED',lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$1 AND lease_token=$2",[claimed.id,lease]);
           });
           return true;
@@ -129,8 +162,12 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
         await options.transact(async tx=>{
           const active=await tx.query('SELECT id FROM lifecycle_deletions WHERE id=$1 AND lease_token=$2 AND lease_expires_at>now() FOR UPDATE',[claimed.id,lease]);
           if(!active.rowCount)throw new LifecycleError('LIFECYCLE_LEASE_LOST',409);
-          await tx.query("UPDATE lifecycle_cleanup_items SET status='DONE',attempts=attempts+1,last_error_code=NULL,updated_at=now() WHERE deletion_id=$1 AND instance_id=$2",[claimed.id,item.instance_id]);
+          await tx.query("UPDATE lifecycle_cleanup_items SET status='DONE',last_error_code=NULL,updated_at=now() WHERE deletion_id=$1 AND instance_id=$2",[claimed.id,item.instance_id]);
         });
+      }
+      if(claimed.reconciliation_requested){
+        const pending=await options.transact(async tx=>(await tx.query("SELECT 1 FROM lifecycle_cleanup_items WHERE deletion_id=$1 AND status<>'DONE' LIMIT 1",[claimed.id])).rowCount);
+        if(pending){await attention('EVOLUTION_INSTANCE_STILL_PRESENT');return true;}
       }
       await options.transact(async tx=>{
         const ready=await tx.query("UPDATE lifecycle_deletions SET status='REMOVING_DATA',updated_at=now() WHERE id=$1 AND lease_token=$2 AND lease_expires_at>now() RETURNING id",[claimed.id,lease]);
@@ -138,11 +175,14 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
         const purge=claimed.kind==='CHANNEL'?'lifecycle_purge_channel':'lifecycle_purge_organization';
         await tx.query(`SELECT public.${purge}($1,$2)`,[claimed.id,lease]);
       });
-    }catch{
-      await options.transact(tx=>tx.query("UPDATE lifecycle_deletions SET status='ACTION_REQUIRED',error_code='LIFECYCLE_PURGE_FAILED',lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$1 AND lease_token=$2",[claimed.id,lease]).then(()=>undefined));
+    }catch(error){
+      const code=error instanceof LifecycleError&&error.code==='LIFECYCLE_ACTOR_REVOKED'?error.code:
+        error instanceof LifecycleError&&error.code==='LIFECYCLE_LEASE_LOST'?'EVOLUTION_CLEANUP_UNVERIFIED':'LIFECYCLE_PURGE_FAILED';
+      await options.transact(tx=>tx.query("UPDATE lifecycle_deletions SET status='ACTION_REQUIRED',error_code=$3,reconciliation_requested=false,lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$1 AND lease_token=$2",[claimed.id,lease,code]).then(()=>undefined));
     }
     return true;
   }
-  return {previewChannel,previewOrganization,requestChannel,requestOrganization,status,processOne,translateError};
+  return {previewChannel,previewOrganization,requestChannel,requestOrganization,requestReconciliation,status,processOne,translateError,
+    groups:createGroupRemovalService({transact:options.transact})};
 }
 export type LifecycleService=ReturnType<typeof createLifecycleService>;

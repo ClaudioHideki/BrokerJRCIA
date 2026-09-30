@@ -12,7 +12,7 @@ function mount(enabled=true,role='OWNER'){
   if(path==='/v1/flows/status')return {enabled};
   if(path==='/v1/flows/library')return {data:[{id:'welcome',name:'Boas-vindas',description:'Teste',graph:welcomeFlow()}]};
   if(path==='/v1/flows/channels')return {data:[]};
-  if(path==='/v1/flows/chatwoot/inboxes')return {accountId:2,data:[{id:7,name:'Suporte por e-mail',channelType:'Channel::Email',binding:null}]};
+  if(path==='/v1/flows/chatwoot/inboxes')return {accountId:2,data:[{id:7,ownerRevision:4,name:'Suporte por e-mail',channelType:'Channel::Email',binding:null}]};
   if(path.endsWith('/chatwoot/bind'))return {id:saved.id,status:'READY'};
   if(path==='/v1/flows'&&init?.method==='POST'){saved={...saved,...JSON.parse(String(init.body))};return saved;}
   if(path==='/v1/flows')return {data:[]};
@@ -37,7 +37,7 @@ describe('Native Flows workspace',()=>{
   fireEvent.click(await screen.findByRole('button',{name:'Caixas do Chatwoot / JRC'}));
   await screen.findByRole('option',{name:/Suporte por e-mail/});
   fireEvent.click(screen.getByRole('button',{name:'Ativar chatbot nesta caixa'}));
-  await waitFor(()=>expect(request).toHaveBeenCalledWith('/v1/flows/'+savedId()+'/chatwoot/bind',expect.objectContaining({method:'POST',body:JSON.stringify({inboxId:7})})));
+  await waitFor(()=>expect(request).toHaveBeenCalledWith('/v1/flows/'+savedId()+'/chatwoot/bind',expect.objectContaining({method:'POST',body:JSON.stringify({inboxId:7,expectedOwnerRevision:4})})));
  });
  it('shows no editor when the company has not been granted access',async()=>{
   const request=mount(false);
@@ -63,7 +63,10 @@ describe('Native Flows workspace',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Criar flow'}));
   fireEvent.click(await screen.findByRole('button',{name:'Menu de opções'}));
   expect(screen.getByLabelText('Mensagem do menu')).toHaveValue('Escolha uma opção:');
-  fireEvent.change(screen.getByLabelText('Opções, uma por linha'),{target:{value:'1|Financeiro\n2|Suporte\n3|Comercial'}});
+  fireEvent.change(screen.getByLabelText('Texto da opção 1'),{target:{value:'Financeiro'}});
+  fireEvent.change(screen.getByLabelText('Texto da opção 2'),{target:{value:'Suporte'}});
+  fireEvent.click(screen.getByRole('button',{name:'Adicionar opção'}));
+  fireEvent.change(screen.getByLabelText('Texto da opção 3'),{target:{value:'Comercial'}});
   expect(screen.getByLabelText('Destino Opção 1')).toBeInTheDocument();
   expect(screen.getByLabelText('Destino Opção 2')).toBeInTheDocument();
   expect(screen.getByLabelText('Destino Opção 3')).toBeInTheDocument();

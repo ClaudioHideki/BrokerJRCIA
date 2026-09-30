@@ -1,9 +1,12 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { registerPlatformSupportRoutes } from './support.js';
+import { registerGroupRemovalRoutes } from './group-removal.js';
 import { SupportError, type SupportService } from '../../modules/support/service.js';
 import { tenantOperationalProblem } from "../../modules/tenancy/operational-limits.js";
 import { z } from "zod";
-import { CreateEconomicGroupSchema, AssignGroupOrganizationsSchema, EconomicGroupSchema } from '@jrc/contracts';
+import { CreateCommercialPlanSchema, CreateCommercialPlanVersionSchema, AssignCommercialPlanSchema, CommercialPlanCatalogSchema, CommercialPlanVersionSchema, CommercialAssignmentSchema } from '@jrc/contracts';
+import { CreateEconomicGroupSchema, AssignGroupOrganizationsSchema, EconomicGroupSchema, UpdateEconomicGroupSchema,
+  RemoveEconomicGroupSchema, EconomicGroupRemovalPreviewSchema, EconomicGroupRemovalResultSchema } from '@jrc/contracts';
 import {
   ChatwootStatusSchema,
   BindChatwootAccountSchema,
@@ -35,7 +38,7 @@ import {
 } from "../../modules/platform/service.js";
 import {ChannelFacadeError,type ChannelFacade} from '../../modules/channels/facade.js';
 import {LifecycleError,type LifecycleService} from '../../modules/lifecycle/service.js';
-import {DeletionPreviewSchema,DeletionRequestedSchema,DeletionStatusSchema,RequestDeletionSchema} from '@jrc/contracts';
+import {DeletionPreviewSchema,DeletionRequestedSchema,DeletionStatusSchema,RequestDeletionSchema,ReconcileDeletionSchema} from '@jrc/contracts';
 export interface PlatformRouteOptions {
   support?: SupportService;
   lifecycle?: LifecycleService;
@@ -261,6 +264,13 @@ export async function registerPlatformRoutes(
           if(session.user.role!=='SUPER_ADMIN')throw new PlatformError(403,'PLATFORM_FORBIDDEN');
           return session.user.id;
         };
+        if(options.lifecycle.groups)await registerGroupRemovalRoutes(scoped,{service:options.lifecycle.groups,authorize:globalActor});
+        scoped.post('/organizations/:id/deletion/:operationId/reconcile',{schema:{params:companyStatusParams,querystring:z.strictObject({}),body:ReconcileDeletionSchema,response:{202:DeletionRequestedSchema}}},
+          async(req,reply)=>{const actor=await globalActor(req,true),params=companyStatusParams.parse(req.params),input=ReconcileDeletionSchema.parse(req.body);
+            return reply.code(202).send(await options.lifecycle!.requestReconciliation(params.id,params.id,params.operationId,input.reason,'PLATFORM',actor));});
+        scoped.post('/organizations/:id/channels/:channelId/deletion/:operationId/reconcile',{schema:{params:channelStatusParams,querystring:z.strictObject({}),body:ReconcileDeletionSchema,response:{202:DeletionRequestedSchema}}},
+          async(req,reply)=>{const actor=await globalActor(req,true),params=channelStatusParams.parse(req.params),input=ReconcileDeletionSchema.parse(req.body);
+            return reply.code(202).send(await options.lifecycle!.requestReconciliation(params.id,params.channelId,params.operationId,input.reason,'PLATFORM',actor));});
         scoped.get('/organizations/:id/deletion-preview',{schema:{params:idParams,querystring:z.strictObject({}),response:{200:DeletionPreviewSchema}}},
           async req=>{await globalActor(req);return options.lifecycle!.previewOrganization(idParams.parse(req.params).id);});
         scoped.post('/organizations/:id/deletion',{schema:{params:idParams,querystring:z.strictObject({}),body:RequestDeletionSchema,response:{202:DeletionRequestedSchema}}},
@@ -297,10 +307,26 @@ export async function registerPlatformRoutes(
       });
       scoped.get('/groups', { schema: { querystring: z.strictObject({cursor:z.string().min(1).max(1024).optional()}), response: { 200: z.strictObject({ data: z.array(EconomicGroupSchema), nextCursor:z.string().optional() }) } } },
         req => options.service.listGroups(cookie(req), groupReason(req), (req.query as {cursor?:string}).cursor));
+      scoped.get('/commercial-plans',{schema:{querystring:z.strictObject({}),response:{200:CommercialPlanCatalogSchema}}},
+        req=>options.service.listCommercialPlans(cookie(req),groupReason(req)));
+      scoped.post('/commercial-plans',{schema:{querystring:z.strictObject({}),body:CreateCommercialPlanSchema,response:{201:CommercialPlanVersionSchema}}},
+        async(req,reply)=>reply.code(201).send(await options.service.createCommercialPlan(await mutation(req),groupReason(req),req.body)));
+      scoped.post('/commercial-plans/:id/versions',{schema:{params:idParams,querystring:z.strictObject({}),body:CreateCommercialPlanVersionSchema,response:{201:CommercialPlanVersionSchema}}},
+        async(req,reply)=>reply.code(201).send(await options.service.createCommercialPlanVersion(await mutation(req),groupReason(req),idParams.parse(req.params).id,req.body)));
+      scoped.get('/organizations/:id/commercial-plan',{schema:{params:idParams,querystring:z.strictObject({}),response:{200:CommercialAssignmentSchema}}},
+        req=>options.service.getCommercialPlan(cookie(req),groupReason(req),idParams.parse(req.params).id));
+      scoped.put('/organizations/:id/commercial-plan',{schema:{params:idParams,querystring:z.strictObject({}),body:AssignCommercialPlanSchema,response:{200:CommercialAssignmentSchema}}},
+        async req=>options.service.assignCommercialPlan(await mutation(req),groupReason(req),idParams.parse(req.params).id,req.body));
       scoped.post('/groups', { schema: { querystring: z.strictObject({}), body: CreateEconomicGroupSchema, response: { 201: EconomicGroupSchema } } },
         async (req, reply) => reply.code(201).send(await options.service.createGroup(await mutation(req), groupReason(req), CreateEconomicGroupSchema.parse(req.body))));
       scoped.put('/groups/:id/organizations', { schema: { params: idParams, querystring: z.strictObject({}), body: AssignGroupOrganizationsSchema, response: { 200: EconomicGroupSchema } } },
         async req => options.service.assignGroupOrganizations(await mutation(req), groupReason(req), (req.params as {id:string}).id, AssignGroupOrganizationsSchema.parse(req.body)));
+      scoped.patch('/groups/:id', { schema: { params: idParams, querystring: z.strictObject({}), body: UpdateEconomicGroupSchema, response: { 200: EconomicGroupSchema } } },
+        async req => options.service.updateEconomicGroup(await mutation(req), groupReason(req), (req.params as {id:string}).id, UpdateEconomicGroupSchema.parse(req.body)));
+      scoped.get('/groups/:id/removal-preview', { schema: { params: idParams, querystring: z.strictObject({}), response: { 200: EconomicGroupRemovalPreviewSchema } } },
+        req => options.service.previewEconomicGroupRemoval(cookie(req), groupReason(req), (req.params as {id:string}).id));
+      scoped.delete('/groups/:id', { schema: { params: idParams, querystring: z.strictObject({}), body: RemoveEconomicGroupSchema, response: { 200: EconomicGroupRemovalResultSchema } } },
+        async req => options.service.removeEconomicGroup(await mutation(req), groupReason(req), (req.params as {id:string}).id, RemoveEconomicGroupSchema.parse(req.body)));
       scoped.get(
         "/organizations",
         {

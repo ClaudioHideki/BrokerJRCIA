@@ -41,10 +41,15 @@ export async function readOperationalLimits(transaction: TenantTransaction, orga
   const result = await transaction.query<{
     status: 'ACTIVE' | 'SUSPENDED' | 'DISABLED'; maxInstances: number; maxUsers: number;
     messagesPerDay: number; maxPendingMessages: number; messagesAcceptedToday: number;
+    connections:number;users:number;pendingMessages:number;storageBytes:null;aiTokens:null;
   }>(`SELECT organization.status, limits.max_instances AS "maxInstances",
        limits.max_users AS "maxUsers", limits.messages_per_day AS "messagesPerDay",
        limits.max_pending_messages AS "maxPendingMessages",
-       COALESCE(usage.accepted_messages,0) AS "messagesAcceptedToday"
+       COALESCE(usage.accepted_messages,0) AS "messagesAcceptedToday",
+       ((SELECT count(*) FROM instances WHERE organization_id=$1 AND archived_at IS NULL)+(SELECT count(*) FROM messaging_channels WHERE organization_id=$1 AND provider='META'))::int AS connections,
+       (SELECT count(*)::int FROM memberships WHERE organization_id=$1 AND status='ACTIVE') AS users,
+       (SELECT count(*)::int FROM messaging_messages WHERE organization_id=$1 AND direction='OUTGOING' AND state IN ('ACCEPTED','SENDING','UNKNOWN')) AS "pendingMessages",
+       NULL AS "storageBytes",NULL AS "aiTokens"
      FROM organization_limits limits JOIN organizations organization ON organization.id=limits.organization_id
      LEFT JOIN organization_message_usage usage ON usage.organization_id=limits.organization_id
        AND usage.usage_day=(statement_timestamp() AT TIME ZONE 'UTC')::date

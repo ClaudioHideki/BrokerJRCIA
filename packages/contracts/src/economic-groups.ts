@@ -8,3 +8,12 @@ export const AssignGroupOrganizationsSchema = z.strictObject({
 export const EconomicGroupSchema = z.strictObject({
   id: z.uuid(), name: z.string(), revision: z.number().int().positive(), organizationIds: z.array(z.uuid()),
 });
+export const UpdateEconomicGroupSchema = CreateEconomicGroupSchema.extend({ expectedRevision: z.number().int().positive() });
+export const RemoveEconomicGroupSchema = z.strictObject({
+  expectedRevision: z.number().int().positive(), detachCompanies: z.boolean(),
+});
+export const EconomicGroupRemovalPreviewSchema = z.strictObject({
+  id: z.uuid(), name: z.string(), revision: z.number().int().positive(),
+  organizations: z.array(z.strictObject({ id: z.uuid(), name: z.string() })),
+});
+export const EconomicGroupRemovalResultSchema = z.strictObject({ removed: z.literal(true), preservedOrganizationIds: z.array(z.uuid()) });

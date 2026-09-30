@@ -37,12 +37,12 @@ describe('serviço de mensageria', () => {
       },
     });
     await expect(service.configureBot('tenant', 'channel', {
-      publicId: 'support', originReference: 'typebot-cloud',
-    })).resolves.toEqual({ id: 'channel', provider: 'META', botPublicId: 'support' });
+      expectedOwnerRevision: 0, publicId: 'support', originReference: 'typebot-cloud',
+    })).resolves.toEqual({ id: 'channel', provider: 'META', ownerRevision: 0, botPublicId: 'support' });
     expect(operations).toEqual([
       ['find', 'tenant', 'channel'],
       ['resolve', 'typebot-cloud', 'tenant'],
-      ['set', { organizationId: 'tenant', channelId: 'channel', botPublicId: 'support', botOriginReference: 'typebot-cloud' }],
+      ['set', { organizationId: 'tenant', channelId: 'channel', botPublicId: 'support', botOriginReference: 'typebot-cloud', expectedOwnerRevision: 0 }],
     ]);
   });
   it('não consulta registry nem altera canal de outro tenant', async () => {
@@ -58,7 +58,7 @@ describe('serviço de mensageria', () => {
       async resolveTypebotClient() { registryCalls++; return {}; },
     });
     await expect(service.configureBot('tenant', 'foreign-channel', {
-      publicId: 'support', originReference: 'missing',
+      expectedOwnerRevision: 0, publicId: 'support', originReference: 'missing',
     })).rejects.toMatchObject({ status: 404 });
     expect(registryCalls).toBe(0);
     expect(mutations).toBe(0);
@@ -75,7 +75,7 @@ describe('serviço de mensageria', () => {
       async resolveTypebotClient() { throw new Error('TYPEBOT_NOT_CONFIGURED'); },
     });
     await expect(service.configureBot('tenant', 'channel', {
-      publicId: 'support', originReference: 'missing',
+      expectedOwnerRevision: 0, publicId: 'support', originReference: 'missing',
     })).rejects.toMatchObject({ code: 'TYPEBOT_NOT_CONFIGURED', status: 422 });
     expect(mutations).toBe(0);
   });

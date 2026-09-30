@@ -13,7 +13,7 @@ function service(graph=nativeBot){
 describe('native bot conversation preview',()=>{
  it('tests menu, capture, condition and handoff without publication or external delivery',async()=>{
   const bot=service();
-  expect(await bot.validate('tenant','bot')).toEqual({valid:true,errors:[]});
+  expect(await bot.validate('tenant','bot')).toEqual({valid:true,diagnostics:[],errors:[]});
   const first=await bot.simulate('tenant','bot',{text:'Olá'});
   expect(first).toMatchObject({status:'WAITING',wait:{kind:'EVENT',nodeId:'menu'}});
   const result=await bot.simulate('tenant','bot',{text:'Olá',replies:['1','Pessoa de teste']});

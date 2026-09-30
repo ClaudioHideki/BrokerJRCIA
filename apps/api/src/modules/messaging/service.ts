@@ -163,6 +163,7 @@ export function createMessagingService(
       );
       return {
         data: channels.map((channel) => ({
+          ownerRevision: channel.ownerRevision ?? 0,
           id: channel.id,
           provider: channel.provider ?? "META",
           botPublicId: channel.botPublicId,
@@ -385,10 +386,12 @@ export function createMessagingService(
           channelId,
           botPublicId: input.publicId,
           botOriginReference: input.originReference,
+          expectedOwnerRevision: input.expectedOwnerRevision,
         }),
       );
       return {
         id: channel.id,
+        ownerRevision: channel.ownerRevision ?? 0,
         provider: channel.provider ?? "META",
         botPublicId: channel.botPublicId,
       };

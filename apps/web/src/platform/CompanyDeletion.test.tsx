@@ -49,3 +49,16 @@ it('rejects a malformed preview without breaking the administrator page',async()
   expect(screen.getByRole('button',{name:'Excluir empresa definitivamente'})).toBeDisabled();
   expect(onDeleted).not.toHaveBeenCalled();
 });
+
+it('offers read-only reconciliation and blocks another DELETE while external cleanup is uncertain',async()=>{
+  const id='00000000-0000-4000-8000-000000000009';
+  const request=vi.fn(async(path:string,method?:string)=>path==='/deletion-preview'?{...preview,operationId:id,operationStatus:'ACTION_REQUIRED'}:
+    method==='POST'?{operationId:id,status:'REQUESTED'}:{operationId:id,status:'ACTION_REQUIRED',errorCode:'EVOLUTION_CLEANUP_UNVERIFIED',updatedAt:new Date().toISOString()});
+  render(<CompanyDeletion companyName="Casa do Construtor" request={request} onDeleted={vi.fn()}/>);
+  const reconcile=await screen.findByRole('button',{name:'Conferir remoção externa'});
+  fireEvent.change(screen.getByLabelText('Digite o nome da empresa'),{target:{value:'Casa do Construtor'}});
+  fireEvent.change(screen.getByLabelText('Motivo da exclusão'),{target:{value:'Conferir resultado externo'}});
+  expect(screen.getByRole('button',{name:'Retentar exclusão segura'})).toBeDisabled();
+  fireEvent.click(reconcile);
+  await waitFor(()=>expect(request).toHaveBeenCalledWith(`/deletion/${id}/reconcile`,'POST',{reason:'Conferir resultado externo'}));
+});

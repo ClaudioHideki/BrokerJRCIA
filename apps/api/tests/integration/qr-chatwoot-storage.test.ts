@@ -135,13 +135,13 @@ describe('QR e integração JRC Conversas no PostgreSQL real', () => {
     const mirrors = externalCalls.filter(c => c.path.endsWith('/messages') && c.method === 'POST');
     expect(mirrors).toHaveLength(1);
     expect(mirrors[0]!.body).toMatchObject({ message_type: 'incoming', content: 'Oi JRC', private: false });
-    const raw = Buffer.from(JSON.stringify({ event: 'message_created', id: 71, account: { id: 1 }, inbox: { id: 31 }, conversation: { id: 51, inbox_id: 31 }, message_type: 'outgoing', private: false, content: 'Resposta JRC' }));
+    const raw = Buffer.from(JSON.stringify({ event: 'message_created', id: 71, account: { id: 1 }, inbox: { id: 31 }, conversation: { id: 51, inbox_id: 31 }, message_type: 'outgoing', private: false, sender:{id:81,type:'user'},content: 'Resposta JRC' }));
     const timestamp = String(Math.floor(Date.now() / 1000));
     const signature = 'sha256=' + createHmac('sha256', 'cw-signing-secret').update(timestamp + '.').update(raw).digest('hex');
     await chatwoot.ingest(integration.id, raw, timestamp, signature);
     await chatwoot.ingest(integration.id, raw, timestamp, signature);
     await createChatwootWorker(cwOptions).runOnce(org);
-    const replies = await withOrganizationTransaction(pool, org, t => t.query("SELECT id FROM messaging_messages WHERE organization_id=$1 AND idempotency_key='chatwoot:71'", [org]));
+    const replies = await withOrganizationTransaction(pool, org, t => t.query("SELECT m.id FROM messaging_messages m JOIN chatwoot_messages cm ON cm.organization_id=m.organization_id AND cm.message_id=m.id WHERE m.organization_id=$1 AND cm.remote_message_id=71", [org]));
     expect(replies.rows).toHaveLength(1);
     const jobs = await chatwoot.jobs(org);
     expect(jobs.data.some(job => job.kind === 'CHATWOOT_REPLY' && job.status === 'SUCCEEDED')).toBe(true);
@@ -181,29 +181,8 @@ describe('QR e integração JRC Conversas no PostgreSQL real', () => {
     await expect(provisioner.resume(id)).rejects.toMatchObject({ code: 'PROVISIONING_REQUIRES_RECONCILIATION' });
     expect(calls).toBe(1);
   });
-  it('concilia mensagem aceita pelo destino após perda de resposta sem reenviá-la',async()=>{
-    for(let i=0;i<8;i++)await createChatwootWorker(cwOptions).runOnce(org);
-    let sent:Record<string,unknown>|undefined;let attempts=0;
-    const options={...cwOptions,async fetch(input:string|URL|Request,init?:RequestInit){
-      const path=new URL(String(input)).pathname;
-      if(path.endsWith('/messages')&&init?.method==='POST'){
-        attempts++;sent=JSON.parse(String(init.body));throw new Error('Response lost after accept');
-      }
-      if(path.endsWith('/messages')&&init?.method==='GET')return Response.json({payload:[{id:991,content_attributes:sent?.content_attributes}]});
-      return cwOptions.fetch!(input,init);
-    }};
-    const event=payload();event.data.key.id='qr-reconcile-1';event.data.messageTimestamp=Math.floor(Date.now()/1000);
-    await qr.ingest(channel,auth(),event);
-    await createChatwootWorker(options).runOnce(org);
-    const service=createChatwootService(options);
-    const pending=(await service.jobs(org)).data.find(job=>job.status==='UNKNOWN');
-    expect(pending).toBeDefined();
-    await service.reconcileJob(org,pending!.id,'Conferência do recebimento',991);
-    await createChatwootWorker(options).runOnce(org);
-    expect(attempts).toBe(1);
-    expect((await service.jobs(org)).data.find(job=>job.id===pending!.id)?.status).toBe('SUCCEEDED');
-  });
   it('mantém tarefas recebidas durante uma pausa e retoma sem recriar a caixa',async()=>{
+    for(let i=0;i<8;i++)await createChatwootWorker(cwOptions).runOnce(org);
     const c=(await chatwoot.status(org)).connections[0]!;
     await chatwoot.setEnabled(org,c.id,false);
     const event=payload();event.data.key.id='qr-paused';event.data.messageTimestamp=Math.floor(Date.now()/1000);
@@ -241,7 +220,7 @@ describe('QR e integração JRC Conversas no PostgreSQL real', () => {
     await media.runOnce(org);await createChatwootWorker(options).runOnce(org);
     expect(forms).toHaveLength(1);expect(forms[0]!.get('content')).toBe('Documento recebido');
     const integration=(await chatwoot.status(org)).connections[0]!;
-    const body=Buffer.from(JSON.stringify({event:'message_created',id:1002,account:{id:1},inbox:{id:31},conversation:{id:51},message_type:'outgoing',private:false,content:'Arquivos',attachments:[{id:101,file_type:'image'},{id:102,file_type:'image'}]}));
+    const body=Buffer.from(JSON.stringify({event:'message_created',id:1002,account:{id:1},inbox:{id:31},conversation:{id:51},message_type:'outgoing',private:false,sender:{id:81,type:'user'},content:'Arquivos',attachments:[{id:101,file_type:'image'},{id:102,file_type:'image'}]}));
     const timestamp=String(Math.floor(Date.now()/1000));const signature='sha256='+createHmac('sha256','cw-signing-secret').update(`${timestamp}.`).update(body).digest('hex');
     await chatwoot.ingest(integration.id,body,timestamp,signature);
     await chatwoot.ingest(integration.id,body,timestamp,signature);
@@ -293,13 +272,13 @@ describe('QR e integração JRC Conversas no PostgreSQL real', () => {
     await withOrganizationTransaction(pool,org,t=>t.query("UPDATE integration_jobs SET status='SUCCEEDED',lease_token=NULL,lease_expires_at=NULL WHERE organization_id=$1",[org]));
     const options={...cwOptions,async fetch(input:string|URL|Request,init?:RequestInit){
       const path=new URL(String(input)).pathname;
-      if(path.endsWith('/conversations/701'))return Response.json({id:701,account_id:1,inbox_id:31,meta:{sender:{id:801,phone_number:'+15550000999',name:'Contato de teste'}}});
+      if(path.endsWith('/conversations/701'))return Response.json({id:701,account_id:1,inbox_id:31,status:'open',updated_at:100,meta:{assignee:{id:81,type:'user'},assignee_type:'User',team:null,sender:{id:801,phone_number:'+15550000999',name:'Contato de teste'}}});
       if(path.endsWith('/contacts/801'))return Response.json({payload:{id:801,phone_number:'+15550000999',contact_inboxes:[{inbox:{id:31},source_id:'source-801'}]}});
       if(path.endsWith('/conversations/702'))return Response.json({id:702,account_id:2,inbox_id:31,meta:{sender:{id:801,phone_number:'+15550000999'}}});
       return cwOptions.fetch!(input,init);
     }};
     for(const [messageId,conversationId] of [[901,701],[902,702]]){
-      const raw=Buffer.from(JSON.stringify({event:'message_created',id:messageId,account:{id:1},inbox:{id:31},conversation:{id:conversationId},message_type:'outgoing',private:false,content:'Primeiro atendimento'}));
+      const raw=Buffer.from(JSON.stringify({event:'message_created',id:messageId,account:{id:1},inbox:{id:31},conversation:{id:conversationId},message_type:'outgoing',private:false,sender:{id:81,type:'user'},content:'Primeiro atendimento'}));
       const timestamp=String(Math.floor(Date.now()/1000));
       const signature='sha256='+createHmac('sha256','cw-signing-secret').update(timestamp+'.').update(raw).digest('hex');
       await chatwoot.ingest(connection.id,raw,timestamp,signature);
@@ -309,5 +288,27 @@ describe('QR e integração JRC Conversas no PostgreSQL real', () => {
     const rows=await withOrganizationTransaction(pool,org,t=>t.query('SELECT remote_message_id FROM chatwoot_messages WHERE remote_message_id IN (901,902)'));
     expect(rows.rows.map(r=>Number(r.remote_message_id))).toEqual([901]);
     expect((await chatwoot.jobs(org)).data.some(j=>j.lastError==='CHATWOOT_BINDING_MISMATCH')).toBe(true);
+  });
+  it('preserva envio incerto e não aceita somente um marcador editável como prova para conciliação',async()=>{
+    for(let i=0;i<8;i++)await createChatwootWorker(cwOptions).runOnce(org);
+    let sent:Record<string,unknown>|undefined;let attempts=0;
+    const options={...cwOptions,async fetch(input:string|URL|Request,init?:RequestInit){
+      const path=new URL(String(input)).pathname;
+      if(path.endsWith('/messages')&&init?.method==='POST'){
+        attempts++;sent=JSON.parse(String(init.body));throw new Error('Response lost after accept');
+      }
+      if(path.endsWith('/messages')&&init?.method==='GET')return Response.json({payload:[{id:991,content_attributes:sent?.content_attributes}]});
+      return cwOptions.fetch!(input,init);
+    }};
+    const event=payload();event.data.key.id='qr-reconcile-1';event.data.messageTimestamp=Math.floor(Date.now()/1000);
+    await qr.ingest(channel,auth(),event);
+    await createChatwootWorker(options).runOnce(org);
+    const service=createChatwootService(options);
+    const pending=(await service.jobs(org)).data.find(job=>job.status==='UNKNOWN');
+    expect(pending).toBeDefined();
+    await expect(service.reconcileJob(org,pending!.id,'Conferência do recebimento',991)).rejects.toMatchObject({code:'CHATWOOT_MIRROR_EVIDENCE_REQUIRED'});
+    await createChatwootWorker(options).runOnce(org);
+    expect(attempts).toBe(1);
+    expect((await service.jobs(org)).data.find(job=>job.id===pending!.id)?.status).toBe('UNKNOWN');
   });
 });

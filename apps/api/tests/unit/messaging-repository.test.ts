@@ -72,6 +72,8 @@ function transactionReturning(...rows: unknown[][]): TenantTransaction {
   return {
     async query(sql: string) {
       if (sql.includes('tenant_is_active')) return { rows: [{ active: true }], rowCount: 1 };
+      if(sql.endsWith('for no key update'))return {rows:[{id:CHANNEL_ID}],rowCount:1};
+      if(sql.startsWith('SELECT channel_id FROM messaging_')||sql.startsWith('SELECT message_id FROM messaging_bot_jobs')||sql.includes('for share of i'))return {rows:[],rowCount:0};
       const next = rows[index++] ?? [];
       return { rows: next, rowCount: next.length };
     },
@@ -393,15 +395,15 @@ describe('PostgresMessagingRepository panel and provisioning operations', () => 
     })).resolves.toEqual(MESSAGE);
   });
 
-  it('rebinds a channel bot and returns the updated channel', async () => {
-    const rebound = { ...CHANNEL, botPublicId: 'bot-b', botOriginReference: 'origin-b' };
-    const transaction = transactionReturning([], [], [CHANNEL], [rebound], [], []);
+  it('passes the caller owner revision into the shared authority', async () => {
+    const transaction = transactionReturning([], [{bot_public_id:'bot-a',bot_origin_reference:'origin-a'}], [{revision:2}]);
     await expect(createPostgresMessagingRepository().setChannelBot(transaction, {
       organizationId: ORGANIZATION_ID,
       channelId: CHANNEL_ID,
       botPublicId: 'bot-b',
       botOriginReference: 'origin-b',
-    })).resolves.toEqual(rebound);
+      expectedOwnerRevision:1,
+    })).rejects.toMatchObject({code:'ATTENDANCE_OWNER_CHANGED',statusCode:409});
   });
 
   it('rejects a partial bot binding', async () => {

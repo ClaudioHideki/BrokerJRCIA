@@ -40,6 +40,11 @@ function session(accessToken = ACCESS_TOKEN, activeIndex = 0) {
 }
 
 describe('createApiClient', () => {
+  it('preserves structured automation diagnostics in problem responses',async()=>{
+    const diagnostics=[{nodeId:'same-label-2',field:'data.text',code:'INVALID_CONFIG',message:'Informe uma mensagem.'}];
+    const client=createApiClient({fetchImpl:vi.fn(async()=>jsonResponse({code:'AUTOMATION_INVALID',diagnostics},422,{'content-type':'application/problem+json'}))});
+    await expect(client.request('/v1/automations/id/publish',{method:'POST',body:'{}'})).rejects.toMatchObject({status:422,diagnostics});
+  });
   it('adds signed CSRF cookie only to exact first-party embed decisions', async () => {
     const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse({ ok: true }));
     const client = createApiClient({ fetchImpl, cookieSource: () => 'jrc_csrf=synthetic-csrf' });

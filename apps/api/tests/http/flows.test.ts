@@ -37,7 +37,7 @@ it('requires authentication and serves capability status without caching',async(
 it('reports an existing inbox automation as a conflict that the operator can resolve',async()=>{
  const h=await setup();
  h.service.bind=vi.fn(async()=>{throw new MessagingRepositoryError('FLOW_INBOX_HAS_AUTOMATION',409);});
- const response=await h.app.inject({method:'POST',url:`/v1/flows/${org}/bind`,headers:h.headers,payload:{channelId:org}});
+ const response=await h.app.inject({method:'POST',url:`/v1/flows/${org}/bind`,headers:h.headers,payload:{channelId:org,expectedOwnerRevision:0}});
  expect(response.statusCode).toBe(409);
  expect(response.json().code).toBe('FLOW_INBOX_HAS_AUTOMATION');
 });

@@ -50,7 +50,7 @@ export const initialLimits: Limits = {
 export const limitLabels = {
   maxInstances: "Conexões",
   maxUsers: "Usuários",
-  messagesPerDay: "Envios por dia",
+  messagesPerDay: "Mensagens aceitas por dia UTC",
   maxPendingMessages: "Mensagens pendentes",
 };
 export const limitKeys = Object.keys(initialLimits) as (keyof Limits)[];

@@ -37,6 +37,7 @@ export type MessageContent =
   | MediaMessageContent;
 
 export interface MessagingChannel {
+  ownerRevision?: number;
   id: string;
   organizationId: string;
   providerAccountId: string;

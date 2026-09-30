@@ -46,4 +46,52 @@ it('keeps support users read-only', async () => {
   expect(screen.getByLabelText('GoPure')).toBeDisabled();
   expect(screen.queryByRole('button', { name: 'Salvar empresas do grupo' })).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Nome do grupo')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Renomear grupo' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Remover grupo' })).not.toBeInTheDocument();
+});
+
+it('renames the selected group with its current revision', async () => {
+  const group = { id: 'group-a', name: 'Grupo JRC', revision: 4, organizationIds: ['org-a'] };
+  const request = vi.fn().mockResolvedValue({ data: [group] });
+  render(<EconomicGroups request={request} companies={companies} admin disabled={false} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Grupo JRC' }));
+  fireEvent.change(screen.getByLabelText('Novo nome do grupo'), { target: { value: 'Grupo JRC atualizado' } });
+  request.mockResolvedValueOnce({ ...group, name: 'Grupo JRC atualizado', revision: 5 });
+  fireEvent.click(screen.getByRole('button', { name: 'Renomear grupo' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/groups/group-a', 'PATCH', { name: 'Grupo JRC atualizado', expectedRevision: 4 }));
+  expect(await screen.findByRole('button', { name: 'Grupo JRC atualizado' })).toBeInTheDocument();
+  expect(screen.getByLabelText('GoPure')).toBeChecked();
+});
+
+it('shows a fresh preview and requires an explicit decision to preserve linked companies', async () => {
+  const group = { id: 'group-a', name: 'Grupo JRC', revision: 4, organizationIds: ['org-a'] };
+  const request = vi.fn().mockResolvedValue({ data: [group] });
+  render(<EconomicGroups request={request} companies={companies} admin disabled={false} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Grupo JRC' }));
+  request.mockResolvedValueOnce({ id: group.id, name: group.name, revision: 5, organizations: [companies[0]] });
+  fireEvent.click(screen.getByRole('button', { name: 'Remover grupo' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Remover somente o grupo' });
+  expect(dialog).toHaveTextContent('GoPure');
+  expect(dialog).toHaveTextContent(/empresas.*dados.*preservados/i);
+  expect(screen.getByRole('button', { name: 'Confirmar remoção do grupo' })).toBeDisabled();
+  fireEvent.click(screen.getByLabelText('Preservar as empresas e deixá-las sem grupo'));
+  request.mockResolvedValueOnce({ removed: true, preservedOrganizationIds: ['org-a'] });
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar remoção do grupo' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/groups/group-a', 'DELETE', { expectedRevision: 5, detachCompanies: true }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Grupo removido. As empresas e seus dados foram preservados.');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+it('requires a new preview after a conflicting removal and never submits the stale confirmation again', async () => {
+  const group = { id: 'group-a', name: 'Grupo JRC', revision: 4, organizationIds: ['org-a'] };
+  const request = vi.fn().mockResolvedValue({ data: [group] });
+  render(<EconomicGroups request={request} companies={companies} admin disabled={false} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Grupo JRC' }));
+  request.mockResolvedValueOnce({ ...group, organizations: [companies[0]] });
+  fireEvent.click(screen.getByRole('button', { name: 'Remover grupo' }));
+  fireEvent.click(await screen.findByLabelText('Preservar as empresas e deixá-las sem grupo'));
+  request.mockRejectedValueOnce(new Error('GROUP_REVISION_CHANGED'));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar remoção do grupo' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('GROUP_REVISION_CHANGED');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });

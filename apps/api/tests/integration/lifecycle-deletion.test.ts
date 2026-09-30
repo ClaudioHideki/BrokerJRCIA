@@ -80,6 +80,8 @@ describe('permanent tenant and channel deletion with PostgreSQL ownership bounda
     await db.pool.query('INSERT INTO messaging_contacts(id,organization_id,external_id) VALUES($1,$2,$3)',[contact,b,'contact-b']);
     await db.pool.query('INSERT INTO messaging_conversations(id,organization_id,channel_id,contact_id) VALUES($1,$2,$3,$4)',
       [conversation,b,channel,contact]);
+    await db.pool.query('INSERT INTO attendance_owners(organization_id,channel_id) VALUES($1,$2)',[b,channel]);
+    await db.pool.query("INSERT INTO attendance_sessions(organization_id,channel_id,conversation_id,cycle,state,owner_revision) VALUES($1,$2,$3,1,'RESOLVED',0)",[b,channel,conversation]);
     await db.pool.query("INSERT INTO messaging_messages(id,organization_id,channel_id,conversation_id,direction,source,content,state) VALUES($1,$2,$3,$4,'OUTGOING','OPERATOR',$5,'ACCEPTED')",
       [safe,b,channel,conversation,JSON.stringify({type:'TEXT',text:'safe'})]);
     await db.pool.query('INSERT INTO messaging_outbox(organization_id,message_id) VALUES($1,$2)',[b,safe]);
@@ -94,6 +96,8 @@ describe('permanent tenant and channel deletion with PostgreSQL ownership bounda
     expect((await service.status(b,instanceB,request.operationId)).status).toBe('COMPLETED');
     expect((await db.pool.query('SELECT count(*)::int n FROM messaging_messages WHERE id=$1',[safe])).rows[0].n).toBe(0);
     expect((await db.pool.query('SELECT count(*)::int n FROM messaging_media WHERE id=$1',[media])).rows[0].n).toBe(0);
+    expect((await db.pool.query('SELECT * FROM attendance_owners WHERE organization_id=$1',[b])).rows).toEqual([]);
+    expect((await db.pool.query('SELECT * FROM attendance_sessions WHERE organization_id=$1',[b])).rows).toEqual([]);
     const uncertainChannel=randomUUID(),uncertain=randomUUID(),contactC=randomUUID(),conversationC=randomUUID();
     await db.pool.query("INSERT INTO messaging_channels(id,organization_id,provider_account_id,provider,instance_id,credential_reference) VALUES($1,$2,$3,'BAILEYS',$4,'qa')",
       [uncertainChannel,c,accountC,instanceC]);
@@ -121,6 +125,8 @@ describe('permanent tenant and channel deletion with PostgreSQL ownership bounda
   });
 
   it('purges a company but retains shared users and the other tenant',async()=>{
+    await db.pool.query('INSERT INTO attendance_owners(organization_id,channel_id) SELECT organization_id,id FROM messaging_channels WHERE organization_id=$1',[c]);
+    await db.pool.query("INSERT INTO attendance_sessions(organization_id,channel_id,conversation_id,cycle,state,owner_revision) SELECT organization_id,channel_id,id,1,'RESOLVED',0 FROM messaging_conversations WHERE organization_id=$1",[c]);
     await db.pool.query("UPDATE messaging_messages SET state='FAILED' WHERE organization_id=$1 AND state='UNKNOWN'",[c]);
     const request=await service.requestOrganization(c,'Lifecycle C','Authorized permanent cleanup',actor);
     expect((await db.pool.query('SELECT status FROM organizations WHERE id=$1',[c])).rows[0].status).toBe('DISABLED');
@@ -129,6 +135,8 @@ describe('permanent tenant and channel deletion with PostgreSQL ownership bounda
     expect(await workerService.processOne()).toBe(true);
     expect(await service.status(c,c,request.operationId)).toMatchObject({status:'COMPLETED'});
     expect((await db.pool.query('SELECT count(*)::int n FROM organizations WHERE id=$1',[c])).rows[0].n).toBe(0);
+    expect((await db.pool.query('SELECT * FROM attendance_owners WHERE organization_id=$1',[c])).rows).toEqual([]);
+    expect((await db.pool.query('SELECT * FROM attendance_sessions WHERE organization_id=$1',[c])).rows).toEqual([]);
     expect((await db.pool.query('SELECT count(*)::int n FROM users WHERE id=$1',[ownerC])).rows[0].n).toBe(0);
     expect((await db.pool.query('SELECT count(*)::int n FROM users WHERE id=$1',[shared])).rows[0].n).toBe(1);
     expect((await db.pool.query('SELECT count(*)::int n FROM organizations WHERE id=$1',[b])).rows[0].n).toBe(1);

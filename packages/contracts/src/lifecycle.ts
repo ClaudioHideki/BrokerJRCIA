@@ -16,6 +16,7 @@ export const RequestDeletionSchema = z.strictObject({
   confirmationName: z.string().min(1).max(120),
   reason: z.string().trim().min(5).max(500),
 });
+export const ReconcileDeletionSchema=z.strictObject({reason:z.string().trim().min(5).max(500)});
 
 export const DeletionRequestedSchema = z.strictObject({
   operationId: z.uuid(),
