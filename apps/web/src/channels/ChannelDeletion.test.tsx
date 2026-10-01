@@ -6,6 +6,18 @@ import { ChannelDeletion } from './ChannelDeletion.js';
 const preview = { resourceId: 'one', resourceName: 'Comercial', kind: 'CHANNEL', canDelete: true,
   blockers: [], counts: { messages: 7, automations: 1 }, externalEffects: [], operationId: null, operationStatus: null };
 
+it('reconciles uncertain cleanup without submitting a second deletion',async()=>{
+  const request=vi.fn(async(path:string,method?:string)=>path.endsWith('deletion-preview')?{...preview,operationId:'existing',operationStatus:'ACTION_REQUIRED'}:
+    method==='POST'?{operationId:'existing',status:'REQUESTED'}:{operationId:'existing',status:'ACTION_REQUIRED',errorCode:'EVOLUTION_CLEANUP_UNVERIFIED'});
+  render(<ChannelDeletion request={request} path="/one"/>);fireEvent.click(screen.getByRole('button',{name:'Excluir conexão'}));
+  const reconcile=await screen.findByRole('button',{name:'Conferir remoção externa'});
+  fireEvent.change(screen.getByLabelText('Digite o nome da conexão'),{target:{value:'Comercial'}});
+  fireEvent.change(screen.getByLabelText('Motivo da exclusão'),{target:{value:'Conferir resultado externo'}});
+  expect(screen.getByRole('button',{name:'Retentar exclusão segura'})).toBeDisabled();
+  fireEvent.click(reconcile);
+  await waitFor(()=>expect(request).toHaveBeenCalledWith('/one/deletion/existing/reconcile','POST',{reason:'Conferir resultado externo'}));
+});
+
 it('requires the resource name and reason and never mistakes an accepted job for completed deletion', async () => {
   const request = vi.fn(async (path: string, method?: string, _body?: unknown) => method === 'POST'
     ? { operationId: 'op', status: 'CLEANING_EXTERNAL' } : path.endsWith('deletion-preview')

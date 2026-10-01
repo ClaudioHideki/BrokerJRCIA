@@ -1,11 +1,13 @@
 import type { AutomationGraphV1 } from '@jrc/contracts';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { RuntimeResult, RuntimeState } from './types.js';
+import { promoteAttendanceInput } from '../attendance/event-router.js';
+import { runtimeAuthorityAllows } from '../attendance/runtime-authority.js';
 
 export interface DefinitionRow {id:string;organizationId:string;name:string;lifecycleStatus:'DRAFT'|'PUBLISHED'|'ARCHIVED';draftGraph:AutomationGraphV1;draftRevision:number;activeVersion:number|null;updatedAt:Date}
 export interface DefinitionPageCursor {updatedAt:string;id:string}
 export interface DefinitionPageRow extends DefinitionRow {cursorUpdatedAt:string}
-export interface VersionRow {automationId:string;organizationId:string;version:number;graph:AutomationGraphV1;checksum:string;publishedAt:Date}
+export interface VersionRow {automationId:string;organizationId:string;version:number;graph:AutomationGraphV1;checksum:string;publishedAt:Date;runtimeStateVersion?:1|2}
 export interface BindingRow {id:string;organizationId:string;automationId:string;version:number;channelId:string;humanDestinationId:string|null;status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number;createdAt:Date;updatedAt:Date}
 export interface ExecutionRow {id:string;organizationId:string;automationId:string;version:number;bindingId:string;channelId:string;conversationId:string|null;status:string;currentNodeId:string|null;correlationId:string;state:RuntimeState;input:Record<string,unknown>;errorCode:string|null;attempts:number;startedAt:Date;updatedAt:Date;completedAt:Date|null;leaseToken:string|null}
 export type OutboxKind='SEND_TEXT'|'HANDOFF'|'RESUME_EVENT'|'IO_HTTP'|'IO_SQL'|'IO_CODE'|'IO_AI';
@@ -14,9 +16,23 @@ export interface NodeExecutionRow {id:string;nodeId:string;ordinal:number;status
 export interface OutboxInspectionRow {id:string;nodeId:string;ordinal:number;kind:OutboxKind;status:string;attempts:number;remoteReference:string|null;lastError:string|null;createdAt:Date;updatedAt:Date}
 export interface ExecutionContextRow {conversationId:string|null;contactId:string|null}
 
+// Only the head of an execution may leave the durable outbox. Inspect ALL kinds
+// and ALL availability times: an IO worker must not jump over a text effect,
+// and a backoff/UNKNOWN predecessor must keep blocking after its lease expires.
+// Historical equal ordinals are ambiguous: never reconstruct their order from UUIDs.
+const outboxHeadEligible=`not exists (
+  select 1 from automation_outbox predecessor
+  where predecessor.organization_id=o.organization_id and predecessor.execution_id=o.execution_id
+    and predecessor.ordinal<o.ordinal and predecessor.status not in ('SENT','FAILED','CANCELED')
+) and not exists (
+  select 1 from automation_outbox peer
+  where peer.organization_id=o.organization_id and peer.execution_id=o.execution_id
+    and peer.ordinal=o.ordinal and peer.id<>o.id
+)`;
+
 const runtimeTenantActive=`exists(select 1 from organizations runtime_org join flow_features runtime_feature on runtime_feature.organization_id=runtime_org.id where runtime_org.id=$1 and runtime_org.status='ACTIVE' and runtime_feature.enabled)`;
 const definitionColumns=`id,organization_id AS "organizationId",name,lifecycle_status AS "lifecycleStatus",draft_graph AS "draftGraph",draft_revision AS "draftRevision",active_version AS "activeVersion",updated_at AS "updatedAt"`;
-const versionColumns=`automation_id AS "automationId",organization_id AS "organizationId",version,graph,checksum,published_at AS "publishedAt"`;
+const versionColumns=`automation_id AS "automationId",organization_id AS "organizationId",version,graph,checksum,published_at AS "publishedAt",runtime_state_version AS "runtimeStateVersion"`;
 const bindingColumns=`id,organization_id AS "organizationId",automation_id AS "automationId",version,channel_id AS "channelId",human_destination_id AS "humanDestinationId",status,revision,created_at AS "createdAt",updated_at AS "updatedAt"`;
 const executionColumns=`id,organization_id AS "organizationId",automation_id AS "automationId",version,binding_id AS "bindingId",channel_id AS "channelId",conversation_id AS "conversationId",status,current_node_id AS "currentNodeId",correlation_id AS "correlationId",state,input,error_code AS "errorCode",attempts,started_at AS "startedAt",updated_at AS "updatedAt",completed_at AS "completedAt",lease_token AS "leaseToken"`;
 const claimedExecutionColumns=executionColumns.split(',').map(column=>`e.${column}`).join(',');
@@ -26,7 +42,7 @@ export interface AutomationRepository {
  getDefinition(tx:TenantTransaction,org:string,id:string,lock?:boolean):Promise<DefinitionRow|null>;
  insertDefinition(tx:TenantTransaction,row:{org:string;id:string;name:string;graph:AutomationGraphV1}):Promise<DefinitionRow>;
  updateDefinition(tx:TenantTransaction,row:{org:string;id:string;name:string;graph:AutomationGraphV1;revision:number}):Promise<DefinitionRow|null>;
- insertVersion(tx:TenantTransaction,row:{org:string;id:string;version:number;graph:AutomationGraphV1;checksum:string}):Promise<VersionRow>;
+ insertVersion(tx:TenantTransaction,row:{org:string;id:string;version:number;graph:AutomationGraphV1;checksum:string;runtimeStateVersion?:1|2}):Promise<VersionRow>;
  activateVersion(tx:TenantTransaction,org:string,id:string,version:number):Promise<DefinitionRow>;
  getVersion(tx:TenantTransaction,org:string,id:string,version:number):Promise<VersionRow|null>;
  listVersions(tx:TenantTransaction,org:string,id:string):Promise<VersionRow[]>;
@@ -64,7 +80,7 @@ export function createPostgresAutomationRepository():AutomationRepository{return
   async getDefinition(tx,org,id,lock=false){return (await tx.query<DefinitionRow>(`select ${definitionColumns} from automation_definitions where organization_id=$1 and id=$2 ${lock?'for update':''}`,[org,id])).rows[0]??null;},
   async insertDefinition(tx,row){return (await tx.query<DefinitionRow>(`insert into automation_definitions(organization_id,id,name,draft_graph) values($1,$2,$3,$4) returning ${definitionColumns}`,[row.org,row.id,row.name,JSON.stringify(row.graph)])).rows[0]!;},
   async updateDefinition(tx,row){return (await tx.query<DefinitionRow>(`update automation_definitions set name=$3,draft_graph=$4,draft_revision=draft_revision+1,updated_at=now() where organization_id=$1 and id=$2 and draft_revision=$5 and lifecycle_status<>'ARCHIVED' returning ${definitionColumns}`,[row.org,row.id,row.name,JSON.stringify(row.graph),row.revision])).rows[0]??null;},
-  async insertVersion(tx,row){return (await tx.query<VersionRow>(`insert into automation_versions(organization_id,automation_id,version,graph,checksum) values($1,$2,$3,$4,$5) returning ${versionColumns}`,[row.org,row.id,row.version,JSON.stringify(row.graph),row.checksum])).rows[0]!;},
+  async insertVersion(tx,row){return (await tx.query<VersionRow>(`insert into automation_versions(organization_id,automation_id,version,graph,checksum,runtime_state_version) values($1,$2,$3,$4,$5,$6) returning ${versionColumns}`,[row.org,row.id,row.version,JSON.stringify(row.graph),row.checksum,row.runtimeStateVersion??1])).rows[0]!;},
   async activateVersion(tx,org,id,version){return (await tx.query<DefinitionRow>(`update automation_definitions set active_version=$3,lifecycle_status='PUBLISHED',updated_at=now() where organization_id=$1 and id=$2 returning ${definitionColumns}`,[org,id,version])).rows[0]!;},
   async getVersion(tx,org,id,version){return (await tx.query<VersionRow>(`select ${versionColumns} from automation_versions where organization_id=$1 and automation_id=$2 and version=$3`,[org,id,version])).rows[0]??null;},
   async listVersions(tx,org,id){return (await tx.query<VersionRow>(`select ${versionColumns} from automation_versions where organization_id=$1 and automation_id=$2 order by version desc`,[org,id])).rows;},
@@ -73,22 +89,56 @@ export function createPostgresAutomationRepository():AutomationRepository{return
   async setBindingStatus(tx,org,id,status,revision){return (await tx.query<BindingRow>(`update automation_bindings set status=$3,revision=revision+1,updated_at=now() where organization_id=$1 and id=$2 and revision=$4 returning ${bindingColumns}`,[org,id,status,revision])).rows[0]??null;},
   async insertEvent(tx,row){return Boolean((await tx.query(`insert into automation_events(organization_id,id,event_key,type,payload) values($1,$2,$3,$4,$5) on conflict(organization_id,event_key) do nothing returning id`,[row.org,row.id,row.eventKey,row.type,JSON.stringify(row.payload)])).rowCount);},
   async routeEvent(tx,row){
-    const binding=(await tx.query<BindingRow>(`select ${bindingColumns} from automation_bindings where organization_id=$1 and channel_id=$2 and status='ACTIVE' and ${runtimeTenantActive} for update`,[row.org,row.channelId])).rows[0];if(!binding)return null;
-    const waiting=row.conversationId?(await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions where organization_id=$1 and binding_id=$2 and conversation_id=$3 and status='WAITING' order by updated_at desc limit 1 for update`,[row.org,binding.id,row.conversationId])).rows[0]:undefined;
-    if(waiting){await tx.query(`update automation_executions set status='QUEUED',input=$3,updated_at=now(),lease_token=null,lease_expires_at=null where organization_id=$1 and id=$2`,[row.org,waiting.id,JSON.stringify(row.input)]);await tx.query(`update automation_waits set status='RESUMED',resume_event_key=$3,resumed_at=now() where organization_id=$1 and execution_id=$2 and status='WAITING'`,[row.org,waiting.id,row.eventKey]);await tx.query(`update automation_events set execution_id=$3,status='CONSUMED',consumed_at=now() where organization_id=$1 and id=$2`,[row.org,row.eventId,waiting.id]);return {execution:{...waiting,status:'QUEUED',input:row.input},resumed:true};}
+    await lockAttendanceChannelRead(tx,row.org,row.channelId);
+    const binding=(await tx.query<BindingRow>(`select ${bindingColumns} from automation_bindings where organization_id=$1 and channel_id=$2 and status in ('ACTIVE','PAUSED') and ${runtimeTenantActive} for update`,[row.org,row.channelId])).rows[0];if(!binding)return null;
+    if(!await runtimeAuthorityAllows(tx,{organizationId:row.org,channelId:row.channelId,conversationId:row.conversationId,automationId:binding.automationId,version:binding.version},false))return null;
+    const active=row.conversationId?(await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions
+      where organization_id=$1 and binding_id=$2 and conversation_id=$3 and status in ('QUEUED','RUNNING','WAITING','HANDOFF','UNKNOWN','FAILED')
+      order by started_at,id limit 2 for no key update`,[row.org,binding.id,row.conversationId])).rows:[];
+    // Historical duplicate sessions need explicit reconciliation; never choose an arbitrary survivor.
+    if(active.length>1)throw new Error('AUTOMATION_SESSION_RECONCILIATION_REQUIRED');
+    const current=active[0];
+    if(current){
+      await tx.query(`update automation_events set execution_id=$3,payload=$4 where organization_id=$1 and id=$2 and status='PENDING'`,
+        [row.org,row.eventId,current.id,JSON.stringify(row.input)]);
+      const resumed=await promoteAttendanceInput(tx,row.org,current.id);
+      return {execution:(await this.getExecution(tx,row.org,current.id))!,resumed};
+    }
+    if(binding.status!=='ACTIVE')return null;
     const created=(await tx.query<ExecutionRow>(`insert into automation_executions(organization_id,id,automation_id,version,binding_id,channel_id,conversation_id,trigger_event_key,correlation_id,input,state) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'{}') returning ${executionColumns}`,[row.org,row.executionId,binding.automationId,binding.version,binding.id,row.channelId,row.conversationId,row.eventKey,row.correlationId,JSON.stringify(row.input)])).rows[0]!;
     await tx.query(`update automation_events set execution_id=$3,status='CONSUMED',consumed_at=now() where organization_id=$1 and id=$2`,[row.org,row.eventId,created.id]);return {execution:created,resumed:false};
   },
-  async claimExecution(tx,org,leaseToken,leaseMs){return (await tx.query<ExecutionRow>(`with candidate as (select id from automation_executions where organization_id=$1 and ${runtimeTenantActive} and (status='QUEUED' or (status='RUNNING' and lease_expires_at<now())) order by updated_at for update skip locked limit 1) update automation_executions e set status='RUNNING',attempts=attempts+1,lease_token=$2,lease_expires_at=now()+($3::int*interval '1 millisecond'),updated_at=now() from candidate c where e.organization_id=$1 and e.id=c.id returning ${claimedExecutionColumns}`,[org,leaseToken,leaseMs])).rows[0]??null;},
+  async claimExecution(tx,org,leaseToken,leaseMs){
+    const candidates=(await tx.query<{id:string;channelId:string}>(`select id,channel_id AS "channelId" from automation_executions
+      where organization_id=$1 and ${runtimeTenantActive} and (status='QUEUED' or (status='RUNNING' and lease_expires_at<now()))
+      order by updated_at,id limit 50`,[org])).rows;
+    for(const channel of [...new Set(candidates.map(row=>row.channelId))].sort())await lockAttendanceChannelRead(tx,org,channel);
+    const locked=(await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions where organization_id=$1 and id=any($2::uuid[])
+      and (status='QUEUED' or (status='RUNNING' and lease_expires_at<now())) order by id for no key update skip locked`,[org,candidates.map(row=>row.id)])).rows;
+    for(const candidate of candidates){
+      const execution=locked.find(row=>row.id===candidate.id);if(!execution||!await runtimeAuthorityAllows(tx,execution))continue;
+      return (await tx.query<ExecutionRow>(`update automation_executions set status='RUNNING',attempts=attempts+1,lease_token=$3,
+        lease_expires_at=now()+($4::int*interval '1 millisecond'),updated_at=now() where organization_id=$1 and id=$2 returning ${executionColumns}`,
+        [org,execution.id,leaseToken,leaseMs])).rows[0]??null;
+    }
+    return null;
+  },
   async saveExecutionResult(tx,execution,result){
     const turnOffset=execution.attempts*1000;
+    // The engine emits at most 500 effects per turn. Keep the reserved 1000-slot
+    // band disjoint from the following turn; reject rather than overflow SQL int.
+    if(!Number.isSafeInteger(turnOffset)||turnOffset<0||result.effects.length>1000
+      ||turnOffset+Math.max(0,result.effects.length-1)>2147483647)throw new Error('AUTOMATION_EFFECT_ORDINAL_RANGE');
     for(const [ordinal,node] of result.trace.entries())await tx.query(`insert into automation_node_executions(organization_id,execution_id,node_id,ordinal,status,input,output,completed_at) values($1,$2,$3,$4,'COMPLETED',$5,$6,now()) on conflict(organization_id,execution_id,ordinal) do nothing`,[execution.organizationId,execution.id,node.nodeId,turnOffset+ordinal,JSON.stringify(node.input),JSON.stringify(node.output)]);
     for(const node of result.trace.filter(item=>item.type==='subflow-result'&&typeof item.output.automationId==='string'))await tx.query(
       `insert into automation_child_executions(organization_id,parent_execution_id,node_id,automation_id,version,correlation_id,status,input,output) values($1,$2,$3,$4,$5,$6,'COMPLETED',$7,$8)`,
       [execution.organizationId,execution.id,node.nodeId,node.output.automationId,Number(node.output.version),node.output.correlationId,JSON.stringify(node.input),JSON.stringify(node.output.variables??{})]);
-    for(const effect of result.effects)await tx.query(`insert into automation_outbox(organization_id,execution_id,node_id,ordinal,kind,payload) values($1,$2,$3,$4,$5,$6) on conflict(organization_id,execution_id,node_id,ordinal) do nothing`,[execution.organizationId,execution.id,effect.nodeId,turnOffset+effect.ordinal,effect.kind,JSON.stringify(effect.payload)]);
+    // The array is the execution order. Older producers used ordinal=0 for every
+    // node; never trust that value to be globally unique within a turn.
+    for(const [effectOrdinal,effect] of result.effects.entries())await tx.query(`insert into automation_outbox(organization_id,execution_id,node_id,ordinal,kind,payload) values($1,$2,$3,$4,$5,$6) on conflict(organization_id,execution_id,node_id,ordinal) do nothing`,[execution.organizationId,execution.id,effect.nodeId,turnOffset+effectOrdinal,effect.kind,JSON.stringify(effect.payload)]);
     if(result.wait)await tx.query(`insert into automation_waits(organization_id,execution_id,node_id,kind,wake_at,state) values($1,$2,$3,$4,$5,$6)`,[execution.organizationId,execution.id,result.wait.nodeId,result.wait.kind,result.wait.wakeAt??null,JSON.stringify(result.state)]);
     await tx.query(`update automation_executions set status=$4,current_node_id=$5,state=$6,updated_at=now(),completed_at=case when $4 in ('COMPLETED','HANDOFF') then now() else null end,lease_token=null,lease_expires_at=null,error_code=null where organization_id=$1 and id=$2 and lease_token=$3`,[execution.organizationId,execution.id,execution.leaseToken,result.status,result.state.nodeId,JSON.stringify(result.state)]);
+    if(result.wait?.kind==='EVENT')await promoteAttendanceInput(tx,execution.organizationId,execution.id);
   },
   async failExecution(tx,org,id,leaseToken,code,unknown){await tx.query(`update automation_executions set status=$4,error_code=$5,updated_at=now(),completed_at=case when $4='FAILED' then now() else null end,lease_token=null,lease_expires_at=null where organization_id=$1 and id=$2 and lease_token=$3`,[org,id,leaseToken,unknown?'UNKNOWN':'FAILED',code]);},
   async getExecution(tx,org,id){return (await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions where organization_id=$1 and id=$2`,[org,id])).rows[0]??null;},
@@ -122,6 +172,32 @@ export function createPostgresAutomationRepository():AutomationRepository{return
       if(wait.rowCount){await tx.query(`update automation_executions set status='QUEUED',input='{"eventType":"TIMER"}'::jsonb,updated_at=now() where organization_id=$1 and id=$2 and status='WAITING'`,[org,row.id]);released++;}}
     return released;
   },
-  async claimOutbox(tx,org,leaseToken,leaseMs,kinds){return (await tx.query<OutboxRow>(`with candidate as (select id from automation_outbox where organization_id=$1 and ${runtimeTenantActive} and status='PENDING' and available_at<=now() and kind=any($4::text[]) order by created_at for update skip locked limit 1), claimed as (update automation_outbox o set status='UNKNOWN',attempts=attempts+1,lease_token=$2,lease_expires_at=now()+($3::int*interval '1 millisecond'),updated_at=now() from candidate c where o.organization_id=$1 and o.id=c.id returning o.*) select c.id,c.organization_id AS "organizationId",c.execution_id AS "executionId",e.channel_id AS "channelId",e.conversation_id AS "conversationId",c.node_id AS "nodeId",c.ordinal,c.kind,c.payload,c.attempts,c.lease_token AS "leaseToken" from claimed c join automation_executions e on e.organization_id=c.organization_id and e.id=c.execution_id`,[org,leaseToken,leaseMs,kinds])).rows[0]??null;},
+  async claimOutbox(tx,org,leaseToken,leaseMs,kinds){
+    const candidates=(await tx.query<{id:string;executionId:string;channelId:string}>(`select o.id,o.execution_id AS "executionId",e.channel_id AS "channelId"
+      from automation_outbox o join automation_executions e on e.organization_id=o.organization_id and e.id=o.execution_id
+      where o.organization_id=$1 and ${runtimeTenantActive} and o.status='PENDING' and o.available_at<=now() and o.kind=any($2::text[])
+      and e.status NOT IN ('CANCELED','FAILED','UNKNOWN') and ${outboxHeadEligible}
+      order by o.created_at,o.execution_id,o.ordinal,o.id limit 50`,[org,kinds])).rows;
+    for(const channel of [...new Set(candidates.map(row=>row.channelId))].sort())await lockAttendanceChannelRead(tx,org,channel);
+    const locked=(await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions where organization_id=$1 and id=any($2::uuid[])
+      and status NOT IN ('CANCELED','FAILED','UNKNOWN') order by id for no key update skip locked`,[org,candidates.map(row=>row.executionId)])).rows;
+    for(const candidate of candidates){
+      const execution=locked.find(row=>row.id===candidate.executionId);if(!execution||!await runtimeAuthorityAllows(tx,execution))continue;
+      // Recheck after the execution lock, in a fresh READ COMMITTED statement.
+      // The candidate list can be stale. The reservation becomes UNKNOWN before
+      // commit, so subsequent workers still see the barrier during external IO.
+      const available=(await tx.query(`select o.id from automation_outbox o where o.organization_id=$1 and o.id=$2
+        and o.status='PENDING' and o.available_at<=now() and o.kind=any($3::text[]) and ${outboxHeadEligible}
+        for update of o skip locked`,[org,candidate.id,kinds])).rowCount;
+      if(!available)continue;
+      return (await tx.query<OutboxRow>(`update automation_outbox set status='UNKNOWN',attempts=attempts+1,lease_token=$3,
+        lease_expires_at=now()+($4::int*interval '1 millisecond'),updated_at=now() where organization_id=$1 and id=$2
+        returning id,organization_id AS "organizationId",execution_id AS "executionId",$5::uuid AS "channelId",$6::uuid AS "conversationId",
+          node_id AS "nodeId",ordinal,kind,payload,attempts,lease_token AS "leaseToken"`,
+        [org,candidate.id,leaseToken,leaseMs,execution.channelId,execution.conversationId])).rows[0]??null;
+    }
+    return null;
+  },
   async settleOutbox(tx,org,id,leaseToken,result){return Boolean((await tx.query(`update automation_outbox set status=$4,remote_reference=coalesce($5,remote_reference),last_error=$6,available_at=coalesce($7,available_at),lease_token=null,lease_expires_at=null,updated_at=now() where organization_id=$1 and id=$2 and lease_token=$3 and status='UNKNOWN'`,[org,id,leaseToken,result.status,result.remoteReference??null,result.error??null,result.availableAt??null])).rowCount);},
 };}
+import { lockAttendanceChannelRead } from '../attendance/repository.js';

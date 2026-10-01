@@ -358,7 +358,10 @@ describe('migrations PostgreSQL', () => {
       where n.nspname='public' and c.relkind='r' and c.relname not in ('lifecycle_deletions','lifecycle_cleanup_items')
       order by c.relname`)).rows.map(row=>row.table_name);
     expect(catalogue).toEqual(tenantTables);
-    const lifecycleManaged=catalogue.filter(table=>!['support_tickets','support_messages'].includes(table)).length+1;
+    // 0036 uses maintenance_boundary on these catalogued commercial tables,
+    // not lifecycle_migrator. Keep the rest of the historical inventory strict.
+    const lifecycleManaged=catalogue.filter(table=>!['support_tickets','support_messages',
+      'commercial_plans','commercial_plan_versions','organization_commercial_plans'].includes(table)).length+1;
     const result = await database.pool.query<{
       policyname: string;
       roles: string[];
@@ -371,6 +374,16 @@ describe('migrations PostgreSQL', () => {
     );
 
     expect(result.rows).toEqual([
+      // 0034 (2) + 0039 (3), with table/role/expression checks below.
+      ...Array.from({length:5},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      // 0038: one policy on economic_groups and two per removal table.
+      {policyname:'group_removal_group_migrator',roles:['jrc_migrator'],cmd:'ALL'},
+      ...Array.from({length:3},()=>({policyname:'group_removal_migrator',roles:['jrc_migrator'],cmd:'ALL'})),
+      ...Array.from({length:3},()=>({policyname:'group_removal_platform',roles:['jrc_platform'],cmd:'SELECT'})),
+      // 0036: private legacy plans/global catalogue stay outside the tenant role.
+      {policyname:'lifecycle_boundary',roles:['jrc_lifecycle'],cmd:'ALL'},
+      ...Array.from({length:3},()=>({policyname:'maintenance_boundary',roles:['jrc_migrator'],cmd:'ALL'})),
+      ...Array.from({length:3},()=>({policyname:'platform_boundary',roles:['jrc_platform'],cmd:'ALL'})),
       ...Array.from({length:5},()=>({policyname:'automation_integration_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'automation_migration_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:8},()=>({policyname:'automation_tenant',roles:['jrc_app'],cmd:'ALL'})),
@@ -464,6 +477,98 @@ describe('migrations PostgreSQL', () => {
       { policyname: 'refresh_tokens_migrator_auth_read', roles: ['jrc_migrator'], cmd: 'SELECT' },
       { policyname: 'refresh_tokens_migrator_auth_update', roles: ['jrc_migrator'], cmd: 'UPDATE' },
     ].sort((a,b)=>a.policyname.localeCompare(b.policyname)));
+  });
+
+  it('checks the reviewed 0034-0041 policy tables, expressions and restricted grants', async () => {
+    const attendanceTables = [
+      'attendance_owners', 'attendance_sessions', 'chatwoot_attendance_controls',
+      'chatwoot_mirror_attempts', 'chatwoot_attendance_observations',
+    ];
+    const commercialTables = ['commercial_plans', 'commercial_plan_versions', 'organization_commercial_plans'];
+    const removalTables = ['group_company_removal_previews', 'group_company_removals', 'group_company_removal_children'];
+    const tables = [...attendanceTables, ...commercialTables, ...removalTables];
+    type ReviewedPolicy = { tablename: string; policyname: string; roles: string[]; cmd: string;
+      permissive: string; qual: string | null; with_check: string | null };
+    const connection = await database.pool.connect();
+    try {
+      await connection.query('BEGIN');
+      // This is a fixed specification, never an expectation copied from the actual
+      // migrated policies. PostgreSQL parses it so formatting/casts are comparable.
+      await connection.query('CREATE TEMP TABLE reviewed_rls_reference(organization_id uuid) ON COMMIT DROP');
+      await connection.query(`CREATE POLICY expected_tenant ON reviewed_rls_reference TO jrc_app
+        USING (organization_id = NULLIF(current_setting('app.organization_id',true),'')::uuid)
+        WITH CHECK (organization_id = NULLIF(current_setting('app.organization_id',true),'')::uuid)`);
+      const reference = (await connection.query<{ qual: string; with_check: string }>(`
+        SELECT pg_get_expr(polqual,polrelid) AS qual, pg_get_expr(polwithcheck,polrelid) AS with_check
+        FROM pg_policy WHERE polrelid='pg_temp.reviewed_rls_reference'::regclass AND polname='expected_tenant'`)).rows[0]!;
+      const policy = (tablename: string, policyname: string, role: string, cmd = 'ALL',
+        qual: string | null = 'true', withCheck: string | null = 'true'): ReviewedPolicy =>
+        ({ tablename, policyname, roles: [role], cmd, permissive: 'PERMISSIVE', qual, with_check: withCheck });
+      const expected: ReviewedPolicy[] = [
+        ...attendanceTables.flatMap(table => [
+          policy(table, 'attendance_tenant', 'jrc_app', 'ALL', reference.qual, reference.with_check),
+          policy(table, 'lifecycle_migrator', 'jrc_migrator'),
+        ]),
+        ...commercialTables.flatMap(table => [
+          policy(table, 'platform_boundary', 'jrc_platform'),
+          policy(table, 'maintenance_boundary', 'jrc_migrator'),
+        ]),
+        policy('organization_commercial_plans', 'lifecycle_boundary', 'jrc_lifecycle', 'ALL', 'true', null),
+        ...removalTables.flatMap(table => [
+          policy(table, 'group_removal_migrator', 'jrc_migrator'),
+          policy(table, 'group_removal_platform', 'jrc_platform', 'SELECT', 'true', null),
+        ]),
+        policy('economic_groups', 'group_removal_group_migrator', 'jrc_migrator'),
+      ];
+      const actual = (await connection.query<ReviewedPolicy>(`
+        SELECT tablename,policyname,roles::text[] AS roles,cmd,permissive,qual,with_check
+        FROM pg_policies WHERE schemaname='public' AND
+          (tablename=ANY($1::text[]) OR (tablename='economic_groups' AND policyname='group_removal_group_migrator'))`,
+        [tables])).rows;
+      const ordered = (rows: ReviewedPolicy[]) => [...rows].sort((a,b) =>
+        `${a.tablename}:${a.policyname}`.localeCompare(`${b.tablename}:${b.policyname}`));
+      expect(ordered(actual)).toEqual(ordered(expected));
+      const flags = (await connection.query<{ tablename: string; owner: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>(`
+        SELECT c.relname AS tablename,r.rolname AS owner,c.relrowsecurity,c.relforcerowsecurity
+        FROM pg_class c JOIN pg_roles r ON r.oid=c.relowner
+        WHERE c.relnamespace='public'::regnamespace AND c.relname=ANY($1::text[])`, [tables])).rows;
+      expect(flags.sort((a,b)=>a.tablename.localeCompare(b.tablename))).toEqual([...tables].sort().map(tablename =>
+        ({ tablename, owner: 'jrc_migrator', relrowsecurity: true, relforcerowsecurity: true })));
+      // Policies and SQL privileges are separate gates. A broad administrative
+      // policy must not accidentally grant the tenant/authentication roles access.
+      for (const table of tables) {
+        const grants = (await connection.query<{ app_select: boolean; app_insert: boolean; app_update: boolean;
+          app_delete: boolean; auth_select: boolean; auth_insert: boolean; auth_update: boolean; auth_delete: boolean }>(`
+          SELECT has_table_privilege('jrc_app',$1,'SELECT') AS app_select,
+            has_table_privilege('jrc_app',$1,'INSERT') AS app_insert,
+            has_table_privilege('jrc_app',$1,'UPDATE') AS app_update,
+            has_table_privilege('jrc_app',$1,'DELETE') AS app_delete,
+            has_table_privilege('jrc_auth',$1,'SELECT') AS auth_select,
+            has_table_privilege('jrc_auth',$1,'INSERT') AS auth_insert,
+            has_table_privilege('jrc_auth',$1,'UPDATE') AS auth_update,
+            has_table_privilege('jrc_auth',$1,'DELETE') AS auth_delete`, [`public.${table}`])).rows[0];
+        const tenantAccess = attendanceTables.includes(table);
+        expect(grants, table).toEqual({ app_select: tenantAccess, app_insert: tenantAccess,
+          app_update: tenantAccess, app_delete: false, auth_select: false, auth_insert: false,
+          auth_update: false, auth_delete: false });
+      }
+      for (const table of removalTables) {
+        const grants = (await connection.query(`SELECT
+          has_table_privilege('jrc_platform',$1,'SELECT') AS can_select,
+          has_table_privilege('jrc_platform',$1,'INSERT') AS can_insert,
+          has_table_privilege('jrc_platform',$1,'UPDATE') AS can_update,
+          has_table_privilege('jrc_platform',$1,'DELETE') AS can_delete`, [`public.${table}`])).rows[0];
+        expect(grants, table).toEqual({ can_select: true, can_insert: false, can_update: false, can_delete: false });
+      }
+      const publishedGrants = (await connection.query(`SELECT
+        has_table_privilege('jrc_platform','public.commercial_plan_versions','SELECT') AS can_select,
+        has_table_privilege('jrc_platform','public.commercial_plan_versions','INSERT') AS can_insert,
+        has_table_privilege('jrc_platform','public.commercial_plan_versions','UPDATE') AS can_update,
+        has_table_privilege('jrc_platform','public.commercial_plan_versions','DELETE') AS can_delete`)).rows[0];
+      expect(publishedGrants).toEqual({ can_select: true, can_insert: true, can_update: false, can_delete: false });
+    } finally {
+      try { await connection.query('ROLLBACK'); } finally { connection.release(); }
+    }
   });
 
   it('permite ao executor administrativo apenas o onboarding sujeito a FORCE RLS', async () => {

@@ -1,3 +1,4 @@
+import { AttendanceError } from '../../modules/attendance/types.js';
 import { tenantOperationalProblem } from "../../modules/tenancy/operational-limits.js";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
@@ -154,6 +155,7 @@ export async function registerMessagingRoutes(
     reply.header("Cache-Control", "no-store");
   });
   app.setErrorHandler((error, request, reply) => {
+    if(error instanceof AttendanceError)return reply.code(error.statusCode).type('application/problem+json').send({type:'about:blank',title:error.code,status:error.statusCode,code:error.code,requestId:request.id});
     if (error instanceof MediaError) {
       const status =
         error.code === "MEDIA_NOT_FOUND" ? 404 : error.retrySafe ? 409 : 422;

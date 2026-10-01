@@ -518,6 +518,12 @@ describe('durable tenant messaging storage', () => {
       })
     ));
     expect(claim?.message.id).toBe(incoming.message.id);
+    // Earlier transport scenarios left an uncertain output on this shared channel.
+    // Replacement must wait for an explicit reconciliation of that output.
+    await expect(withOrganizationTransaction(appPool,organizationA,tx=>repository.setChannelBot(tx,{
+      organizationId:organizationA,channelId:channelA,botPublicId:'replacement-bot',botOriginReference:'typebot-origin-replacement',
+    }))).rejects.toMatchObject({code:'ATTENDANCE_WORK_RECONCILIATION_REQUIRED'});
+    await database.pool.query("update messaging_messages set state='SENT' where organization_id=$1 and channel_id=$2 and source='AUTOMATION' and state in ('SENDING','UNKNOWN')",[organizationA,channelA]);
     await withOrganizationTransaction(appPool, organizationA, (transaction) => (
       repository.setChannelBot(transaction, {
         organizationId: organizationA, channelId: channelA,

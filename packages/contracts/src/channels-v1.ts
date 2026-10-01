@@ -55,6 +55,7 @@ const commonChannelShape = {
   automationStatus: ChannelAutomationStatusV1Schema,
   humanStatus: ChannelHumanStatusV1Schema,
   revision: z.number().int().positive(),
+  ownerRevision: z.number().int().nonnegative().optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 };
@@ -118,8 +119,10 @@ export const BindChannelDestinationV1Schema = z.strictObject({
 });
 export const ChannelAutomationV1Schema = z.strictObject({
   binding: AutomationBindingV1Schema.nullable(),
+  ownerRevision: z.number().int().nonnegative(),
 });
 export const BindChannelAutomationV1Schema = z.strictObject({
+  expectedOwnerRevision: z.number().int().nonnegative(),
   automationId: z.uuid(),
   version: z.number().int().positive().optional(),
   humanDestinationId: z.uuid().nullable().optional(),

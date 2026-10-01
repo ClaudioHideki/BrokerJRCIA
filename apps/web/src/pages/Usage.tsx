@@ -10,6 +10,9 @@ type Limits = {
   messagesPerDay: number;
   maxPendingMessages: number;
   messagesAcceptedToday: number;
+  connections?:number;
+  users?:number;
+  pendingMessages?:number;
 };
 export function UsagePage() {
   const client = useApiClient();
@@ -112,7 +115,12 @@ export function UsagePage() {
                 value={Math.min(data.messagesAcceptedToday, Math.max(data.messagesPerDay, 1))}
                 aria-label="Consumo diário"
               />
-              <p>Quota aplicada pelo servidor · Reinício do período em UTC</p>
+              <p>Quota aplicada pelo servidor · Reinício do período em UTC. Aceita não significa entregue.</p>
+              <p>Disponível hoje: {number(Math.max(0,data.messagesPerDay-data.messagesAcceptedToday))}{data.messagesAcceptedToday>data.messagesPerDay?` · Acima do limite: ${number(data.messagesAcceptedToday-data.messagesPerDay)}`:''}</p>
+              <p>Armazenamento: indisponível · IA: indisponível. Medições ainda não integradas.</p>
+              <table><thead><tr><th>Unidade</th><th>Contratado</th><th>Usado</th><th>Disponível</th></tr></thead><tbody>{([
+                ['Conexões',data.maxInstances,data.connections],['Usuários ativos',data.maxUsers,data.users],['Mensagens pendentes',data.maxPendingMessages,data.pendingMessages],
+              ] as const).map(([label,limit,used])=><tr key={label}><th>{label}</th><td>{number(limit)}</td><td>{used===undefined?'Indisponível':number(used)}</td><td>{used===undefined?'Indisponível':number(Math.max(0,limit-used))}{used!==undefined&&used>limit?` · Acima do limite: ${number(used-limit)}`:''}</td></tr>)}</tbody></table>
               <dl className="quota-details">
                 <div>
                   <dt>Usuários permitidos</dt>

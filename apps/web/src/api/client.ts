@@ -1,4 +1,6 @@
 import {
+  NodeDiagnosticSchema,
+  type NodeDiagnostic,
   CONSOLE_ORGANIZATION_SWITCH_REJECTED_CODE,
   ConsoleSessionResponseSchema,
   LoginOrganizationsSchema,
@@ -29,6 +31,7 @@ export class ApiClientError extends Error {
     readonly requestId?: string,
     readonly code?: string,
     readonly correlationId?: string,
+    readonly diagnostics: NodeDiagnostic[] = [],
   ) {
     super(message);
     this.name = "ApiClientError";
@@ -171,6 +174,7 @@ async function errorFor(
     requestId,
     code,
     correlationId,
+    NodeDiagnosticSchema.array().safeParse(problem?.diagnostics).data ?? [],
   );
 }
 

@@ -31,7 +31,7 @@ describe('native bot persisted journey and runtime pause',()=>{
  it('creates, saves, publishes, binds, deduplicates, resumes after worker replacement and hands off once',async()=>{
   const initial=await service.create(org,{name:'Atendimento',graph});
   const draft=await service.save(org,initial.id,{name:'Bot nativo',graph,revision:initial.draft.revision});
-  expect(await service.validate(org,draft.id)).toEqual({valid:true,errors:[]});
+  expect(await service.validate(org,draft.id)).toEqual({valid:true,diagnostics:[],errors:[]});
   const published=await service.publish(org,draft.id,draft.draft.revision);expect(published.version).toBe(1);
   const ids={channel:randomUUID(),instance:randomUUID(),account:randomUUID(),contact:randomUUID(),conversation:randomUUID()};
   await transact(org,async tx=>{

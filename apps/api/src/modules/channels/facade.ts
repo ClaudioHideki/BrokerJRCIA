@@ -7,6 +7,8 @@ import type { OrganizationTransaction } from '../../db/tenant-transaction.js';
 import type { InstanceActorContext, InstanceService } from '../instances/service.js';
 import type { createMetaOnboardingService } from '../meta-onboarding/service.js';
 import type { ChatwootService } from '../integrations/chatwoot-service.js';
+import {lockOwnershipMutations,readOwnerRevision,transitionChannelOwner} from '../attendance/transition.js';
+import { readAutomationAccess } from '../automations/availability.js';
 
 export class ChannelFacadeError extends Error {
   constructor(readonly code: string, readonly status: 400 | 403 | 404 | 409 | 503) { super(code); }
@@ -22,6 +24,7 @@ const readChannelCursor = (value: string): ChannelCursor => {
 const writeChannelCursor = (row: ChannelRow) => Buffer.from(JSON.stringify({ updatedAt: iso(row.updated_at), id: row.id })).toString('base64url');
 
 interface ChannelRow {
+  owner_revision?:number;
   id: string; organization_id: string; provider: 'BAILEYS' | 'META'; provider_account_id: string;
   instance_id: string | null; connection_id: string | null; name: string | null;
   instance_status: string | null; meta_status: 'PENDING' | 'READY' | 'REVOKED' | null;
@@ -76,6 +79,7 @@ export function channelView(row: ChannelRow): ChannelV1 {
     automationStatus: automationStatus(row),
     humanStatus: humanStatus(row.human_status),
     revision: 1,
+    ownerRevision:row.owner_revision??0,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
   };
@@ -127,6 +131,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
         c.bot_public_id,c.bot_origin_reference,f.published_version AS flow_published_version,ff.enabled AS flow_enabled,
         cw.status AS human_status,i.created_at,GREATEST(i.updated_at,COALESCE(c.updated_at,i.updated_at),COALESCE(cw.updated_at,i.updated_at)) AS updated_at,
         c.id AS messaging_channel_id,ab.status AS automation_binding_status,ad.name AS automation_name,
+        coalesce((select revision from attendance_owners ao where ao.organization_id=c.organization_id and ao.channel_id=c.id),0) AS owner_revision,
         cw.id AS integration_id,cw.inbox_id,cw.name AS inbox_name,h.observed_last4,i.archived_at
       FROM instances i
       JOIN provider_accounts pa ON pa.organization_id=i.organization_id AND pa.id=i.provider_account_id AND pa.provider='BAILEYS'
@@ -141,7 +146,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
       UNION ALL
       SELECT m.id,m.organization_id,'META'::text,c.provider_account_id,NULL::uuid,m.id,'WhatsApp oficial',NULL::text,m.status,
         c.bot_public_id,c.bot_origin_reference,f.published_version,ff.enabled,cw.status,c.created_at,GREATEST(m.updated_at,c.updated_at,COALESCE(cw.updated_at,m.updated_at)),
-        c.id,ab.status,ad.name,cw.id,cw.inbox_id,cw.name,NULL::text,NULL::timestamptz
+        c.id,ab.status,ad.name,coalesce((select revision from attendance_owners ao where ao.organization_id=c.organization_id and ao.channel_id=c.id),0),cw.id,cw.inbox_id,cw.name,NULL::text,NULL::timestamptz
       FROM meta_connections m
       JOIN messaging_channels c ON c.organization_id=m.organization_id AND c.id=m.channel_id AND c.provider='META'
       LEFT JOIN flows f ON f.organization_id=c.organization_id AND f.id::text=c.bot_public_id AND c.bot_origin_reference='jrc-flows-native'
@@ -194,6 +199,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
     get,
     async setArchived(org:string,id:string,archived:boolean,actorId?:string,platformActorId?:string){
       await options.transact(org,async tx=>{
+        await lockOwnershipMutations(tx,org);
         const row=(await tx.query<{status:string;archived_at:Date|null}>('select status,archived_at from instances where organization_id=$1 and id=$2 for update',[org,id])).rows[0];
         if(!row)throw new ChannelFacadeError('CHANNEL_NOT_FOUND',404);
         if(Boolean(row.archived_at)===archived)return;
@@ -201,7 +207,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
           if(!['DISCONNECTED','PROVISIONING_FAILED'].includes(row.status))throw new ChannelFacadeError('CHANNEL_DISCONNECT_REQUIRED',409);
           const operations=await tx.query("select 1 from provider_operations where organization_id=$1 and instance_id=$2 and (status in ('PENDING','UNKNOWN') or reconciliation_required) limit 1",[org,id]);
           if(operations.rowCount)throw new ChannelFacadeError('CHANNEL_HAS_PENDING_WORK',409);
-          const channels=await tx.query<{id:string}>('select id from messaging_channels where organization_id=$1 and instance_id=$2 for update',[org,id]);
+          const channels=await tx.query<{id:string}>('select id from messaging_channels where organization_id=$1 and instance_id=$2 order by id for no key update',[org,id]);
           for(const channel of channels.rows){
             const bindings=await tx.query("select 1 from automation_bindings where organization_id=$1 and channel_id=$2 and status in ('ACTIVE','PAUSED')",[org,channel.id]);
             const destination=await tx.query("select 1 from chatwoot_connections where organization_id=$1 and channel_id=$2 and status<>'DISABLED'",[org,channel.id]);
@@ -209,7 +215,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
              or exists(select 1 from automation_executions e where e.organization_id=$1 and e.channel_id=$2 and (e.status in ('QUEUED','RUNNING','WAITING','UNKNOWN') or exists(select 1 from automation_outbox o where o.organization_id=e.organization_id and o.execution_id=e.id and o.status in ('PENDING','SENDING','UNKNOWN'))))`,[org,channel.id]);
             if(bindings.rowCount||destination.rowCount)throw new ChannelFacadeError('CHANNEL_UNLINK_REQUIRED',409);
             if(work.rowCount)throw new ChannelFacadeError('CHANNEL_HAS_PENDING_WORK',409);
-            await tx.query('update messaging_channels set bot_public_id=null,bot_origin_reference=null where organization_id=$1 and id=$2',[org,channel.id]);
+            await transitionChannelOwner(tx,org,{channelId:channel.id,botPublicId:null,botOriginReference:null});
           }
         }
         await tx.query('update instances set archived_at=case when $3 then now() else null end,updated_at=now() where organization_id=$1 and id=$2',[org,id,archived]);
@@ -261,50 +267,35 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
     },
     async getAutomation(org: string, id: string) {
       const channel = await get(org, id);
-      if(!channel.messagingChannelId)return {binding:null};
+      if(!channel.messagingChannelId)return {binding:null,ownerRevision:0};
       const channelId=channel.messagingChannelId;
-      const binding = await options.transact(org, async tx => (await tx.query<AutomationBindingRow>(`
+      return options.transact(org, async tx => {
+        await tx.query('SELECT id FROM messaging_channels WHERE organization_id=$1 AND id=$2 FOR SHARE',[org,channelId]);
+        const binding = (await tx.query<AutomationBindingRow>(`
         SELECT id,organization_id AS "organizationId",automation_id AS "automationId",version,
           channel_id AS "channelId",human_destination_id AS "humanDestinationId",status,revision,
           created_at AS "createdAt",updated_at AS "updatedAt"
         FROM automation_bindings
         WHERE organization_id=$1 AND channel_id=$2 AND status IN ('ACTIVE','PAUSED')
-        ORDER BY updated_at DESC LIMIT 1`, [org, channelId])).rows[0]);
-      return { binding: binding ? bindingView(binding) : null };
+        ORDER BY updated_at DESC LIMIT 1`, [org, channelId])).rows[0];
+        return { binding: binding ? bindingView(binding) : null,ownerRevision:await readOwnerRevision(tx,org,channelId) };
+      });
     },
-    async bindAutomation(org: string, id: string, input: BindChannelAutomationV1) {
+    async bindAutomation(org: string, id: string, input: Omit<BindChannelAutomationV1,'expectedOwnerRevision'>&{expectedOwnerRevision?:number}) {
       if(options.automationStatus){const availability=await options.automationStatus(org);if(!availability.canPublish){
         const code=availability.reasons[0]??'AUTOMATION_DEPENDENCY_UNAVAILABLE';
         throw new ChannelFacadeError(code,code==='AUTOMATION_DEPENDENCY_UNAVAILABLE'?503:code==='AUTOMATION_RUNTIME_DISABLED'?409:403);
       }}
       const channel = await get(org, id), channelId = await messagingChannelId(org, channel,true);
       return options.transact(org, async tx => {
-        const definition = (await tx.query<{ activeVersion: number | null;lifecycleStatus:string }>(
-          'SELECT active_version AS "activeVersion",lifecycle_status AS "lifecycleStatus" FROM automation_definitions WHERE organization_id=$1 AND id=$2 FOR UPDATE',
-          [org, input.automationId])).rows[0];
-        if (!definition) throw new ChannelFacadeError('AUTOMATION_NOT_FOUND', 404);
-        if(definition.lifecycleStatus==='ARCHIVED')throw new ChannelFacadeError('AUTOMATION_ARCHIVED',409);
-        const version = input.version ?? definition.activeVersion;
-        if (!version) throw new ChannelFacadeError('AUTOMATION_NOT_PUBLISHED', 409);
-        const published = (await tx.query<{ version: number }>(
-          'SELECT version FROM automation_versions WHERE organization_id=$1 AND automation_id=$2 AND version=$3',
-          [org, input.automationId, version])).rows[0];
-        if (!published) throw new ChannelFacadeError('AUTOMATION_VERSION_NOT_FOUND', 404);
-        await tx.query(`UPDATE automation_bindings SET status='DISABLED',revision=revision+1,updated_at=now()
-          WHERE organization_id=$1 AND channel_id=$2 AND status IN ('ACTIVE','PAUSED')`, [org, channelId]);
-        const binding = (await tx.query<AutomationBindingRow>(`
-          INSERT INTO automation_bindings(organization_id,id,automation_id,version,channel_id,human_destination_id)
-          VALUES($1,$2,$3,$4,$5,$6)
-          RETURNING id,organization_id AS "organizationId",automation_id AS "automationId",version,
-            channel_id AS "channelId",human_destination_id AS "humanDestinationId",status,revision,
-            created_at AS "createdAt",updated_at AS "updatedAt"`,
-        [org, randomUUID(), input.automationId, version, channelId, input.humanDestinationId ?? null])).rows[0]!;
-        await tx.query(`UPDATE messaging_channels SET bot_public_id=$3,bot_origin_reference=$4,updated_at=now()
-          WHERE organization_id=$1 AND id=$2`, [org, channelId, input.automationId, AUTOMATION_ORIGIN]);
-        return { binding: bindingView(binding) };
+        await lockOwnershipMutations(tx,org);
+        const access=await readAutomationAccess(tx,org);
+        if(access?.status!=='ACTIVE')throw new ChannelFacadeError('ORGANIZATION_NOT_ACTIVE',403);
+        if(!access.moduleEnabled)throw new ChannelFacadeError('AUTOMATION_MODULE_DISABLED',403);
+        const result=await transitionChannelOwner(tx,org,{...input,channelId,botPublicId:input.automationId,botOriginReference:AUTOMATION_ORIGIN});
+        return {binding:bindingView(result.binding!),ownerRevision:result.ownerRevision};
       });
-    },
-    async bindDestination(org: string, id: string, input: BindChannelDestinationV1, actorId?: string) {
+    },    async bindDestination(org: string, id: string, input: BindChannelDestinationV1, actorId?: string) {
       if (!options.chatwoot) throw new ChannelFacadeError('CHATWOOT_NOT_CONFIGURED', 503);
       const channel = await get(org, id);
       let source: { instanceId: string } | { channelId: string };

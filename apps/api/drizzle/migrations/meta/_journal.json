@@ -232,6 +232,62 @@
       "when": 1790376000000,
       "tag": "0033_support_tickets",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790462400000,
+      "tag": "0034_attendance_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790548800000,
+      "tag": "0035_economic_group_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790635200000,
+      "tag": "0036_commercial_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790721600000,
+      "tag": "0037_flow_ownership_reservations",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790808000000,
+      "tag": "0038_group_company_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790894400000,
+      "tag": "0039_chatwoot_attendance_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790980800000,
+      "tag": "0040_automation_input_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791067200000,
+      "tag": "0041_automation_runtime_versions",
+      "breakpoints": true
     }
   ]
 }

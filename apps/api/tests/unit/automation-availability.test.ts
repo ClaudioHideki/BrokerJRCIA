@@ -21,7 +21,7 @@ describe('automation availability and offline drafts',()=>{
     expect((await service.list('tenant')).data).toHaveLength(1);
     expect(await service.create('tenant',{name:'Atendimento',graph})).toMatchObject({lifecycleStatus:'DRAFT'});
     expect(await service.save('tenant','draft',{name:'Atendimento',graph,revision:1})).toMatchObject({draft:{revision:1}});
-    expect(await service.validate('tenant','draft')).toEqual({valid:true,errors:[]});
+    expect(await service.validate('tenant','draft')).toEqual({valid:true,diagnostics:[],errors:[]});
     expect(await service.simulate('tenant','draft',{text:'Olá'})).toMatchObject({status:'COMPLETED'});
     await expect(service.publish('tenant','draft',1)).rejects.toMatchObject({code:'AUTOMATION_RUNTIME_DISABLED',statusCode:409});
   });

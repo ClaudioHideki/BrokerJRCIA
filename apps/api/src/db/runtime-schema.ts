@@ -1,4 +1,4 @@
-export const RUNTIME_SCHEMA_BASELINE = '0033_support_tickets';
+export const RUNTIME_SCHEMA_BASELINE = '0041_automation_runtime_versions';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -7,6 +7,10 @@ type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean 
 const requiredObjectsSql = `SELECT
   pg_catalog.to_regclass('public.messaging_media') IS NOT NULL
   AND pg_catalog.to_regclass('public.automation_definitions') IS NOT NULL
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute
+    WHERE attrelid=pg_catalog.to_regclass('public.automation_versions') AND attname='runtime_state_version' AND attnotnull AND attnum>0 AND NOT attisdropped)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_constraint
+    WHERE conrelid=pg_catalog.to_regclass('public.automation_versions') AND conname='automation_versions_runtime_state_version_check' AND contype='c' AND convalidated)
   AND pg_catalog.to_regclass('public.automation_import_artifacts') IS NOT NULL
   AND pg_catalog.to_regclass('public.operational_heartbeats') IS NOT NULL
   AND pg_catalog.to_regclass('public.automation_legacy_migrations') IS NOT NULL
@@ -41,12 +45,89 @@ const requiredObjectsSql = `SELECT
       AND conname = 'automation_binding_destination' AND contype = 'f'
   )
   AND pg_catalog.to_regclass('public.economic_groups') IS NOT NULL
+  AND pg_catalog.to_regclass('public.commercial_plans') IS NOT NULL
+  AND pg_catalog.to_regclass('public.commercial_plan_versions') IS NOT NULL
+  AND pg_catalog.to_regclass('public.organization_commercial_plans') IS NOT NULL
+  AND NOT pg_catalog.has_table_privilege('jrc_platform',pg_catalog.to_regclass('public.commercial_plan_versions'),'UPDATE')
+  AND NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.organization_commercial_plans'),'UPDATE')
   AND pg_catalog.to_regclass('public.economic_group_organizations') IS NOT NULL
+  AND pg_catalog.has_table_privilege('jrc_platform', pg_catalog.to_regclass('public.economic_groups'), 'DELETE')
   AND pg_catalog.to_regclass('public.lifecycle_deletions') IS NOT NULL
   AND pg_catalog.to_regclass('public.lifecycle_cleanup_items') IS NOT NULL
   AND pg_catalog.to_regclass('public.lifecycle_purge_catalogue') IS NOT NULL
+  AND pg_catalog.to_regclass('public.group_company_removal_previews') IS NOT NULL
+  AND pg_catalog.to_regclass('public.group_company_removals') IS NOT NULL
+  AND pg_catalog.to_regclass('public.group_company_removal_children') IS NOT NULL
+  AND NOT pg_catalog.has_table_privilege('jrc_platform',pg_catalog.to_regclass('public.group_company_removals'),'INSERT')
+  AND NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.group_company_removals'),'SELECT')
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute
+    WHERE attrelid=pg_catalog.to_regclass('public.lifecycle_deletions') AND attname='reconciliation_requested' AND attnum>0 AND NOT attisdropped)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc
+    WHERE oid=pg_catalog.to_regprocedure('public.lifecycle_request_reconciliation(uuid,uuid,uuid,text,text,uuid)') AND prosecdef)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc
+    WHERE oid=pg_catalog.to_regprocedure('public.group_removal_request(uuid,jsonb)') AND prosecdef)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_trigger
+    WHERE tgrelid=pg_catalog.to_regclass('public.lifecycle_deletions') AND tgname='group_removal_scrub_company' AND tgenabled IN ('O','A') AND NOT tgisinternal)
   AND pg_catalog.to_regclass('public.support_tickets') IS NOT NULL
   AND pg_catalog.to_regclass('public.support_messages') IS NOT NULL
+  AND pg_catalog.to_regclass('public.attendance_owners') IS NOT NULL
+  AND pg_catalog.to_regclass('public.attendance_sessions') IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES ('public.chatwoot_attendance_controls'),('public.chatwoot_mirror_attempts'),('public.chatwoot_attendance_observations')) AS required(relation_name)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+      WHERE c.oid=pg_catalog.to_regclass(required.relation_name) AND c.relrowsecurity AND c.relforcerowsecurity
+        AND EXISTS (SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='attendance_tenant'))
+  )
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute
+    WHERE attrelid=pg_catalog.to_regclass('public.automation_events') AND attname='queue_sequence' AND attidentity='a' AND attnum>0 AND NOT attisdropped)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_index
+    WHERE indexrelid=pg_catalog.to_regclass('public.automation_pending_inputs') AND indisvalid)
+  AND pg_catalog.has_sequence_privilege('jrc_app',pg_catalog.to_regclass('public.automation_events_queue_sequence_seq'),'USAGE')
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES
+      ('public.flow_chatwoot_bindings','operation_revision'),
+      ('public.flow_chatwoot_bindings','operation_token'),
+      ('public.flow_chatwoot_bindings','operation_expires_at'),
+      ('public.flow_chatwoot_bindings','operation_state'),
+      ('public.attendance_owners','remote_binding_id')
+    ) AS required(relation_name,column_name)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+      WHERE a.attrelid=pg_catalog.to_regclass(required.relation_name)
+        AND a.attname=required.column_name AND a.attnum>0 AND NOT a.attisdropped)
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES
+      ('public.flow_chatwoot_bindings','flow_binding_operation_state','c'),
+      ('public.flow_chatwoot_bindings','flow_binding_operation_lease','c'),
+      ('public.attendance_owners','attendance_owner_remote_binding_fk','f'),
+      ('public.attendance_owners','attendance_owner_remote_binding_kind','c')
+    ) AS required(relation_name,constraint_name,constraint_type)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c
+      WHERE c.conrelid=pg_catalog.to_regclass(required.relation_name)
+        AND c.conname=required.constraint_name AND c.contype::text=required.constraint_type AND c.convalidated)
+  )
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc
+    WHERE oid=pg_catalog.to_regprocedure('public.lifecycle_pending_count_before_flow_reservation(uuid,uuid,uuid)') AND prosecdef)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_index
+    WHERE indexrelid=pg_catalog.to_regclass('public.attendance_one_live_conversation') AND indisunique AND indisvalid)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_constraint
+    WHERE conrelid=pg_catalog.to_regclass('public.attendance_sessions')
+      AND conname='attendance_session_conversation_fk' AND contype='f' AND convalidated)
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES
+      ('attendance_session_execution_version_fk','f'),
+      ('attendance_session_execution_requires_version','c')
+    ) AS required(constraint_name,constraint_type)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c
+      WHERE c.conrelid=pg_catalog.to_regclass('public.attendance_sessions')
+        AND c.conname=required.constraint_name AND c.contype::text=required.constraint_type AND c.convalidated)
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES ('public.attendance_owners'),('public.attendance_sessions')) AS required(relation_name)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+      WHERE c.oid=pg_catalog.to_regclass(required.relation_name) AND c.relrowsecurity AND c.relforcerowsecurity
+        AND EXISTS (SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='attendance_tenant'))
+  )
   AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.lifecycle_purge_organization(uuid,uuid)') AND prosecdef)
   AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.lifecycle_purge_channel(uuid,uuid)') AND prosecdef)
   AND NOT EXISTS (
@@ -61,6 +142,8 @@ const requiredObjectsSql = `SELECT
       ('public.meta_connections','lifecycle_meta_restore_block'),
       ('public.support_tickets','support_ticket_admission'),
       ('public.support_messages','support_message_admission')
+      ,('public.commercial_plan_versions','commercial_version_scope')
+      ,('public.organization_commercial_plans','commercial_assignment_scope')
     ) AS required(relation_name,trigger_name)
     WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t
       WHERE t.tgrelid=pg_catalog.to_regclass(required.relation_name)
@@ -68,6 +151,9 @@ const requiredObjectsSql = `SELECT
   )
   AND NOT EXISTS (
     SELECT 1 FROM (VALUES
+      ('public.commercial_plans'),
+      ('public.commercial_plan_versions'),
+      ('public.organization_commercial_plans'),
       ('public.economic_groups'),
       ('public.economic_group_organizations')
     ) AS required(relation_name)

@@ -14,6 +14,10 @@ export async function runLifecycleWorker(environment:NodeJS.ProcessEnv=process.e
     apiKey:z.string().min(1).parse(environment.EVOLUTION_API_KEY)});
   const pool=new Pool({connectionString:url,max:2,connectionTimeoutMillis:5000,statement_timeout:600000});
   const service=createLifecycleService({transact:work=>withLifecycleWorkerTransaction(pool,work),
+    instanceExists:async(organizationId,upstreamKey)=>{
+      const controller=new AbortController();
+      return (await provider.lookupInstance({organizationId,requestId:randomUUID(),deadline:new Date(Date.now()+30000),signal:controller.signal},{id:upstreamKey})).exists;
+    },
     deprovision:async(organizationId,upstreamKey)=>{
       const controller=new AbortController();
       await provider.deprovisionInstance({organizationId,requestId:randomUUID(),deadline:new Date(Date.now()+30000),
@@ -23,7 +27,7 @@ export async function runLifecycleWorker(environment:NodeJS.ProcessEnv=process.e
   process.once('SIGINT',abort);process.once('SIGTERM',abort);
   try{
     do{
-      try{const worked=await service.processOne();if(worked)continue;}
+      try{const worked=await service.processOne();const groupWorked=await service.groups.processOne();if(worked||groupWorked)continue;}
       catch{process.stderr.write('LIFECYCLE_OPERATION_FAILED\n');}
       if(watch&&!stop.signal.aborted)await wait(interval,undefined,{signal:stop.signal}).catch(()=>undefined);
     }while(watch&&!stop.signal.aborted);

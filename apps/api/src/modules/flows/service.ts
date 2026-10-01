@@ -2,6 +2,7 @@ import { FlowGraphSchema, validateFlow, executeFlow, FLOW_ORIGIN, type FlowGraph
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import { createPostgresMessagingRepository } from '../messaging/repository.js';
 import type { BotTurnClaim } from '../messaging/types.js';
+import {lockOwnershipMutations,readOwnerRevision} from '../attendance/transition.js';
 
 export class FlowError extends Error {
   constructor(readonly code:string,readonly statusCode=422,readonly details:string[]=[]){super(code);}
@@ -13,6 +14,7 @@ type Feature={enabled:boolean;revision:number;updated_at:Date};
 export function createFlowService({transact}:FlowServiceOptions){
   const messaging=createPostgresMessagingRepository();
   async function feature(tx:TenantTransaction,org:string):Promise<Feature>{
+    if(!(await tx.query<{active:boolean}>('select tenant_is_active($1) AS active',[org])).rows[0]?.active)throw new FlowError('FLOWS_DISABLED',403);
     const row=(await tx.query<Feature>(`select f.* from flow_features f join organizations o on o.id=f.organization_id where f.organization_id=$1 and o.status='ACTIVE'`,[org])).rows[0];
     if(!row?.enabled)throw new FlowError('FLOWS_DISABLED',403);
     return row;
@@ -25,7 +27,8 @@ export function createFlowService({transact}:FlowServiceOptions){
     status:(org:string)=>transact(org,async tx=>({enabled:(await tx.query(`select f.enabled from flow_features f join organizations o on o.id=f.organization_id where f.organization_id=$1 and o.status='ACTIVE'`,[org])).rows[0]?.enabled===true})),
     list:(org:string)=>transact(org,async tx=>{await feature(tx,org);return {data:(await tx.query<FlowRecord>(`select ${columns} from flows where organization_id=$1 order by updated_at desc limit 200`,[org])).rows};}),
     channels:(org:string)=>transact(org,async tx=>{await feature(tx,org);return {data:(await tx.query(`select id,provider,bot_public_id IS NOT NULL AS "hasAutomation",
-      case when bot_origin_reference=$2 then bot_public_id else null end AS "flowId"
+      case when bot_origin_reference=$2 then bot_public_id else null end AS "flowId",
+      coalesce((select revision from attendance_owners ao where ao.organization_id=messaging_channels.organization_id and ao.channel_id=messaging_channels.id),0) AS "ownerRevision"
       from messaging_channels where organization_id=$1 order by created_at`,[org,FLOW_ORIGIN])).rows};}),
     get:(org:string,id:string)=>transact(org,async tx=>{await feature(tx,org);return get(tx,org,id);}),
     create:(org:string,input:{name:string;graph:FlowGraph})=>transact(org,async tx=>{
@@ -50,22 +53,22 @@ export function createFlowService({transact}:FlowServiceOptions){
       await tx.query('insert into flow_versions(organization_id,flow_id,version,graph) values($1,$2,$3,$4)',[org,id,version,JSON.stringify(flow.graph)]);
       return (await tx.query<FlowRecord>(`update flows set published_version=$3,updated_at=now() where organization_id=$1 and id=$2 returning ${columns}`,[org,id,version])).rows[0]!;
     }),
-    bind:(org:string,id:string,channelId:string,replaceAutomation=false)=>transact(org,async tx=>{
-      await feature(tx,org);const flow=await get(tx,org,id);
+    bind:(org:string,id:string,channelId:string,replaceAutomation=false,expectedOwnerRevision?:number)=>transact(org,async tx=>{
+      await lockOwnershipMutations(tx,org);await feature(tx,org);const flow=await get(tx,org,id);
       if(!flow.publishedVersion)throw new FlowError('FLOW_NOT_PUBLISHED',409);
       const current=await messaging.findChannel(tx,org,channelId);
       if(!current)throw new FlowError('CHANNEL_NOT_FOUND',404);
       if(current.botPublicId&&(current.botPublicId!==id||current.botOriginReference!==FLOW_ORIGIN)&&!replaceAutomation)throw new FlowError('FLOW_REPLACE_REQUIRED',409);
-      const result=await messaging.setChannelBot(tx,{organizationId:org,channelId,botPublicId:id,botOriginReference:FLOW_ORIGIN});
+      const result=await messaging.setChannelBot(tx,{organizationId:org,channelId,botPublicId:id,botOriginReference:FLOW_ORIGIN,...(expectedOwnerRevision===undefined?{}:{expectedOwnerRevision})});
       // An explicit bind starts a new session only if the previous automation differs.
       if(current.botPublicId!==id||current.botOriginReference!==FLOW_ORIGIN)await tx.query('delete from flow_sessions s using messaging_conversations c where s.organization_id=$1 and c.organization_id=s.organization_id and c.id=s.conversation_id and c.channel_id=$2',[org,channelId]);
-      return {channelId:result.id,flowId:id};
+      return {channelId:result.id,flowId:id,ownerRevision:await readOwnerRevision(tx,org,channelId)};
     }),
-    unbind:(org:string,id:string,channelId:string)=>transact(org,async tx=>{
-      await feature(tx,org);await get(tx,org,id);
+    unbind:(org:string,id:string,channelId:string,expectedOwnerRevision?:number)=>transact(org,async tx=>{
+      await lockOwnershipMutations(tx,org);await get(tx,org,id);
       const current=await messaging.findChannel(tx,org,channelId);
       if(!current||current.botPublicId!==id||current.botOriginReference!==FLOW_ORIGIN)throw new FlowError('FLOW_BINDING_NOT_FOUND',404);
-      await messaging.setChannelBot(tx,{organizationId:org,channelId,botPublicId:null,botOriginReference:null});return {ok:true};
+      await messaging.setChannelBot(tx,{organizationId:org,channelId,botPublicId:null,botOriginReference:null,...(expectedOwnerRevision===undefined?{}:{expectedOwnerRevision})});return {ok:true,ownerRevision:await readOwnerRevision(tx,org,channelId)};
     }),
     runs:(org:string,id:string)=>transact(org,async tx=>{
       await feature(tx,org);await get(tx,org,id);
@@ -85,6 +88,8 @@ export function createFlowService({transact}:FlowServiceOptions){
       try{config=await feature(tx,org);}catch{
         await messaging.failBotTurn(tx,{...key,canonicalErrorCode:'FLOWS_DISABLED',uncertain:false});return;
       }
+      await messaging.findChannel(tx,org,claim.channel.id,{lock:true});
+      await tx.query('select message_id from messaging_bot_jobs where organization_id=$1 and message_id=$2 for update',[org,claim.message.id]);
       const current=(await tx.query(`select c.* from messaging_conversations c join messaging_bot_jobs j on j.organization_id=c.organization_id and j.conversation_id=c.id
         where c.organization_id=$1 and c.id=$2 and j.message_id=$3 and j.lease_token=$4 and j.status='RUNNING' and j.lease_expires_at>now() for update of c,j`,[org,claim.conversation.id,claim.message.id,claim.leaseToken])).rows[0];
       if(!current)return;

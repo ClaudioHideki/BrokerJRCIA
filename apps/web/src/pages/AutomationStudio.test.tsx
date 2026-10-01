@@ -32,6 +32,14 @@ function mountEditor(request:ApiClient['request']) {
 beforeEach(()=>sessionStorage.clear());
 
 describe('Automation Studio',()=>{
+  it.each(AUTOMATION_NODE_CATALOG_V1.filter(node=>node.availability==='AVAILABLE').map(node=>node.type))('opens a configuration form for available %s',async type=>{
+    const graph=welcomeFlow();graph.nodes[1]!.type=type;graph.nodes[1]!.label='Bloco de teste';
+    const request=vi.fn(async(path:string)=>path===`/v1/automations/${automationId}`?{...definition,draft:{revision:1,graph}}:path==='/v1/automation-nodes'?{data:AUTOMATION_NODE_CATALOG_V1}:Promise.reject(new Error(path))) as ApiClient['request'];
+    mountEditor(request);fireEvent.click(await screen.findByRole('button',{name:'Configurar Bloco de teste'}));
+    expect(screen.getByLabelText('Nome do bloco')).toHaveValue('Bloco de teste');
+    const labels:Record<string,string[]>={message:['Mensagem'],input:['Pergunta','Variável'],menu:['Mensagem do menu','Variável'],condition:['Campo','Comparação','Valor'],variable:['Variável','Valor']};
+    for(const label of labels[type]??[])expect(screen.getByLabelText(label)).toBeEnabled();
+  });
   it('keeps offline drafts visible and editable with an explicit publication pause',async()=>{
     const request=vi.fn(async(path:string)=>path==='/v1/automations/status'?{enabled:false,canRead:true,canEdit:true,canSimulate:true,canPublish:false,reasons:['AUTOMATION_RUNTIME_DISABLED']}:path==='/v1/automations'?{data:[definition]}:Promise.reject(new Error(path))) as ApiClient['request'];
     render(<SessionProvider client={client(request)}><MemoryRouter><AutomationsPage/></MemoryRouter></SessionProvider>);
@@ -167,6 +175,19 @@ describe('Automation Studio',()=>{
     const block=await screen.findByRole('button',{name:'Configurar Mensagem recebida'});
     fireEvent.keyDown(block,{key:'ArrowRight'});
     expect(screen.getByText(/alterações locais preservadas/)).toBeInTheDocument();
+  });
+  it('locates the exact node in structured validation even when labels are duplicated',async()=>{
+    const graph=welcomeFlow();graph.nodes[0]!.label='Boas-vindas';
+    const request=vi.fn(async(path:string)=>path===`/v1/automations/${automationId}`?{...definition,draft:{revision:1,graph}}:path==='/v1/automation-nodes'?{data:AUTOMATION_NODE_CATALOG_V1}:path.endsWith('/validate')?{valid:false,diagnostics:[{nodeId:'welcome',field:'data.text',code:'INVALID_CONFIG',message:'Boas-vindas: informe uma mensagem.'}],errors:['Boas-vindas: informe uma mensagem.']}:Promise.reject(new Error(`Unexpected ${path}`))) as ApiClient['request'];
+    mountEditor(request);
+    fireEvent.click(await screen.findByRole('button',{name:'Validar'}));
+    const focus=await screen.findByRole('button',{name:'Localizar bloco com erro'});
+    expect(focus).toBeEnabled();fireEvent.click(focus);
+    const blocks=screen.getAllByRole('button',{name:'Configurar Boas-vindas'});
+    expect(blocks[1]!.parentElement).toHaveClass('flow-node--selected','flow-node--error');
+    expect(blocks[0]!.parentElement).not.toHaveClass('flow-node--error');
+    expect(screen.queryByRole('button',{name:/Consulta SQL/})).not.toBeInTheDocument();
+    expect(screen.getByText(/rascunho salvo/)).toBeInTheDocument();
   });
   it('continues a menu simulation using the conversation transcript',async()=>{
     const request=vi.fn(async(path:string,init?:RequestInit)=>{

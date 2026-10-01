@@ -18,7 +18,7 @@ const binding = { schemaVersion: 1, id: account, organizationId: org, automation
 describe('canonical channel browser API', () => {
   it('uses the canonical lifecycle and automation endpoints', async () => {
     const request = vi.fn(async (path: string, init?: RequestInit) => {
-      if (path.endsWith('/automation')) return { binding };
+      if (path.endsWith('/automation')) return { binding, ownerRevision: 0 };
       if (path.endsWith('/reconnect')) return { provider: 'QR', channel, operationId: null, replayed: false,
         pending: false, reconciliationRequired: false, action: { type: 'NONE', reason: 'ALREADY_CONNECTED' } };
       if (path.endsWith('/disconnect')) return { provider: 'QR', channel: { ...channel, transportStatus: 'DISCONNECTED' },
@@ -32,7 +32,7 @@ describe('canonical channel browser API', () => {
     await expect(reconnectChannel(client, id, 'retry-key')).resolves.toMatchObject({ action: { type: 'NONE' } });
     await expect(disconnectChannel(client, id, 'stop-key')).resolves.toMatchObject({ channel: { transportStatus: 'DISCONNECTED' } });
     await expect(getChannelAutomation(client, id)).resolves.toMatchObject({ binding: { version: 2 } });
-    await expect(bindChannelAutomation(client, id, { automationId: id, version: 2 })).resolves.toMatchObject({ binding: { automationId: id } });
+    await expect(bindChannelAutomation(client, id, { automationId: id, version: 2, expectedOwnerRevision: 0 })).resolves.toMatchObject({ binding: { automationId: id } });
     expect(request).toHaveBeenCalledWith(`/v1/channels/${id}/reconnect`, expect.objectContaining({ method: 'POST' }));
     expect(request).toHaveBeenCalledWith(`/v1/channels/${id}/automation`, expect.objectContaining({ method: 'PUT' }));
   });

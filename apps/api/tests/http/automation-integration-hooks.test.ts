@@ -20,7 +20,14 @@ it.each(['/v1/automation-imports','/v1/credentials','/v1/webhooks'])('completes 
 
 it('rejects draft imports when the company module is disabled before storing the source artifact',async()=>{
  const org='11111111-1111-4111-8111-111111111111',user='22222222-2222-4222-8222-222222222222',secret='qa-route-hook-test-32-characters-secret';
- const query=vi.fn(async()=>({rows:[{status:'ACTIVE',moduleEnabled:false}]}));
+ const query=vi.fn(async(statement:string,params:readonly unknown[]=[])=>{
+  expect(params).toEqual([org]);
+  const sql=statement.replace(/\s+/g,' ').trim();
+  if(/^SELECT tenant_is_active\(\$1::uuid\) AS active$/i.test(sql))return {rows:[{active:true}]};
+  if(/^select o.status,coalesce\(f.enabled,false\) as "moduleEnabled" from organizations o left join flow_features f on f.organization_id=o.id where o.id=\$1$/i.test(sql))
+   return {rows:[{status:'ACTIVE',moduleEnabled:false}]};
+  throw new Error('Disabled import attempted an unexpected query: '+sql);
+ });
  const transact=vi.fn(async(_org:string,work:(tx:never)=>Promise<unknown>)=>work({query} as never));
  const importer=createAutomationImporter({transact,keyring:JSON.stringify({1:Buffer.alloc(32,8).toString('base64')}),enabled:false});
  const app=buildApp({nodeEnv:'test',passwordVerifierInitializer:async()=>({verifyPasswordOrDummy:async()=>false}),automationImports:{jwtSecret:secret,authenticateApiKey:async()=>null,resolveCurrentRole:async()=> 'OWNER' as const,service:importer}});
@@ -28,7 +35,12 @@ it('rejects draft imports when the company module is disabled before storing the
  try{const response=await app.inject({method:'POST',url:'/v1/automation-imports',headers:{authorization,'idempotency-key':'disabled-import'},payload:{source:'AUTO',content:'{}'}});
   expect(response.statusCode).toBe(403);
   expect(response.json()).toMatchObject({code:'AUTOMATION_MODULE_DISABLED',requestId:expect.any(String)});
-  expect(query).toHaveBeenCalledTimes(1);
+  const statements=query.mock.calls.map(([sql])=>sql.replace(/\s+/g,' ').trim());
+  expect(statements).toHaveLength(2);
+  expect(statements[0]).toMatch(/^SELECT tenant_is_active\(\$1::uuid\) AS active$/i);
+  expect(statements[1]).toMatch(/^select o.status,coalesce\(f.enabled,false\)/i);
+  expect(statements.every(sql=>/^select /i.test(sql))).toBe(true);
+  expect(statements.some(sql=>/automation_import_artifacts|idempotency_records/i.test(sql))).toBe(false);
  }finally{await app.close();}
 });
 

@@ -1,4 +1,7 @@
 import { isOrganizationActive } from "../tenancy/operational-limits.js";
+import { transitionChannelOwner } from '../attendance/transition.js';
+import { AttendanceError } from '../attendance/types.js';
+import { lockAttendanceChannelRead } from '../attendance/repository.js';
 import { AUTOMATION_ORIGIN } from '@jrc/contracts';
 import type { QueryResultRow } from "pg";
 
@@ -360,6 +363,7 @@ export interface MessagingRepository {
       credentialReference: string;
       botPublicId: string | null;
       botOriginReference: string | null;
+      expectedOwnerRevision?: number;
     },
   ): Promise<MessagingChannel>;
   listChannels(
@@ -370,6 +374,7 @@ export interface MessagingRepository {
     transaction: TenantTransaction,
     organizationId: string,
     channelId: string,
+    options?: { lock: boolean },
   ): Promise<MessagingChannel | null>;
   setChannelBot(
     transaction: TenantTransaction,
@@ -378,6 +383,7 @@ export interface MessagingRepository {
       channelId: string;
       botPublicId: string | null;
       botOriginReference: string | null;
+      expectedOwnerRevision?: number;
     },
   ): Promise<MessagingChannel>;
   upsertContact(
@@ -596,17 +602,18 @@ export function createPostgresMessagingRepository(): MessagingRepository {
     async listChannels(transaction, organizationId) {
       return (
         await transaction.query<ChannelDatabaseRow>(
-          `SELECT ${CHANNEL_COLUMNS} FROM messaging_channels
+          `SELECT ${CHANNEL_COLUMNS}, coalesce((select revision from attendance_owners ao where ao.organization_id=messaging_channels.organization_id and ao.channel_id=messaging_channels.id),0) AS "ownerRevision" FROM messaging_channels
           WHERE organization_id = $1 ORDER BY created_at DESC, id DESC`,
           [organizationId],
         )
       ).rows;
     },
 
-    async findChannel(transaction, organizationId, channelId) {
+    async findChannel(transaction, organizationId, channelId, options) {
+      if(options?.lock)await lockAttendanceChannelRead(transaction,organizationId,channelId);
       return first(
         await transaction.query<ChannelDatabaseRow>(
-          `SELECT ${CHANNEL_COLUMNS} FROM messaging_channels
+          `SELECT ${CHANNEL_COLUMNS}, coalesce((select revision from attendance_owners ao where ao.organization_id=messaging_channels.organization_id and ao.channel_id=messaging_channels.id),0) AS "ownerRevision" FROM messaging_channels
           WHERE organization_id = $1 AND id = $2`,
           [organizationId, channelId],
         ),
@@ -614,79 +621,10 @@ export function createPostgresMessagingRepository(): MessagingRepository {
     },
 
     async setChannelBot(transaction, input) {
-      if (input.botPublicId !== null) {
-        await transaction.query("select pg_advisory_xact_lock(hashtextextended('flow-inbox:'||$1,0))", [input.organizationId]);
-        const conflict = await transaction.query(`select 1 from flow_chatwoot_bindings b join chatwoot_connections c
-          on c.organization_id=b.organization_id and c.inbox_id=b.inbox_id
-          where c.organization_id=$1 and c.channel_id=$2 and c.status<>'DISABLED' and b.status<>'DISABLED'`, [input.organizationId, input.channelId]);
-        if (conflict.rowCount) throw new MessagingRepositoryError('FLOW_INBOX_HAS_AUTOMATION', 409);
-      }
-      if (
-        (input.botPublicId === null) !==
-        (input.botOriginReference === null)
-      ) {
-        throw new MessagingRepositoryError("INVALID_BOT_CONFIGURATION", 422);
-      }
-      const current = first(
-        await transaction.query<ChannelDatabaseRow>(
-          `SELECT ${CHANNEL_COLUMNS} FROM messaging_channels
-          WHERE organization_id = $1 AND id = $2 FOR UPDATE`,
-          [input.organizationId, input.channelId],
-        ),
-      );
-      if (!current)
-        throw new MessagingRepositoryError("CHANNEL_NOT_FOUND", 404);
-      if (
-        current.botPublicId === input.botPublicId &&
-        current.botOriginReference === input.botOriginReference
-      ) {
-        return current;
-      }
-      const updated = first(
-        await transaction.query<ChannelDatabaseRow>(
-          `UPDATE messaging_channels
-            SET bot_public_id = $3, bot_origin_reference = $4, updated_at = now()
-          WHERE organization_id = $1 AND id = $2
-        RETURNING ${CHANNEL_COLUMNS}`,
-          [
-            input.organizationId,
-            input.channelId,
-            input.botPublicId,
-            input.botOriginReference,
-          ],
-        ),
-      );
-      await transaction.query(
-        `UPDATE messaging_conversations
-            SET bot_public_id = $3, bot_origin_reference = $4,
-                typebot_session_id = NULL, updated_at = now()
-          WHERE organization_id = $1 AND channel_id = $2`,
-        [
-          input.organizationId,
-          input.channelId,
-          input.botPublicId,
-          input.botOriginReference,
-        ],
-      );
-      await transaction.query(
-        `UPDATE messaging_bot_jobs job
-            SET status = CASE
-                  WHEN job.status = 'RUNNING' THEN 'UNKNOWN'::messaging_bot_job_status
-                  ELSE 'PAUSED'::messaging_bot_job_status
-                END,
-                lease_token = NULL, lease_expires_at = NULL,
-                canonical_error_code = 'BOT_CONFIGURATION_CHANGED', updated_at = now()
-           FROM messaging_conversations conversation
-          WHERE job.organization_id = $1
-            AND job.status IN ('PENDING', 'RUNNING')
-            AND conversation.organization_id = job.organization_id
-            AND conversation.id = job.conversation_id
-            AND conversation.channel_id = $2`,
-        [input.organizationId, input.channelId],
-      );
-      return updated!;
+      try { await transitionChannelOwner(transaction,input.organizationId,input); }
+      catch(error){if(error instanceof AttendanceError&&error.code==='INVALID_BOT_CONFIGURATION')throw new MessagingRepositoryError('INVALID_BOT_CONFIGURATION',422);throw error;}
+      return (await this.findChannel(transaction,input.organizationId,input.channelId))!;
     },
-
     async upsertContact(transaction, input) {
       const result = await transaction.query<ContactDatabaseRow>(
         `INSERT INTO messaging_contacts
@@ -831,6 +769,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
     },
 
     async setConversationMode(transaction, input) {
+      const channel=(await transaction.query<{channel_id:string}>('SELECT channel_id FROM messaging_conversations WHERE organization_id=$1 AND id=$2',[input.organizationId,input.conversationId])).rows[0];
+      if(channel)await lockAttendanceChannelRead(transaction,input.organizationId,channel.channel_id);
       const result = await transaction.query<ConversationDatabaseRow>(
         `UPDATE messaging_conversations SET mode = $3, updated_at = now()
           WHERE organization_id = $1 AND id = $2
@@ -1341,6 +1281,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
         );
         return { eligible: false, reason: "ORGANIZATION_NOT_ACTIVE" };
       }
+      const channel=(await transaction.query<{channel_id:string}>('SELECT channel_id FROM messaging_messages WHERE organization_id=$1 AND id=$2',[input.organizationId,input.messageId])).rows[0];
+      if(channel)await lockAttendanceChannelRead(transaction,input.organizationId,channel.channel_id);
       const selected = first(
         await transaction.query<ClaimDatabaseRow>(
           `SELECT ${CLAIM_COLUMNS}, message.requires_opt_in AS "requiresOptIn",                (channel.credential_reference NOT LIKE 'meta-db:%' OR EXISTS (
@@ -1736,6 +1678,10 @@ export function createPostgresMessagingRepository(): MessagingRepository {
     },
 
     async completeBotTurn(transaction, input) {
+      const channel=(await transaction.query<{channel_id:string}>('SELECT channel_id FROM messaging_messages WHERE organization_id=$1 AND id=$2',[input.organizationId,input.messageId])).rows[0];
+      if(channel)await lockAttendanceChannelRead(transaction,input.organizationId,channel.channel_id);
+      // Lock the job before its conversation; owner transitions use this order too.
+      await transaction.query('SELECT message_id FROM messaging_bot_jobs WHERE organization_id=$1 AND message_id=$2 FOR UPDATE', [input.organizationId,input.messageId]);
       const owner = first(
         await transaction.query<
           QueryResultRow & {

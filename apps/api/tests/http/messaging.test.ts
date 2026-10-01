@@ -17,7 +17,7 @@ async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER'
     jwtSecret: secret, async authenticateApiKey(raw) { return raw === 'existing-instance-key' ? { apiKeyId: channel, organizationId: org, scopes: ['instances:read', 'instances:connect'] } : null; },
     async resolveCurrentRole() { return currentRole; },
     service: {
-      async listChannels(organizationId: string) { organizations.push(organizationId); return { data: [{ id: channel, provider: 'META' as const, botPublicId: null, credentialReference: 'must-not-leak' }] }; },
+      async listChannels(organizationId: string) { organizations.push(organizationId); return { data: [{ id: channel, provider: 'META' as const, ownerRevision: 0, botPublicId: null, credentialReference: 'must-not-leak' }] }; },
       async listTemplates() { return { data: [] }; }, async listConversations() { return { data: [] }; }, async listMessages() { return { data: [] }; },
       async getTemplateStatus(organizationId, channelId, templateId) {
         templateStatusLookups.push({ organizationId, channelId, templateId });
@@ -32,7 +32,7 @@ async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER'
       async readMedia(organizationId){organizations.push(organizationId);return {bytes:new Uint8Array([1,2]),mimeType:'image/png',kind:'image' as const,fileName:'foto.png'};},
       async configureBot(organizationId, channelId, input) {
         mutations++; botConfigurations.push({ organizationId, channelId, input });
-        return { id: channelId, provider: 'META' as const, botPublicId: input.publicId };
+        return { id: channelId, provider: 'META' as const, ownerRevision: 0, botPublicId: input.publicId };
       },
       async setMode() { mutations++; return { id: channel, channelId: channel, contactId: channel, mode: 'HUMAN' as const }; },
     },
@@ -59,7 +59,7 @@ it('revoga privilégios de automação de JWT antigo após mudança de membershi
   const h = await harness('OWNER');
   h.setCurrentRole('OPERATOR');
   const response = await h.app.inject({ method: 'PATCH', url: `/v1/messaging/channels/${channel}/automation`, headers: h.headers,
-    payload: { publicId: 'support', originReference: 'cloud' } });
+    payload: { expectedOwnerRevision: 0, publicId: 'support', originReference: 'cloud' } });
   expect(response.statusCode).toBe(403);
   expect(h.mutations()).toBe(0);
 });
@@ -158,31 +158,31 @@ describe('API JRC de mensageria', () => {
     const h = await harness('VIEWER');
     expect((await h.app.inject({ method: 'POST', url: `/v1/messaging/channels/${channel}/messages`, headers: { ...h.headers, 'idempotency-key': channel }, payload: { conversationId: channel, name: 'hello', language: 'pt_BR', variables: [] } })).statusCode).toBe(403);
     expect((await h.app.inject({ method: 'PATCH', url: `/v1/messaging/conversations/${channel}/mode`, headers: h.headers, payload: { mode: 'HUMAN' } })).statusCode).toBe(403);
-    expect((await h.app.inject({ method: 'PATCH', url: `/v1/messaging/channels/${channel}/automation`, headers: h.headers, payload: { publicId: 'support', originReference: 'cloud' } })).statusCode).toBe(403);
+    expect((await h.app.inject({ method: 'PATCH', url: `/v1/messaging/channels/${channel}/automation`, headers: h.headers, payload: { expectedOwnerRevision: 0, publicId: 'support', originReference: 'cloud' } })).statusCode).toBe(403);
     expect(h.mutations()).toBe(0);
   });
   it.each(['OWNER', 'ADMIN'] as const)('configura automação como %s derivando tenant do JWT', async role => {
     const h = await harness(role);
     const response = await h.app.inject({ method: 'PATCH', url: `/v1/messaging/channels/${channel}/automation`, headers: h.headers,
-      payload: { publicId: 'support', originReference: 'typebot-cloud' } });
+      payload: { expectedOwnerRevision: 0, publicId: 'support', originReference: 'typebot-cloud' } });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ id: channel, provider: 'META', botPublicId: 'support' });
+    expect(response.json()).toEqual({ id: channel, provider: 'META', ownerRevision: 0, botPublicId: 'support' });
     expect(h.botConfigurations).toEqual([{ organizationId: org, channelId: channel,
-      input: { publicId: 'support', originReference: 'typebot-cloud' } }]);
+      input: { expectedOwnerRevision: 0, publicId: 'support', originReference: 'typebot-cloud' } }]);
   });
   it('impede OPERATOR de alterar configuração de automação', async () => {
     const h = await harness('OPERATOR');
     const response = await h.app.inject({ method: 'PATCH', url: `/v1/messaging/channels/${channel}/automation`, headers: h.headers,
-      payload: { publicId: 'support', originReference: 'typebot-cloud' } });
+      payload: { expectedOwnerRevision: 0, publicId: 'support', originReference: 'typebot-cloud' } });
     expect(response.statusCode).toBe(403);
     expect(h.mutations()).toBe(0);
   });
   it('rejeita URL, token e organização forjada na configuração', async () => {
     const h = await harness();
     for (const privileged of [
-      { publicId: 'support', originReference: 'cloud', url: 'https://typebot.example' },
-      { publicId: 'support', originReference: 'cloud', accessToken: 'secret' },
-      { publicId: 'support', originReference: 'cloud', organizationId: org },
+      { expectedOwnerRevision: 0, publicId: 'support', originReference: 'cloud', url: 'https://typebot.example' },
+      { expectedOwnerRevision: 0, publicId: 'support', originReference: 'cloud', accessToken: 'secret' },
+      { expectedOwnerRevision: 0, publicId: 'support', originReference: 'cloud', organizationId: org },
     ]) {
       expect((await h.app.inject({ method: 'PATCH', url: `/v1/messaging/channels/${channel}/automation`, headers: h.headers, payload: privileged })).statusCode).toBe(400);
     }

@@ -1,6 +1,7 @@
+import { AttendanceError } from '../../modules/attendance/types.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { AUTOMATION_NODE_CATALOG_V1, AutomationGraphV1Schema, IdempotencyHeadersSchema } from '@jrc/contracts';
+import { AUTOMATION_NODE_CATALOG_V1, AutomationGraphV1Schema, IdempotencyHeadersSchema, nodeDiagnosticsToStrings, type NodeDiagnostic } from '@jrc/contracts';
 import {tenantOperationalProblem} from '../../modules/tenancy/operational-limits.js';
 import { z } from 'zod';
 import type { Role } from '../plugins/authorization.js';
@@ -15,10 +16,10 @@ export interface AutomationRouteOptions extends AuthenticationOptions {
 }
 const empty=z.strictObject({}),params=z.strictObject({id:z.uuid()}),bindingParams=z.strictObject({id:z.uuid(),bindingId:z.uuid()});
 const draft=z.strictObject({name:z.string().trim().min(1).max(120),graph:AutomationGraphV1Schema});
-const problem=(reply:FastifyReply,request:FastifyRequest,status:number,code:string,details:string[]=[])=>reply.code(status).type('application/problem+json').send({type:'about:blank',title:code,status,code,details,requestId:request.id});
+const problem=(reply:FastifyReply,request:FastifyRequest,status:number,code:string,details:NodeDiagnostic[]=[])=>reply.code(status).type('application/problem+json').send({type:'about:blank',title:code,status,code,details,diagnostics:details,legacyErrors:nodeDiagnosticsToStrings(details),requestId:request.id});
 export async function registerAutomationRoutes(app:FastifyInstance,options:AutomationRouteOptions){
   app.decorateRequest('authentication',null);app.addHook('onRequest',async(_request,reply)=>{reply.header('Cache-Control','no-store');});
-  app.setErrorHandler((error,request,reply)=>{const operational=tenantOperationalProblem(error,request.id);if(operational)return reply.code(operational.status).type('application/problem+json').send(operational);if(error instanceof AutomationError)return problem(reply,request,error.statusCode,error.code,error.details);
+  app.setErrorHandler((error,request,reply)=>{const operational=tenantOperationalProblem(error,request.id);if(operational)return reply.code(operational.status).type('application/problem+json').send(operational);if(error instanceof AttendanceError)return problem(reply,request,error.statusCode,error.code);if(error instanceof AutomationError)return problem(reply,request,error.statusCode,error.code,error.details);
     if(error instanceof IdempotencyConflictError)return problem(reply,request,409,error.code);
     const candidate=error as {validation?:unknown;statusCode?:number};const status=candidate.validation||error instanceof z.ZodError?400:candidate.statusCode===413?413:500;return problem(reply,request,status,status===400?'INVALID_REQUEST':'AUTOMATION_UNAVAILABLE');});
   const auth=authenticateRequest(options),guard=(write:boolean)=>async(request:FastifyRequest,reply:FastifyReply)=>{const identity=request.authentication;
@@ -47,8 +48,8 @@ export async function registerAutomationRoutes(app:FastifyInstance,options:Autom
   api.post('/v1/automations/:id/archive',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({archived:z.boolean()})}},request=>options.service.setArchived(org(request),request.params.id,request.body.archived,request.authentication!.actorId!));
   api.get('/v1/automations/:id/versions',{preHandler:read,schema:{params,querystring:empty}},request=>options.service.versions(org(request),request.params.id));
   api.get('/v1/automations/:id/bindings',{preHandler:read,schema:{params,querystring:empty}},request=>options.service.bindings(org(request),request.params.id));
-  api.post('/v1/automations/:id/bindings',{preHandler:write,schema:{params,headers:IdempotencyHeadersSchema,querystring:empty,body:z.strictObject({channelId:z.uuid(),version:z.number().int().positive().optional(),humanDestinationId:z.uuid().nullable().optional()})}},async(request,reply)=>reply.code(201).send(await options.service.bind(org(request),request.params.id,{channelId:request.body.channelId,...(request.body.version===undefined?{}:{version:request.body.version}),...(request.body.humanDestinationId===undefined?{}:{humanDestinationId:request.body.humanDestinationId})})));
-  api.patch('/v1/automations/:id/bindings/:bindingId',{preHandler:write,schema:{params:bindingParams,querystring:empty,body:z.strictObject({status:z.enum(['ACTIVE','PAUSED','DISABLED']),revision:z.number().int().positive()})}},request=>options.service.setBindingStatus(org(request),request.params.bindingId,request.body,request.params.id));
+  api.post('/v1/automations/:id/bindings',{preHandler:write,schema:{params,headers:IdempotencyHeadersSchema,querystring:empty,body:z.strictObject({expectedOwnerRevision:z.number().int().nonnegative(),channelId:z.uuid(),version:z.number().int().positive().optional(),humanDestinationId:z.uuid().nullable().optional()})}},async(request,reply)=>reply.code(201).send(await options.service.bind(org(request),request.params.id,{expectedOwnerRevision:request.body.expectedOwnerRevision,channelId:request.body.channelId,...(request.body.version===undefined?{}:{version:request.body.version}),...(request.body.humanDestinationId===undefined?{}:{humanDestinationId:request.body.humanDestinationId})})));
+  api.patch('/v1/automations/:id/bindings/:bindingId',{preHandler:write,schema:{params:bindingParams,querystring:empty,body:z.strictObject({expectedOwnerRevision:z.number().int().nonnegative(),status:z.enum(['ACTIVE','PAUSED','DISABLED']),revision:z.number().int().positive()})}},request=>options.service.setBindingStatus(org(request),request.params.bindingId,request.body,request.params.id));
   api.get('/v1/executions',{preHandler:read,schema:{querystring:z.strictObject({automationId:z.uuid().optional()})}},request=>options.executions.list(org(request),request.query.automationId));
   api.get('/v1/executions/:id',{preHandler:read,schema:{params,querystring:empty}},request=>options.executions.get(org(request),request.params.id));
   api.post('/v1/executions/:id/cancel',{preHandler:write,schema:{params,querystring:empty,body:empty}},request=>options.executions.cancel(org(request),request.params.id));

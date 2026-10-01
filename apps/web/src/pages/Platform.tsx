@@ -432,7 +432,7 @@ export function PlatformPage() {
     const company = selected;
     await action(async () => {
       const status = data.get("status") as Company["status"];
-      const plan = String(data.get("plan"));
+      const plan = data.has('plan')?String(data.get('plan')):undefined;
       const feature = data.has("flowsConfigPresent") ? { flowsEnabled: data.has("flowsEnabled") } : {};
       const values = limitKeys.map((key) => String(data.get(key) ?? "").trim());
       if (
@@ -454,13 +454,13 @@ export function PlatformPage() {
         : undefined;
       await request("/organizations/" + company.id, "PATCH", {
         status,
-        plan,
+        ...(plan===undefined?{}:{plan}),
         ...(limits ? { limits } : {}),
         ...feature,
       });
       setSelected((current) =>
         current?.id === company.id
-          ? { ...current, status, plan, ...feature, ...(limits ? { limits } : {}) }
+          ? { ...current, status, ...(plan===undefined?{}:{plan}), ...feature, ...(limits ? { limits } : {}) }
           : current,
       );
       await loadCompanies();
@@ -619,6 +619,12 @@ export function PlatformPage() {
                     onDeleted={()=>{setCompanies(current=>current.filter(item=>item.id!==selected.id));
                       closeCompany();setNotice('Empresa excluída definitivamente do Broker.');}}
                     integrationRequest={(path,method,body)=>request('/organizations/'+selected.id+'/chatwoot'+path,method,body)}
+                    commercialRequest={(path,method,body)=>request(path,method,body)}
+                    onCommercialAssigned={assignment=>{
+                      const update=(company:Company)=>company.id===assignment.organizationId?{...company,plan:assignment.name,limits:assignment.limits,flowsEnabled:assignment.flowsEnabled}:company;
+                      setSelected(current=>current?update(current):null);setCompanies(current=>current.map(update));
+                      setNotice('Plano atribuído e auditado. Recursos existentes preservados.');
+                    }}
                     acknowledge={() =>
                       void action(async () => {
                         await request(

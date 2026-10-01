@@ -6,6 +6,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { withOrganizationTransaction } from '../../src/db/tenant-transaction.js';
 import { createFlowService } from '../../src/modules/flows/service.js';
 import { createFlowChatwootService } from '../../src/modules/flows/chatwoot-service.js';
+import { createOwnershipService } from '../../src/modules/attendance/ownership-service.js';
 import { createIntegrationSecrets } from '../../src/modules/integrations/secrets.js';
 import { createIsolatedPostgresDatabase, requireTestDatabaseAdminUrl, type IsolatedPostgresDatabase } from './helpers/postgres.js';
 import { connectionStringForRole } from './helpers/task7.js';
@@ -76,6 +77,113 @@ describe('durable Flow Agent Bot transport', () => {
     expect(f.deliveries).toHaveLength(1);
     expect((await f.service.runs(f.org, f.flow.id)).data).toHaveLength(1);
     expect((await db.pool.query('select state from flow_chatwoot_sessions where organization_id=$1', [f.org])).rows[0].state.status).toBe('completed');
+  });
+  it('does not hold binding or ownership locks across remote bot provisioning',async()=>{
+    const f=await fixture(),normal=f.fetch.getMockImplementation()!;
+    let inspected=false;
+    f.fetch.mockImplementation(async(url,init)=>{
+      if(String(url).endsWith('/agent_bots')&&init?.method==='POST'){
+        await f.transact(f.org,async tx=>{
+          expect((await tx.query("select pg_try_advisory_xact_lock(hashtextextended('flow-inbox:'||$1,0)) as free",[f.org])).rows[0].free).toBe(true);
+          await tx.query('select id from flow_chatwoot_bindings where organization_id=$1 for update nowait',[f.org]);
+        });
+        inspected=true;
+      }
+      return normal(url,init);
+    });
+    await f.service.bind(f.org,f.flow.id,7);expect(inspected).toBe(true);
+  });
+  it('disables during remote creation without accepting a late settle or repeating the write',async()=>{
+    const f=await fixture(),normal=f.fetch.getMockImplementation()!;
+    let arrived!:()=>void,release!:()=>void;
+    const started=new Promise<void>(r=>{arrived=r;}),blocked=new Promise<void>(r=>{release=r;});
+    f.fetch.mockImplementation(async(url,init)=>{
+      const response=await normal(url,init);
+      if(String(url).endsWith('/agent_bots')&&init?.method==='POST'){arrived();await blocked;}
+      return response;
+    });
+    const pending=f.service.bind(f.org,f.flow.id,7,0).then(value=>({value}),error=>({error}));
+    await started;
+    const stored=(await db.pool.query('select id from flow_chatwoot_bindings where organization_id=$1',[f.org])).rows[0];
+    const disabled=await f.service.disable(f.org,stored.id,1);release();
+    expect(disabled).toMatchObject({remoteDetached:false,code:'FLOW_OPERATION_RECONCILIATION_REQUIRED'});
+    expect(await pending).toMatchObject({error:{code:'FLOW_OPERATION_CHANGED'}});
+    expect((await db.pool.query('select status,operation_state from flow_chatwoot_bindings where id=$1',[stored.id])).rows[0]).toEqual({status:'DISABLED',operation_state:'UNKNOWN'});
+    await expect(f.service.bind(f.org,f.flow.id,7,2)).rejects.toMatchObject({code:'FLOW_OPERATION_RECONCILIATION_REQUIRED'});
+    expect(f.fetch.mock.calls.filter(c=>String(c[0]).endsWith('/agent_bots')&&c[1]?.method==='POST')).toHaveLength(1);
+    expect(f.fetch.mock.calls.filter(c=>String(c[0]).endsWith('/set_agent_bot'))).toHaveLength(0);
+    expect((await db.pool.query('select lifecycle_pending_count($1,null,null)::int n',[f.org])).rows[0].n).toBe(1);
+  });
+  it('never replays an expired dispatched lease whose assignment has not been observed',async()=>{
+    const f=await fixture();f.failAssign();
+    await expect(f.service.bind(f.org,f.flow.id,7,0)).rejects.toMatchObject({uncertain:true});
+    f.competing();
+    await db.pool.query("update flow_chatwoot_bindings set operation_state='DISPATCHED',operation_token=$2,operation_expires_at=now()-interval '1 second' where organization_id=$1",[f.org,randomUUID()]);
+    const creates=f.fetch.mock.calls.filter(c=>String(c[0]).endsWith('/agent_bots')&&c[1]?.method==='POST').length;
+    const assignments=f.fetch.mock.calls.filter(c=>String(c[0]).endsWith('/set_agent_bot')).length;
+    await expect(f.service.bind(f.org,f.flow.id,7)).rejects.toMatchObject({code:'FLOW_INBOX_HAS_BOT'});
+    expect(f.fetch.mock.calls.filter(c=>String(c[0]).endsWith('/agent_bots')&&c[1]?.method==='POST')).toHaveLength(creates);
+    expect(f.fetch.mock.calls.filter(c=>String(c[0]).endsWith('/set_agent_bot'))).toHaveLength(assignments);
+  });
+  it('reserves a real channel through the same owner authority and releases it offline',async()=>{
+    const f=await fixture(),channel=randomUUID(),connection=randomUUID();
+    const provider=(await db.pool.query("insert into provider_accounts(organization_id,provider,name,credential_reference) values($1,'META','synthetic','vault://synthetic') returning id",[f.org])).rows[0].id;
+    await db.pool.query("insert into messaging_channels(id,organization_id,provider_account_id,phone_number_id,waba_id,credential_reference) values($1::uuid,$2,$3,$1::text,'synthetic','vault://synthetic')",[channel,f.org,provider]);
+    await db.pool.query("insert into chatwoot_connections(id,organization_id,channel_id,inbox_id,name,status) values($1,$2,$3,7,'synthetic','READY')",[connection,f.org,channel]);
+    const b=await f.service.bind(f.org,f.flow.id,7,0);
+    expect(b.ownerRevision).toBe(1);
+    expect((await db.pool.query('select executor,remote_binding_id from attendance_owners where channel_id=$1',[channel])).rows[0]).toEqual({executor:'BROKER',remote_binding_id:b.id});
+    expect((await db.pool.query('select bot_public_id from messaging_channels where id=$1',[channel])).rows[0].bot_public_id).toBeNull();
+    await expect(f.flows.bind(f.org,f.flow.id,channel,false,1)).rejects.toMatchObject({code:'FLOW_INBOX_HAS_AUTOMATION'});
+    const writes=f.fetch.mock.calls.filter(c=>c[1]?.method==='POST').length;
+    expect(await f.service.bind(f.org,f.flow.id,7,1)).toMatchObject({id:b.id,ownerRevision:1,revision:b.revision});
+    expect(f.fetch.mock.calls.filter(c=>c[1]?.method==='POST')).toHaveLength(writes);
+    await db.pool.query("update chatwoot_accounts set status='UNKNOWN' where organization_id=$1",[f.org]);
+    await f.service.disable(f.org,b.id,1);
+    expect((await db.pool.query('select executor,revision,remote_binding_id from attendance_owners where channel_id=$1',[channel])).rows[0]).toEqual({executor:'NONE',revision:2,remote_binding_id:null});
+    expect((await f.service.inboxes(f.org)).data[0]).toMatchObject({ownerRevision:2,binding:{status:'DISABLED'}});
+  });
+  it.each(['READY','DISPATCHED'] as const)('revokes the %s remote lease through central NONE and keeps disable idempotent',async state=>{
+    const f=await fixture(),channel=randomUUID(),connection=randomUUID();
+    const provider=(await db.pool.query("insert into provider_accounts(organization_id,provider,name,credential_reference) values($1,'META','synthetic','vault://synthetic') returning id",[f.org])).rows[0].id;
+    await db.pool.query("insert into messaging_channels(id,organization_id,provider_account_id,phone_number_id,waba_id,credential_reference) values($1::uuid,$2,$3,$1::text,'synthetic','vault://synthetic')",[channel,f.org,provider]);
+    await db.pool.query("insert into chatwoot_connections(id,organization_id,channel_id,inbox_id,name,status) values($1,$2,$3,7,'synthetic','READY')",[connection,f.org,channel]);
+    let arrived!:()=>void,release!:()=>void;
+    const started=new Promise<void>(resolve=>{arrived=resolve;}),blocked=new Promise<void>(resolve=>{release=resolve;});
+    const normal=f.fetch.getMockImplementation()!;
+    if(state==='DISPATCHED')f.fetch.mockImplementation(async(url,init)=>{
+      const response=await normal(url,init);
+      if(String(url).endsWith('/agent_bots')&&init?.method==='POST'){arrived();await blocked;}
+      return response;
+    });
+    const pending=f.service.bind(f.org,f.flow.id,7,0).then(value=>({value}),error=>({error}));
+    if(state==='DISPATCHED')await started;else await pending;
+    const stored=(await db.pool.query('select id from flow_chatwoot_bindings where organization_id=$1',[f.org])).rows[0];
+    await createOwnershipService({transact:f.transact}).claimChannelOwner(f.org,channel,{
+      executor:'NONE',automationId:null,version:null,expectedRevision:1,
+    });
+    const beforeDetach=(await db.pool.query('select status,operation_revision,operation_state,operation_token from flow_chatwoot_bindings where id=$1',[stored.id])).rows[0];
+    expect(beforeDetach).toEqual({status:'DISABLED',operation_revision:2,operation_state:state==='DISPATCHED'?'UNKNOWN':'IDLE',operation_token:null});
+    expect(await f.service.disable(f.org,stored.id,2)).toMatchObject({remoteDetached:state==='READY'});
+    release();
+    if(state==='DISPATCHED')expect(await pending).toMatchObject({error:{code:'FLOW_OPERATION_CHANGED'}});
+    const assignments=f.fetch.mock.calls.filter(c=>String(c[0]).endsWith('/set_agent_bot')).length;
+    expect(assignments).toBe(state==='READY'?2:0);
+    expect(await f.service.disable(f.org,stored.id,2)).toMatchObject({remoteDetached:state==='READY'});
+    expect(f.fetch.mock.calls.filter(c=>String(c[0]).endsWith('/set_agent_bot'))).toHaveLength(assignments);
+    const final=(await db.pool.query('select status,operation_revision,operation_state,operation_token,bot_id from flow_chatwoot_bindings where id=$1',[stored.id])).rows[0];
+    expect(final).toEqual({...beforeDetach,bot_id:null});
+    expect((await db.pool.query('select revision,executor from attendance_owners where channel_id=$1',[channel])).rows[0]).toEqual({revision:2,executor:'NONE'});
+  });
+  it('protects reservation constraints and keeps lifecycle helpers unavailable to tenant/platform roles',async()=>{
+    const f=await fixture(),b=await f.service.bind(f.org,f.flow.id,7);
+    await expect(db.pool.query("update flow_chatwoot_bindings set operation_state='RESERVED' where id=$1",[b.id])).rejects.toMatchObject({code:'23514'});
+    const privileges=(await db.pool.query(`select has_function_privilege('jrc_app','lifecycle_pending_count(uuid,uuid,uuid)','EXECUTE') app,
+      has_function_privilege('jrc_app','lifecycle_pending_count_before_flow_reservation(uuid,uuid,uuid)','EXECUTE') helper,
+      has_function_privilege('jrc_platform','lifecycle_pending_count_before_flow_reservation(uuid,uuid,uuid)','EXECUTE') platform,
+      has_function_privilege('jrc_migrator','lifecycle_pending_count(uuid,uuid,uuid)','EXECUTE') migrator`)).rows[0];
+    expect(privileges).toEqual({app:false,helper:false,platform:false,migrator:true});
+    await expect(f.transact(f.org,tx=>tx.query('select lifecycle_pending_count($1,null,null)',[f.org]))).rejects.toMatchObject({code:'42501'});
   });
   it('rejects a competing bot and a fork that cannot sign callbacks', async () => {
     const f = await fixture(); f.competing();

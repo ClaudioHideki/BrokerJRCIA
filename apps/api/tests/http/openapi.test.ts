@@ -10,6 +10,13 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'POST /v1/platform/groups/{id}/company-removal-preview',
+  'POST /v1/platform/groups/{id}/company-removals',
+  'GET /v1/platform/groups/{id}/company-removals',
+  'GET /v1/platform/group-company-removals/{operationId}',
+  'POST /v1/platform/organizations/{id}/deletion/{operationId}/reconcile',
+  'POST /v1/platform/organizations/{id}/channels/{channelId}/deletion/{operationId}/reconcile',
+  'POST /v1/channels/{id}/deletion/{operationId}/reconcile',
   'GET /v1/channels/{id}/deletion-preview',
   'POST /v1/channels/{id}/deletion',
   'GET /v1/channels/{id}/deletion/{operationId}',
@@ -24,6 +31,11 @@ const EXPECTED_OPERATIONS = [
   'GET /v1/platform/support/tickets', 'GET /v1/platform/support/tickets/{id}',
   'POST /v1/platform/support/tickets/{id}/replies', 'PATCH /v1/platform/support/tickets/{id}',
   'GET /v1/platform/groups', 'POST /v1/platform/groups', 'PUT /v1/platform/groups/{id}/organizations',
+  'PATCH /v1/platform/groups/{id}', 'GET /v1/platform/groups/{id}/removal-preview', 'DELETE /v1/platform/groups/{id}',
+  'GET /v1/platform/commercial-plans', 'POST /v1/platform/commercial-plans',
+  'POST /v1/platform/commercial-plans/{id}/versions',
+  'GET /v1/platform/organizations/{id}/commercial-plan', 'PUT /v1/platform/organizations/{id}/commercial-plan',
+  'GET /v1/integrations/chatwoot/connections/{id}/attendance-catalog',
   'GET /v1/platform/organizations/{id}/channels',
   'POST /v1/platform/organizations/{id}/channels/{channelId}/archive',
   'POST /v1/automations/{id}/archive',
@@ -52,6 +64,7 @@ const EXPECTED_OPERATIONS = [
   'POST /v1/flows/{id}/bind', 'POST /v1/flows/{id}/unbind', 'POST /v1/flows/import-preview',
   'POST /v1/flows/{id}/simulate', 'POST /v1/flows/{id}/chatwoot/bind', 'POST /v1/flows/chatwoot/{id}/disable',
   'POST /v1/flows/chatwoot/{id}/events',
+  'POST /v1/flows/chatwoot/{id}/reconcile',
   'GET /v1/integrations/chatwoot/embed-apps/{id}', 'POST /v1/integrations/chatwoot/embed-apps/{id}/install',
   'GET /v1/integrations/chatwoot/connections/{id}/operator-grants',
   'GET /v1/integrations/chatwoot/control/resources', 'GET /v1/integrations/chatwoot/control/onboarding',

@@ -12,6 +12,7 @@ export const SendTemplateRequestSchema = z.strictObject({
   variables: z.array(z.string().max(1024)).max(100).default([]),
 });
 export const ConfigureBotRequestSchema = z.strictObject({
+  expectedOwnerRevision: z.number().int().nonnegative(),
   publicId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),
   originReference: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
 });
@@ -19,6 +20,7 @@ export const ConversationModeRequestSchema = z.strictObject({
   mode: z.enum(["BOT", "HUMAN"]),
 });
 export const MessagingChannelViewSchema = z.object({
+  ownerRevision: z.number().int().nonnegative(),
   id: z.uuid(),
   provider: z.enum(["META", "BAILEYS"]),
   botPublicId: z.string().nullable(),

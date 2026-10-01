@@ -33,3 +33,83 @@ it('offers read-only support history to viewers',async()=>{
   expect(screen.queryByRole('button',{name:'Enviar resposta'})).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Assunto')).not.toBeInTheDocument();
 });
+it('keeps a typed reply while refreshing after another operator updates the ticket',async()=>{
+  const revised={...detail,ticket:{...ticket,revision:2,status:'IN_PROGRESS' as const}};
+  let reads=0;
+  const request=vi.fn(async(path:string)=>path.endsWith('/one')?(++reads===1?detail:revised):{data:[ticket]});
+  render(<SupportDesk request={request as never} scopeKey="staff-reconnect" staff canWrite />);
+  fireEvent.click(await screen.findByRole('button',{name:/Conexão sem QR/}));
+  await screen.findByText('Não aparece o código QR.');
+  fireEvent.change(screen.getByLabelText('Resposta'),{target:{value:'Minha resposta ainda não enviada'}});
+  fireEvent.click(screen.getByRole('button',{name:'Atualizar histórico'}));
+  await waitFor(()=>expect(screen.getByLabelText('Resposta')).toHaveValue('Minha resposta ainda não enviada'));
+  expect(screen.getByRole('combobox',{name:'Situação'})).toHaveValue('IN_PROGRESS');
+  expect(screen.getByRole('status')).toHaveTextContent('O chamado recebeu uma atualização');
+});
+it('filters the staff queue and distinguishes an overdue first response',async()=>{
+  const overdue={...ticket,firstResponseState:'OVERDUE',responseDueAt:'2026-09-28T12:00:00Z'};
+  const request=vi.fn(async(path:string)=>path.endsWith('/one')?{...detail,ticket:overdue}:{data:[overdue]});
+  render(<SupportDesk request={request as never} scopeKey="staff-filter" staff canWrite />);
+  fireEvent.click(await screen.findByRole('button',{name:/Conexão sem QR/}));
+  await screen.findByText(/Primeira resposta vencida/);
+  fireEvent.change(screen.getByLabelText('Filtrar situação'),{target:{value:'OPEN'}});
+  await waitFor(()=>expect(request.mock.calls.some(([path])=>path.includes('status=OPEN'))).toBe(true));
+});
+it('refreshes the open ticket after reconnect without replacing an unsent reply',async()=>{
+  const revised={...detail,ticket:{...ticket,revision:2,status:'IN_PROGRESS' as const}};
+  let reads=0;
+  const request=vi.fn(async(path:string)=>path.endsWith('/one')?(++reads===1?detail:revised):{data:[ticket]});
+  render(<SupportDesk request={request as never} scopeKey="reconnect" staff canWrite />);
+  fireEvent.click(await screen.findByRole('button',{name:/Conexão sem QR/}));
+  await screen.findByText('Não aparece o código QR.');
+  fireEvent.change(screen.getByLabelText('Resposta'),{target:{value:'Rascunho após desconexão'}});
+  fireEvent(window,new Event('online'));
+  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Situação'})).toHaveValue('IN_PROGRESS'));
+  expect(screen.getByLabelText('Resposta')).toHaveValue('Rascunho após desconexão');
+});
+it('keeps an unsent reply when refreshing the same ticket fails and is retried',async()=>{
+  let reads=0;
+  const request=vi.fn(async(path:string)=>{if(!path.endsWith('/one'))return {data:[ticket]};if(++reads===2)throw new Error('Temporarily offline');return detail;});
+  render(<SupportDesk request={request as never} scopeKey="retry-refresh" staff canWrite />);
+  fireEvent.click(await screen.findByRole('button',{name:/Conexão sem QR/}));
+  await screen.findByText('Não aparece o código QR.');
+  fireEvent.change(screen.getByLabelText('Resposta'),{target:{value:'Rascunho preservado'}});
+  fireEvent.click(screen.getByRole('button',{name:'Atualizar histórico'}));
+  await screen.findByRole('alert');
+  fireEvent.click(screen.getByRole('button',{name:'Atualizar histórico'}));
+  await waitFor(()=>expect(screen.getByLabelText('Resposta')).toHaveValue('Rascunho preservado'));
+});
+it('releases the busy state when staff changes a filter during a pending reply',async()=>{
+  let finish:((value:unknown)=>void)|undefined;
+  const request=vi.fn(async(path:string,method?:string)=>method==='POST'?new Promise(resolve=>{finish=resolve;}):path.endsWith('/one')?detail:{data:[ticket]});
+  render(<SupportDesk request={request as never} scopeKey="filter-pending" staff canWrite />);
+  fireEvent.click(await screen.findByRole('button',{name:/Conexão sem QR/}));await screen.findByText('Não aparece o código QR.');
+  fireEvent.change(screen.getByLabelText('Resposta'),{target:{value:'Resposta em andamento'}});
+  fireEvent.click(screen.getByRole('button',{name:'Enviar resposta'}));
+  await waitFor(()=>expect(finish).toBeDefined());
+  fireEvent.change(screen.getByLabelText('Filtrar situação'),{target:{value:'OPEN'}});
+  finish!(detail);
+  await waitFor(()=>expect(screen.getByRole('region',{name:'Histórico do chamado'}).closest('.support-desk')).toHaveAttribute('aria-busy','false'));
+});
+it.each(['GET before POST','GET after POST'] as const)('keeps the committed reply when a reconnect %s finishes last',async order=>{
+  const committed={...detail,ticket:{...ticket,revision:2,status:'WAITING_CUSTOMER' as const},messages:[...detail.messages,{id:'staff-reply',authorKind:'PLATFORM' as const,kind:'REPLY' as const,body:'Enviada.',createdAt:ticket.createdAt}]};
+  let reads=0,finishGet:((value:unknown)=>void)|undefined,finishPost:((value:unknown)=>void)|undefined;
+  const request=vi.fn(async(path:string,method?:string)=>{
+    if(method==='POST')return new Promise(resolve=>{finishPost=resolve;});
+    if(path.endsWith('/one'))return ++reads===1?detail:new Promise(resolve=>{finishGet=resolve;});
+    return {data:[ticket]};
+  });
+  render(<SupportDesk request={request as never} scopeKey={`order-${order}`} staff canWrite />);
+  fireEvent.click(await screen.findByRole('button',{name:/Conexão sem QR/}));await screen.findByText('Não aparece o código QR.');
+  fireEvent.change(screen.getByLabelText('Resposta'),{target:{value:'Enviada.'}});
+  const submit=()=>fireEvent.submit(screen.getByLabelText('Resposta').closest('form')!);
+  if(order==='GET before POST'){fireEvent(window,new Event('online'));await waitFor(()=>expect(finishGet).toBeDefined());submit();}
+  else{submit();await waitFor(()=>expect(finishPost).toBeDefined());fireEvent(window,new Event('online'));}
+  await waitFor(()=>expect(finishPost).toBeDefined());await waitFor(()=>expect(finishGet).toBeDefined());
+  finishPost!(committed);
+  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Situação'})).toHaveValue('WAITING_CUSTOMER'));
+  finishGet!(detail);
+  await waitFor(()=>expect(screen.getByRole('region',{name:'Histórico do chamado'}).closest('.support-desk')).toHaveAttribute('aria-busy','false'));
+  expect(screen.getByRole('combobox',{name:'Situação'})).toHaveValue('WAITING_CUSTOMER');
+  expect(screen.getByText('Enviada.')).toBeInTheDocument();
+});

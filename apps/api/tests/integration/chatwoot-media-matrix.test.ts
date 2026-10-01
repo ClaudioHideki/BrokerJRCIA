@@ -99,6 +99,7 @@ it.each(kinds)('transports %s both directions with persistent deduplication and 
   await drain();
   expect(mirrorCalls).toEqual([kind === 'text' ? { text: 'Synthetic text' } : { bytes: mediaBytes(), mimeType: types[kind] }]);
   const payload = { event: 'message_created', id: remoteMessageId, account: { id: 1 }, inbox: { id: 31 }, conversation: { id: 51 }, message_type: 'outgoing', private: false,
+    sender: { id: 81, type: 'user' },
     content: kind === 'text' ? 'Synthetic reply' : '', ...(kind === 'text' ? {} : { attachments: [{ id: remoteMessageId, file_type: kind === 'document' ? 'file' : kind === 'sticker' ? 'image' : kind }] }) };
   const body = Buffer.from(JSON.stringify(payload)), timestamp = String(Math.floor(Date.now() / 1000));
   const signature = 'sha256=' + createHmac('sha256', signing).update(`${timestamp}.`).update(body).digest('hex');

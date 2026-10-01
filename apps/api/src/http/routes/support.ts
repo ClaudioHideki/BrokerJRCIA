@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { CreateSupportTicketSchema, ReplySupportTicketSchema, UpdateSupportTicketSchema, SupportTicketDetailSchema, SupportTicketListSchema } from '@jrc/contracts';
+import { CreateSupportTicketSchema, ReplySupportTicketSchema, UpdateSupportTicketSchema, SupportTicketDetailSchema, SupportTicketListSchema, SupportListQuerySchema } from '@jrc/contracts';
 import { authenticateRequest, type AuthenticationOptions } from '../plugins/authentication.js';
 import type { Role } from '../plugins/authorization.js';
 import { SupportError, type SupportActor, type SupportService } from '../../modules/support/service.js';
@@ -33,7 +33,7 @@ export async function registerSupportRoutes(app: FastifyInstance, options: Suppo
     if (!role || identity?.kind!=='JWT' || (write && role==='VIEWER')) throw new SupportError('SUPPORT_FORBIDDEN',403);
     return {kind:'TENANT',organizationId:identity.organizationId,actorId:identity.actorId,canWrite:role!=='VIEWER'};
   };
-  api.get('/v1/support/tickets',{preHandler:auth,schema:{querystring:z.strictObject({cursor:z.uuid().optional()}),response:{200:SupportTicketListSchema}}},async req=>options.service.list(await actor(req),req.query.cursor));
+  api.get('/v1/support/tickets',{preHandler:auth,schema:{querystring:SupportListQuerySchema.pick({cursor:true,status:true}),response:{200:SupportTicketListSchema}}},async req=>options.service.list(await actor(req),req.query));
   api.post('/v1/support/tickets',{preHandler:auth,bodyLimit:65_536,schema:{querystring:empty,body:CreateSupportTicketSchema,response:{201:SupportTicketDetailSchema}}},async(req,reply)=>{const result=await options.service.create(await actor(req,true),req.body);return reply.code(201).send(result);});
   api.get('/v1/support/tickets/:id',{preHandler:auth,schema:{params,querystring:z.strictObject({before:z.uuid().optional()}),response:{200:SupportTicketDetailSchema}}},async req=>options.service.read(await actor(req),req.params.id,req.query.before));
   api.post('/v1/support/tickets/:id/replies',{preHandler:auth,bodyLimit:65_536,schema:{params,querystring:empty,body:ReplySupportTicketSchema,response:{200:SupportTicketDetailSchema}}},async req=>options.service.reply(await actor(req,true),req.params.id,req.body));
@@ -46,7 +46,7 @@ export async function registerPlatformSupportRoutes(app: FastifyInstance, option
 }) {
   await app.register(async scope => {
     errors(scope); const api = scope.withTypeProvider<ZodTypeProvider>();
-    api.get('/support/tickets',{schema:{querystring:z.strictObject({cursor:z.uuid().optional()}),response:{200:SupportTicketListSchema}}},async req=>options.service.list(await options.authorize(req,false),req.query.cursor));
+    api.get('/support/tickets',{schema:{querystring:SupportListQuerySchema,response:{200:SupportTicketListSchema}}},async req=>options.service.list(await options.authorize(req,false),req.query));
     api.get('/support/tickets/:id',{schema:{params,querystring:z.strictObject({before:z.uuid().optional()}),response:{200:SupportTicketDetailSchema}}},async req=>options.service.read(await options.authorize(req,false),req.params.id,req.query.before));
     api.post('/support/tickets/:id/replies',{bodyLimit:65_536,schema:{params,querystring:empty,body:ReplySupportTicketSchema,response:{200:SupportTicketDetailSchema}}},async req=>options.service.reply(await options.authorize(req,true),req.params.id,req.body));
     api.patch('/support/tickets/:id',{schema:{params,querystring:empty,body:UpdateSupportTicketSchema,response:{200:SupportTicketDetailSchema}}},async req=>options.service.update(await options.authorize(req,true),req.params.id,req.body));

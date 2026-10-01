@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import {CompanyChannels} from './CompanyChannels.js';
 import {CompanyDeletion} from './CompanyDeletion.js';
+import {CommercialPlans} from './CommercialPlans.js';
+import type {CommercialAssignment} from '@jrc/contracts';
 import { Metric, number } from "../broker/components.js";
 import { Icon } from "../broker/Icon.js";
 import { CompanyMark, Status } from "./components.js";
@@ -58,6 +60,8 @@ export function CompanyWorkspace({
   acknowledge,
   refresh,
   integrationRequest,
+  commercialRequest,
+  onCommercialAssigned,
   channelRequest,
   deletionRequest,
   onDeleted,
@@ -74,6 +78,8 @@ export function CompanyWorkspace({
   acknowledge: () => void;
   refresh: () => void;
   integrationRequest?: IntegrationRequest;
+  commercialRequest?: IntegrationRequest;
+  onCommercialAssigned?:(assignment:CommercialAssignment)=>void;
   channelRequest?:IntegrationRequest;
   deletionRequest?:IntegrationRequest;
   onDeleted?:()=>void;
@@ -134,7 +140,7 @@ export function CompanyWorkspace({
           </p>
         </div>
         <Status status={company.status} />
-        {admin&&<form onSubmit={event=>{event.preventDefault();if(window.confirm(company.status==='DISABLED'?'Reativar esta empresa?':'Desativar a empresa? Novos envios serão bloqueados e as pendências e o histórico preservados.'))void saveCompany(new FormData(event.currentTarget));}}><input type="hidden" name="status" value={company.status==='DISABLED'?'ACTIVE':'DISABLED'}/><input type="hidden" name="plan" value={company.plan}/><button className="button button--danger" disabled={disabled}>{company.status==='DISABLED'?'Reativar empresa':'Desativar empresa'}</button></form>}
+        {admin&&<form onSubmit={event=>{event.preventDefault();if(window.confirm(company.status==='DISABLED'?'Reativar esta empresa?':'Desativar a empresa? Novos envios serão bloqueados e as pendências e o histórico preservados.'))void saveCompany(new FormData(event.currentTarget));}}><input type="hidden" name="status" value={company.status==='DISABLED'?'ACTIVE':'DISABLED'}/><button className="button button--danger" disabled={disabled}>{company.status==='DISABLED'?'Reativar empresa':'Desativar empresa'}</button></form>}
         <button
           className="button button--ghost"
           disabled={disabled}
@@ -253,6 +259,7 @@ export function CompanyWorkspace({
         )}
         {tab === "plan" && (
           <>
+          {commercialRequest&&<CommercialPlans key={company.id} organizationId={company.id} request={commercialRequest} admin={admin} disabled={disabled} onAssigned={onCommercialAssigned}/>}
           <section className="panel">
             <div className="admin-panel-heading">
               <div>
@@ -280,7 +287,7 @@ export function CompanyWorkspace({
                       <option value="DISABLED">Desativada</option>
                     </select>
                   </label>
-                  <label>
+                  {!commercialRequest&&<label>
                     Plano
                     <input
                       name="plan"
@@ -288,13 +295,13 @@ export function CompanyWorkspace({
                       required
                       maxLength={80}
                     />
-                  </label>
+                  </label>}
                 </div>
                 <p className="admin-form-hint">
                   Suspender bloqueia novos envios e pausa pendências. Dados e
                   eventos recebidos são preservados.
                 </p>
-                <fieldset>
+                {!commercialRequest&&<><fieldset>
                   <legend>Módulos da empresa</legend>
                   <input type="hidden" name="flowsConfigPresent" value="1" />
                   <label><input type="checkbox" name="flowsEnabled" defaultChecked={company.flowsEnabled === true} /> Habilitar automações da empresa</label>
@@ -324,13 +331,13 @@ export function CompanyWorkspace({
                       Para alterar os limites, preencha os quatro valores.
                     </small>
                   )}
-                </fieldset>
+                </fieldset></>}
                 <div className="admin-form-actions">
                   <button
                     className="button button--primary"
                     disabled={disabled}
                   >
-                    Salvar situação e plano
+                    {commercialRequest?'Salvar situação':'Salvar situação e plano'}
                   </button>
                 </div>
               </form>

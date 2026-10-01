@@ -15,6 +15,10 @@ import { MediaError, type BinaryMedia } from "@jrc/providers";
 import { registerPendingMedia } from "../messaging/media-store.js";
 import type { MessageContent } from "../messaging/types.js";
 import { MessagingRepositoryError } from "../messaging/repository.js";
+import { lockAttendanceChannel } from '../attendance/repository.js';
+import { beginChatwootMirrorAttempt,confirmChatwootMirrorAttempt,failChatwootMirrorAttempt,initializeChatwootAttendanceMap,mayForwardChatwootAttendanceReply,
+  type ChatwootObservationScope } from './chatwoot-attendance-store.js';
+import type { ChatwootAttendanceEvent } from './chatwoot-attendance-events.js';
 
 interface Job {
   id: string;
@@ -33,6 +37,9 @@ interface ConversationMap {
 }
 const replySchema = z
   .object({
+    attendanceObservationId:z.string().uuid().optional(),
+    attendanceKind:z.enum(['HUMAN_PUBLIC','EXTERNAL_BOT','AUTOMATED_REPLY']).optional(),
+    destinationRevision:z.number().int().positive().optional(),
     messageId: z.number().int().positive(),
     conversationId: z.number().int().positive(),
     content: z
@@ -168,6 +175,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
       | Awaited<ReturnType<ReturnType<typeof env.client>["conversation"]>>
       | undefined;
     let remoteSource: string | undefined;
+    let canonical:Awaited<ReturnType<ReturnType<typeof env.client>['attendanceConversation']>>|undefined;
     if (!binding.mapped) {
       if (
         !binding.account ||
@@ -200,8 +208,11 @@ export function createChatwootWorker(options: ChatwootOptions) {
       )?.source_id;
       if (!remoteSource)
         throw new IntegrationError("CHATWOOT_CONVERSATION_NOT_BOUND");
+      if(data.attendanceObservationId)canonical=await client.attendanceConversation(Number(binding.account.account_id),data.conversationId);
     }
     await tx(job.organization_id, async (t) => {
+      if(!binding.connection)throw new IntegrationError('INTEGRATION_PAUSED',409);
+      await lockAttendanceChannel(t,job.organization_id,binding.connection.channel_id);
       const lease = await t.query(
         "SELECT id FROM integration_jobs WHERE organization_id=$1 AND id=$2 AND lease_token=$3 AND status='RUNNING' AND lease_expires_at>now() FOR UPDATE",
         [job.organization_id, job.id, job.lease_token],
@@ -230,6 +241,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
         )
       ).rows[0];
       if (!map && remote && remoteSource) {
+        await repo.findChannel(t, job.organization_id, connection.channel_id, { lock: true });
         const contact = await repo.upsertContact(t, {
           id: randomUUID(),
           organizationId: job.organization_id,
@@ -261,11 +273,21 @@ export function createChatwootWorker(options: ChatwootOptions) {
       }
       if (!map)
         throw new IntegrationError("CHATWOOT_CONVERSATION_NOT_BOUND", 409);
-      await repo.setConversationMode(t, {
-        organizationId: job.organization_id,
-        conversationId: map.conversation_id,
-        mode: "HUMAN",
-      });
+      if(data.attendanceObservationId){
+        if(!currentAccount?.destination||data.destinationRevision!==currentAccount.destination.revision)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
+        const scope:ChatwootObservationScope={organizationId:job.organization_id,channelId:connection.channel_id,integrationId:job.integration_id,
+          destinationRevision:currentAccount.destination.revision,credentialRevision:currentAccount.credential_version,accountId:Number(currentAccount.account_id),inboxId:Number(connection.inbox_id)};
+        if(canonical)await initializeChatwootAttendanceMap(t,scope,{conversationId:map.conversation_id,remoteConversationId:data.conversationId,canonical});
+        const observation=(await t.query<{disposition:string;event:ChatwootAttendanceEvent}>(`SELECT disposition,event FROM chatwoot_attendance_observations
+          WHERE organization_id=$1 AND id=$2 AND integration_id=$3 AND destination_revision=$4 AND remote_conversation_id=$5 AND conversation_id=$6
+            AND account_id=$7 AND inbox_id=$8`,
+          [job.organization_id,data.attendanceObservationId,job.integration_id,scope.destinationRevision,data.conversationId,map.conversation_id,scope.accountId,scope.inboxId])).rows[0];
+        if(!observation||observation.disposition!=='APPLIED'||observation.event.kind!==data.attendanceKind||!await mayForwardChatwootAttendanceReply(t,scope,observation.event))
+          throw new IntegrationError('ATTENDANCE_CONTROL_RECONCILIATION_REQUIRED',409);
+      } else {
+        // Backward-compatible jobs admitted before attendance observations existed.
+        await repo.setConversationMode(t,{organizationId:job.organization_id,conversationId:map.conversation_id,mode:'HUMAN'});
+      }
       const contents: MessageContent[] = [];
       if (data.content) contents.push(data.content);
       if (data.attachments) {
@@ -301,6 +323,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
         }
       }
       let firstId: string | undefined;
+      const replyKey=data.attendanceObservationId?`chatwoot:${job.integration_id}:${data.destinationRevision}:${data.messageId}`:`chatwoot:${data.messageId}`;
       for (const [index, content] of contents.entries()) {
         const result = await repo.enqueueOutgoing(t, {
           id: randomUUID(),
@@ -309,9 +332,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
           conversationId: map.conversation_id,
           source: "OPERATOR",
           content,
-          idempotencyKey: data.content
-            ? `chatwoot:${data.messageId}`
-            : `chatwoot:${data.messageId}:${index}`,
+          idempotencyKey: data.content ? replyKey : `${replyKey}:${index}`,
           bodyHash: createHash("sha256")
             .update(JSON.stringify({ data, index }))
             .digest("hex"),
@@ -382,7 +403,9 @@ export function createChatwootWorker(options: ChatwootOptions) {
           [org, c.id, message.id],
         )
       ).rows[0];
-      return { a, c, message, contact, map, mappedMessage };
+      const owner=(await t.query<{executor:string;automation_id:string|null;remote_binding_id:string|null;revision:number}>(
+        'SELECT executor,automation_id,remote_binding_id,revision FROM attendance_owners WHERE organization_id=$1 AND channel_id=$2',[org,c.channel_id])).rows[0];
+      return { a, c, message, contact, map, mappedMessage,owner };
     });
     const { a, c, message, contact } = context;
     if (
@@ -395,6 +418,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
     const client = env.client(a),
       accountId = Number(a.account_id),
       inboxId = Number(c.inbox_id);
+    if(!a.destination)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
+    const attendanceScope:ChatwootObservationScope={organizationId:org,channelId:c.channel_id,integrationId:c.id,
+      destinationRevision:a.destination.revision,credentialRevision:a.credential_version,accountId,inboxId};
+    const brokerOwnsConversation=context.owner?.executor==='BROKER'&&context.owner.remote_binding_id===null;
     let media: BinaryMedia | undefined;
     if (
       !context.mappedMessage &&
@@ -444,6 +471,12 @@ export function createChatwootWorker(options: ChatwootOptions) {
         join chatwoot_accounts a on a.organization_id=b.organization_id and a.status='READY' and a.account_id=b.account_id and a.credential_version=b.credential_version
         join chatwoot_destinations d on d.organization_id=b.organization_id and d.approval_status='APPROVED' and d.revision=b.destination_revision
         where b.organization_id=$1 and b.inbox_id=$2 and b.status='READY'`, [org, inboxId])).rowCount));
+      if(brokerOwnsConversation){
+        const policy=await client.attendanceInbox(accountId,inboxId);
+        if(policy.id!==inboxId||policy.channel_type!=='Channel::Api')throw new IntegrationError('CHATWOOT_BINDING_MISMATCH',409);
+        if(policy.greeting_enabled!==false||policy.enable_auto_assignment!==false)throw new IntegrationError('CHATWOOT_ATTENDANCE_POLICY_REQUIRES_CONFIGURATION',409);
+        if(await client.inboxFlowBot(accountId,inboxId))throw new IntegrationError('ATTENDANCE_REMOTE_EXECUTOR_CONFLICT',409);
+      }
       const conversationId =
         typeof job.payload.conversationId === "number"
           ? job.payload.conversationId
@@ -451,12 +484,13 @@ export function createChatwootWorker(options: ChatwootOptions) {
               inboxId,
               contactId,
               sourceId,
-              ...(flowOwnsInbox ? { status: 'pending' as const } : {}),
+              ...(flowOwnsInbox||brokerOwnsConversation ? { status: 'pending' as const } : {}),
             });
       await progress(job, { conversationId });
-      await tx(org, (t) =>
-        t
-          .query(
+      const canonical=brokerOwnsConversation?await client.attendanceConversation(accountId,conversationId):undefined;
+      await tx(org, async t => {
+        await lockAttendanceChannel(t,org,c.channel_id);
+        await t.query(
             `INSERT INTO chatwoot_conversations(organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id)
         VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(organization_id,integration_id,conversation_id) DO NOTHING`,
             [
@@ -467,14 +501,21 @@ export function createChatwootWorker(options: ChatwootOptions) {
               sourceId,
               conversationId,
             ],
-          )
-          .then(() => undefined),
-      );
+          );
+        if(canonical)await initializeChatwootAttendanceMap(t,attendanceScope,{conversationId:message.conversation_id,remoteConversationId:conversationId,canonical});
+      });
       map = {
         contact_id: String(contactId),
         source_id: sourceId,
         remote_conversation_id: String(conversationId),
       };
+    } else if(brokerOwnsConversation){
+      const initialized=await tx(org,async t=>Boolean((await t.query(`SELECT 1 FROM chatwoot_attendance_controls
+        WHERE organization_id=$1 AND conversation_id=$2 AND integration_id=$3 AND destination_revision=$4`,[org,message.conversation_id,c.id,attendanceScope.destinationRevision])).rowCount));
+      if(!initialized){
+        const canonical=await client.attendanceConversation(accountId,Number(map.remote_conversation_id));
+        await tx(org,t=>initializeChatwootAttendanceMap(t,attendanceScope,{conversationId:message.conversation_id,remoteConversationId:Number(map!.remote_conversation_id),canonical}));
+      }
     }
     let remoteMessageId = context.mappedMessage
       ? Number(context.mappedMessage.remote_message_id)
@@ -494,7 +535,9 @@ export function createChatwootWorker(options: ChatwootOptions) {
         conversationId: Number(map.remote_conversation_id),
       });
       await beforeExternal(job, "SEND_MESSAGE");
-      remoteMessageId = media
+      const attempt=await tx(org,t=>beginChatwootMirrorAttempt(t,attendanceScope,{jobId:job.id,leaseToken:job.lease_token,messageId:message.id,
+        conversationId:message.conversation_id,remoteConversationId:Number(map!.remote_conversation_id)}));
+      try { remoteMessageId = media
         ? await client.sendMedia(
             accountId,
             Number(map.remote_conversation_id),
@@ -513,6 +556,13 @@ export function createChatwootWorker(options: ChatwootOptions) {
               brokerMessageId: message.id,
             },
           );
+      } catch(error) {
+        try {await tx(org,t=>failChatwootMirrorAttempt(t,attendanceScope,{attemptId:attempt.id,uncertain:!(error instanceof ChatwootError)||error.uncertain}));}
+        catch { /* The persisted DISPATCHED attempt stays a barrier. Preserve the original POST outcome. */ }
+        throw error;
+      }
+      try {await tx(org,t=>confirmChatwootMirrorAttempt(t,attendanceScope,{attemptId:attempt.id,remoteMessageId:remoteMessageId!}));}
+      catch {throw new ChatwootError('CHATWOOT_MIRROR_CONFIRMATION_PENDING',false,true);}
       await progress(job, { remoteMessageId });
     }
     await tx(org, (t) =>

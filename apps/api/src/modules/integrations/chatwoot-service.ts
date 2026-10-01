@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createChatwootAttendanceService } from './chatwoot-attendance-service.js';
 import type { ChatwootStatus } from "@jrc/contracts";
 import type {
   OrganizationTransaction,
@@ -15,7 +16,7 @@ import {
   createIntegrationSecrets,
   verifyChatwootSignature,
 } from "./secrets.js";
-import { parseChatwootReply } from "./chatwoot-events.js";
+import { recordChatwootAttendanceEvent } from './chatwoot-attendance-store.js';
 import type { MediaStore } from "../messaging/media-store.js";
 import { createChatwootDestinationService, lockChatwootDestination } from './chatwoot-destination.js';
 import { IntegrationError } from './integration-error.js';
@@ -126,6 +127,7 @@ export function chatwootEnvironment(options: ChatwootOptions) {
 }
 export function createChatwootService(options: ChatwootOptions) {
   const env = chatwootEnvironment(options);
+  const attendance=createChatwootAttendanceService({transact:options.transact,client:env.client});
   const repo = createPostgresMessagingRepository();
   const tx = options.transact;
   const destinations = createChatwootDestinationService({ enabled: options.externalDestinationsEnabled === true,
@@ -186,6 +188,8 @@ export function createChatwootService(options: ChatwootOptions) {
   }
   return {
     destinations,
+    attendanceCatalog:attendance.catalog,
+    validateHumanDestination:attendance.validateTarget,
     async status(org: string) {
       return tx(org, async (t) => {
         const { account: a, destination } = await resolveChatwootContext(t, org, env.origin);
@@ -653,25 +657,14 @@ export function createChatwootService(options: ChatwootOptions) {
         } catch {
           throw new IntegrationError("INVALID_WEBHOOK_PAYLOAD", 400);
         }
-        const eventName =
-          typeof payload === "object" && payload !== null && "event" in payload
-            ? payload.event
-            : undefined;
-        if (eventName !== "message_created") return;
-        const reply = parseChatwootReply(payload, {
-          accountId: Number(a.account_id),
-          inboxId: Number(c.inbox_id),
-        });
-        if (!reply) return;
+        if(!a.destination)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
+        const observation=await recordChatwootAttendanceEvent(t,{organizationId:org,channelId:c.channel_id,integrationId:id,
+          destinationRevision:a.destination.revision,credentialRevision:a.credential_version,accountId:Number(a.account_id),inboxId:Number(c.inbox_id)},payload);
+        if(!observation.observationId)return;
         await observeChatwootCapabilities(t, a, { signedCallback: true });
         await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id,callback_verified_at,callback_destination_revision,callback_credential_version)
           VALUES($1,$2,$3,now(),$4,$5) ON CONFLICT(organization_id,integration_id) DO UPDATE SET
           callback_verified_at=now(),callback_destination_revision=$4,callback_credential_version=$5`, [org, id, c.channel_id, a.destination?.revision ?? null, a.credential_version]);
-        await t.query(
-          `INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,payload)
-          VALUES($1,$2,'CHATWOOT_REPLY',$3,$4::jsonb) ON CONFLICT(organization_id,integration_id,dedupe_key) DO NOTHING`,
-          [org, id, `reply:${reply.messageId}`, JSON.stringify(reply)],
-        );
       });
     },
     async jobs(org: string) {
@@ -798,6 +791,17 @@ export function createChatwootService(options: ChatwootOptions) {
           break;
         }
         case "SEND_MESSAGE": {
+          // An editable marker is not proof of a Broker POST. New attempts require its persisted response ID.
+          const evidence=await tx(org,async t=>(await t.query<{state:string;remote_message_id:string|null}>(`SELECT state,remote_message_id FROM chatwoot_mirror_attempts
+            WHERE organization_id=$1 AND job_id=$2 AND integration_id=$3 AND destination_revision=$4 AND account_id=$5 AND inbox_id=$6
+              AND remote_conversation_id=$7 ORDER BY created_at DESC`,[org,id,c.id,a.destination?.revision,accountId,inboxId,job.payload.conversationId])).rows);
+          if(evidence.length){
+            const confirmed=evidence.find(attempt=>attempt.state==='CONFIRMED'&&attempt.remote_message_id!==null);
+            if(!confirmed||remoteId!==undefined&&Number(confirmed.remote_message_id)!==remoteId)
+              throw new IntegrationError('CHATWOOT_MIRROR_EVIDENCE_REQUIRED',409);
+            patch.remoteMessageId=Number(confirmed.remote_message_id);
+            break;
+          }
           const found = await client.findBrokerMessage(
             accountId,
             Number(job.payload.conversationId),

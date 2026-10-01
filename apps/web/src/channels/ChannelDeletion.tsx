@@ -12,7 +12,8 @@ const statuses: Record<Status, string> = {
 const counts: Record<string, string> = { conversations: 'Conversas no Broker', messages: 'Mensagens no Broker',
   automationBindings: 'Vínculos de automação', automations: 'Automações' };
 const errors: Record<string, string> = {
-  EVOLUTION_CLEANUP_UNVERIFIED: 'A remoção da sessão WhatsApp ainda não foi confirmada. Peça à equipe JRC para reconciliar a operação.',
+  EVOLUTION_CLEANUP_UNVERIFIED: 'A remoção da sessão WhatsApp ainda não foi confirmada. Confira o resultado externo antes de tentar excluir novamente.',
+  EVOLUTION_INSTANCE_STILL_PRESENT:'A consulta confirmou que a sessão ainda existe. Confira o nome e confirme uma nova tentativa de exclusão.',
   LIFECYCLE_PENDING_WORK: 'Há operações pendentes ou com resultado incerto. Conclua ou reconcilie essas operações antes de continuar.',
   LIFECYCLE_PURGE_FAILED: 'A remoção dos dados não foi concluída. A equipe JRC precisa verificar a operação.',
   LIFECYCLE_ACTOR_REVOKED: 'A permissão de quem solicitou a exclusão foi revogada. Um administrador autorizado precisa solicitar novamente.',
@@ -55,7 +56,7 @@ function ChannelDeletionOperation({ request, path, disabled = false, onCompleted
     finally { pending.current = false; if (live.current) setBusy(false); }
   }
   async function refresh() {
-    if (!operation) return;
+    if (!operation||pending.current) return;
     const current = ++readRevision.current;
     try {
       const result = parseOperation(await api.current(`${path}/deletion/${encodeURIComponent(operation.operationId)}`));
@@ -68,20 +69,29 @@ function ChannelDeletionOperation({ request, path, disabled = false, onCompleted
   const active = operation && !['COMPLETED', 'ACTION_REQUIRED'].includes(operation.status);
   const canRequest = !operation || operation.status === 'ACTION_REQUIRED';
   useEffect(() => {
-    if (!active) return;
+    if (!operation||operation.status==='COMPLETED') return;
     void refresh();
+    if(!active)return;
     const timer = setInterval(() => void refresh(), 3000);
     return () => clearInterval(timer);
-  }, [operation?.operationId, Boolean(active)]);
+  }, [operation?.operationId, operation?.status]);
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (pending.current || disabled || !preview?.canDelete || preview.blockers.length || name !== preview.resourceName || reason.trim().length < 5 || !canRequest) return;
-    pending.current = true; setBusy(true); setError('');
+    if (pending.current || disabled || operation?.errorCode==='EVOLUTION_CLEANUP_UNVERIFIED' || !preview?.canDelete || preview.blockers.length || name !== preview.resourceName || reason.trim().length < 5 || !canRequest) return;
+    pending.current = true;readRevision.current++; setBusy(true); setError('');
     try {
       const result = parseOperation(await api.current(`${path}/deletion`, 'POST', { confirmationName: name, reason: reason.trim() }));
       if (live.current) setOperation(result);
     } catch { if (live.current) setError('A solicitação não foi confirmada. Consulte a prévia antes de repetir; nenhuma conclusão foi comprovada.'); }
     finally { pending.current = false; if (live.current) setBusy(false); }
+  }
+  async function reconcile(){
+    if(pending.current||disabled||!operation||reason.trim().length<5)return;
+    pending.current=true;readRevision.current++;setBusy(true);setError('');
+    try{const result=parseOperation(await api.current(`${path}/deletion/${operation.operationId}/reconcile`,'POST',{reason:reason.trim()}));
+      if(live.current)setOperation(result);
+    }catch{if(live.current)setError('A conferência não foi confirmada. Atualize o andamento antes de tentar novamente.');}
+    finally{pending.current=false;if(live.current)setBusy(false);}
   }
   return <div className="channel-deletion">
     {!preview && !operation && <button className="button button--danger" disabled={disabled || busy} onClick={() => void inspect()}>Excluir conexão</button>}
@@ -93,18 +103,20 @@ function ChannelDeletionOperation({ request, path, disabled = false, onCompleted
       {preview.externalEffects.length > 0 && <ul>{preview.externalEffects.map(effect => <li key={effect}>{effect}</li>)}</ul>}
       {preview.blockers.map(blocker => <p className="notice" key={blocker}>{blocker === 'PENDING_OR_UNCERTAIN_WORK'
         ? 'Há entregas/operações em andamento ou incertas. Reconcilie antes da exclusão.' : blocker === 'FLOW_REMOTE_BOT_ATTACHED'
-        ? 'Há um robô Flow vinculado a uma caixa no Chatwoot. Desative o vínculo e confirme a remoção do robô antes de excluir.'
+        ? 'Há um robô Flow vinculado a uma caixa. Abra JRC Flows → selecione o Flow → Conexões e desative o vínculo. Confirme a remoção em JRC Conversas/Chatwoot → Configurações → Caixas de entrada → Configuração do Bot antes de consultar o impacto novamente.'
         : 'Existe uma pendência que impede a exclusão. Peça à equipe JRC para conferir.'}</p>)}
       <form className="form-grid" onSubmit={event => void submit(event)}>
         <label>Digite o nome da conexão<input value={name} onChange={event => setName(event.target.value)} autoComplete="off" maxLength={160} required /></label>
         <label>Motivo da exclusão<textarea value={reason} onChange={event => setReason(event.target.value)} minLength={5} maxLength={500} required /></label>
-        <div className="button-row"><button className="button button--danger" disabled={busy || disabled || !preview.canDelete || Boolean(preview.blockers.length) || name !== preview.resourceName || reason.trim().length < 5}>{operation ? 'Retentar exclusão segura' : 'Confirmar exclusão definitiva'}</button>
+        <div className="button-row"><button className="button button--danger" disabled={busy || disabled || operation?.errorCode==='EVOLUTION_CLEANUP_UNVERIFIED' || !preview.canDelete || Boolean(preview.blockers.length) || name !== preview.resourceName || reason.trim().length < 5}>{operation ? 'Retentar exclusão segura' : 'Confirmar exclusão definitiva'}</button>
           <button type="button" className="button button--secondary" disabled={busy} onClick={() => setPreview(null)}>Cancelar</button></div>
       </form>
     </section>}
     {operation && <section className="notice" aria-live="polite"><strong>{statuses[operation.status]}</strong>
       <p>Operação: {operation.operationId}</p>
       {operation.status === 'ACTION_REQUIRED' && <p>{errors[operation.errorCode ?? ''] ?? 'A exclusão não foi concluída. Peça à equipe JRC para conferir a operação antes de continuar.'}</p>}
+      {operation.status==='ACTION_REQUIRED'&&operation.errorCode==='EVOLUTION_CLEANUP_UNVERIFIED'&&<div><p>Esta consulta não repete a exclusão. Informe o motivo no formulário.</p>
+        <button className="button button--secondary" disabled={busy||disabled||reason.trim().length<5} onClick={()=>void reconcile()}>Conferir remoção externa</button></div>}
       {operation.status !== 'COMPLETED' && <button className="button button--secondary" onClick={() => void refresh()}>Atualizar exclusão</button>}
       {operation.status === 'ACTION_REQUIRED' && <button className="button button--secondary" disabled={busy || disabled} onClick={() => void inspect()}>Conferir pendências</button>}
     </section>}

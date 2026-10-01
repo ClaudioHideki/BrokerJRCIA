@@ -1,3 +1,4 @@
+import { AttendanceError } from '../../modules/attendance/types.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -5,7 +6,7 @@ import { BindChannelAutomationV1Schema, BindChannelDestinationV1Schema, ChannelA
   ChannelListV1Schema, ChannelMutationV1Schema, ChannelV1Schema, CreateChannelResponseV1Schema,
   CreateChannelV1Schema, IdempotencyHeadersSchema, PairChannelResponseV1Schema, PatchChannelV1Schema,
   PROBLEM_CONTENT_TYPE, ProblemDetailsSchema } from '@jrc/contracts';
-import { DeletionPreviewSchema, DeletionRequestedSchema, DeletionStatusSchema, RequestDeletionSchema } from '@jrc/contracts';
+import { DeletionPreviewSchema, DeletionRequestedSchema, DeletionStatusSchema, RequestDeletionSchema, ReconcileDeletionSchema } from '@jrc/contracts';
 import { LifecycleError, type LifecycleService } from '../../modules/lifecycle/service.js';
 import type { ChannelFacade } from '../../modules/channels/facade.js';
 import { ChannelFacadeError } from '../../modules/channels/facade.js';
@@ -28,6 +29,7 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
     ...(options.requestTimeoutMs ? { timeoutMs: options.requestTimeoutMs } : {}) });
   app.addHook('onRequest', async (_request, reply) => { reply.header('Cache-Control', 'no-store'); });
   app.setErrorHandler((error, request, reply) => {
+    if(error instanceof AttendanceError)return reply.code(error.statusCode).type('application/problem+json').send({type:'about:blank',title:error.code,status:error.statusCode,code:error.code,requestId:request.id});
     const operational = tenantOperationalProblem(error, request.id);
     if (operational) return reply.code(operational.status).type(PROBLEM_CONTENT_TYPE).send(operational);
     const candidate = error as { validation?: unknown; statusCode?: number; code?: string };
@@ -55,6 +57,10 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
 
   if(options.lifecycle){
     const operationParams=params.extend({operationId:z.uuid()});
+    api.post('/v1/channels/:id/deletion/:operationId/reconcile',{preHandler:manage,schema:{params:operationParams,querystring:empty,body:ReconcileDeletionSchema,
+      response:{202:DeletionRequestedSchema,400:ProblemDetailsSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,404:ProblemDetailsSchema,409:ProblemDetailsSchema,503:ProblemDetailsSchema}}},
+    async(request,reply)=>reply.code(202).send(await options.lifecycle!.requestReconciliation(org(request),request.params.id,request.params.operationId,
+      request.body.reason,'TENANT',actor(request))));
     api.get('/v1/channels/:id/deletion-preview',{preHandler:manage,schema:{params,querystring:empty,
       response:{200:DeletionPreviewSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,404:ProblemDetailsSchema,503:ProblemDetailsSchema}}},
     request=>options.lifecycle!.previewChannel(org(request),request.params.id));
