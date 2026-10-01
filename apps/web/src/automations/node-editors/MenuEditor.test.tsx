@@ -99,4 +99,3 @@ describe('visual menu configuration', () => {
     expect(changed).not.toHaveBeenCalled();
   });
 });
-

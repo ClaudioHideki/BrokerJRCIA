@@ -190,4 +190,3 @@ Novas rotas propostas de sessão: `GET /v1/attendance/sessions/:id`, `POST .../:
 Os arquivos de teste marcados como novos não existem até a tarefa correspondente. Comandos de integração exigem `TEST_DATABASE_ADMIN_URL` e ambiente descartável; os helpers criam bancos isolados. Não marcar falha de setup como regressão comprovada nem como teste aprovado.
 
 Ao final R1–R8: nenhum HANDOFF é concluído só por mudar modo local; nenhuma sessão nova é criada apenas porque a anterior está RUNNING; nenhum retorno ao bot é apenas trocar status remoto. O aceite completo é G01–G12 do plano principal.
-

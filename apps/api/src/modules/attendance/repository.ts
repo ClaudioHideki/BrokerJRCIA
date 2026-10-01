@@ -43,4 +43,3 @@ export async function resolveAttendanceScope(tx: TenantTransaction, org: string,
   if (!parsed.success) throw new AttendanceError('ATTENDANCE_DESTINATION_NOT_READY',409);
   return parsed.data;
 }
-

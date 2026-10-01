@@ -158,4 +158,3 @@ Não condicionar a utilidade do editor à conversão completa do n8n.
 - n8n, índice atual: https://docs.n8n.io/sitemap.md (localização de referências de dados, subfluxos e testes; páginas individuais adicionais não puderam ser obtidas nesta sessão).
 
 A biblioteca visual resolve interação; persistência e execução continuam responsabilidade do Broker. A documentação de exportação confirma JSON e referências de credenciais, mas não implica compatibilidade com outro motor. As decisões de arquitetura acima são recomendações para este código, não garantias dos fornecedores.
-

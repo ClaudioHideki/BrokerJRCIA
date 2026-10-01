@@ -133,4 +133,3 @@ Destino apagado enquanto o formulário está aberto (U3/U4); importação preser
 ## Resultado esperado
 
 M2 demonstra URA nativa funcional; M3 completa os blocos de atendimento anunciados. O plano não depende de importar integralmente os workflows n8n nem de instalar editor dentro do JRC. Essas telas não serão chamadas prontas apenas porque o JSX ou o botão existe.
-

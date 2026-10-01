@@ -302,11 +302,14 @@ describe('tenant:create administrativo com PostgreSQL real', () => {
       },
     });
     const linking = createTenant(linkExistingInput());
+    const linkingOutcome = Promise.allSettled([linking]);
     await lookupStarted;
     releaseDeactivation();
     await deactivation;
 
-    await expect(linking).rejects.toMatchObject({ code: 'OWNER_USER_NOT_ACTIVE' });
+    expect(await linkingOutcome).toMatchObject([
+      { status: 'rejected', reason: { code: 'OWNER_USER_NOT_ACTIVE' } },
+    ]);
     expect(await tenantCounts(database.pool, 'cliente-link')).toEqual({
       organizations: 0,
       users: 0,

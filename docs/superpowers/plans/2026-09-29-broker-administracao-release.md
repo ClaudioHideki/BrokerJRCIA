@@ -172,4 +172,3 @@ Os scripts adicionais e gates completos estão em package.json/CI. Variáveis de
 ## Regra de pronto administrativa
 
 O administrador consegue reorganizar grupo, gerir empresa/acesso/plano, receber suporte, compreender saúde e concluir lifecycle pelo painel; ações são autorizadas e auditadas. O cliente entende quais dados foram removidos e quais ativos remotos continuam existindo. Nenhum desses requisitos depende da instalação dos futuros módulos.
-

@@ -208,4 +208,3 @@ Estes itens estão planejados, mas **não fazem parte da implementação anterio
 ## Estado desta entrega de planejamento
 
 Especificação e planos escritos com base no código e nas decisões da conversa. Nenhuma tarefa de produto marcada como concluída por existir neste documento. Nenhuma configuração de servidor, bot, webhook ou recurso de cliente foi alterada para preparar o plano.
-

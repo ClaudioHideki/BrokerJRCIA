@@ -94,4 +94,3 @@ export function MenuEditor({ node, edges, editable, onChange }: Props) {
     <button type="button" disabled={!editable || options.length >= 10} onClick={add}>Adicionar opção</button>
   </fieldset>;
 }
-

@@ -150,4 +150,3 @@ Depois de BROKER_READY:
 - [Plano anterior de low-code](../plans/2026-09-29-lowcode-funcional.md), agora subordinado à ordem Broker primeiro.
 
 Base inspecionada: Broker 9466f6a, com alterações locais de canvas ainda não publicadas; JRC local 239c8358, diferente do build capturado. A primeira tarefa de execução reconcilia a base com a main atual antes de aplicar mudanças.
-

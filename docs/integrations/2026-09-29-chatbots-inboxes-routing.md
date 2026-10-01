@@ -260,4 +260,3 @@ Para cada incremento, testar o comportamento antes da liberação, migrar sem in
 Documentação oficial e código mostram que a experiência pretendida é viável, mas faltam partes centrais de integração no produto atual. Containers ativos, caixa marcada pronta, JSON importado e robô cadastrado não comprovam o ciclo completo.
 
 Nenhum runtime foi alterado por este documento. A correção local de navegação permanece separada e ainda não publicada. O plano de low-code deve seguir o escopo de atendimento definido aqui: [plano revisado](../superpowers/plans/2026-09-29-lowcode-funcional.md).
-

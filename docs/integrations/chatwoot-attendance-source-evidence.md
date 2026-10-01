@@ -72,4 +72,3 @@ Fontes:
 - Evento humano entre reserva e releitura invalida efeitos ainda não despachados.
 - API inbox e AgentBot recebem eventos repetidos sem duplicar saída.
 - Fixtures usam somente dados sintéticos, nunca payloads com credenciais reais.
-

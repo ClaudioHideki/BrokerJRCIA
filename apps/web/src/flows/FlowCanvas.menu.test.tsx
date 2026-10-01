@@ -59,4 +59,3 @@ describe('menu editing in the canvas', () => {
     expect(latest().edges.some(edge => edge.id === 'menu-support')).toBe(false);
   });
 });
-
