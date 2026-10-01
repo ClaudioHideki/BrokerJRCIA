@@ -21,7 +21,7 @@ test('administração JRC: senha, empresa, integração, limites e suporte audit
  await expect(page.getByText(/aguardando configuração no servidor/)).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
  await page.getByRole('tab',{name:'Plano e limites',exact:true}).click();
- await page.getByRole('combobox',{name:'Situação',exact:true}).selectOption('SUSPENDED');await page.getByRole('button',{name:'Salvar situação e plano'}).click();
+ await page.getByRole('combobox',{name:'Situação',exact:true}).selectOption('SUSPENDED');await page.getByRole('button',{name:'Salvar situação',exact:true}).click();
  await expect(page.getByText('Configuração da empresa atualizada e auditada.')).toBeVisible();
  await page.getByRole('tab',{name:'Intervenção administrativa',exact:true}).click();
  await page.getByRole('button',{name:'Registrar intervenção'}).click();await expect(page.getByText('Intervenção registrada na auditoria da empresa.')).toBeVisible();
