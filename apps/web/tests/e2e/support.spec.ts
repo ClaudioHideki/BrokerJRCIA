@@ -27,9 +27,9 @@ test('empresa abre chamado, equipe recebe e responde, empresa acompanha e resolv
     await expect(staff.getByRole('combobox',{name:'Situação',exact:true})).toHaveValue('IN_PROGRESS');
     await staff.getByLabel('Resposta',{exact:true}).fill('Conexão conferida pela equipe JRC.');
     await staff.getByRole('button',{name:'Enviar resposta'}).click();
-    await expect(staff.getByText('Conexão conferida pela equipe JRC.',{exact:true})).toBeVisible();
+    await expect(staff.getByRole('region',{name:'Histórico do chamado'}).getByRole('list').getByText('Conexão conferida pela equipe JRC.',{exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Atualizar histórico'}).click();
-    await expect(page.getByText('Conexão conferida pela equipe JRC.',{exact:true})).toBeVisible();
+    await expect(page.getByRole('region',{name:'Histórico do chamado'}).getByRole('list').getByText('Conexão conferida pela equipe JRC.',{exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Marcar como resolvido'}).click();
     await expect(page.getByRole('region',{name:'Histórico do chamado'}).getByText('Resolvido',{exact:true})).toBeVisible();
     await expectNoAutomaticAccessibilityViolations(page);
