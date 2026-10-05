@@ -80,7 +80,7 @@ describe('jrc_auth e seleção de organização com PostgreSQL real', () => {
 
     expect(identity).toEqual({
       id: userId,
-      passwordHash: 'known-hash',
+      passwordHash: 'known-hash', authVersion: 0,
       status: 'ACTIVE',
       organizations: [{
         id: organizationId,
@@ -112,7 +112,7 @@ describe('jrc_auth e seleção de organização com PostgreSQL real', () => {
       ['organizations', ['SELECT']],
       ['users', ['SELECT']],
       ['memberships', ['SELECT']],
-      ['login_sessions', ['INSERT']],
+      ['login_sessions', []],
       ['refresh_tokens', ['SELECT', 'INSERT', 'UPDATE']],
       ['security_audit_logs', ['INSERT']],
     ]);
@@ -220,6 +220,7 @@ describe('jrc_auth e seleção de organização com PostgreSQL real', () => {
 
   it('permite somente um consumo concorrente e persiste refresh somente como hash', async () => {
     await repository.createSelectionSession({
+      expectedAuthVersion: 0,
       userId,
       tokenHash: TOKEN_HASH,
       expiresAt: new Date('2030-01-01T12:05:00.000Z'),
@@ -259,6 +260,7 @@ describe('jrc_auth e seleção de organização com PostgreSQL real', () => {
   it('consome o token também quando a organização não pertence ao usuário', async () => {
     const tokenHash = 'd'.repeat(64);
     await repository.createSelectionSession({
+      expectedAuthVersion: 0,
       userId,
       tokenHash,
       expiresAt: new Date('2030-01-01T12:05:00.000Z'),
@@ -296,6 +298,7 @@ describe('jrc_auth e seleção de organização com PostgreSQL real', () => {
       [organizationId, userId],
     );
     await repository.createSelectionSession({
+      expectedAuthVersion: 0,
       userId,
       tokenHash,
       expiresAt: new Date('2030-01-01T12:05:00.000Z'),
@@ -332,7 +335,7 @@ describe('jrc_auth e seleção de organização com PostgreSQL real', () => {
         expect(selected).toEqual({ outcome: 'INVALID' });
       } else {
         expect(selected).toEqual({
-          outcome: 'SELECTED',
+          outcome: 'SELECTED', authVersion: 0,
           userId,
           organizationId,
           role: expectedRole,

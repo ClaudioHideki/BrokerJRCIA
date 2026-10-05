@@ -4,11 +4,14 @@ import { setTimeout } from 'node:timers/promises';
 import { Pool } from 'pg';
 import { z } from 'zod';
 import { withOrganizationTransaction } from '../db/tenant-transaction.js';
-import { createExecutionService, createOutboxDispatcher } from '../modules/automations/service.js';
+import { createExecutionService, createOutboxDispatcher, type ExternalEffectDispatcher } from '../modules/automations/service.js';
 import { createPostgresAutomationRepository } from '../modules/automations/repository.js';
-import { createPostgresMessagingRepository } from '../modules/messaging/repository.js';
+import { createPostgresMessagingRepository, type MessagingRepository } from '../modules/messaging/repository.js';
 import { workerInstanceId } from '../modules/observability/service.js';
 import { automationRuntimeEnabled, recordAutomationHeartbeat } from '../modules/automations/availability.js';
+import { createIntegrationRuntime } from '../modules/integrations/runtime.js';
+import { createNativeHandoffService } from '../modules/attendance/handoff-service.js';
+import type { OrganizationTransaction } from '../db/tenant-transaction.js';
 
 export function loadAutomationWorkerConfig(environment:NodeJS.ProcessEnv){const databaseUrl=z.string().url().parse(environment.DATABASE_URL);
   if(new URL(databaseUrl).username!=='jrc_app')throw new Error('AUTOMATION_WORKER_REQUIRES_APP_ROLE');return {databaseUrl,intervalMs:z.coerce.number().int().min(100).max(60000).default(1000).parse(environment.AUTOMATION_WORKER_INTERVAL_MS)};}
@@ -30,20 +33,38 @@ export async function scanOperationalOrganizations(
     }
   }
 }
+
+/** Handoff exceptions retain the durable UNKNOWN barrier; they must never enter the text retry path. */
+export function createAutomationEffectDispatcher(options:{
+  transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;
+  messaging:MessagingRepository;handoff?:Pick<ReturnType<typeof createNativeHandoffService>,'dispatch'>;
+}):ExternalEffectDispatcher {
+  const {transact,messaging}=options;
+  return {dispatch:async item=>{
+    if(!item.conversationId)return {kind:'FAILED',error:'AUTOMATION_CONVERSATION_REQUIRED'};
+    if(item.kind==='HANDOFF'){
+      if(options.handoff)return options.handoff.dispatch(item);
+      await transact(item.organizationId,tx=>messaging.setConversationMode(tx,{organizationId:item.organizationId,conversationId:item.conversationId!,mode:'HUMAN'}));
+      return {kind:'FAILED',error:'AUTOMATION_HANDOFF_UNAVAILABLE'};
+    }
+    try{
+      const text=typeof item.payload.text==='string'?item.payload.text:'';if(!text)return {kind:'FAILED',error:'AUTOMATION_TEXT_REQUIRED'};
+      const queued=await transact(item.organizationId,tx=>messaging.enqueueOutgoing(tx,{id:randomUUID(),organizationId:item.organizationId,channelId:item.channelId,conversationId:item.conversationId!,source:'AUTOMATION',content:{type:'TEXT',text},idempotencyKey:`automation:${item.id}`,bodyHash:createHash('sha256').update(text).digest('hex'),policy:{requireOptIn:false}}));
+      return {kind:'SENT',remoteReference:queued.message.id};
+    }catch(error){const code=error instanceof Error?error.message:'AUTOMATION_EFFECT_FAILED';return ['CONVERSATION_PAUSED','CONTACT_SUPPRESSED','CONTACT_CONSENT_REQUIRED'].includes(code)?{kind:'FAILED',error:code}:{kind:'NOT_SENT',error:code,retryAt:new Date(Date.now()+30000)};}
+  }};
+}
+
 export async function runAutomationWorker(environment:NodeJS.ProcessEnv=process.env,watch=false){const config=loadAutomationWorkerConfig(environment),pool=new Pool({connectionString:config.databaseUrl,max:4,connectionTimeoutMillis:5000,statement_timeout:30000});
   const instanceId=workerInstanceId();
   const enabled=automationRuntimeEnabled(environment),repository=createPostgresAutomationRepository(),transact=<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pool,org,work),execution=createExecutionService({transact,repository,enabled});
-  const messaging=createPostgresMessagingRepository(),outbox=createOutboxDispatcher({transact,repository,enabled},{dispatch:async item=>{
-    if(!item.conversationId)return {kind:'FAILED' as const,error:'AUTOMATION_CONVERSATION_REQUIRED'};
-    try{if(item.kind==='HANDOFF'){await transact(item.organizationId,tx=>messaging.setConversationMode(tx,{organizationId:item.organizationId,conversationId:item.conversationId!,mode:'HUMAN'}));return {kind:'SENT' as const,remoteReference:`handoff:${item.conversationId}`};}
-      const text=typeof item.payload.text==='string'?item.payload.text:'';if(!text)return {kind:'FAILED' as const,error:'AUTOMATION_TEXT_REQUIRED'};
-      const queued=await transact(item.organizationId,tx=>messaging.enqueueOutgoing(tx,{id:randomUUID(),organizationId:item.organizationId,channelId:item.channelId,conversationId:item.conversationId!,source:'AUTOMATION',content:{type:'TEXT',text},idempotencyKey:`automation:${item.id}`,bodyHash:createHash('sha256').update(text).digest('hex'),policy:{requireOptIn:false}}));
-      return {kind:'SENT' as const,remoteReference:queued.message.id};
-    }catch(error){const code=error instanceof Error?error.message:'AUTOMATION_EFFECT_FAILED';return ['CONVERSATION_PAUSED','CONTACT_SUPPRESSED','CONTACT_CONSENT_REQUIRED'].includes(code)?{kind:'FAILED' as const,error:code}:{kind:'NOT_SENT' as const,error:code,retryAt:new Date(Date.now()+30000)};}
-  }});
+  const integrations=createIntegrationRuntime(environment,pool);
+  const handoff=integrations.dashboardClient&&integrations.chatwoot?createNativeHandoffService({transact,client:integrations.dashboardClient,
+    attendanceService:{validateTarget:integrations.chatwoot.validateHumanDestination,catalog:integrations.chatwoot.attendanceCatalog}}):undefined;
+  const outbox=createOutboxDispatcher({transact,repository,enabled},createAutomationEffectDispatcher({transact,messaging:createPostgresMessagingRepository(),...(handoff?{handoff}:{})}));
   const abort=new AbortController(),stop=()=>abort.abort();process.once('SIGINT',stop);process.once('SIGTERM',stop);
   try{do{await scanOperationalOrganizations(async(cursor,batchSize)=>(await pool.query<{organization_id:string}>('select * from operational_worker_organizations($1,$2)',[cursor,batchSize])).rows.map(row=>row.organization_id),
-    async org=>{await transact(org,tx=>recordAutomationHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId,enabled));await execution.runOnce(org);await outbox.runOnce(org);},abort.signal,
+    async org=>{await transact(org,tx=>recordAutomationHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId,enabled));await execution.runOnce(org);if(enabled&&handoff)await handoff.reconcileOnce(org);await outbox.runOnce(org);},abort.signal,
     (_error,org)=>process.stderr.write(JSON.stringify({event:'AUTOMATION_WORKER_ORGANIZATION_FAILED',organizationId:org})+'\n'));
     if(watch&&!abort.signal.aborted)await setTimeout(config.intervalMs,undefined,{signal:abort.signal}).catch(()=>undefined);
   }while(watch&&!abort.signal.aborted);}finally{process.off('SIGINT',stop);process.off('SIGTERM',stop);await pool.end();}}

@@ -20,6 +20,7 @@ import { MediaError } from "@jrc/providers";
 import type { MediaStore } from "./media-store.js";
 import { integrationAudit } from "../integrations/chatwoot-service.js";
 import { requireActiveOrganization } from "../tenancy/operational-limits.js";
+import { recordManualAttendanceTakeover } from '../attendance/manual-takeover.js';
 import {
   claimIdempotency,
   completeIdempotencyRecord,
@@ -134,6 +135,7 @@ export function createMessagingService(
       await findChannel(organizationId, channelId);
       const content = { type: "TEXT" as const, text: input.text };
       const result = await transact(organizationId, async (tx) => {
+        await recordManualAttendanceTakeover(tx,organizationId,input.conversationId);
         await repository.setConversationMode(tx, {
           organizationId,
           conversationId: input.conversationId,
@@ -397,13 +399,10 @@ export function createMessagingService(
       };
     },
     async setMode(organizationId, conversationId, mode) {
-      const value = await transact(organizationId, (tx) =>
-        repository.setConversationMode(tx, {
-          organizationId,
-          conversationId,
-          mode,
-        }),
-      );
+      const value = await transact(organizationId, async (tx) => {
+        if(mode==='HUMAN')await recordManualAttendanceTakeover(tx,organizationId,conversationId);
+        return repository.setConversationMode(tx, {organizationId,conversationId,mode});
+      });
       return {
         id: value.id,
         channelId: value.channelId,

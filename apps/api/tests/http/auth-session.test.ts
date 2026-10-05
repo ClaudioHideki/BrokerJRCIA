@@ -17,13 +17,13 @@ function createSessionApp(
   const audits: unknown[] = [];
   const repository: AuthRepository & AuthSessionRepository = {
     async findLoginIdentity() { return null; },
-    async createSelectionSession() { return undefined; },
+    async createSelectionSession() { return true; },
     async consumeSelection() { return { outcome: 'INVALID' }; },
     async rotateRefreshToken(input) {
       persisted.push(input);
       if (rotationOutcome !== 'ROTATED') return { outcome: rotationOutcome };
       return {
-        outcome: 'ROTATED',
+        outcome: 'ROTATED', authVersion: 0,
         userId: USER_ID,
         organizationId: ORGANIZATION_ID,
         role: 'OWNER',

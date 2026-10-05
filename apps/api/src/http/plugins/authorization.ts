@@ -13,6 +13,8 @@ export type Permission =
 export type AuthenticationContext =
   | Readonly<{
     kind: 'JWT';
+    /** Missing only in legacy internal callers, which belong to generation zero. */
+    authVersion?: number;
     organizationId: string;
     actorId: string;
     role: Role;

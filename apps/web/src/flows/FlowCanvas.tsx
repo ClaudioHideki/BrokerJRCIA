@@ -1,13 +1,15 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { AUTOMATION_NODE_CATALOG_V1, FLOW_NODE_CATALOG, automationNodePorts, type FlowGraph, type FlowNode } from '@jrc/contracts';
 import { MenuEditor } from '../automations/node-editors/MenuEditor.js';
+import { HandoffEditor } from '../automations/node-editors/HandoffEditor.js';
+import type { ApiClient } from '../api/client.js';
 import { InputEditor } from '../automations/node-editors/InputEditor.js';
 import { DataReferencePicker } from '../automations/node-editors/DataReferencePicker.js';
 
 const portName=(port:string)=>port==='yes'?'Sim':port==='no'?'Não':port.startsWith('option-')?'Opção '+port.slice(7):'Continuar';
 const ioTypes=['http','sql','code','ai-generate','ai-classify','ai-extract','ai-summarize','ai-agent'];
 type CatalogItem={type:string;label:string;description:string;category?:string};
-export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as readonly CatalogItem[],errorNodeIds=[]}:{graph:FlowGraph;onChange:(graph:FlowGraph)=>void;editable:boolean;catalog?:readonly CatalogItem[];errorNodeIds?:readonly string[]}){
+export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as readonly CatalogItem[],errorNodeIds=[],handoffContext}:{graph:FlowGraph;onChange:(graph:FlowGraph)=>void;editable:boolean;catalog?:readonly CatalogItem[];errorNodeIds?:readonly string[];handoffContext?:{client:ApiClient;organizationId:string}|undefined}){
  const [selected,setSelected]=useState(graph.nodes[0]?.id??'');
  const [historyVersion,setHistoryVersion]=useState(0);
  const history=useRef<{items:FlowGraph[];index:number}>({items:[graph],index:0});
@@ -65,7 +67,7 @@ export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as
  const add=(type:string,position?:{x:number;y:number})=>{
   const definition=catalog.find(n=>n.type===type)!;
   const id=crypto.randomUUID();
-  const defaults:Record<string,unknown>=type==='message'?{text:'Nova mensagem'}:type==='input'?{text:'Qual é sua resposta?',variable:'resposta'}:type==='menu'?{text:'Escolha uma opção:',variable:'menu.choice',options:[{value:'1',label:'Comercial'},{value:'2',label:'Suporte'}]}:type==='variable'?{variable:'variavel',value:''}:type==='condition'?{field:'message',operator:'equals',value:''}:type==='delay'?{seconds:60}:type==='subflow'?{automationId:'',version:1,timeoutMs:10000}:type==='http'?{method:'GET',url:'https://',credentialId:'',target:'http.result',timeoutMs:15000}:type==='sql'?{credentialId:'',query:'SELECT 1',parameters:[],target:'sql.result',timeoutMs:5000,maxRows:100}:type==='code'?{code:'return input;',input:{},target:'code.result'}:type.startsWith('ai-')?{credentialId:'',model:'',content:'{{message}}',target:'ai.result',tools:[],allowedTools:[]}:type.startsWith('data-')||['json-parse','json-stringify','expression'].includes(type)?{target:'resultado'}:{};
+  const defaults:Record<string,unknown>=type==='message'?{text:'Nova mensagem'}:type==='input'?{text:'Qual é sua resposta?',variable:'resposta'}:type==='menu'?{text:'Escolha uma opção:',variable:'menu.choice',options:[{value:'1',label:'Comercial'},{value:'2',label:'Suporte'}]}:type==='variable'?{variable:'variavel',value:''}:type==='condition'?{field:'message',operator:'equals',value:''}:type==='handoff'?{handoffVersion:1}:type==='delay'?{seconds:60}:type==='subflow'?{automationId:'',version:1,timeoutMs:10000}:type==='http'?{method:'GET',url:'https://',credentialId:'',target:'http.result',timeoutMs:15000}:type==='sql'?{credentialId:'',query:'SELECT 1',parameters:[],target:'sql.result',timeoutMs:5000,maxRows:100}:type==='code'?{code:'return input;',input:{},target:'code.result'}:type.startsWith('ai-')?{credentialId:'',model:'',content:'{{message}}',target:'ai.result',tools:[],allowedTools:[]}:type.startsWith('data-')||['json-parse','json-stringify','expression'].includes(type)?{target:'resultado'}:{};
   emitGraph({...graph,nodes:[...graph.nodes,{id,type,label:definition.label,position:position??{x:80+(graph.nodes.length%4)*270,y:80+Math.floor(graph.nodes.length/4)*190},data:defaults}]});
   setSelected(id);
  };
@@ -127,7 +129,7 @@ export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as
    {node.type==='code'&&<label>JavaScript isolado<textarea rows={8} value={String(node.data.code??'')} onChange={e=>data('code',e.target.value)}/></label>}
    {node.type.startsWith('ai-')&&<><label>Modelo<input value={String(node.data.model??'')} onChange={e=>data('model',e.target.value)}/></label><label>Conteúdo<textarea rows={6} value={String(node.data.content??'')} onChange={e=>data('content',e.target.value)}/></label></>}
    {node.type==='unsupported'&&<p role="note">{node.data.sourceType==='IMPORT_REVIEW_REQUIRED'?'Revise todos os campos, expressões, credenciais e caminhos importados. Depois remova este aviso, salve, valide e teste antes de publicar.':'Este bloco importado precisa ser substituído por um bloco JRC. O rascunho pode ser salvo; a publicação fica bloqueada até a adaptação.'}</p>}
-   {node.type==='handoff'&&<p>Ao chegar aqui, o chatbot pausa para o atendente. Retome em “Conversas”.</p>}
+   {node.type==='handoff'&&(handoffContext?<HandoffEditor key={handoffContext.organizationId+':'+node.id} node={node} editable={editable} client={handoffContext.client} organizationId={handoffContext.organizationId} onChange={next=>patch({data:next})}/>:<p>Configure o destino humano no editor de Automações para obter uma transferência confirmada.</p>)}
    <h4>Próximos passos</h4>{ports(node).map(port=><label key={port}>{portName(port)}<select aria-label={'Destino '+portName(port)} value={graph.edges.find(e=>e.source===node.id&&e.port===port)?.target??''} onChange={e=>connect(node.id,port,e.target.value)}><option value="">Sem conexão</option>{graph.nodes.filter(n=>n.id!==node.id&&n.type!=='start').map(n=><option key={n.id} value={n.id}>{n.label}</option>)}</select></label>)}
    <p className="flows-help">Use {'{{message}}'} ou uma variável definida no fluxo, como {'{{nome}}'}.</p>
    {node.type!=='start'&&<button type="button" className="flows-delete" onClick={()=>{emitGraph({...graph,nodes:graph.nodes.filter(n=>n.id!==node.id),edges:graph.edges.filter(e=>e.source!==node.id&&e.target!==node.id)});setSelected(graph.nodes[0]?.id??'');}}>Remover bloco</button>}

@@ -12,11 +12,13 @@ export interface LoginOrganization {
 export interface LoginIdentity {
   id: string;
   passwordHash: string;
+  authVersion: number;
   status: 'ACTIVE' | 'DISABLED';
   organizations: LoginOrganization[];
 }
 
 export interface CreateSelectionSessionInput {
+  expectedAuthVersion: number;
   userId: string;
   tokenHash: string;
   expiresAt: Date;
@@ -34,6 +36,7 @@ export interface ConsumeSelectionInput {
 
 export interface SelectedOrganization {
   outcome: 'SELECTED';
+  authVersion: number;
   userId: string;
   organizationId: string;
   role: AuthRole;
@@ -45,7 +48,7 @@ export type SelectionConsumption =
 
 export interface AuthRepository {
   findLoginIdentity(email: string): Promise<LoginIdentity | null>;
-  createSelectionSession(input: CreateSelectionSessionInput): Promise<void>;
+  createSelectionSession(input: CreateSelectionSessionInput): Promise<boolean>;
   consumeSelection(input: ConsumeSelectionInput): Promise<SelectionConsumption>;
 }
 
@@ -60,6 +63,7 @@ export interface RotateRefreshTokenInput {
 export type RefreshRotation =
   | Readonly<{
     outcome: 'ROTATED';
+    authVersion: number;
     userId: string;
     organizationId: string;
     role: AuthRole;
@@ -81,6 +85,7 @@ export interface AuthSessionRepository {
 }
 
 export interface BrowserSessionIdentity {
+  authVersion: number;
   user: Readonly<{ id: string; email: string }>;
   organizations: LoginOrganization[];
 }
@@ -100,6 +105,7 @@ export interface SwitchOrganizationInput {
 export type OrganizationSwitch =
   | Readonly<{
     outcome: 'SWITCHED';
+    authVersion: number;
     userId: string;
     organizationId: string;
     role: AuthRole;
@@ -112,6 +118,7 @@ export interface BrowserSessionRepository {
 }
 
 interface LoginRow extends QueryResultRow {
+  authVersion: number;
   userId: string;
   passwordHash: string;
   userStatus: LoginIdentity['status'];
@@ -122,6 +129,7 @@ interface LoginRow extends QueryResultRow {
 }
 
 interface BrowserIdentityRow extends QueryResultRow {
+  authVersion: number;
   userId: string;
   email: string;
   organizationId: string;
@@ -143,6 +151,7 @@ async function assertAuthRole(client: PoolClient): Promise<void> {
 }
 
 interface RefreshFamilyRow extends QueryResultRow {
+  userId: string;
   organizationId: string;
   familyId: string;
 }
@@ -152,7 +161,7 @@ async function findRefreshFamily(
   tokenHash: string,
 ): Promise<RefreshFamilyRow | null> {
   const result = await client.query<RefreshFamilyRow>(
-    `SELECT organization_id AS "organizationId", family_id AS "familyId"
+    `SELECT organization_id AS "organizationId", family_id AS "familyId", user_id AS "userId"
        FROM refresh_tokens
       WHERE token_hash = $1`,
     [tokenHash],
@@ -169,15 +178,25 @@ async function lockRefreshFamily(client: PoolClient, family: RefreshFamilyRow): 
 
 export function createPostgresAuthRepository(
   pool: Pool,
-): AuthRepository & AuthSessionRepository & BrowserSessionRepository {
+): AuthRepository & AuthSessionRepository & BrowserSessionRepository & {
+  isUserAuthenticationCurrent(userId: string, authVersion: number): Promise<boolean>;
+} {
   return {
+    async isUserAuthenticationCurrent(userId, authVersion) {
+      const result = await pool.query<{ current: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM users WHERE id=$1 AND status='ACTIVE' AND auth_version=$2) AS current`,
+        [userId, authVersion],
+      );
+      return result.rows[0]?.current === true;
+    },
+
     async findLoginIdentity(email) {
       const client = await pool.connect();
       try {
         await assertAuthRole(client);
         const result = await client.query<LoginRow>(
           `SELECT u.id AS "userId", u.password_hash AS "passwordHash",
-                  u.status AS "userStatus", o.id AS "organizationId",
+                  u.auth_version AS "authVersion", u.status AS "userStatus", o.id AS "organizationId",
                   o.name AS "organizationName", o.slug AS "organizationSlug", m.role
              FROM users u
              LEFT JOIN memberships m
@@ -193,6 +212,7 @@ export function createPostgresAuthRepository(
         return {
           id: first.userId,
           passwordHash: first.passwordHash,
+          authVersion: first.authVersion,
           status: first.userStatus,
           organizations: result.rows.flatMap((row) => (
             row.organizationId && row.organizationName && row.organizationSlug && row.role
@@ -214,11 +234,11 @@ export function createPostgresAuthRepository(
       const client = await pool.connect();
       try {
         await assertAuthRole(client);
-        await client.query(
-          `INSERT INTO login_sessions (user_id, token_hash, expires_at)
-           VALUES ($1, $2, $3)`,
-          [input.userId, input.tokenHash, input.expiresAt],
+        const result = await client.query<{ created: boolean }>(
+          `SELECT public.create_login_selection($1, $2, $3, $4) AS created`,
+          [input.userId, input.tokenHash, input.expiresAt, input.expectedAuthVersion],
         );
+        return result.rows[0]?.created === true;
       } finally {
         client.release();
       }
@@ -229,7 +249,7 @@ export function createPostgresAuthRepository(
       try {
         await assertAuthRole(client);
         const result = await client.query<BrowserIdentityRow>(
-          `SELECT u.id AS "userId", u.email,
+          `SELECT u.id AS "userId", u.email, u.auth_version AS "authVersion",
                   o.id AS "organizationId", o.name AS "organizationName",
                   o.slug AS "organizationSlug", m.role
              FROM users u
@@ -245,6 +265,7 @@ export function createPostgresAuthRepository(
         if (!first) return null;
         return {
           user: { id: first.userId, email: first.email },
+          authVersion: first.authVersion,
           organizations: result.rows.map((row) => ({
             id: row.organizationId,
             name: row.organizationName,
@@ -265,13 +286,15 @@ export function createPostgresAuthRepository(
           userId: string | null;
           organizationId: string | null;
           role: AuthRole | null;
+          authVersion: number | null;
           outcome: SelectionConsumption['outcome'];
         }>(
           `SELECT result_user_id AS "userId",
                   result_organization_id AS "organizationId",
                   result_role AS role,
+                  result_auth_version AS "authVersion",
                   result_outcome AS outcome
-             FROM consume_login_selection($1, $2, $3, $4, $5, $6, $7)`,
+             FROM public.consume_login_selection($1, $2, $3, $4, $5, $6, $7)`,
           [
             input.selectionTokenHash,
             input.organizationId,
@@ -292,7 +315,7 @@ export function createPostgresAuthRepository(
         if (row.outcome !== 'SELECTED') {
           throw new Error('Authentication selection function returned an invalid outcome');
         }
-        if (!row.userId || !row.organizationId || !row.role) {
+        if (!row.userId || !row.organizationId || !row.role || !Number.isSafeInteger(row.authVersion) || row.authVersion === null || row.authVersion < 0) {
           throw new Error('Authentication selection function returned an invalid result');
         }
         return {
@@ -300,6 +323,7 @@ export function createPostgresAuthRepository(
           userId: row.userId,
           organizationId: row.organizationId,
           role: row.role,
+          authVersion: row.authVersion,
         };
       } finally {
         client.release();
@@ -320,8 +344,18 @@ export function createPostgresAuthRepository(
           transactionOpen = false;
           return { outcome: 'INVALID' };
         }
+        const generation = await client.query<{ authVersion: number | null }>(
+          `SELECT public.lock_user_authentication($1) AS "authVersion"`, [family.userId],
+        );
+        const authVersion = generation.rows[0]?.authVersion;
+        if (authVersion === null || authVersion === undefined) {
+          await client.query('COMMIT');
+          transactionOpen = false;
+          return { outcome: 'INVALID' };
+        }
         await lockRefreshFamily(client, family);
         const result = await client.query<QueryResultRow & {
+          authVersion: number;
           id: string;
           organizationId: string;
           userId: string;
@@ -334,7 +368,7 @@ export function createPostgresAuthRepository(
           userStatus: 'ACTIVE' | 'DISABLED';
           organizationStatus: 'ACTIVE' | 'SUSPENDED' | 'DISABLED';
         }>(
-          `SELECT r.id, r.organization_id AS "organizationId", r.user_id AS "userId",
+          `SELECT r.auth_version AS "authVersion", r.id, r.organization_id AS "organizationId", r.user_id AS "userId",
                   r.family_id AS "familyId", r.expires_at AS "expiresAt",
                   r.revoked_at AS "revokedAt", r.replaced_by_id AS "replacedById",
                   m.role, m.status AS "membershipStatus", u.status AS "userStatus",
@@ -367,7 +401,8 @@ export function createPostgresAuthRepository(
           return { outcome: 'REUSED' };
         }
         if (
-          current.expiresAt.getTime() <= input.now.getTime()
+          current.authVersion !== authVersion
+          || current.expiresAt.getTime() <= input.now.getTime()
           || current.membershipStatus !== 'ACTIVE'
           || current.userStatus !== 'ACTIVE'
           || current.organizationStatus !== 'ACTIVE'
@@ -391,8 +426,8 @@ export function createPostgresAuthRepository(
         );
         await client.query(
           `INSERT INTO refresh_tokens
-             (id, organization_id, user_id, family_id, token_hash, expires_at)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
+             (id, organization_id, user_id, family_id, token_hash, expires_at, auth_version)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
             input.nextTokenId,
             current.organizationId,
@@ -400,6 +435,7 @@ export function createPostgresAuthRepository(
             current.familyId,
             input.nextTokenHash,
             input.nextExpiresAt,
+            authVersion,
           ],
         );
         await client.query('COMMIT');
@@ -409,6 +445,7 @@ export function createPostgresAuthRepository(
           userId: current.userId,
           organizationId: current.organizationId,
           role: current.role,
+          authVersion,
         };
       } catch (error) {
         if (transactionOpen) {
@@ -489,11 +526,13 @@ export function createPostgresAuthRepository(
           userId: string | null;
           organizationId: string | null;
           role: AuthRole | null;
+          authVersion: number | null;
           outcome: OrganizationSwitch['outcome'];
         }>(
           `SELECT result_user_id AS "userId",
                   result_organization_id AS "organizationId",
                   result_role AS role,
+                  result_auth_version AS "authVersion",
                   result_outcome AS outcome
              FROM public.switch_refresh_organization($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [
@@ -516,7 +555,7 @@ export function createPostgresAuthRepository(
         if (row.outcome !== 'SWITCHED') {
           throw new Error('Authentication switch function returned an invalid outcome');
         }
-        if (!row.userId || !row.organizationId || !row.role) {
+        if (!row.userId || !row.organizationId || !row.role || !Number.isSafeInteger(row.authVersion) || row.authVersion === null || row.authVersion < 0) {
           throw new Error('Authentication switch function returned an invalid result');
         }
         return {
@@ -524,6 +563,7 @@ export function createPostgresAuthRepository(
           userId: row.userId,
           organizationId: row.organizationId,
           role: row.role,
+          authVersion: row.authVersion,
         };
       } finally {
         client.release();

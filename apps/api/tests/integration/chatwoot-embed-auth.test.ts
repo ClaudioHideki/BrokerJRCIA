@@ -182,3 +182,75 @@ it('rechecks grants, identity, credential rotation, destination and account stat
   await expect(service.sessions.authorize(issued.token, integration, 'chatwoot:pair')).rejects.toBeDefined();
   await db.pool.query("UPDATE organizations SET status='ACTIVE' WHERE id=$1", [owner.organizationId]);
 });
+
+async function currentOwner() {
+  const version = (await db.pool.query('SELECT auth_version FROM users WHERE id=$1',[owner.actorId])).rows[0].auth_version as number;
+  return { ...owner, authVersion: version } as AuthenticationContext;
+}
+async function resetEmbedOwner() {
+  const platform = new Pool({ connectionString: connectionStringForRole(db.connectionString, 'jrc_platform') });
+  const client = await platform.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE users SET password_hash=$2 WHERE id=$1',[owner.actorId,'synthetic-reset-hash']);
+    await client.query('SELECT public.revoke_user_authentication($1,now())',[owner.actorId]);
+    await client.query('COMMIT');
+  } catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); await platform.end(); }
+}
+it('password reset revokes user-owned embed sessions and approvals, retaining other users and integrations', async () => {
+  const auth = await currentOwner();
+  const issuedProof = proof(), pendingProof = proof(), otherProof = proof();
+  const issuedRequest = await service.start(appId,issuedProof.challenge,'192.0.2.101');
+  const pending = await service.start(appId,pendingProof.challenge,'192.0.2.102');
+  const other = await service.start(appId,otherProof.challenge,'192.0.2.103');
+  await service.approve(auth,issuedRequest.requestId,[integration]);
+  await service.approve(auth,pending.requestId,[integration]);
+  await service.approve(agent,other.requestId,[integration]);
+  const issued = await service.exchange(issuedRequest.requestId,issuedProof.verifier);
+  const otherSession = await service.exchange(other.requestId,otherProof.verifier);
+  if (issued.status !== 'AUTHORIZED' || otherSession.status !== 'AUTHORIZED') throw new Error('Missing authorization');
+  await resetEmbedOwner();
+  await expect(service.sessions.authorize(issued.token,integration,'chatwoot:read')).rejects.toMatchObject({ status:403 });
+  await expect(service.exchange(pending.requestId,pendingProof.verifier)).rejects.toMatchObject({ status:403 });
+  await expect(service.sessions.authorize(otherSession.token,integration,'chatwoot:read')).resolves.toBeDefined();
+  expect((await db.pool.query('SELECT state FROM chatwoot_embed_authorizations WHERE id=$1',[pending.requestId])).rows[0].state).toBe('DENIED');
+  expect((await db.pool.query('SELECT revoked_at FROM chatwoot_embed_sessions WHERE authorization_id=$1',[issuedRequest.requestId])).rows[0].revoked_at).not.toBeNull();
+  const nextProof = proof(), next = await service.start(appId,nextProof.challenge,'192.0.2.104');
+  await expect(service.approve(auth,next.requestId,[integration])).rejects.toMatchObject({ status:403 });
+  await service.approve(await currentOwner(),next.requestId,[integration]);
+  const nextSession = await service.exchange(next.requestId,nextProof.verifier);
+  if (nextSession.status !== 'AUTHORIZED') throw new Error('Missing authorization');
+  await expect(service.sessions.authorize(nextSession.token,integration,'chatwoot:read')).resolves.toBeDefined();
+});
+
+it('an approval that started before reset cannot inherit the new authentication generation', async () => {
+  const auth = await currentOwner(), p = proof(), started = await service.start(appId,p.challenge,'192.0.2.105');
+  const original = service.authenticatedRequest.bind(service);
+  const delayed = vi.spyOn(service,'authenticatedRequest').mockImplementationOnce(async (...args) => {
+    const result = await original(...args);
+    await resetEmbedOwner();
+    return result;
+  });
+  try { await service.approve(auth,started.requestId,[integration]); }
+  finally { delayed.mockRestore(); }
+  await expect(service.exchange(started.requestId,p.verifier)).rejects.toMatchObject({ status:403 });
+});
+
+it('an exchange racing reset never leaves a usable old-generation session', async () => {
+  const auth = await currentOwner(), p = proof(), started = await service.start(appId,p.challenge,'192.0.2.106');
+  await service.approve(auth,started.requestId,[integration]);
+  const original = service.approvedPrincipal.bind(service);
+  let resetting: Promise<void> | undefined;
+  const delayed = vi.spyOn(service,'approvedPrincipal').mockImplementationOnce(async (...args) => {
+    const result = await original(...args);
+    resetting = resetEmbedOwner();
+    expect(await Promise.race([resetting.then(() => 'complete'),new Promise(resolve => setTimeout(() => resolve('blocked'),40))])).toBe('blocked');
+    return result;
+  });
+  let issued;
+  try { issued = await service.exchange(started.requestId,p.verifier); }
+  finally { delayed.mockRestore(); await resetting; }
+  if (issued.status !== 'AUTHORIZED') throw new Error('Missing authorization');
+  await expect(service.sessions.authorize(issued.token,integration,'chatwoot:read')).rejects.toMatchObject({ status:403 });
+});

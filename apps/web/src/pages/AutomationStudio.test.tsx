@@ -189,6 +189,36 @@ describe('Automation Studio',()=>{
     expect(screen.queryByRole('button',{name:/Consulta SQL/})).not.toBeInTheDocument();
     expect(screen.getByText(/rascunho salvo/)).toBeInTheDocument();
   });
+  it('configures a three-team URA through the catalog and labels handoff as simulation only',async()=>{
+    const integrationId='22222222-2222-4222-8222-222222222222';
+    const teams=[{id:7,name:'Comercial',autoAssignment:false},{id:8,name:'Suporte',autoAssignment:false},{id:9,name:'Financeiro',autoAssignment:false}];
+    const position={x:0,y:0},graph={nodes:[{id:'start',type:'start',label:'Início',position,data:{}},
+      {id:'menu',type:'menu',label:'Menu principal',position,data:{text:'Escolha um setor',options:teams.map((team,index)=>({value:String(index+1),label:team.name}))}},
+      ...teams.map(team=>({id:`handoff-${team.id}`,type:'handoff',label:`Transferir ${team.name}`,position,data:{handoffVersion:1}}))],
+      edges:[{id:'s',source:'start',target:'menu',port:'next'},...teams.map((team,index)=>({id:`e${team.id}`,source:'menu',target:`handoff-${team.id}`,port:`option-${index+1}`}))]};
+    let savedGraph=graph;
+    const request=vi.fn(async(path:string,init?:RequestInit)=>{
+      if(path===`/v1/automations/${automationId}`){if(init?.method==='PUT')savedGraph=JSON.parse(String(init.body)).graph;return {...definition,draft:{revision:1,graph:savedGraph}};}
+      if(path==='/v1/automation-nodes')return {data:AUTOMATION_NODE_CATALOG_V1};
+      if(path==='/v1/integrations/chatwoot')return {configured:true,baseUrl:'https://chatwoot.example.test',provisioningAvailable:false,account:{accountId:4,status:'READY',hasCredential:true,lastError:null},connections:[{id:integrationId,channelId:integrationId,inboxId:8,name:'Caixa principal',status:'READY',lastError:null,webhookUrl:'https://broker.example.test/events'}],jobs:{}};
+      if(path.endsWith('/attendance-catalog'))return {scope:{organizationId:organization.id,channelId:integrationId,integrationId,destinationRevision:2,accountId:4,inboxId:8},observedAt:'2026-10-01T18:00:00.000Z',credentialRevision:3,
+        teams,agents:[],labels:[],attributes:[],hours:{enabled:false,timezone:'Etc/UTC',days:[]},remoteBot:null,inboxPolicy:{greetingEnabled:false,autoAssignmentEnabled:false},capabilities:{teams:'SUPPORTED',agents:'SUPPORTED',inboxMembership:'SUPPORTED',labels:'SUPPORTED',attributes:'SUPPORTED',hours:'SUPPORTED',agentBot:'SUPPORTED',signatures:'UNVERIFIED',controlEvents:'UNVERIFIED',initialPending:'UNVERIFIED'}};
+      if(path.endsWith('/simulate')){const input=JSON.parse(String(init?.body));const selected=savedGraph.nodes.find(node=>node.id==='handoff-8')!;
+        return {status:input.replies?.length?'HANDOFF':'WAITING',wait:input.replies?.length?undefined:{kind:'EVENT',nodeId:'menu'},state:{variables:{}},effects:input.replies?.length?[{kind:'HANDOFF',payload:selected.data}]:[{kind:'SEND_TEXT',payload:{text:'1 - Comercial\n2 - Suporte\n3 - Financeiro'}}],trace:[]};}
+      throw new Error(path);
+    }) as ApiClient['request'];
+    mountEditor(request);
+    for(const team of teams){
+      fireEvent.click(await screen.findByRole('button',{name:`Configurar Transferir ${team.name}`}));
+      fireEvent.change(await screen.findByLabelText('Caixa de atendimento'),{target:{value:integrationId}});
+      fireEvent.change(await screen.findByLabelText('Time de atendimento'),{target:{value:String(team.id)}});
+    }
+    fireEvent.click(screen.getByRole('button',{name:'Salvar'}));await screen.findByText('Rascunho salvo.');
+    for(const team of teams)expect(savedGraph.nodes.find(node=>node.id===`handoff-${team.id}`)?.data).toEqual({handoffVersion:1,destination:{integrationId,destinationRevision:2,accountId:4,inboxId:8,credentialRevision:3},target:{teamId:team.id,agentId:null}});
+    fireEvent.click(screen.getByRole('button',{name:'Testar'}));await screen.findByText(/1 - Comercial/);
+    fireEvent.change(screen.getByLabelText('Próxima resposta'),{target:{value:'2'}});fireEvent.click(screen.getByRole('button',{name:'Enviar resposta no teste'}));
+    expect(await screen.findByText('Transferência simulada para time 8. Nenhuma atribuição foi feita na central.')).toBeVisible();
+  });
   it('continues a menu simulation using the conversation transcript',async()=>{
     const request=vi.fn(async(path:string,init?:RequestInit)=>{
       if(path===`/v1/automations/${automationId}`)return definition;
@@ -218,4 +248,38 @@ it('directs a handed-off conversation to its mode control instead of resuming a 
  const request=vi.fn(async()=>({id:automationId,automationId,channelId:automationId,version:1,status:'HANDOFF',correlationId:'qa',nodes:[],outbox:[]})) as ApiClient['request'];
  render(<SessionProvider client={client(request)}><MemoryRouter initialEntries={['/execution/'+automationId]}><Routes><Route path="/execution/:id" element={<AutomationExecutionDetailPage/>}/></Routes></MemoryRouter></SessionProvider>);
  expect(await screen.findByRole('link',{name:'Retomar bot em Conversas'})).toHaveAttribute('href','/mensagens');expect(screen.queryByRole('button',{name:'Retomar automação'})).not.toBeInTheDocument();
+});
+
+it('keeps uncertain handoffs read-only while preserving manual reconciliation for other effects',async()=>{
+ const effects=[
+  {id:'handoff-unknown',nodeId:'Transferir incerto',kind:'HANDOFF',status:'UNKNOWN',attempts:1,remoteReference:null,lastError:'HANDOFF_REMOTE_OUTCOME_UNKNOWN'},
+  {id:'handoff-sent',nodeId:'Transferir confirmado',kind:'HANDOFF',status:'SENT',attempts:1,remoteReference:'remote:42',lastError:null},
+  {id:'handoff-failed',nodeId:'Transferir bloqueado',kind:'HANDOFF',status:'FAILED',attempts:1,remoteReference:null,lastError:'HANDOFF_INBOX_POLICY_UNSAFE'},
+  {id:'message-unknown',nodeId:'Enviar mensagem',kind:'SEND_TEXT',status:'UNKNOWN',attempts:1,remoteReference:null,lastError:'MESSAGE_TIMEOUT'},
+ ];
+ const request=vi.fn(async()=>({id:automationId,automationId,channelId:automationId,version:1,status:'HANDOFF',correlationId:'qa',nodes:[],outbox:effects})) as ApiClient['request'];
+ render(<SessionProvider client={client(request)}><MemoryRouter initialEntries={['/execution/'+automationId]}><Routes><Route path="/execution/:id" element={<AutomationExecutionDetailPage/>}/></Routes></MemoryRouter></SessionProvider>);
+ await screen.findByText('Transferir incerto');
+ expect(screen.getAllByRole('button',{name:'Confirmar envio'})).toHaveLength(1);
+ expect(screen.getAllByRole('button',{name:'Confirmar não enviado'})).toHaveLength(1);
+ expect(screen.getAllByRole('button',{name:'Manter incerto'})).toHaveLength(1);
+ expect(screen.getByText('Transferência confirmada na central')).toBeVisible();
+ expect(screen.getByText('Transferência não confirmada')).toBeVisible();
+ expect(screen.getByText(/Reconciliação automática por consulta à central/)).toBeVisible();
+ expect(screen.getByText('Transferência requer ação')).toBeVisible();
+ expect(screen.getByText('HANDOFF_REMOTE_OUTCOME_UNKNOWN')).toBeVisible();
+ expect(screen.getByText('HANDOFF_INBOX_POLICY_UNSAFE')).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Confirmar envio'}));
+ await waitFor(()=>expect(request).toHaveBeenCalledWith(`/v1/executions/${automationId}/reconcile`,expect.objectContaining({body:JSON.stringify({outboxId:'message-unknown',outcome:'CONFIRMED_SENT',evidenceCode:'OPERATOR_PROVIDER_CHECK'})})));
+});
+
+it('shows action-required and pending handoff states without displaying raw remote errors',async()=>{
+ const request=vi.fn(async()=>({id:automationId,automationId,channelId:automationId,version:1,status:'HANDOFF',correlationId:'qa',nodes:[],outbox:[
+  {id:'h1',nodeId:'Bloqueado',kind:'HANDOFF',status:'ACTION_REQUIRED',attempts:1,remoteReference:null,lastError:'remote error Authorization: Bearer synthetic-private-data'},
+  {id:'h2',nodeId:'Pendente',kind:'HANDOFF',status:'PENDING',attempts:0,remoteReference:null,lastError:null},
+ ]})) as ApiClient['request'];
+ render(<SessionProvider client={client(request)}><MemoryRouter initialEntries={['/execution/'+automationId]}><Routes><Route path="/execution/:id" element={<AutomationExecutionDetailPage/>}/></Routes></MemoryRouter></SessionProvider>);
+ await screen.findByText('Bloqueado');expect(screen.getByText('Transferência requer ação')).toBeVisible();expect(screen.getByText('Transferência pendente')).toBeVisible();
+ expect(screen.getByText(/Revise o destino e o atendimento na central antes de retomar o bot/)).toBeVisible();
+ expect(screen.queryByText(/synthetic-private-data/)).toBeNull();expect(screen.queryByRole('button',{name:'Confirmar envio'})).toBeNull();
 });

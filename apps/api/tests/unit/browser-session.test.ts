@@ -17,7 +17,8 @@ const RAW_REFRESH = 'r'.repeat(43);
 const NEXT_REFRESH = 'n'.repeat(43);
 
 const identity = {
-  user: { id: USER_ID, email: 'owner@example.test' },
+  authVersion: 0,
+        user: { id: USER_ID, email: 'owner@example.test' },
   organizations: [
     { id: SOURCE_ORGANIZATION_ID, name: 'Source', slug: 'source', role: 'OWNER' as const },
     { id: TARGET_ORGANIZATION_ID, name: 'Target', slug: 'target', role: 'VIEWER' as const },
@@ -42,7 +43,7 @@ function harness(
       switches.push(input);
       if (switchOutcome !== 'SWITCHED') return { outcome: switchOutcome };
       return {
-        outcome: 'SWITCHED',
+        outcome: 'SWITCHED', authVersion: 0,
         userId: USER_ID,
         organizationId: TARGET_ORGANIZATION_ID,
         role: 'VIEWER',

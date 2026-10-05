@@ -28,7 +28,7 @@ function expectedTokenHmac(rawToken: string): string {
 
 function sessionHarness(
   rotation: RefreshRotation = {
-    outcome: 'ROTATED',
+    outcome: 'ROTATED', authVersion: 0,
     userId: USER_ID,
     organizationId: ORGANIZATION_ID,
     role: 'OWNER',

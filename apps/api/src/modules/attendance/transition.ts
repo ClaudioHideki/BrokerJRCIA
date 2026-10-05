@@ -4,6 +4,7 @@ import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { BindingRow } from '../automations/repository.js';
 import { AttendanceError } from './types.js';
 import { lockAttendanceChannel, resolveAttendanceScope } from './repository.js';
+import { assertHandoffBinding } from './handoff-binding.js';
 
 export const bindingColumns=`id,organization_id AS "organizationId",automation_id AS "automationId",version,channel_id AS "channelId",human_destination_id AS "humanDestinationId",status,revision,created_at AS "createdAt",updated_at AS "updatedAt"`;
 export async function lockOwnershipMutations(tx:TenantTransaction,org:string) {
@@ -71,6 +72,7 @@ export async function transitionChannelOwner(tx:TenantTransaction,org:string,inp
   const samePointer=channel.bot_public_id===input.botPublicId&&channel.bot_origin_reference===input.botOriginReference;
   const sameBinding=native?(current?.automationId===input.botPublicId&&current.version===version&&current.humanDestinationId===(input.humanDestinationId??null)):!current;
   const sameOwner=(owner?.executor??'NONE')===executor&&(owner?.remote_binding_id??null)===(input.remoteBindingId??null);
+  if(native&&desiredStatus==='ACTIVE'&&!(samePointer&&sameBinding&&sameOwner&&current?.status===desiredStatus))await assertHandoffBinding(tx,org,input.channelId,input.botPublicId!,version!);
   if(samePointer&&sameBinding&&sameOwner){
     if(current&&native&&current.status!==desiredStatus){
       // PAUSED only closes admission; already admitted executions retain their owner.

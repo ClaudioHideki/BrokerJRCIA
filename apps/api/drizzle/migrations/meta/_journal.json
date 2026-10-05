@@ -288,6 +288,20 @@
       "when": 1791067200000,
       "tag": "0041_automation_runtime_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791153600000,
+      "tag": "0042_native_handoff_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791240000000,
+      "tag": "0043_user_password_reset",
+      "breakpoints": true
     }
   ]
 }

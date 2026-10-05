@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { FlowGraphSchema, automationNodePorts, menuOptions,
+import { FlowGraphSchema, AutomationHandoffConfigV1Schema, hasNativeHandoffConfig, automationNodePorts, menuOptions,
   type AutomationGraphV1, type FlowNode } from '@jrc/contracts';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
 import { executeDataNode } from '../automation-integrations/data-nodes.js';
@@ -92,7 +92,12 @@ export async function executeAutomation(
     const record={nodeId:node.id,type:node.type,label:node.label,input:{message:variables.message??''},output:{} as Record<string,unknown>};trace.push(record);
     if(node.type==='end') {current=null;continue;}
     if(node.type==='handoff'){
-      effects.push({nodeId:node.id,ordinal:effects.length,kind:'HANDOFF',payload:{}});state.nodeId=null;return finish({status:'HANDOFF',state,effects,trace});
+      const native=hasNativeHandoffConfig(node.data),parsed=native?AutomationHandoffConfigV1Schema.safeParse(node.data):null;
+      if(parsed&&!parsed.success)throw new Error('AUTOMATION_HANDOFF_CONFIG_INVALID');
+      const payload=parsed?.success?parsed.data:{};
+      record.output=parsed?.success?{status:'HANDOFF_PENDING',destination:parsed.data.destination,target:parsed.data.target}
+        :{status:'ACTION_REQUIRED',reason:'HANDOFF_DESTINATION_REQUIRED'};
+      effects.push({nodeId:node.id,ordinal:effects.length,kind:'HANDOFF',payload});state.nodeId=null;return finish({status:'HANDOFF',state,effects,trace});
     }
     if(node.type==='message'){
       const text=renderFlowText(node.data.text,variables);record.output={text};effects.push({nodeId:node.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text}});

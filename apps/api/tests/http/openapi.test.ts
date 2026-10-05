@@ -30,6 +30,7 @@ const EXPECTED_OPERATIONS = [
   'POST /v1/support/tickets/{id}/replies', 'PATCH /v1/support/tickets/{id}',
   'GET /v1/platform/support/tickets', 'GET /v1/platform/support/tickets/{id}',
   'POST /v1/platform/support/tickets/{id}/replies', 'PATCH /v1/platform/support/tickets/{id}',
+  'GET /v1/platform/users/{id}/password-reset-preview', 'POST /v1/platform/users/{id}/password-reset',
   'GET /v1/platform/groups', 'POST /v1/platform/groups', 'PUT /v1/platform/groups/{id}/organizations',
   'PATCH /v1/platform/groups/{id}', 'GET /v1/platform/groups/{id}/removal-preview', 'DELETE /v1/platform/groups/{id}',
   'GET /v1/platform/commercial-plans', 'POST /v1/platform/commercial-plans',

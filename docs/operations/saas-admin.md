@@ -51,3 +51,16 @@ Em **Grupos econômicos**, crie o grupo, selecione as empresas e salve. Para mov
 Somente SUPER_ADMIN altera ou remove grupos. As rotas `PATCH /groups/:id`, `GET /groups/:id/removal-preview` e `DELETE /groups/:id` exigem sessão de plataforma; mutações também exigem Origin, CSRF e motivo. Remoção recebe `{expectedRevision,detachCompanies}`; nome/revisão vêm da prévia e a confirmação vem do operador. A migration `0035_economic_group_removal` concede DELETE da tabela de grupos ao papel dedicado, sem ampliar os papéis tenant.
 
 Evidência de desenvolvimento em 30/09/2026: testes locais de grupos verificam preservação das empresas/memberships/provedores, revisão concorrente, revogação de papel, CSRF/origem e rollback quando a auditoria falha. Não representam homologação em produção.
+
+## Redefinição global de senha de usuário existente
+
+O superadmin pode abrir **Usuários**, selecionar uma empresa e clicar em **Redefinir senha** no usuário existente. A prévia identifica o usuário global por UUID/e-mail e lista todos os vínculos, inclusive empresas suspensas/desativadas e vínculos desabilitados. O operador confirma o e-mail e preenche a nova senha e sua repetição na própria tela. A regra atual é 12–256 caracteres, sem alteração silenciosa dos espaços da senha.
+
+Essa ação troca a senha do usuário em todas as empresas. Não muda papéis, status, vínculos, senhas de outros usuários, credenciais de API de empresas nem a identidade/MFA da plataforma. Encerra as sessões de usuário anteriores, incluindo seleção de empresa pendente, refresh e sessões/aprovações delegadas do módulo embutido; os JWT anteriores são recusados em novas requisições autenticadas. Requisições já autorizadas antes da transação não são retroativamente canceladas.
+
+- `GET /v1/platform/users/:id/password-reset-preview`: retorna `{userId,email,status,organizations:[{id,name,status,role,membershipStatus}],confirmationToken}`. Exige SUPER_ADMIN ativo, cookie da plataforma e motivo. `status` de organização é o status da empresa; `membershipStatus` é o vínculo.
+- `POST /v1/platform/users/:id/password-reset`: recebe `{password,confirmationEmail,confirmationToken}`. Exige SUPER_ADMIN ativo, Origin exata, CSRF, motivo e confirmação vinculada à prévia. Retorna somente `{ok:true}`.
+- A confirmação assinada expira em cinco minutos e está vinculada ao operador, identidade, geração de autenticação e lista completa de vínculos. Mudança da prévia ou outro reset exige nova consulta/confirmação; não repetir a mutação automaticamente após resposta incerta.
+- Hash segue o verificador existente. Atualização, revogação e auditoria transacionam juntas; erro de auditoria impede o reset. Auditoria identifica ator, UUID do usuário e cada empresa afetada, sem senha/hash/token. O motivo gravado é fixo para evitar dados secretos em texto livre.
+
+O reset requer a migration `0043_user_password_reset`, API e web desta entrega. A senha é entrada, confirmada e enviada pelo operador. Não enviar senhas por chat, logs, tickets ou documentação. A senha não é exibida na resposta nem persistida pelo navegador. Falta uma homologação posterior no ambiente publicado, separada da implementação local.

@@ -1,4 +1,4 @@
-import { AutomationDefinitionV1Schema, AutomationPublishedVersionV1Schema, NodeDiagnosticSchema, legacyStringsToNodeDiagnostics, type AutomationDefinitionV1, type AutomationGraphV1, type AutomationPublishedVersionV1 } from '@jrc/contracts';
+import { attendanceCatalogSchema, ChatwootStatusSchema, AutomationDefinitionV1Schema, AutomationPublishedVersionV1Schema, NodeDiagnosticSchema, legacyStringsToNodeDiagnostics, type AutomationDefinitionV1, type AutomationGraphV1, type AutomationPublishedVersionV1 } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
 
 export interface AutomationNodeCatalogItem {type:string;category:string;label:string;description:string;version?:number;availability?:'AVAILABLE'|'UNAVAILABLE';unavailableReason?:string|null}
@@ -29,3 +29,16 @@ export async function listAutomationNodes(client:ApiClient){return (await client
 export async function listVersions(client:ApiClient,id:string){const value=await client.request<{data:unknown[]}>(`/v1/automations/${id}/versions`);return value.data.map(item=>parsed(AutomationPublishedVersionV1Schema,item,'Versão inválida retornada pelo serviço.'));}
 export async function listExecutions(client:ApiClient,automationId?:string){const query=automationId?`?automationId=${encodeURIComponent(automationId)}`:'';return (await client.request<{data:AutomationExecution[]}>(`/v1/executions${query}`)).data;}
 export type {AutomationDefinitionV1,AutomationGraphV1,AutomationPublishedVersionV1};
+
+export async function listHandoffConnections(client: ApiClient, signal?: AbortSignal) {
+  const status = parsed(ChatwootStatusSchema, await client.request('/v1/integrations/chatwoot', {signal:signal??null}), 'Conexões inválidas retornadas pelo serviço.');
+  return status.connections.filter(connection => connection.status === 'READY' && connection.inboxId !== null);
+}
+export async function getHandoffCatalog(client: ApiClient, organizationId: string, integrationId: string, signal?: AbortSignal) {
+  const catalog = parsed(attendanceCatalogSchema,
+    await client.request(`/v1/integrations/chatwoot/connections/${encodeURIComponent(integrationId)}/attendance-catalog`, {signal:signal??null}),
+    'Catálogo de atendimento inválido retornado pelo serviço.');
+  if (catalog.scope.organizationId !== organizationId || catalog.scope.integrationId !== integrationId)
+    throw new ApiClientError('O catálogo não corresponde ao escopo desta empresa e caixa.', 409);
+  return catalog;
+}

@@ -23,10 +23,11 @@ export class EmbedSessions {
     this.repository.enabled();
     const session = (await tx.query<EmbedSessionRow>('SELECT *,expires_at<=clock_timestamp() AS expired FROM chatwoot_embed_sessions WHERE token_hash=$1', [tokenHash])).rows[0];
     if (!session || session.expired || session.revoked_at || (expectedNonce && session.id !== expectedNonce)) throw embedDenied();
+    await this.repository.requireCurrentAuthentication(tx, session.user_id, session.auth_version);
     const app = await this.repository.app(tx, session.app_id), current = await this.apps.current(tx, app);
     if (current.account.credential_version !== session.credential_version) throw embedDenied();
     // Role is resolved afresh by control auth; the placeholder never grants authority.
-    const authentication: AuthenticationContext = { kind: 'JWT', actorId: session.user_id, organizationId: session.organization_id, role: 'VIEWER' };
+    const authentication: AuthenticationContext = { kind: 'JWT', authVersion: session.auth_version, actorId: session.user_id, organizationId: session.organization_id, role: 'VIEWER' };
     const principal: ChatwootControlPrincipal = { authentication, organizationId: app.organization_id, accountId: Number(app.account_id),
       destinationRevision: app.destination_revision, chatwootOrigin: current.origin };
     await this.checkGrants(tx, principal, session.grants, scope, id);

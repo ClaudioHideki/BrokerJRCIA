@@ -76,7 +76,7 @@ export function createBrowserSessionService(dependencies: BrowserSessionDependen
       const activeOrganization = identity?.organizations.find(
         ({ id }) => id === claims.organization_id,
       );
-      if (!identity || !activeOrganization || activeOrganization.role !== claims.role) {
+      if (!identity || identity.authVersion !== claims.auth_version || !activeOrganization || activeOrganization.role !== claims.role) {
         throw new AuthServiceError('INVALID_SESSION', 401);
       }
       return {
@@ -146,6 +146,7 @@ export function createBrowserSessionService(dependencies: BrowserSessionDependen
         userId: switched.userId,
         organizationId: switched.organizationId,
         role: switched.role,
+        authVersion: switched.authVersion,
       }, dependencies.jwtSecret, issuedAt);
       const result = await project({
         accessToken,

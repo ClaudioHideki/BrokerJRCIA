@@ -13,7 +13,7 @@ import {connectionStringForRole} from './helpers/task7.js';
 
 const node=(id:string,type:string,data:Record<string,unknown>={})=>({id,type,label:id,position:{x:0,y:0},data});
 const edge=(source:string,target:string,port='next')=>({id:source+'-'+port,source,target,port});
-const graph={nodes:[node('start','start'),node('hello','message',{text:'Bem-vindo'}),node('menu','menu',{text:'Escolha',variable:'opcao',options:[{value:'1',label:'Atendimento'},{value:'2',label:'Encerrar'}]}),node('name','input',{text:'Qual seu nome?',variable:'nome'}),node('known','condition',{field:'nome',operator:'present',value:''}),node('thanks','message',{text:'Olá, {{nome}}'}),node('handoff','handoff'),node('end','end')],edges:[edge('start','hello'),edge('hello','menu'),edge('menu','name','option-1'),edge('menu','end','option-2'),edge('name','known'),edge('known','thanks','yes'),edge('known','end','no'),edge('thanks','handoff')]};
+const graph={nodes:[node('start','start'),node('hello','message',{text:'Bem-vindo'}),node('menu','menu',{text:'Escolha',variable:'opcao',options:[{value:'1',label:'Atendimento'},{value:'2',label:'Encerrar'}]}),node('name','input',{text:'Qual seu nome?',variable:'nome'}),node('known','condition',{field:'nome',operator:'present',value:''}),node('thanks','message',{text:'Olá, {{nome}}'}),node('finish','end'),node('end','end')],edges:[edge('start','hello'),edge('hello','menu'),edge('menu','name','option-1'),edge('menu','end','option-2'),edge('name','known'),edge('known','thanks','yes'),edge('known','end','no'),edge('thanks','finish')]};
 
 describe('native bot persisted journey and runtime pause',()=>{
  let db:IsolatedPostgresDatabase,pool:Pool;const org=randomUUID(),otherOrg=randomUUID();
@@ -28,7 +28,7 @@ describe('native bot persisted journey and runtime pause',()=>{
   }finally{seed.release();}pool=new Pool({connectionString:connectionStringForRole(db.connectionString,'jrc_app')});
  },60000);
  afterAll(async()=>{await pool?.end();await db?.dispose();});
- it('creates, saves, publishes, binds, deduplicates, resumes after worker replacement and hands off once',async()=>{
+ it('creates, saves, publishes, binds, deduplicates and completes after worker replacement',async()=>{
   const initial=await service.create(org,{name:'Atendimento',graph});
   const draft=await service.save(org,initial.id,{name:'Bot nativo',graph,revision:initial.draft.revision});
   expect(await service.validate(org,draft.id)).toEqual({valid:true,diagnostics:[],errors:[]});
@@ -70,14 +70,24 @@ describe('native bot persisted journey and runtime pause',()=>{
   for(const [index,text] of ['1','Pessoa de teste'].entries()){
    expect((await router.route(org,{...event,eventKey:`native-${index+2}`,text})).resumed).toBe(true);
    // A fresh service instance models a worker restart; state only comes from PostgreSQL.
-   expect(await createExecutionService({transact,enabled:true}).runOnce(org)).toMatchObject({status:index===0?'WAITING':'HANDOFF'});
+   expect(await createExecutionService({transact,enabled:true}).runOnce(org)).toMatchObject({status:index===0?'WAITING':'COMPLETED'});
   }
   while((await dispatcher.runOnce(org)).processed){}
   expect(delivered.filter(item=>item.kind==='SEND_TEXT').map(item=>item.text)).toEqual(['Bem-vindo','Escolha\n1 - Atendimento\n2 - Encerrar','Qual seu nome?','Olá, Pessoa de teste']);
-  expect(delivered.filter(item=>item.kind==='HANDOFF')).toHaveLength(1);
+  // Real remote handoff is covered by native-handoff.test.ts; this fixture has no central.
+  expect(delivered.filter(item=>item.kind==='HANDOFF')).toHaveLength(0);
   expect(await dispatcher.runOnce(org)).toEqual({processed:false});
   const detail=await createExecutionService({transact}).get(org,routed.execution!.id);
-  expect(detail).toMatchObject({status:'HANDOFF',version:1,state:{variables:{nome:'Pessoa de teste',opcao:'1'}}});
+  expect(detail).toMatchObject({status:'COMPLETED',version:1,state:{variables:{nome:'Pessoa de teste',opcao:'1'}}});
+ });
+ it('preserves a legacy handoff draft for simulation but blocks publishing it without a destination',async()=>{
+  const legacy={...graph,nodes:graph.nodes.map(n=>n.id==='finish'?{...n,type:'handoff'}:n)};
+  const draft=await service.create(org,{name:'Legacy handoff',graph:legacy});
+  expect((await service.get(org,draft.id)).draft.graph).toEqual(legacy);
+  await expect(service.publish(org,draft.id,1)).rejects.toMatchObject({code:'AUTOMATION_HANDOFF_DESTINATION_REQUIRED'});
+  const preview=await service.simulate(org,draft.id,{text:'Oi',replies:['1','Synthetic']});
+  expect(preview.effects.at(-1)).toMatchObject({kind:'HANDOFF',payload:{}});
+  expect(preview.trace.at(-1)?.output).toMatchObject({status:'ACTION_REQUIRED'});
  });
  it('uses persisted worker readiness and detects a worker paused by divergent configuration',async()=>{
   const ready=createAutomationRuntimeReadiness({transact,schemaCurrent:async()=>true,probeRedis:async()=>true});

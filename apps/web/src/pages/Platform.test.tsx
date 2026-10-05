@@ -611,3 +611,51 @@ it("opens the mobile navigation with keyboard focus and restores it on Escape", 
     screen.queryByRole("navigation", { name: "Administração JRC" }),
   ).not.toBeInTheDocument();
 });
+
+it('resets an existing user globally from /jrc/usuarios with the staff session, CSRF and a fixed audit reason', async () => {
+  const fetcher = platformFetch({
+    '/v1/platform/users/owner-a/password-reset-preview': {
+      userId: 'owner-a', email: 'owner@example.test', status: 'ACTIVE', confirmationToken: 'reviewed-global-preview',
+      organizations: [
+        { id: 'company-a', name: 'Empresa A', role: 'OWNER', status: 'ACTIVE', membershipStatus: 'ACTIVE' },
+        { id: 'company-b', name: 'Empresa B', role: 'VIEWER', status: 'DISABLED', membershipStatus: 'DISABLED' },
+      ],
+    },
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<MemoryRouter initialEntries={['/jrc/usuarios']}><PlatformPage /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', { name: 'Abrir Empresa A' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Redefinir senha de owner@example.test' }));
+  fireEvent.change(await screen.findByLabelText('Confirme o e-mail do usuário'), { target: { value: 'OWNER@EXAMPLE.TEST' } });
+  fireEvent.change(screen.getByLabelText('Nova senha'), { target: { value: 'synthetic-reset-password' } });
+  fireEvent.change(screen.getByLabelText('Repita a nova senha'), { target: { value: 'synthetic-reset-password' } });
+  fireEvent.submit(screen.getByRole('button', { name: 'Confirmar redefinição global' }).closest('form')!);
+  await screen.findByText(/Senha redefinida\./);
+  const options = {
+    credentials: 'same-origin', cache: 'no-store',
+    headers: expect.objectContaining({
+      'x-csrf-token': 'nonce',
+      'x-platform-reason': 'Redefinição de senha de usuário pela administração global',
+    }),
+  };
+  expect(fetcher).toHaveBeenCalledWith('/v1/platform/users/owner-a/password-reset-preview', expect.objectContaining({ ...options, method: 'GET' }));
+  expect(fetcher).toHaveBeenCalledWith('/v1/platform/users/owner-a/password-reset', expect.objectContaining({
+    ...options, method: 'POST',
+    body: JSON.stringify({ password: 'synthetic-reset-password', confirmationEmail: 'owner@example.test', confirmationToken: 'reviewed-global-preview' }),
+  }));
+  expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(0);
+});
+
+it('hides global password reset from support on /jrc/usuarios', async () => {
+  const fetcher = platformFetch({
+    '/v1/platform/auth/session': {
+      user: { id: 'support', email: 'support@example.test', role: 'SUPPORT' }, csrfToken: 'nonce', expiresAt: '2026-09-15',
+    },
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<MemoryRouter initialEntries={['/jrc/usuarios']}><PlatformPage /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', { name: 'Abrir Empresa A' }));
+  await screen.findByText('owner@example.test');
+  expect(screen.queryByRole('button', { name: /Redefinir senha/ })).not.toBeInTheDocument();
+  expect(fetcher.mock.calls.some(([url]) => String(url).includes('/password-reset'))).toBe(false);
+});

@@ -210,7 +210,13 @@ export async function registerConsoleAuthRoutes(
       return;
     }
     try {
-      jwtContext.set(request, await verifyAccessToken(match[1]!, options.jwtSecret, now()));
+      const claims = await verifyAccessToken(match[1]!, options.jwtSecret, now());
+      if (request.server.isUserAuthenticationCurrent
+        && !await request.server.isUserAuthenticationCurrent(claims.sub, claims.auth_version)) {
+        await reject(request, reply);
+        return;
+      }
+      jwtContext.set(request, claims);
     } catch {
       await reject(request, reply);
     }

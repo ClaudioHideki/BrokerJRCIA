@@ -2,18 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { AUTOMATION_NODE_DEFINITIONS, automationNodePorts, type AutomationGraphV1 } from '@jrc/contracts';
 import { executeAutomation, validateAutomationGraph } from '../../src/modules/automations/engine.js';
 
+const handoffConfig={handoffVersion:1,destination:{integrationId:'22222222-2222-4222-8222-222222222222',destinationRevision:2,accountId:4,inboxId:8,credentialRevision:3},target:{teamId:7,agentId:null}};
 const node=(id:string,type:string,data:Record<string,unknown>={})=>({id,type,label:id,position:{x:0,y:0},data});
 describe('automation runtime v2 engine',()=>{
   it.each(AUTOMATION_NODE_DEFINITIONS.filter(definition=>definition.availability==='AVAILABLE').map(definition=>definition.type))('executes and simulates available %s without external IO',async type=>{
-    const configs:Record<string,Record<string,unknown>>={message:{text:'Olá'},input:{variable:'answer',text:'Nome?'},menu:{text:'Escolha',options:[{value:'1',label:'A'},{value:'2',label:'B'}]},condition:{field:'message',operator:'equals',value:'oi'},variable:{variable:'name',value:'Ana'}};
+    const configs:Record<string,Record<string,unknown>>={handoff:handoffConfig,message:{text:'Olá'},input:{variable:'answer',text:'Nome?'},menu:{text:'Escolha',options:[{value:'1',label:'A'},{value:'2',label:'B'}]},condition:{field:'message',operator:'equals',value:'oi'},variable:{variable:'name',value:'Ana'}};
     const current=node('current',type,configs[type]??{});
-    const nodes=type==='start'?[current,node('end','end')]:type==='end'?[node('start','start'),current]:[node('start','start'),current,node('end','end')];
+    const nodes=type==='start'?[current,node('end','end')]:['end','handoff'].includes(type)?[node('start','start'),current]:[node('start','start'),current,node('end','end')];
     const edges=type==='start'?[]:[{id:'s',source:'start',target:'current',port:'next'}];
     edges.push(...automationNodePorts(current).map(port=>({id:port,source:'current',target:'end',port})));
     const graph={nodes,edges};expect(validateAutomationGraph(graph)).toEqual([]);
     const result=await executeAutomation({automationId:'11111111-1111-4111-8111-111111111111',version:1,graph},{text:'oi',eventType:'MESSAGE',now:new Date()},async()=>{throw new Error('Unexpected external dependency');});
-    expect(result.effects.every(effect=>effect.kind==='SEND_TEXT')).toBe(true);
-    expect(['WAITING','COMPLETED']).toContain(result.status);
+    expect(result.effects.every(effect=>effect.kind==='SEND_TEXT'||effect.kind==='HANDOFF')).toBe(true);
+    expect(['WAITING','COMPLETED','HANDOFF']).toContain(result.status);
+    if(type==='handoff')expect(result.effects).toEqual([{nodeId:'current',ordinal:0,kind:'HANDOFF',payload:handoffConfig}]);
     if(type==='message')expect(result.effects[0]?.payload.text).toBe('Olá');
     if(type==='variable')expect(result.state.variables.name).toBe('Ana');
     if(type==='input'||type==='menu')expect(result.wait?.kind).toBe('EVENT');
@@ -50,5 +52,34 @@ describe('automation runtime v2 engine',()=>{
     expect(validateAutomationGraph(graph)).toEqual([]);const root={automationId:'11111111-1111-4111-8111-111111111111',version:1,graph,runtimeStateVersion:2 as const};
     const first=await executeAutomation(root,{text:'oi',eventType:'MESSAGE',now:new Date()},async()=>{throw new Error('unexpected');});expect(first).toMatchObject({status:'WAITING',wait:{kind:'IO'},effects:[{kind:'IO_HTTP'}]});
     const resumed=await executeAutomation(root,{text:'',eventType:'RESUME',now:new Date(),payload:{outcome:'success',output:{status:200}}},async()=>{throw new Error('unexpected');},first.state);expect(resumed.status).toBe('COMPLETED');expect(resumed.state.variables['http.result']).toEqual({status:200});
+  });
+});
+
+
+describe('native URA menu handoff effect',()=>{
+  const graph:AutomationGraphV1={nodes:[node('start','start'),node('menu','menu',{text:'Escolha',options:[{value:'1',label:'Comercial'},{value:'2',label:'Suporte'},{value:'3',label:'Financeiro'}]}),
+    ...[7,8,9].map((teamId,index)=>node(`h${index+1}`,'handoff',{...handoffConfig,target:{teamId,agentId:null}}))],edges:[{id:'s',source:'start',target:'menu',port:'next'},...[1,2,3].map(index=>({id:`e${index}`,source:'menu',target:`h${index}`,port:`option-${index}`}))]};
+  const root={automationId:'11111111-1111-4111-8111-111111111111',version:1,graph};
+  const input=(text:string)=>({text,eventType:'MESSAGE' as const,now:new Date('2026-10-01T18:00:00Z')});
+  it.each([1,2,3])('simulates menu selection %s with the complete pinned destination and no external resolver',async choice=>{
+    const resolver=async()=>{throw new Error('Unexpected external dependency');};
+    expect(validateAutomationGraph(graph)).toEqual([]);
+    const first=await executeAutomation(root,input('oi'),resolver);
+    expect(first.status).toBe('WAITING');expect(first.effects[0]?.payload.text).toContain('3 - Financeiro');
+    const selected=await executeAutomation(root,input(String(choice)),resolver,first.state);
+    expect(selected).toMatchObject({status:'HANDOFF',effects:[{kind:'HANDOFF',payload:{...handoffConfig,target:{teamId:choice+6,agentId:null}}}]});
+    expect(selected.trace.at(-1)?.output).toEqual({status:'HANDOFF_PENDING',destination:handoffConfig.destination,target:{teamId:choice+6,agentId:null}});
+  });
+  it('repeats invalid menu answers without emitting a handoff',async()=>{
+    const resolver=async()=>{throw new Error('Unexpected dependency');};
+    const first=await executeAutomation(root,input('oi'),resolver);
+    const invalid=await executeAutomation(root,input('9'),resolver,first.state);
+    expect(invalid.status).toBe('WAITING');expect(invalid.effects.every(effect=>effect.kind==='SEND_TEXT')).toBe(true);
+  });
+  it('rejects partial native config and keeps empty legacy payload explicitly unconfirmed',async()=>{
+    const simple=(data:Record<string,unknown>)=>({...root,graph:{nodes:[node('start','start'),node('h','handoff',data)],edges:[{id:'s',source:'start',target:'h',port:'next'}]}});
+    await expect(executeAutomation(simple({handoffVersion:1}),input('oi'),async()=>root)).rejects.toThrow('AUTOMATION_HANDOFF_CONFIG_INVALID');
+    const legacy=await executeAutomation(simple({}),input('oi'),async()=>root);
+    expect(legacy.effects[0]?.payload).toEqual({});expect(legacy.trace.at(-1)?.output).toEqual({status:'ACTION_REQUIRED',reason:'HANDOFF_DESTINATION_REQUIRED'});
   });
 });

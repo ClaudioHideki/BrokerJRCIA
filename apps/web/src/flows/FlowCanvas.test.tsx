@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { welcomeFlow } from '@jrc/contracts';
+import { AUTOMATION_NODE_CATALOG_V1, getNodeDefinition, welcomeFlow } from '@jrc/contracts';
 import { FlowCanvas } from './FlowCanvas.js';
 
 describe('imported graph viewport', () => {
@@ -119,4 +119,13 @@ describe('imported graph viewport', () => {
     fireEvent.click(screen.getByRole('button',{name:'Desfazer'}));
     expect(parseFloat(heading.parentElement!.style.left)).toBe(40000+60);
   });
+});
+
+it('creates handoff nodes with an explicit version and incomplete destination rather than the legacy empty config',()=>{
+ const change=vi.fn();render(<FlowCanvas graph={welcomeFlow()} editable catalog={AUTOMATION_NODE_CATALOG_V1.filter(node=>node.availability==='AVAILABLE')} onChange={change}/>);
+ fireEvent.click(screen.getByRole('button',{name:/Atendimento humano/}));
+ const added=change.mock.calls.at(-1)![0].nodes.at(-1);
+ expect(added).toMatchObject({type:'handoff',data:{handoffVersion:1}});
+ expect(getNodeDefinition('handoff',1)?.schema.safeParse(added.data).success).toBe(false);
+ expect(screen.queryByRole('button',{name:/Consulta SQL/})).toBeNull();
 });

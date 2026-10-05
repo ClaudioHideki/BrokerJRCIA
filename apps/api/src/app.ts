@@ -1,4 +1,5 @@
 import swagger from "@fastify/swagger";
+import { createHandoffReadiness } from './modules/attendance/handoff-readiness.js';
 import { randomUUID } from 'node:crypto';
 import { registerSupportRoutes, type SupportRouteOptions } from './http/routes/support.js';
 import { createSupportService, withSupportPlatformTransaction } from './modules/support/service.js';
@@ -300,6 +301,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       ...config.publicIngressRateLimit,
     });
     const repository = createPostgresAuthRepository(pools.authPool);
+    app.decorate("isUserAuthenticationCurrent", repository.isUserAuthenticationCurrent);
     // Revalidate all tenant JWTs before route RBAC, including tokens issued before a role change.
     app.decorate(
       "resolveTenantRole",
@@ -571,7 +573,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       jwtSecret:config.jwtSecret,
       authenticateApiKey:apiKeys.authenticateApiKey,
       resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),
-      service:createAutomationService({...automationOptions,runtimeReady:automationRuntimeReady}),
+      service:createAutomationService({...automationOptions,runtimeReady:automationRuntimeReady,...(integrationRuntime.chatwoot?{handoffReadiness:createHandoffReadiness({transact:automationOptions.transact,catalog:integrationRuntime.chatwoot.attendanceCatalog,validateTarget:integrationRuntime.chatwoot.validateHumanDestination})}:{})}),
       executions:createExecutionService(automationOptions),
       migration:createLegacyFlowMigrationService({...automationOptions,runtimeReady:automationRuntimeReady}),
     };

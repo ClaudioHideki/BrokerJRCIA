@@ -140,6 +140,7 @@ describe('troca atômica de organização com PostgreSQL real', () => {
 
   it('projeta identidade ativa com roles por tenant e sem privilégio OWNER global', async () => {
     await expect(repository.findBrowserSessionIdentity(userId)).resolves.toEqual({
+      authVersion: 0,
       user: { id: userId, email: 'browser-owner@example.test' },
       organizations: expect.arrayContaining([
         expect.objectContaining({ id: sourceOrganizationId, role: 'OWNER' }),
@@ -155,7 +156,7 @@ describe('troca atômica de organização com PostgreSQL real', () => {
     const input = switchInput(rawToken, viewerOrganizationId);
 
     await expect(repository.switchOrganization(input)).resolves.toEqual({
-      outcome: 'SWITCHED',
+      outcome: 'SWITCHED', authVersion: 0,
       userId,
       organizationId: viewerOrganizationId,
       role: 'VIEWER',

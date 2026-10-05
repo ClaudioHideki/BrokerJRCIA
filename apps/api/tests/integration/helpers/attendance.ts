@@ -9,6 +9,7 @@ import { connectionStringForRole } from './task7.js';
 export async function seedAttendanceTenant(database: IsolatedPostgresDatabase, remote = true) {
   const org = randomUUID(), channel = randomUUID(), conversation = randomUUID(), integration = randomUUID();
   const automation = randomUUID();
+  const graph=JSON.stringify({nodes:[{id:'start',type:'start',label:'Start',position:{x:0,y:0},data:{}},{id:'end',type:'end',label:'End',position:{x:200,y:0},data:{}}],edges:[{id:'next',source:'start',target:'end',port:'next'}]});
   const client = await database.pool.connect();
   try {
     await client.query('begin');
@@ -22,8 +23,8 @@ export async function seedAttendanceTenant(database: IsolatedPostgresDatabase, r
       values($1,$2,$3,$4,'test','vault://test')`, [channel, org, provider, `synthetic-${channel}`]);
     const contact = (await client.query(`insert into messaging_contacts(organization_id,external_id) values($1,'synthetic') returning id`, [org])).rows[0].id;
     await client.query(`insert into messaging_conversations(id,organization_id,channel_id,contact_id) values($1,$2,$3,$4)`, [conversation, org, channel, contact]);
-    await client.query(`insert into automation_definitions(organization_id,id,name,draft_graph) values($1,$2,'test','{}')`, [org, automation]);
-    await client.query(`insert into automation_versions(organization_id,automation_id,version,graph,checksum) values($1,$2,1,'{}',$3)`, [org, automation, 'a'.repeat(64)]);
+    await client.query(`insert into automation_definitions(organization_id,id,name,draft_graph) values($1,$2,'test',$3)`, [org, automation,graph]);
+    await client.query(`insert into automation_versions(organization_id,automation_id,version,graph,checksum) values($1,$2,1,$3,$4)`, [org, automation,graph, 'a'.repeat(64)]);
     if (remote) {
       await client.query(`insert into chatwoot_accounts(organization_id,base_url,account_id,status) values($1,$2,7,'READY')`, [org, `https://${org}.example.test`]);
       await client.query(`insert into chatwoot_connections(id,organization_id,channel_id,inbox_id,name,status) values($1,$2,$3,9,'test','READY')`, [integration, org, channel]);

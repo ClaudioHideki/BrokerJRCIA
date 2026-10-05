@@ -10,12 +10,15 @@ export const ACCESS_TOKEN_CLOCK_TOLERANCE_SECONDS = 30;
 
 export interface AccessTokenIdentity {
   userId: string;
+  /** Omitted only for pre-generation callers; generation zero cannot survive a reset. */
+  authVersion?: number;
   organizationId: string;
   role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER';
 }
 
 export interface AccessTokenPayload extends JWTPayload {
   sub: string;
+  auth_version: number;
   organization_id: string;
   role: AccessTokenIdentity['role'];
 }
@@ -34,10 +37,13 @@ export async function issueAccessToken(
   now = new Date(),
 ): Promise<string> {
   const issuedAt = Math.floor(now.getTime() / 1000);
+  const authVersion = identity.authVersion ?? 0;
+  if (!Number.isSafeInteger(authVersion) || authVersion < 0) throw new Error('Invalid authentication generation');
 
   return new SignJWT({
     organization_id: identity.organizationId,
     role: identity.role,
+    auth_version: authVersion,
   })
     .setProtectedHeader({ alg: ACCESS_TOKEN_ALGORITHM, typ: 'JWT' })
     .setIssuer(ACCESS_TOKEN_ISSUER)
@@ -63,8 +69,12 @@ export async function verifyAccessToken(
     requiredClaims: ['sub', 'jti', 'iat', 'exp'],
   });
 
+  // Tokens issued before migration belong exclusively to generation zero.
+  if (payload.auth_version === undefined) payload.auth_version = 0;
   if (
-    typeof payload.sub !== 'string'
+    !Number.isSafeInteger(payload.auth_version)
+    || (payload.auth_version as number) < 0
+    || typeof payload.sub !== 'string'
     || typeof payload.jti !== 'string'
     || payload.jti.length === 0
     || !Number.isSafeInteger(payload.iat)

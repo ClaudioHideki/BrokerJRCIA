@@ -4,6 +4,7 @@ import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { AttendanceScope } from '@jrc/contracts';
 import { lockAttendanceChannel } from '../attendance/repository.js';
 import { interruptChatwootAttendance } from '../attendance/control-service.js';
+import { isExpectedHandoffOpening } from '../attendance/handoff-expected-control.js';
 import { IntegrationError } from './integration-error.js';
 import { classifyChatwootAttendanceEvent, type ChatwootAttendanceEvent } from './chatwoot-attendance-events.js';
 import { parseChatwootReply } from './chatwoot-events.js';
@@ -54,7 +55,8 @@ async function queueReply(tx:TenantTransaction,s:ChatwootObservationScope,observ
 async function applyObservation(tx:TenantTransaction,s:ChatwootObservationScope,observation:Observation,control:Control) {
   const e=observation.event;
   const selectedExecutor=(e.kind==='EXTERNAL_BOT'||e.kind==='AUTOMATED_REPLY')&&await mayForwardChatwootAttendanceReply(tx,s,e);
-  const hasControl=!selectedExecutor&&(e.interruptsBot || (e.kind==='CONVERSATION_CONTROL'&&e.teamId!==null));
+  const expectedOpening=await isExpectedHandoffOpening(tx,s,e,control);
+  const hasControl=!selectedExecutor&&!expectedOpening&&(e.interruptsBot || (e.kind==='CONVERSATION_CONTROL'&&e.teamId!==null));
   // Timestamp order may suppress stale observations but never authorizes a transition back to BOT.
   const stale=e.kind==='CONVERSATION_CONTROL'&&e.remoteUpdatedAt!==null&&control.observed_remote_updated_at!==null&&e.remoteUpdatedAt<control.observed_remote_updated_at;
   if(hasControl&&!stale){

@@ -1,10 +1,18 @@
-export const RUNTIME_SCHEMA_BASELINE = '0041_automation_runtime_versions';
+export const RUNTIME_SCHEMA_BASELINE = '0043_user_password_reset';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
 // The app role cannot read drizzle.__drizzle_migrations. This is a structural
 // readiness probe, not a migration journal/hash comparison.
 const requiredObjectsSql = `SELECT
+  NOT EXISTS (SELECT 1 FROM (VALUES ('public.users'),('public.login_sessions'),('public.refresh_tokens'),('public.chatwoot_embed_authorizations'),('public.chatwoot_embed_sessions')) AS required(relation_name)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+      WHERE a.attrelid=pg_catalog.to_regclass(required.relation_name) AND a.attname='auth_version' AND a.attnotnull AND a.attnum>0 AND NOT a.attisdropped))
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.revoke_user_authentication(uuid,timestamptz)') AND prosecdef)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.create_login_selection(uuid,text,timestamptz,integer)') AND prosecdef)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.lock_user_authentication(uuid)') AND prosecdef)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.current_tenant_authentication_valid(uuid,integer)') AND prosecdef)
+  AND
   pg_catalog.to_regclass('public.messaging_media') IS NOT NULL
   AND pg_catalog.to_regclass('public.automation_definitions') IS NOT NULL
   AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute
@@ -72,8 +80,10 @@ const requiredObjectsSql = `SELECT
   AND pg_catalog.to_regclass('public.support_messages') IS NOT NULL
   AND pg_catalog.to_regclass('public.attendance_owners') IS NOT NULL
   AND pg_catalog.to_regclass('public.attendance_sessions') IS NOT NULL
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid=pg_catalog.to_regclass('public.attendance_handoff_operations') AND conname='native_handoff_snapshot_required' AND convalidated)
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.lifecycle_pending_count_before_native_handoff(uuid,uuid,uuid)') AND prosecdef)
   AND NOT EXISTS (
-    SELECT 1 FROM (VALUES ('public.chatwoot_attendance_controls'),('public.chatwoot_mirror_attempts'),('public.chatwoot_attendance_observations')) AS required(relation_name)
+    SELECT 1 FROM (VALUES ('public.chatwoot_attendance_controls'),('public.chatwoot_mirror_attempts'),('public.chatwoot_attendance_observations'),('public.attendance_handoff_operations')) AS required(relation_name)
     WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
       WHERE c.oid=pg_catalog.to_regclass(required.relation_name) AND c.relrowsecurity AND c.relforcerowsecurity
         AND EXISTS (SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='attendance_tenant'))

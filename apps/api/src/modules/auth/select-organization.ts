@@ -142,6 +142,7 @@ export function createSelectOrganizationService(dependencies: SelectOrganization
       userId: selected.userId,
       organizationId: selected.organizationId,
       role: selected.role,
+      authVersion: selected.authVersion,
     }, dependencies.jwtSecret, issuedAt);
     await dependencies.writeOrganizationSelectedAudit({
       organizationId: selected.organizationId,

@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {CompanyChannels} from './CompanyChannels.js';
 import {CompanyDeletion} from './CompanyDeletion.js';
+import { PasswordResetDialog } from './PasswordResetDialog.js';
 import {CommercialPlans} from './CommercialPlans.js';
 import type {CommercialAssignment} from '@jrc/contracts';
 import { Metric, number } from "../broker/components.js";
@@ -65,6 +66,7 @@ export function CompanyWorkspace({
   channelRequest,
   deletionRequest,
   onDeleted,
+  passwordResetRequest,
 }: {
   company: Company;
   members: Member[] | null;
@@ -83,8 +85,12 @@ export function CompanyWorkspace({
   channelRequest?:IntegrationRequest;
   deletionRequest?:IntegrationRequest;
   onDeleted?:()=>void;
+  passwordResetRequest?: IntegrationRequest;
 }) {
   const [tab, setTab] = useState(defaultTab);
+  const [passwordUser, setPasswordUser] = useState<Member | null>(null);
+  const [passwordNotice, setPasswordNotice] = useState('');
+  useEffect(() => { setPasswordUser(null); setPasswordNotice(''); }, [tab, company.id, admin]);
   const memberList = (
     <>
       {members ? (
@@ -110,7 +116,11 @@ export function CompanyWorkspace({
                         <i />
                         {member.status === "ACTIVE" ? "Ativo" : "Desativado"}
                       </span>
-                    </td>{admin&&<td><form onSubmit={event=>{event.preventDefault();if(window.confirm(member.status==='ACTIVE'?'Desativar este acesso? O histórico será preservado.':'Reativar este acesso?'))void saveMember(new FormData(event.currentTarget),event.currentTarget);}}><input type="hidden" name="email" value={member.email}/><input type="hidden" name="role" value={member.role}/><input type="hidden" name="status" value={member.status==='ACTIVE'?'DISABLED':'ACTIVE'}/><button className="button button--secondary" disabled={disabled||(member.role==='OWNER'&&member.status==='ACTIVE'&&members.filter(m=>m.role==='OWNER'&&m.status==='ACTIVE').length===1)}>{member.status==='ACTIVE'?'Desativar acesso':'Reativar acesso'}</button></form></td>}</tr>))}
+                    </td>{admin&&<td><form onSubmit={event=>{event.preventDefault();if(window.confirm(member.status==='ACTIVE'?'Desativar este acesso? O histórico será preservado.':'Reativar este acesso?'))void saveMember(new FormData(event.currentTarget),event.currentTarget);}}><input type="hidden" name="email" value={member.email}/><input type="hidden" name="role" value={member.role}/><input type="hidden" name="status" value={member.status==='ACTIVE'?'DISABLED':'ACTIVE'}/><button className="button button--secondary" disabled={disabled||(member.role==='OWNER'&&member.status==='ACTIVE'&&members.filter(m=>m.role==='OWNER'&&m.status==='ACTIVE').length===1)}>{member.status==='ACTIVE'?'Desativar acesso':'Reativar acesso'}</button></form>
+                      {passwordResetRequest && <button className="button button--secondary" type="button"
+                        aria-label={`Redefinir senha de ${member.email}`} disabled={disabled}
+                        onClick={() => { setPasswordNotice(''); setPasswordUser(member); }}>Redefinir senha</button>}
+                    </td>}</tr>))}
               </tbody>
             </table>
           </div>
@@ -131,6 +141,11 @@ export function CompanyWorkspace({
       className="admin-workspace"
       aria-label={`Gestão de ${company.name}`}
     >
+      {passwordNotice && <p className="notice" role="status">{passwordNotice}</p>}
+      {admin && passwordUser && passwordResetRequest && <PasswordResetDialog
+        userId={passwordUser.userId} request={passwordResetRequest} disabled={disabled}
+        onClose={() => setPasswordUser(null)}
+        onCompleted={() => { setPasswordUser(null); setPasswordNotice('Senha redefinida. As sessões e os acessos anteriores foram encerrados em todas as empresas.'); }} />}
       <div className="panel admin-company-summary">
         <CompanyMark company={company} />
         <div>

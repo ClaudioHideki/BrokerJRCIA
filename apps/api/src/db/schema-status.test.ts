@@ -9,10 +9,10 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('carrega o manifesto real até a migration 0041', async () => {
+  it('carrega o manifesto real até a migration 0043', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(41);
-    expect(migrations.at(-1)?.name).toBe('0041_automation_runtime_versions');
+    expect(migrations).toHaveLength(43);
+    expect(migrations.at(-1)?.name).toBe('0043_user_password_reset');
   });
 
   it('informa a versão aplicada e migrations pendentes sem expor hashes', () => {

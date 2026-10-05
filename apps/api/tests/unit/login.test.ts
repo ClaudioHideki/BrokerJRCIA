@@ -17,7 +17,7 @@ const REFRESH_HASH_SECRET = 'refresh-hash-secret-with-at-least-32-bytes';
 function activeIdentity(): LoginIdentity {
   return {
     id: USER_ID,
-    passwordHash: 'argon2id-known-hash',
+    passwordHash: 'argon2id-known-hash', authVersion: 0,
     status: 'ACTIVE',
     organizations: [{
       id: ORGANIZATION_ID,
@@ -40,6 +40,7 @@ function authHarness(identity: LoginIdentity | null = activeIdentity()) {
     async createSelectionSession(input) {
       events.push('persist-selection');
       sessions.push(input);
+      return true;
     },
     async consumeSelection() {
       throw new Error('not used by login');
@@ -93,6 +94,7 @@ describe('login resistente a enumeração', () => {
       tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       expiresAt: new Date('2030-01-01T12:05:00.000Z'),
       userId: USER_ID,
+      expectedAuthVersion: 0,
     }]);
     expect(harness.sessions[0]?.tokenHash).not.toContain(result.selectionToken);
     expect(harness.events).toEqual([
@@ -183,10 +185,10 @@ describe('seleção atômica de organização', () => {
     const persisted: unknown[] = [];
     const repository: AuthRepository = {
       async findLoginIdentity() { return null; },
-      async createSelectionSession() { return undefined; },
+      async createSelectionSession() { return true; },
       async consumeSelection(input) {
         persisted.push(input);
-        return { outcome: 'SELECTED', userId: USER_ID, organizationId: ORGANIZATION_ID, role: 'OWNER' };
+        return { outcome: 'SELECTED', authVersion: 0, userId: USER_ID, organizationId: ORGANIZATION_ID, role: 'OWNER' };
       },
     };
     const selectOrganization = createSelectOrganizationService({
@@ -225,7 +227,7 @@ describe('seleção atômica de organização', () => {
     const audits: unknown[] = [];
     const repository: AuthRepository = {
       async findLoginIdentity() { return null; },
-      async createSelectionSession() { return undefined; },
+      async createSelectionSession() { return true; },
       async consumeSelection() { return { outcome: 'INVALID' }; },
     };
     const selectOrganization = createSelectOrganizationService({

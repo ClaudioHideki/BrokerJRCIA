@@ -194,6 +194,13 @@ export class ChatwootClient {
     return integer.parse(record(await this.request('POST', this.account(accountId) + `/conversations/${integer.parse(conversationId)}/messages`,
       { content: text, message_type: 'outgoing', private: false, content_attributes: { jrc_flow_delivery_id: deliveryId } })).id);
   }
+  async assignAttendanceConversation(accountId:number,conversationId:number,target:{teamId:number|null;agentId:number|null}) {
+    const chosen=z.object({teamId:integer.nullable(),agentId:integer.nullable()}).strict()
+      .refine(value=>(value.teamId===null)!==(value.agentId===null)).parse(target);
+    // Stock Chatwoot checks the presence of assignee_id before team_id. Do not send null.
+    await this.request('POST',this.account(accountId)+`/conversations/${integer.parse(conversationId)}/assignments`,
+      chosen.teamId!==null?{team_id:chosen.teamId}:{assignee_id:chosen.agentId});
+  }
   async handoffFlowConversation(accountId: number, conversationId: number) {
     await this.request('POST', this.account(accountId) + `/conversations/${integer.parse(conversationId)}/toggle_status`, { status: 'open' });
   }
@@ -217,6 +224,7 @@ export class ChatwootClient {
       await this.request("POST", this.account(accountId) + "/inboxes", {
         name,
         greeting_enabled: false,
+        enable_auto_assignment: false,
         channel: { type: "api", webhook_url: webhookUrl },
       }),
     );

@@ -12,7 +12,7 @@ describe('canonical automation node definitions', () => {
     for(const type of documented)expect(getNodeDefinition(type!,1)).toMatchObject({runtimeSupported:true,capabilitiesRequired:[],unavailableReason:null});
   });
   it('recognizes versioned legacy nodes independently of creation availability', () => {
-    for (const type of ['sql', 'code', 'ai-agent', 'handoff', 'http', 'delay', 'media', 'schedule', 'tag', 'attribute', 'note', 'resolve']) {
+    for (const type of ['sql', 'code', 'ai-agent', 'http', 'delay', 'media', 'schedule', 'tag', 'attribute', 'note', 'resolve']) {
       const definition = getNodeDefinition(type, 1);
       expect(definition, type).not.toBeNull();
       expect(definition?.availability).toBe('UNAVAILABLE');

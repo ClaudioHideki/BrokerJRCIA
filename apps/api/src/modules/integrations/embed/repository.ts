@@ -20,11 +20,11 @@ export interface EmbedAppRow { id: string; organization_id: string; account_id: 
 export interface EmbedGrant extends EmbedConnection { identityRevision: number; approvedFingerprint: string | null }
 export interface EmbedRequestRow {
   id: string; app_id: string; organization_id: string; challenge: string; state: 'PENDING' | 'APPROVED' | 'DENIED' | 'CONSUMED';
-  approved_by: string | null; credential_version: number | null; grants: EmbedGrant[] | null; expires_at: Date;
+  auth_version: number; approved_by: string | null; credential_version: number | null; grants: EmbedGrant[] | null; expires_at: Date;
   expired: boolean; throttled: boolean; failed_attempts: number;
 }
 export interface EmbedSessionRow {
-  id: string; app_id: string; organization_id: string; user_id: string; credential_version: number;
+  auth_version: number; id: string; app_id: string; organization_id: string; user_id: string; credential_version: number;
   grants: EmbedGrant[]; expires_at: Date; revoked_at: Date | null; expired: boolean;
 }
 export class EmbedRepository {
@@ -35,6 +35,11 @@ export class EmbedRepository {
     const functions = { app: 'resolve_chatwoot_embed_app', request: 'resolve_chatwoot_embed_request', session: 'resolve_chatwoot_embed_session' } as const;
     const row = (await this.options.pool.query<{ organization_id: string }>(`SELECT organization_id FROM ${functions[kind]}($1)`, [value])).rows[0];
     if (!row) throw embedDenied(); return row.organization_id;
+  }
+  async requireCurrentAuthentication(tx: TenantTransaction, userId: string, authVersion: number) {
+    const result = await tx.query<{ valid: boolean }>(
+      'SELECT public.current_tenant_authentication_valid($1,$2) AS valid', [userId, authVersion]);
+    if (result.rows[0]?.valid !== true) throw embedDenied();
   }
   async app(tx: TenantTransaction, id: string) {
     const row = (await tx.query<EmbedAppRow>('SELECT * FROM chatwoot_embed_apps WHERE id=$1', [id])).rows[0];

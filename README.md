@@ -12,6 +12,15 @@ a [matriz de QA desta base](docs/qa/2026-09-23-broker-journeys.md) e o
 Testes sintéticos ou isolados não substituem pareamento real nem homologação HTTPS
 com duas empresas. Imagens e deploy permanecem etapas separadas.
 
+## Candidato local: transferência nativa de URA
+
+O incremento de 01/10/2026 acrescenta destino humano por catálogo, contrato versionado,
+registro persistente e confirmação remota de time ou agente, com pausa do bot e
+conciliação sem repetição cega. A migration é `0042_native_handoff_operations`.
+O runtime permanece desabilitado por padrão; publicação e homologação real são
+etapas separadas. Consulte o [contrato, limites e procedimento](docs/automations/native-handoff.md)
+e as [evidências desta alteração](docs/validation/2026-10-01-native-ura-handoff.md).
+
 ## Repositório e imagens
 
 Repositório de entrega: [ClaudioHideki/BrokerJRCIA](https://github.com/ClaudioHideki/BrokerJRCIA).

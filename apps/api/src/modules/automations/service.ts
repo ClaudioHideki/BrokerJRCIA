@@ -10,6 +10,7 @@ import { claimIdempotency, completeIdempotencyRecord, hashIdempotencyRequest } f
 import { automationAvailability, readAutomationAccess } from './availability.js';
 import { lockOwnershipMutations,readOwnerRevision,transitionChannelOwner } from '../attendance/transition.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
+import type { HandoffReadiness, PreparedHandoffReadiness } from '../attendance/handoff-readiness.js';
 
 export class AutomationError extends Error {
   readonly details: NodeDiagnostic[];
@@ -18,7 +19,7 @@ export class AutomationError extends Error {
     this.details = details.flatMap(item => typeof item === 'string' ? legacyStringsToNodeDiagnostics([item]) : [item]);
   }
 }
-export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean;runtimeReady?(org:string):Promise<boolean>}
+export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean;runtimeReady?(org:string):Promise<boolean>;handoffReadiness?:HandoffReadiness}
 export async function requireAutomationDraftAccess(tx:TenantTransaction,org:string){
  const access=await readAutomationAccess(tx,org);
  if(access?.status!=='ACTIVE')throw new AutomationError('ORGANIZATION_NOT_ACTIVE',403);
@@ -66,6 +67,32 @@ export function createAutomationService(options:AutomationServiceOptions){
       await visit(child.graph,caller,[...dependencyPath,key]);active.delete(id);
     }};await visit(graph);
   };
+  // Remote checks run before the committing transaction. Published dependencies
+  // are immutable; draft revision and local destination snapshots are checked again.
+  const prepareHandoffs=async(org:string,graph:AutomationGraphV1,channelId?:string):Promise<PreparedHandoffReadiness>=>{
+    const checks:PreparedHandoffReadiness[]=[],seen=new Set<string>();
+    const visit=async(current:AutomationGraphV1)=>{
+      if(!AutomationGraphV1Schema.safeParse(current).success)throw new AutomationError('AUTOMATION_PUBLISHED_GRAPH_INVALID',409);
+      if(current.nodes.some(node=>node.type==='handoff')){
+        const missing=current.nodes.find(node=>node.type==='handoff'&&node.data.handoffVersion!==1);
+        if(missing)throw new AutomationError('AUTOMATION_HANDOFF_DESTINATION_REQUIRED',422,[{nodeId:missing.id,field:'data.destination',code:'HANDOFF_DESTINATION_REQUIRED',message:`${missing.label}: selecione uma caixa e um time ou atendente antes de publicar.`}]);
+        if(!options.handoffReadiness)throw new AutomationError('AUTOMATION_HANDOFF_UNAVAILABLE',409);
+        try{checks.push(await options.handoffReadiness.prepare(org,current,channelId));}
+        catch(error){
+          const code=error instanceof Error&&/^[A-Z][A-Z0-9_]+$/.test(error.message)?error.message:'AUTOMATION_HANDOFF_READINESS_FAILED';
+          throw new AutomationError(code,409,[{nodeId:null,field:'data.destination',code,message:`Transferência indisponível (${code}). Atualize o catálogo e confira caixa, credencial, time ou atendente e políticas da central.`}]);
+        }
+      }
+      for(const node of current.nodes.filter(item=>item.type==='subflow')){
+        const id=String(node.data.automationId),v=Number(node.data.version),key=`${id}:${v}`;
+        if(seen.has(key))continue;seen.add(key);
+        const child=await options.transact(org,tx=>repository.getVersion(tx,org,id,v));
+        if(!child)throw new AutomationError('AUTOMATION_SUBFLOW_VERSION_NOT_FOUND',422);
+        await visit(child.graph);
+      }
+    };await visit(graph);
+    return {async assertCurrent(tx){for(const check of checks)await check.assertCurrent(tx);}};
+  };
   return {
     status:async(org:string,role='OWNER')=>{const access=await options.transact(org,tx=>readAutomationAccess(tx,org));let ready=true;if(enabled&&options.runtimeReady)try{ready=await options.runtimeReady(org);}catch{ready=false;}return automationAvailability(access,enabled,role,ready);},
     list:(org:string,input:{pageSize?:number;cursor?:string}={})=>{const pageSize=input.pageSize??200,cursor=input.cursor?readAutomationCursor(input.cursor):undefined;
@@ -96,8 +123,12 @@ export function createAutomationService(options:AutomationServiceOptions){
       for(const text of replies){if(result.status!=='WAITING'||result.wait?.kind!=='EVENT')throw new AutomationError('AUTOMATION_SIMULATION_NOT_WAITING',409);
         result=await executeAutomation(root,{text,eventType:'MESSAGE',now:new Date()},resolve,result.state);effects.push(...result.effects);trace.push(...result.trace);}
       return {...result,effects,trace};}),
-    publish:async(org:string,id:string,revision:number)=>{await available(org);return options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
-      const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);await validateDependencies(tx,org,id,row.draftGraph,2);
+    publish:async(org:string,id:string,revision:number)=>{await available(org);
+      const snapshot=await options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
+        const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);await validateDependencies(tx,org,id,row.draftGraph,2);return row;});
+      const readiness=await prepareHandoffs(org,snapshot.draftGraph);
+      return options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
+      await readiness.assertCurrent(tx);
       const next=(row.activeVersion??0)+1,checksum=createHash('sha256').update(canonical(row.draftGraph)).digest('hex');const published=await repository.insertVersion(tx,{org,id,version:next,graph:row.draftGraph,checksum,runtimeStateVersion:2});await repository.activateVersion(tx,org,id,next);return version(published);});},
     setArchived:(org:string,id:string,archived:boolean,actorId?:string)=>{return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);
       let row=await getDefinition(tx,org,id);
@@ -131,15 +162,27 @@ export function createAutomationService(options:AutomationServiceOptions){
     });},
     versions:(org:string,id:string)=>options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listVersions(tx,org,id)).map(version)};}),
     bindings:(org:string,id:string)=>options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listBindings(tx,org,id)).map(row=>({...row,createdAt:iso(row.createdAt),updatedAt:iso(row.updatedAt),schemaVersion:1}))};}),
-    bind:async(org:string,id:string,input:{channelId:string;version?:number;humanDestinationId?:string|null;expectedOwnerRevision?:number})=>{await available(org);return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);const selected=input.version??row.activeVersion;if(!selected)throw new AutomationError('AUTOMATION_NOT_PUBLISHED',409);if(!await repository.getVersion(tx,org,id,selected))throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);
+    bind:async(org:string,id:string,input:{channelId:string;version?:number;humanDestinationId?:string|null;expectedOwnerRevision?:number})=>{await available(org);
+      const prepared=await options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);const selected=input.version??row.activeVersion;if(!selected)throw new AutomationError('AUTOMATION_NOT_PUBLISHED',409);const version=await repository.getVersion(tx,org,id,selected);if(!version)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return version;});
+      const readiness=await prepareHandoffs(org,prepared.graph,input.channelId);
+      return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);const selected=input.version??row.activeVersion;if(selected!==prepared.version)throw new AutomationError('AUTOMATION_CHANGED',409);if(!await repository.getVersion(tx,org,id,selected))throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);
+      await readiness.assertCurrent(tx);
       const channel=await messaging.findChannel(tx,org,input.channelId);if(!channel)throw new AutomationError('CHANNEL_NOT_FOUND',404);
       const result=await transitionChannelOwner(tx,org,{...input,botPublicId:id,botOriginReference:AUTOMATION_ORIGIN,version:selected});const binding=result.binding!;
       return {...binding,ownerRevision:result.ownerRevision,createdAt:iso(binding.createdAt),updatedAt:iso(binding.updatedAt),schemaVersion:1};});},
-    setBindingStatus:async(org:string,bindingId:string,input:{status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number;expectedOwnerRevision?:number},automationId:string)=>{if(input.status==='ACTIVE')await available(org);return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);if(input.status==='ACTIVE')await requireAutomationDraftAccess(tx,org);
+    setBindingStatus:async(org:string,bindingId:string,input:{status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number;expectedOwnerRevision?:number},automationId:string)=>{
+      let readiness:PreparedHandoffReadiness|undefined;
+      if(input.status==='ACTIVE'){
+        await available(org);
+        const snapshot=await options.transact(org,async tx=>{const binding=(await repository.listBindings(tx,org,automationId)).find(item=>item.id===bindingId);if(!binding)throw new AutomationError('AUTOMATION_BINDING_NOT_FOUND',404);if(binding.revision!==input.revision)throw new AutomationError('AUTOMATION_BINDING_CHANGED',409);const version=await repository.getVersion(tx,org,automationId,binding.version);if(!version)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return {binding,version};});
+        readiness=await prepareHandoffs(org,snapshot.version.graph,snapshot.binding.channelId);
+      }
+      return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);if(input.status==='ACTIVE')await requireAutomationDraftAccess(tx,org);
       const automation=await getDefinition(tx,org,automationId,true);if(automation.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);
       const current=(await repository.listBindings(tx,org,automationId)).find(item=>item.id===bindingId);
       if(!current)throw new AutomationError('AUTOMATION_BINDING_NOT_FOUND',404);
       if(current.status==='DISABLED'&&input.status!=='DISABLED')throw new AutomationError('AUTOMATION_BINDING_DISABLED',409);
+      await readiness?.assertCurrent(tx);
       const result=await transitionChannelOwner(tx,org,{channelId:current.channelId,botPublicId:input.status==='DISABLED'?null:automationId,botOriginReference:input.status==='DISABLED'?null:AUTOMATION_ORIGIN,
         version:current.version,humanDestinationId:current.humanDestinationId,bindingId,bindingRevision:input.revision,bindingStatus:input.status,...(input.expectedOwnerRevision===undefined?{}:{expectedOwnerRevision:input.expectedOwnerRevision})});
       const row=result.binding??(await repository.listBindings(tx,org,automationId)).find(item=>item.id===bindingId)!;

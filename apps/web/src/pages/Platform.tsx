@@ -109,6 +109,7 @@ export function PlatformPage() {
     method = "GET",
     body?: unknown,
     active = session,
+    actionReason = reason,
   ): Promise<T> {
     const current = generation.current;
     const response = await fetch("/v1/platform" + path, {
@@ -117,7 +118,7 @@ export function PlatformPage() {
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
-        "x-platform-reason": reason,
+        "x-platform-reason": actionReason,
         ...(active ? { "x-csrf-token": active.csrfToken } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -613,6 +614,8 @@ export function PlatformPage() {
                     defaultTab={defaultTab}
                     saveCompany={saveCompany}
                     saveMember={saveMember}
+                    passwordResetRequest={(path, method, body) => request(path, method, body, session,
+                      'Redefinição de senha de usuário pela administração global')}
                     refresh={() => void inspect(selected)}
                     channelRequest={(path,method,body)=>request('/organizations/'+selected.id+'/channels'+path,method,body)}
                     deletionRequest={(path,method,body)=>request('/organizations/'+selected.id+path,method,body)}

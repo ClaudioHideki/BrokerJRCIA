@@ -1,3 +1,4 @@
+import { PasswordResetInputSchema, PasswordResetPreviewSchema } from '../../modules/platform/password-reset.js';
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { registerPlatformSupportRoutes } from './support.js';
 import { registerGroupRemovalRoutes } from './group-removal.js';
@@ -305,6 +306,10 @@ export async function registerPlatformRoutes(
           }
         },
       });
+      scoped.get('/users/:id/password-reset-preview',{schema:{params:idParams,querystring:z.strictObject({}),response:{200:PasswordResetPreviewSchema}}},
+        req=>options.service.previewUserPasswordReset(cookie(req),groupReason(req),idParams.parse(req.params).id));
+      scoped.post('/users/:id/password-reset',{schema:{params:idParams,querystring:z.strictObject({}),body:PasswordResetInputSchema,response:{200:okDto}}},
+        async req=>options.service.resetUserPassword(await mutation(req),groupReason(req),idParams.parse(req.params).id,req.body));
       scoped.get('/groups', { schema: { querystring: z.strictObject({cursor:z.string().min(1).max(1024).optional()}), response: { 200: z.strictObject({ data: z.array(EconomicGroupSchema), nextCursor:z.string().optional() }) } } },
         req => options.service.listGroups(cookie(req), groupReason(req), (req.query as {cursor?:string}).cursor));
       scoped.get('/commercial-plans',{schema:{querystring:z.strictObject({}),response:{200:CommercialPlanCatalogSchema}}},

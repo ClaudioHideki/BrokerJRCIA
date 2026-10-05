@@ -77,18 +77,42 @@ describe('isolamento PostgreSQL da fachada canônica de canais', () => {
 
   async function seedPublishedAutomation(tenant: typeof tenantA, instanceId: string) {
     const channelId = randomUUID(), automationId = randomUUID();
+    const graph = JSON.stringify({
+      nodes: [
+        { id: 'start', type: 'start', label: 'Início', position: { x: 0, y: 0 }, data: {} },
+        { id: 'end', type: 'end', label: 'Fim', position: { x: 200, y: 0 }, data: {} },
+      ],
+      edges: [{ id: 'next', source: 'start', target: 'end', port: 'next' }],
+    });
     await withOrganizationTransaction(appPool, tenant.organizationId, async tx => {
       await tx.query(`INSERT INTO messaging_channels(id,organization_id,provider_account_id,provider,instance_id,credential_reference)
         VALUES($1,$2,$3,'BAILEYS',$4,'qr-engine')`, [channelId, tenant.organizationId, tenant.accountId, instanceId]);
       await tx.query(`INSERT INTO automation_definitions(organization_id,id,name,draft_graph)
-        VALUES($1,$2,'Triagem','{"nodes":[],"edges":[]}')`, [tenant.organizationId, automationId]);
+        VALUES($1,$2,'Triagem',$3)`, [tenant.organizationId, automationId, graph]);
       await tx.query(`INSERT INTO automation_versions(organization_id,automation_id,version,graph,checksum)
-        VALUES($1,$2,1,'{"nodes":[],"edges":[]}',$3)`, [tenant.organizationId, automationId, 'a'.repeat(64)]);
+        VALUES($1,$2,1,$3,$4)`, [tenant.organizationId, automationId, graph, 'a'.repeat(64)]);
       await tx.query('UPDATE automation_definitions SET active_version=1,lifecycle_status=\'PUBLISHED\' WHERE organization_id=$1 AND id=$2',
         [tenant.organizationId, automationId]);
     });
     return { channelId, automationId };
   }
+
+  it('rejects an invalid stored published graph without changing the channel owner', async () => {
+    const created = await instances.createInstance(context(tenantA), {
+      name: 'Invalid graph', provider: 'BAILEYS', providerAccountId: tenantA.accountId,
+      idempotencyKey: 'invalid-published-graph',
+    });
+    const { automationId } = await seedPublishedAutomation(tenantA, created.instance.id);
+    await database.pool.query(
+      'UPDATE automation_versions SET graph=$3 WHERE organization_id=$1 AND automation_id=$2',
+      [tenantA.organizationId, automationId, JSON.stringify({ nodes: [], edges: [] })],
+    );
+    await expect(facade.bindAutomation(tenantA.organizationId, created.instance.id, {
+      automationId, expectedOwnerRevision: 0,
+    })).rejects.toMatchObject({ code: 'AUTOMATION_PUBLISHED_GRAPH_INVALID' });
+    await expect(facade.getAutomation(tenantA.organizationId, created.instance.id))
+      .resolves.toEqual({ binding: null, ownerRevision: 0 });
+  });
 
   it('separa listagem, consulta e vínculo de automação entre duas empresas', async () => {
     const a = await instances.createInstance(context(tenantA), { name: 'Canal A', provider: 'BAILEYS',

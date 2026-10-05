@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CompatibleAutomationHandoffConfigSchema } from './automation-handoff-v1.js';
 import { menuOptions, type FlowNode } from './flows.js';
 
 export const NodeDiagnosticSchema = z.object({
@@ -53,7 +54,7 @@ export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = 
     config({ target: safeKey, credentialId }), io, type === 'ai-agent' ? 'agente genérico fora do escopo de criação Broker' : 'R7 e U3b/U5 (IA delimitada e simulação)')),
   define('delay', 'Aguardar', 'LOGIC', config({ seconds: z.coerce.number().int().min(1).max(604800) }), next, 'R4/U5 (silêncio e simulação de espera)'),
   define('subflow', 'Subflow versionado', 'LOGIC', config({ automationId: credentialId, version: z.coerce.number().int().positive(), timeoutMs: z.preprocess(input => input ?? 10000, z.coerce.number().int().min(100).max(30000)).optional() }), next, 'R6/U3b/U5 (seletor e simulação de dependências)'),
-  define('handoff', 'Atendimento humano', 'HUMAN', config(), terminal, 'R3/R5 e U3a (destino autorizado e transferência confirmada)'),
+  define('handoff', 'Atendimento humano', 'HUMAN', CompatibleAutomationHandoffConfigSchema, terminal),
   define('end', 'Encerrar', 'LOGIC', config(), terminal),
   define('media', 'Enviar mídia', 'CONVERSATION', config({ url: z.url(), mediaType: z.enum(['image', 'audio', 'video', 'document']) }), io, 'R6/U3b (mídia por capacidade)', false),
   define('schedule', 'Horário', 'LOGIC', config({ timezone: z.string().min(1), schedule: z.array(z.unknown()).min(1) }), () => ['open', 'closed'], 'R6/U3b (horários e fuso)', false),

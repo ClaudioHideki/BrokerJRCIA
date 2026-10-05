@@ -55,6 +55,7 @@ export function createRefreshSessionService(dependencies: RefreshSessionDependen
       userId: rotation.userId,
       organizationId: rotation.organizationId,
       role: rotation.role,
+      authVersion: rotation.authVersion,
     }, dependencies.jwtSecret, issuedAt);
     await dependencies.writeSecurityAudit({
       type: 'AUTH_REFRESH_ROTATED',

@@ -130,6 +130,7 @@ export const users = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
+    authVersion: integer("auth_version").notNull().default(0),
     status: userStatus("status").notNull().default("ACTIVE"),
     ...timestamps,
   },
@@ -171,6 +172,7 @@ export const loginSessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     tokenHash: text("token_hash").notNull(),
+    authVersion: integer("auth_version").notNull().default(0),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -188,6 +190,7 @@ export const refreshTokens = pgTable(
     userId: uuid("user_id").notNull(),
     familyId: uuid("family_id").notNull(),
     tokenHash: text("token_hash").notNull(),
+    authVersion: integer("auth_version").notNull().default(0),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     replacedById: uuid("replaced_by_id"),

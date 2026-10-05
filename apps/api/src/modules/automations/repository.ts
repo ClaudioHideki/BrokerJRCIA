@@ -3,6 +3,7 @@ import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { RuntimeResult, RuntimeState } from './types.js';
 import { promoteAttendanceInput } from '../attendance/event-router.js';
 import { runtimeAuthorityAllows } from '../attendance/runtime-authority.js';
+import { AttendanceError } from '../attendance/types.js';
 
 export interface DefinitionRow {id:string;organizationId:string;name:string;lifecycleStatus:'DRAFT'|'PUBLISHED'|'ARCHIVED';draftGraph:AutomationGraphV1;draftRevision:number;activeVersion:number|null;updatedAt:Date}
 export interface DefinitionPageCursor {updatedAt:string;id:string}
@@ -146,7 +147,10 @@ export function createPostgresAutomationRepository():AutomationRepository{return
   async listNodeExecutions(tx,org,executionId){return (await tx.query<NodeExecutionRow>(`select id,node_id AS "nodeId",ordinal,status,input,output,error_code AS "errorCode",started_at AS "startedAt",completed_at AS "completedAt" from automation_node_executions where organization_id=$1 and execution_id=$2 order by ordinal`,[org,executionId])).rows;},
   async listExecutionOutbox(tx,org,executionId){return (await tx.query<OutboxInspectionRow>(`select id,node_id as "nodeId",ordinal,kind,status,attempts,remote_reference as "remoteReference",last_error as "lastError",created_at as "createdAt",updated_at as "updatedAt" from automation_outbox where organization_id=$1 and execution_id=$2 order by ordinal`,[org,executionId])).rows;},
   async getExecutionContext(tx,org,executionId){return (await tx.query<ExecutionContextRow>(`select e.conversation_id as "conversationId",c.contact_id as "contactId" from automation_executions e left join messaging_conversations c on c.organization_id=e.organization_id and c.id=e.conversation_id where e.organization_id=$1 and e.id=$2`,[org,executionId])).rows[0]??{conversationId:null,contactId:null};},
-  async reconcileUnknownOutbox(tx,input){const row=(await tx.query<{status:string}>(`select status from automation_outbox where organization_id=$1 and execution_id=$2 and id=$3 for update`,[input.org,input.executionId,input.outboxId])).rows[0];if(!row||row.status!=='UNKNOWN')return false;
+  async reconcileUnknownOutbox(tx,input){const row=(await tx.query<{status:string;kind:string}>(`select status,kind from automation_outbox where organization_id=$1 and execution_id=$2 and id=$3 for update`,[input.org,input.executionId,input.outboxId])).rows[0];if(!row||row.status!=='UNKNOWN')return false;
+    // Native handoff requires canonical remote evidence. An operator label or
+    // provider reference is not authority to mark success or replay its POSTs.
+    if(row.kind==='HANDOFF')throw new AttendanceError('ATTENDANCE_HANDOFF_REMOTE_RECONCILIATION_REQUIRED',409);
     await tx.query(`insert into automation_reconciliations(organization_id,execution_id,outbox_id,actor_id,outcome,evidence_code,provider_reference) values($1,$2,$3,$4,$5,$6,$7)`,[input.org,input.executionId,input.outboxId,input.actorId,input.outcome,input.evidenceCode,input.providerReference??null]);
     if(input.outcome==='CONFIRMED_SENT')await tx.query(`update automation_outbox set status='SENT',remote_reference=coalesce($4,remote_reference),lease_token=null,lease_expires_at=null,updated_at=now() where organization_id=$1 and execution_id=$2 and id=$3`,[input.org,input.executionId,input.outboxId,input.providerReference??null]);
     if(input.outcome==='CONFIRMED_NOT_SENT')await tx.query(`update automation_outbox set status='PENDING',available_at=now(),lease_token=null,lease_expires_at=null,last_error='MANUAL_RETRY_AFTER_RECONCILIATION',updated_at=now() where organization_id=$1 and execution_id=$2 and id=$3`,[input.org,input.executionId,input.outboxId]);
@@ -173,7 +177,7 @@ export function createPostgresAutomationRepository():AutomationRepository{return
     return released;
   },
   async claimOutbox(tx,org,leaseToken,leaseMs,kinds){
-    const candidates=(await tx.query<{id:string;executionId:string;channelId:string}>(`select o.id,o.execution_id AS "executionId",e.channel_id AS "channelId"
+    const candidates=(await tx.query<{id:string;executionId:string;channelId:string;kind:OutboxKind}>(`select o.id,o.execution_id AS "executionId",e.channel_id AS "channelId",o.kind
       from automation_outbox o join automation_executions e on e.organization_id=o.organization_id and e.id=o.execution_id
       where o.organization_id=$1 and ${runtimeTenantActive} and o.status='PENDING' and o.available_at<=now() and o.kind=any($2::text[])
       and e.status NOT IN ('CANCELED','FAILED','UNKNOWN') and ${outboxHeadEligible}
@@ -182,7 +186,7 @@ export function createPostgresAutomationRepository():AutomationRepository{return
     const locked=(await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions where organization_id=$1 and id=any($2::uuid[])
       and status NOT IN ('CANCELED','FAILED','UNKNOWN') order by id for no key update skip locked`,[org,candidates.map(row=>row.executionId)])).rows;
     for(const candidate of candidates){
-      const execution=locked.find(row=>row.id===candidate.executionId);if(!execution||!await runtimeAuthorityAllows(tx,execution))continue;
+      const execution=locked.find(row=>row.id===candidate.executionId);if(!execution||!await runtimeAuthorityAllows(tx,execution,candidate.kind!=='HANDOFF'))continue;
       // Recheck after the execution lock, in a fresh READ COMMITTED statement.
       // The candidate list can be stale. The reservation becomes UNKNOWN before
       // commit, so subsequent workers still see the barrier during external IO.

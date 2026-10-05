@@ -58,13 +58,13 @@ function createConsoleApp(options: {
   };
   const repository: AuthRepository & AuthSessionRepository & BrowserSessionRepository = {
     async findLoginIdentity() { return null; },
-    async createSelectionSession() { return undefined; },
+    async createSelectionSession() { return true; },
     async consumeSelection(input) {
       calls.selections.push(input);
       const outcome = options.selectionOutcomes?.[calls.selections.length - 1] ?? 'SELECTED';
       if (outcome !== 'SELECTED') return { outcome };
       return {
-        outcome: 'SELECTED',
+        outcome: 'SELECTED', authVersion: 0,
         userId: USER_ID,
         organizationId: SOURCE_ORGANIZATION_ID,
         role: 'OWNER',
@@ -75,7 +75,7 @@ function createConsoleApp(options: {
       const outcome = options.rotationOutcomes?.[calls.rotations.length - 1] ?? 'ROTATED';
       if (outcome !== 'ROTATED') return { outcome };
       return {
-        outcome: 'ROTATED',
+        outcome: 'ROTATED', authVersion: 0,
         userId: USER_ID,
         organizationId: SOURCE_ORGANIZATION_ID,
         role: 'OWNER',
@@ -87,6 +87,7 @@ function createConsoleApp(options: {
     },
     async findBrowserSessionIdentity() {
       return {
+        authVersion: 0,
         user: { id: USER_ID, email: 'owner@example.test' },
         organizations,
       };
@@ -96,7 +97,7 @@ function createConsoleApp(options: {
       const outcome = options.switchOutcomes?.[calls.switches.length - 1] ?? 'SWITCHED';
       if (outcome !== 'SWITCHED') return { outcome };
       return {
-        outcome: 'SWITCHED',
+        outcome: 'SWITCHED', authVersion: 0,
         userId: USER_ID,
         organizationId: TARGET_ORGANIZATION_ID,
         role: 'VIEWER',

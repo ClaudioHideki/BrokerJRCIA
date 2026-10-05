@@ -17,13 +17,14 @@ describe('repository baseline', () => {
       .filter((name) => /manifest.*sha256|sha256.*manifest/iu.test(name))
       .sort();
 
-    expect(migrations.slice(-5)).toEqual([
+    expect(migrations.slice(-6)).toEqual([
 
-      '0037_flow_ownership_reservations.sql',
       '0038_group_company_removal.sql',
       '0039_chatwoot_attendance_observations.sql',
       '0040_automation_input_queue.sql',
       '0041_automation_runtime_versions.sql',
+      '0042_native_handoff_operations.sql',
+      '0043_user_password_reset.sql',
     ]);
     expect(rootManifests).toEqual(['MANIFESTO_ARQUIVOS_SHA256.txt']);
   });

@@ -8,6 +8,7 @@ import type { Role } from './authorization.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
+    isUserAuthenticationCurrent?: (userId: string, authVersion: number) => Promise<boolean>;
     resolveTenantRole?: (userId: string, organizationId: string) => Promise<Role | null>;
   }
 }
@@ -46,12 +47,18 @@ export function authenticateRequest(options: AuthenticationOptions) {
         const match = /^Bearer ([^\s]+)$/.exec(authorization);
         if (match) {
           const payload = await verifyAccessToken(match[1]!, options.jwtSecret);
+          if (request.server.isUserAuthenticationCurrent
+            && !await request.server.isUserAuthenticationCurrent(payload.sub, payload.auth_version)) {
+            await rejectAuthentication(request, reply);
+            return;
+          }
           const currentRole = request.server.resolveTenantRole
             ? await request.server.resolveTenantRole(payload.sub, payload.organization_id)
             : payload.role;
           if (!currentRole) { await rejectAuthentication(request, reply); return; }
           context = {
             kind: 'JWT',
+            authVersion: payload.auth_version,
             organizationId: payload.organization_id,
             actorId: payload.sub,
             role: currentRole,

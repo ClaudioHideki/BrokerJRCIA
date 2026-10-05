@@ -16,7 +16,7 @@ function createAuthApp(options: { identityExists?: boolean; rateLimitUnavailable
       calls.push('database');
       return options.identityExists === false ? null : {
         id: USER_ID,
-        passwordHash: 'known-hash',
+        passwordHash: 'known-hash', authVersion: 0,
         status: 'ACTIVE',
         organizations: [{
           id: ORGANIZATION_ID,
@@ -26,11 +26,11 @@ function createAuthApp(options: { identityExists?: boolean; rateLimitUnavailable
         }],
       };
     },
-    async createSelectionSession() { return undefined; },
+    async createSelectionSession() { return true; },
     async consumeSelection() {
       if (selectionConsumed) return { outcome: 'REUSED' };
       selectionConsumed = true;
-      return { outcome: 'SELECTED', userId: USER_ID, organizationId: ORGANIZATION_ID, role: 'OWNER' };
+      return { outcome: 'SELECTED', authVersion: 0, userId: USER_ID, organizationId: ORGANIZATION_ID, role: 'OWNER' };
     },
     async rotateRefreshToken() { return { outcome: 'INVALID' }; },
     async revokeRefreshFamily() { return { outcome: 'INVALID' }; },
@@ -229,7 +229,7 @@ describe('rotas de autenticação', () => {
       auth: {
         repository: {
           async findLoginIdentity() { return null; },
-          async createSelectionSession() { return undefined; },
+          async createSelectionSession() { return true; },
           async consumeSelection() { return { outcome: 'INVALID' }; },
           async rotateRefreshToken() { return { outcome: 'INVALID' }; },
           async revokeRefreshFamily() { return { outcome: 'INVALID' }; },

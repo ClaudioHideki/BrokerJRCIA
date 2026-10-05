@@ -141,11 +141,16 @@ export function createLoginService(dependencies: LoginDependencies) {
     const selectionToken = createOpaqueToken(dependencies.randomBytes);
     const issuedAt = now();
     const expiresAt = new Date(issuedAt.getTime() + SELECTION_TOKEN_TTL_MS);
-    await dependencies.repository.createSelectionSession({
+    const created = await dependencies.repository.createSelectionSession({
+      expectedAuthVersion: identity.authVersion,
       userId: identity.id,
       tokenHash: hashOpaqueToken(selectionToken),
       expiresAt,
     });
+    if (!created) {
+      await dependencies.writeSecurityAudit({ type: 'AUTH_LOGIN_DENIED', requestId: command.requestId, ...auditDigests });
+      throw new AuthServiceError('INVALID_CREDENTIALS', 401);
+    }
     await dependencies.writeSecurityAudit({
       type: 'AUTH_LOGIN_ACCEPTED',
       requestId: command.requestId,

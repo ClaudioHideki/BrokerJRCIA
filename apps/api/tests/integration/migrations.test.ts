@@ -266,7 +266,8 @@ describe('migrations PostgreSQL', () => {
       ['jrc_auth:organizations', ['SELECT']],
       ['jrc_auth:users', ['SELECT']],
       ['jrc_auth:memberships', ['SELECT']],
-      ['jrc_auth:login_sessions', ['INSERT']],
+      // 0043 requires create_login_selection to serialize admission with reset.
+      ['jrc_auth:login_sessions', []],
       ['jrc_auth:refresh_tokens', ['SELECT', 'INSERT', 'UPDATE']],
       ['jrc_auth:security_audit_logs', ['INSERT']],
       ['jrc_app:organizations', ['SELECT']],
@@ -374,8 +375,11 @@ describe('migrations PostgreSQL', () => {
     );
 
     expect(result.rows).toEqual([
-      // 0034 (2) + 0039 (3), with table/role/expression checks below.
-      ...Array.from({length:5},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      // 0034 (2) + 0039 (3) + 0042 handoff ledger.
+      ...Array.from({length:6},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      // 0043 revokes delegated access through the restricted definer function.
+      {policyname:'embed_authorizations_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
+      {policyname:'embed_sessions_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
       // 0038: one policy on economic_groups and two per removal table.
       {policyname:'group_removal_group_migrator',roles:['jrc_migrator'],cmd:'ALL'},
       ...Array.from({length:3},()=>({policyname:'group_removal_migrator',roles:['jrc_migrator'],cmd:'ALL'})),
@@ -479,10 +483,10 @@ describe('migrations PostgreSQL', () => {
     ].sort((a,b)=>a.policyname.localeCompare(b.policyname)));
   });
 
-  it('checks the reviewed 0034-0041 policy tables, expressions and restricted grants', async () => {
+  it('checks the reviewed 0034-0042 policy tables, expressions and restricted grants', async () => {
     const attendanceTables = [
       'attendance_owners', 'attendance_sessions', 'chatwoot_attendance_controls',
-      'chatwoot_mirror_attempts', 'chatwoot_attendance_observations',
+      'chatwoot_mirror_attempts', 'chatwoot_attendance_observations', 'attendance_handoff_operations',
     ];
     const commercialTables = ['commercial_plans', 'commercial_plan_versions', 'organization_commercial_plans'];
     const removalTables = ['group_company_removal_previews', 'group_company_removals', 'group_company_removal_children'];

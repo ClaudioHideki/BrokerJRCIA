@@ -6,6 +6,7 @@ import {platformMfaRequired,type PlatformLoginPolicy} from './login-policy.js';
 import { normalizeChatwootOrigin } from '../integrations/chatwoot-destination.js';
 import { CreateEconomicGroupSchema, AssignGroupOrganizationsSchema, UpdateEconomicGroupSchema, RemoveEconomicGroupSchema } from '@jrc/contracts';
 import { z } from 'zod';
+import { PasswordResetInputSchema, passwordResetConfirmation, verifyPasswordResetConfirmation, type PasswordResetState } from './password-reset.js';
 import { CreateCommercialPlanSchema, CreateCommercialPlanVersionSchema, AssignCommercialPlanSchema } from '@jrc/contracts';
 import { listCommercialPlans, insertCommercialVersion, readCommercialAssignment, projectCommercialAssignment, snapshotLegacyCommercialAssignment } from '../commercial-plans/service.js';
 
@@ -45,6 +46,48 @@ export class PlatformService {
    const r=identity.rows[0];if(r?.current_user!=='jrc_platform'||r.rolsuper||r.rolbypassrls) throw new Error('Dedicated jrc_platform connection required');
    await c.query('begin');const result=await work(c);await c.query('commit');return result;
   }catch(e){await c.query('rollback');throw e;}finally{c.release();}
+ }
+ private async passwordResetActor(c:PoolClient,token:string) {
+  const session=await this.readSession(c,token);
+  const actor=(await c.query('SELECT active,role FROM platform_users WHERE id=$1 FOR SHARE',[session.user.id])).rows[0];
+  if(!actor?.active||actor.role!=='SUPER_ADMIN')throw new PlatformError(403,'PLATFORM_FORBIDDEN');
+  return session.user.id;
+ }
+ private async passwordResetState(c:PoolClient,id:string):Promise<PasswordResetState> {
+  // A strong user lock serializes credential resets and new membership FK checks.
+  const user=(await c.query('SELECT id,email,status,auth_version FROM users WHERE id=$1 FOR UPDATE',[id])).rows[0];
+  if(!user)throw new PlatformError(404,'USER_NOT_FOUND');
+  const organizations=(await c.query<PasswordResetState['organizations'][number]>(`SELECT o.id,o.name,o.status,m.role,m.status AS "membershipStatus"
+   FROM memberships m JOIN organizations o ON o.id=m.organization_id
+   WHERE m.user_id=$1 ORDER BY o.id FOR SHARE OF m,o`,[id])).rows;
+  return {userId:user.id,email:user.email,status:user.status,authVersion:user.auth_version,organizations};
+ }
+ async previewUserPasswordReset(token:string,reason:string,id:string) {
+  z.uuid().parse(id);
+  if(reason.trim().length<5||reason.length>500)throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  return this.transaction(async c=>{
+   const actor=await this.passwordResetActor(c,token),state=await this.passwordResetState(c,id);
+   await this.audit(c,actor,null,`user-password-reset-preview:${id}`,'Superadmin reviewed global user password reset');
+   const {authVersion:_,...preview}=state;
+   return {...preview,confirmationToken:passwordResetConfirmation(this.key,actor,state)};
+  });
+ }
+ async resetUserPassword(token:string,reason:string,id:string,value:unknown) {
+  z.uuid().parse(id);
+  const input=PasswordResetInputSchema.parse(value);
+  if(reason.trim().length<5||reason.length>500)throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
+  return this.transaction(async c=>{
+   const actor=await this.passwordResetActor(c,token),state=await this.passwordResetState(c,id);
+   if(input.confirmationEmail!==state.email)throw new PlatformError(409,'PASSWORD_RESET_CONFIRMATION_MISMATCH');
+   const confirmation=verifyPasswordResetConfirmation(this.key,actor,state,input.confirmationToken);
+   if(confirmation!=='VALID')throw new PlatformError(409,`PASSWORD_RESET_PREVIEW_${confirmation}`);
+   await c.query('UPDATE users SET password_hash=$2 WHERE id=$1',[id,await hashPassword(input.password)]);
+   await c.query('SELECT public.revoke_user_authentication($1::uuid,$2::timestamptz)',[id,new Date()]);
+   // Fixed audit text prevents accidental password disclosure through free-form reason fields.
+   await this.audit(c,actor,null,`user-password-reset:${id}`,'Superadmin confirmed global user password reset');
+   for(const organization of state.organizations)await this.audit(c,actor,organization.id,`user-password-reset:${id}`,'Global user password reset revoked existing user sessions');
+   return {ok:true as const};
+  });
  }
  async login(email:string,password:string,code:string,ip:string):Promise<PlatformSession&{token:string}> {
   // Counters commit independently of failed authentication. A database failure denies login.
