@@ -20,6 +20,7 @@ export * from './support.js';
 export * from './lifecycle.js';
 export * from './group-company-removal.js';
 export * from './attendance-v1.js';
+export * from './attendance-resume-v1.js';
 export * from './automation-node-definitions.js';
 export * from './attendance-catalog.js';
 export * from './automation-handoff-v1.js';

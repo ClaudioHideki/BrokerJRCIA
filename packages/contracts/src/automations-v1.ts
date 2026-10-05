@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AttendanceDiagnosticSchema } from './attendance-resume-v1.js';
 
 import { FlowGraphSchema, type FlowGraph } from './flows.js';
 import { type FlowNode } from './flows.js';
@@ -140,6 +141,7 @@ export const AutomationExecutionSummaryV1Schema = z.strictObject({
   startedAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   completedAt: z.iso.datetime().nullable(),
+  attendanceDiagnostic: AttendanceDiagnosticSchema.optional(),
 });
 
 export interface LegacyFlowRecordV1 {

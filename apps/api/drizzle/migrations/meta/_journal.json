@@ -302,6 +302,13 @@
       "when": 1791240000000,
       "tag": "0043_user_password_reset",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791326400000,
+      "tag": "0044_attendance_resume_operations",
+      "breakpoints": true
     }
   ]
 }

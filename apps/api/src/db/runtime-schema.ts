@@ -1,4 +1,4 @@
-export const RUNTIME_SCHEMA_BASELINE = '0043_user_password_reset';
+export const RUNTIME_SCHEMA_BASELINE = '0044_attendance_resume_operations';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -14,6 +14,9 @@ const requiredObjectsSql = `SELECT
   AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.current_tenant_authentication_valid(uuid,integer)') AND prosecdef)
   AND
   pg_catalog.to_regclass('public.messaging_media') IS NOT NULL
+  AND pg_catalog.to_regclass('public.attendance_resume_operations') IS NOT NULL
+  AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.messaging_conversations')
+    AND attname='attendance_revision' AND attnotnull AND attnum>0 AND NOT attisdropped)
   AND pg_catalog.to_regclass('public.automation_definitions') IS NOT NULL
   AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute
     WHERE attrelid=pg_catalog.to_regclass('public.automation_versions') AND attname='runtime_state_version' AND attnotnull AND attnum>0 AND NOT attisdropped)

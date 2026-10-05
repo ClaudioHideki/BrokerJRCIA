@@ -4,6 +4,11 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'POST /v1/attendance/conversations/{id}/resume': policy('apps/api/src/http/routes/attendance-resume.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'TENANT_IDEMPOTENCY_KEY_REQUEST_HASH_SINGLE_CONVERSATION_OPERATION','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_OWNER_CONTROL_BINDING_DESTINATION_CREDENTIAL_REVISIONS_REMOTE_CONFIRMATION'),
+  ...Object.fromEntries(['GET /v1/attendance/conversations/{id}/resume-context','GET /v1/attendance/resume-operations/{id}'].map(route=>[route,policy(
+    'apps/api/src/http/routes/attendance-resume.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_CONVERSATION_OPERATION',
+  )])),
   ...Object.fromEntries(['GET /v1/platform/groups/{id}/company-removals','GET /v1/platform/group-company-removals/{operationId}'].map(route=>[route,policy(
     'apps/api/src/http/routes/group-removal.ts','PLATFORM_SESSION_COOKIE','SUPER_ADMIN',true,'READ_ONLY','NO_STORE','CURRENT_PLATFORM_ACTOR_PERSISTED_GROUP_OPERATION',
   )])),

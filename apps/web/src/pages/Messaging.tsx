@@ -22,6 +22,7 @@ import {
 
 import { ApiClientError, type ApiClient } from "../api/client.js";
 import { useApiClient, useSession } from "../auth/SessionProvider.js";
+import { AttendanceResumeDialog } from './AttendanceResumeDialog.js';
 
 function safeError(error: unknown, fallback: string) {
   const apiError = error instanceof ApiClientError ? error : null;
@@ -138,6 +139,7 @@ export function MessagingPage() {
   const sendLock = useRef(false),
     pendingSend = useRef<{ payload: string; key: string } | null>(null);
   const [changingMode, setChangingMode] = useState(false);
+  const [resumingConversation,setResumingConversation]=useState<string|null>(null);
   const [messageRevision, setMessageRevision] = useState(0);
   const [error, setError] = useState<{
     text: string;
@@ -177,6 +179,7 @@ export function MessagingPage() {
     pendingSend.current = null;
     sendLock.current = false;
     setChangingMode(false);
+    setResumingConversation(null);
     setError(null);
   }, []);
 
@@ -637,6 +640,8 @@ export function MessagingPage() {
       );
     } catch (caught) {
       if (generation === tenantGeneration.current) {
+        if(caught instanceof ApiClientError&&caught.code==='ATTENDANCE_RESUME_REQUIRED'&&canConfigureAutomation){setResumingConversation(selectedConversation.id);return;}
+        if(caught instanceof ApiClientError&&caught.code==='ATTENDANCE_RESUME_REQUIRED'){setError({text:'Um administrador precisa confirmar a retomada desta automação.'});return;}
         setError(
           safeError(caught, "Não foi possível alterar o modo da conversa."),
         );
@@ -832,6 +837,15 @@ export function MessagingPage() {
               </section> : null}
               <section className="panel" aria-labelledby="history-title">
                 <h2 id="history-title">Histórico</h2>
+                {resumingConversation===selectedConversation?.id?<AttendanceResumeDialog key={`${organizationId}:${resumingConversation}`} conversationId={resumingConversation!} client={client}
+                  onClose={()=>setResumingConversation(null)} onConfirmed={()=>{
+                    const generation=tenantGeneration.current,controller=new AbortController();controllers.current.add(controller);
+                    void loadConversations(client,channelId,controller.signal).then(data=>{
+                      if(generation!==tenantGeneration.current||controller.signal.aborted)return;
+                      setConversations(data);setResumingConversation(null);setMessageRevision(v=>v+1);
+                    }).catch(()=>{if(generation===tenantGeneration.current)setError(safeError(null,'A retomada foi confirmada, mas o estado atual não pôde ser carregado. Atualize a conversa.'));})
+                      .finally(()=>controllers.current.delete(controller));
+                  }}/>:null}
                 {selectedConversation ? (
                   <>
                     <p>Modo: {modeLabel(selectedConversation.mode)}</p>

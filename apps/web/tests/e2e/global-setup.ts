@@ -52,6 +52,7 @@ import {
 import { runE2eCleanupSteps, type E2eCleanupStep } from './cleanup.js';
 import { SYNTHETIC_PAIRING_HINT } from './artifact-policy.js';
 import { createMessagingFixture } from './messaging-fixture.js';
+import { createAttendanceResumeFixture } from './attendance-resume-fixture.js';
 import { createPlatformFixture } from './platform-fixture.js';
 import { createMessagingMembershipResolver } from '../../../api/src/modules/messaging/membership.js';
 import { createChatwootService } from '../../../api/src/modules/integrations/chatwoot-service.js';
@@ -132,6 +133,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
   });
   let app: ReturnType<typeof buildApp> | undefined;
   let messagingFixture: Awaited<ReturnType<typeof createMessagingFixture>> | undefined;
+  let resumeFixture:Awaited<ReturnType<typeof createAttendanceResumeFixture>>|undefined;
   let redisWasConnected = false;
   let platformFixture:Awaited<ReturnType<typeof createPlatformFixture>>|undefined;
   let syntheticEmail = '';
@@ -152,6 +154,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     if (app) steps.push({ name: 'Fastify API', run: async () => app!.close() });
     if (platformFixture) steps.push({name:'platform pool',run:platformFixture.cleanup});
     if (messagingFixture) steps.push({ name: 'messaging worker', run: messagingFixture.close });
+    if (resumeFixture) steps.push({name:'resume worker',run:resumeFixture.close});
     if (appPool) steps.push({ name: 'jrc_app pool', run: async () => appPool!.end() });
     if (authPool) steps.push({ name: 'jrc_auth pool', run: async () => authPool!.end() });
     if (redisWasConnected) {
@@ -291,12 +294,14 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
 
     const passwordVerifier = await initializePasswordVerifier();
     messagingFixture = await createMessagingFixture(database.pool, appPool);
+    resumeFixture=await createAttendanceResumeFixture(database.pool,appPool,email);
     platformFixture=await createPlatformFixture(database.pool,database.connectionString,CONSOLE_ORIGIN);
     const metaWebhookSecret = secret();
     process.env.JRC_E2E_META_SECRET = metaWebhookSecret;
     const transact=<T>(org:string,work:OrganizationTransaction<T>)=>withOrganizationTransaction(appPool!,org,work);
     const automationOptions={transact},routeAuth={jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(authPool)};
     app = buildApp({
+      attendanceResume:{...routeAuth,service:resumeFixture.service},
       support:{...routeAuth,service:createSupportService({transact})},
       channels:{...routeAuth,service:createChannelFacade({instances,meta:{start:async()=>{throw new Error('Meta real não configurada no E2E');}},transact,activateQr:(org,id)=>transact(org,tx=>ensureQrChannel(tx,org,id))})},
       automations:{...routeAuth,service:createAutomationService(automationOptions),executions:createExecutionService(automationOptions),migration:createLegacyFlowMigrationService(automationOptions)},

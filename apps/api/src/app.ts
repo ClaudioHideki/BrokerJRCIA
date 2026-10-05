@@ -7,6 +7,8 @@ import { createLifecycleService, withLifecyclePlatformTransaction } from './modu
 import { registerFlowRoutes, type FlowRouteOptions } from './http/routes/flows.js';
 import { createFlowService } from './modules/flows/service.js';
 import { registerAutomationRoutes, type AutomationRouteOptions } from './http/routes/automations.js';
+import { registerAttendanceResumeRoutes,type AttendanceResumeRouteOptions } from './http/routes/attendance-resume.js';
+import { createAttendanceResumeService } from './modules/attendance/resume-service.js';
 import { registerObservabilityRoutes, type ObservabilityRouteOptions } from './http/routes/observability.js';
 import { createAutomationService, createEventRouter, createExecutionService } from './modules/automations/service.js';
 import { createAutomationRuntimeReadiness } from './modules/automations/availability.js';
@@ -158,6 +160,7 @@ export interface BuildAppOptions {
   messaging?: MessagingRouteOptions;
   flows?: FlowRouteOptions;
   automations?: AutomationRouteOptions;
+  attendanceResume?: AttendanceResumeRouteOptions;
   observability?: ObservabilityRouteOptions;
   credentials?: CredentialRouteOptions;
   automationWebhooks?: AutomationWebhookRouteOptions;
@@ -227,6 +230,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       options.messaging !== undefined ||
       options.flows !== undefined ||
       options.automations !== undefined ||
+      options.attendanceResume !== undefined ||
       options.observability !== undefined ||
       options.credentials !== undefined ||
       options.automationWebhooks !== undefined ||
@@ -255,6 +259,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   let messaging = nodeEnv === "test" ? options.messaging : undefined;
   let flows = nodeEnv === "test" ? options.flows : undefined;
   let automations = nodeEnv === "test" ? options.automations : undefined;
+  let attendanceResume = nodeEnv === "test" ? options.attendanceResume : undefined;
   let observability = nodeEnv === "test" ? options.observability : undefined;
   let credentials = nodeEnv === "test" ? options.credentials : undefined;
   let automationWebhooks = nodeEnv === "test" ? options.automationWebhooks : undefined;
@@ -569,6 +574,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     const automationRepository=createPostgresAutomationRepository();
     const automationOptions={transact:<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pools.appPool,org,work),repository:automationRepository,enabled:config.automationRuntimeV2Enabled};
     const automationRuntimeReady=createAutomationRuntimeReadiness({transact:automationOptions.transact,schemaCurrent:schemaObjectsReady,probeRedis:async()=>redisClient.isReady&&(await redisClient.ping())==='PONG'});
+    attendanceResume={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createAttendanceResumeService(automationOptions)};
     automations={
       jwtSecret:config.jwtSecret,
       authenticateApiKey:apiKeys.authenticateApiKey,
@@ -876,6 +882,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     const configured=automationImports;
     app.register(scope=>registerAutomationImportRoutes(scope,configured));
   }
+  if(attendanceResume){const configured=attendanceResume;app.register(scope=>registerAttendanceResumeRoutes(scope,configured));}
   if (messaging) {
     const configuredMessaging = messaging;
     void app.register(async (scope) =>

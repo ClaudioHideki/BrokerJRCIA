@@ -11,6 +11,7 @@ import { workerInstanceId } from '../modules/observability/service.js';
 import { automationRuntimeEnabled, recordAutomationHeartbeat } from '../modules/automations/availability.js';
 import { createIntegrationRuntime } from '../modules/integrations/runtime.js';
 import { createNativeHandoffService } from '../modules/attendance/handoff-service.js';
+import { createAttendanceResumeWorker } from '../modules/attendance/resume-worker.js';
 import type { OrganizationTransaction } from '../db/tenant-transaction.js';
 
 export function loadAutomationWorkerConfig(environment:NodeJS.ProcessEnv){const databaseUrl=z.string().url().parse(environment.DATABASE_URL);
@@ -59,12 +60,13 @@ export async function runAutomationWorker(environment:NodeJS.ProcessEnv=process.
   const instanceId=workerInstanceId();
   const enabled=automationRuntimeEnabled(environment),repository=createPostgresAutomationRepository(),transact=<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pool,org,work),execution=createExecutionService({transact,repository,enabled});
   const integrations=createIntegrationRuntime(environment,pool);
+  const resume=createAttendanceResumeWorker({transact,...(integrations.dashboardClient?{client:integrations.dashboardClient}:{})});
   const handoff=integrations.dashboardClient&&integrations.chatwoot?createNativeHandoffService({transact,client:integrations.dashboardClient,
     attendanceService:{validateTarget:integrations.chatwoot.validateHumanDestination,catalog:integrations.chatwoot.attendanceCatalog}}):undefined;
   const outbox=createOutboxDispatcher({transact,repository,enabled},createAutomationEffectDispatcher({transact,messaging:createPostgresMessagingRepository(),...(handoff?{handoff}:{})}));
   const abort=new AbortController(),stop=()=>abort.abort();process.once('SIGINT',stop);process.once('SIGTERM',stop);
   try{do{await scanOperationalOrganizations(async(cursor,batchSize)=>(await pool.query<{organization_id:string}>('select * from operational_worker_organizations($1,$2)',[cursor,batchSize])).rows.map(row=>row.organization_id),
-    async org=>{await transact(org,tx=>recordAutomationHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId,enabled));await execution.runOnce(org);if(enabled&&handoff)await handoff.reconcileOnce(org);await outbox.runOnce(org);},abort.signal,
+    async org=>{await transact(org,tx=>recordAutomationHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId,enabled));if(enabled)await resume.runOnce(org);await execution.runOnce(org);if(enabled&&handoff)await handoff.reconcileOnce(org);await outbox.runOnce(org);},abort.signal,
     (_error,org)=>process.stderr.write(JSON.stringify({event:'AUTOMATION_WORKER_ORGANIZATION_FAILED',organizationId:org})+'\n'));
     if(watch&&!abort.signal.aborted)await setTimeout(config.intervalMs,undefined,{signal:abort.signal}).catch(()=>undefined);
   }while(watch&&!abort.signal.aborted);}finally{process.off('SIGINT',stop);process.off('SIGTERM',stop);await pool.end();}}

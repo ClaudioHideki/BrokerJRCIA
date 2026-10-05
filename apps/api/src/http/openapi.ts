@@ -14,6 +14,7 @@ const DOCUMENTATION_SECRET = "documentation-secret-with-at-least-32-bytes";
 const PROTECTED_PATH_PREFIXES = [
   "/v1/api-keys",
   "/v1/automations",
+  "/v1/attendance",
   "/v1/automation-nodes",
   "/v1/automation-imports",
   "/v1/credentials",
@@ -68,6 +69,10 @@ function documentationOptions() {
       service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/automations/service.js').AutomationService,
       executions: new Proxy({}, { get() { return unavailable; } }) as ReturnType<typeof import('../modules/automations/service.js').createExecutionService>,
       migration: new Proxy({}, { get() { return unavailable; } }) as import('../modules/automations/legacy-migration.js').LegacyFlowMigrationService,
+    },
+    attendanceResume: {
+      jwtSecret:`${DOCUMENTATION_SECRET}-jwt`,authenticateApiKey:unavailable,resolveCurrentRole:unavailable,
+      service:new Proxy({}, {get(){return unavailable;}}) as ReturnType<typeof import('../modules/attendance/resume-service.js').createAttendanceResumeService>,
     },
     observability: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
@@ -314,6 +319,7 @@ function normalizeDocument(document: JsonObject): JsonObject {
       }
       if (path.startsWith("/v1/messaging/"))
         operation.security = [{ bearerAuth: [] }];
+      if (path.startsWith('/v1/attendance/'))operation.security=[{bearerAuth:[]}];
       if (['/v1/channels', '/v1/credentials', '/v1/automations', '/v1/automation-nodes', '/v1/automation-imports', '/v1/executions', '/v1/operations', '/v1/webhooks', '/v1/support']
         .some(prefix => path === prefix || path.startsWith(`${prefix}/`)))
         operation.security = [{ bearerAuth: [] }];

@@ -376,7 +376,7 @@ describe('migrations PostgreSQL', () => {
 
     expect(result.rows).toEqual([
       // 0034 (2) + 0039 (3) + 0042 handoff ledger.
-      ...Array.from({length:6},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:7},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
       // 0043 revokes delegated access through the restricted definer function.
       {policyname:'embed_authorizations_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
       {policyname:'embed_sessions_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
@@ -486,7 +486,7 @@ describe('migrations PostgreSQL', () => {
   it('checks the reviewed 0034-0042 policy tables, expressions and restricted grants', async () => {
     const attendanceTables = [
       'attendance_owners', 'attendance_sessions', 'chatwoot_attendance_controls',
-      'chatwoot_mirror_attempts', 'chatwoot_attendance_observations', 'attendance_handoff_operations',
+      'chatwoot_mirror_attempts', 'chatwoot_attendance_observations', 'attendance_handoff_operations', 'attendance_resume_operations',
     ];
     const commercialTables = ['commercial_plans', 'commercial_plan_versions', 'organization_commercial_plans'];
     const removalTables = ['group_company_removal_previews', 'group_company_removals', 'group_company_removal_children'];

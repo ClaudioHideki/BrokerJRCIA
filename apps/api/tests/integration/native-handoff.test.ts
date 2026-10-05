@@ -13,6 +13,8 @@ import { createChatwootAttendanceService } from '../../src/modules/integrations/
 import { ChatwootClient } from '../../src/modules/integrations/chatwoot-client.js';
 import { initializeChatwootAttendanceMap, recordChatwootAttendanceEvent } from '../../src/modules/integrations/chatwoot-attendance-store.js';
 import { probeRequiredRuntimeSchema } from '../../src/db/runtime-schema.js';
+import { createAttendanceResumeService } from '../../src/modules/attendance/resume-service.js';
+import { createAttendanceResumeWorker } from '../../src/modules/attendance/resume-worker.js';
 
 describe('native handoff durable PostgreSQL state',()=>{
   let db:Awaited<ReturnType<typeof attendanceDatabase>>;
@@ -57,11 +59,12 @@ describe('native handoff durable PostgreSQL state',()=>{
       else if(path.endsWith('/agent_bot'))response={agent_bot:null};
       else if(path.endsWith('/conversations/51'))response=canonical;
       else if(path.endsWith('/toggle_status')){
-        if(beforeOpen)await beforeOpen();canonical.status='open';canonical.updated_at++;
+        if(beforeOpen)await beforeOpen();canonical.status=String(body.status);canonical.updated_at++;
         if(callback){if(delayOpening)deferredOpening={...structuredClone(canonical),event:'conversation_updated',account:{id:7}};else await record();}if(afterOpen)await afterOpen();if(timeout==='open')throw new Error('Synthetic timeout');response={};
       }else if(path.endsWith('/assignments')){
         if(delayOpening==='ASSIGNMENT_DISPATCHED'&&deferredOpening){await db.transact(t.org,tx=>recordChatwootAttendanceEvent(tx,scope,deferredOpening));deferredOpening=null;}
-        if(body.team_id){canonical.meta.team={id:Number(body.team_id)};expect(body).not.toHaveProperty('assignee_id');}
+        if(Object.hasOwn(body,'team_id')){canonical.meta.team=body.team_id===null?null:{id:Number(body.team_id)};expect(body).not.toHaveProperty('assignee_id');}
+        else if(body.assignee_id===null){canonical.meta.assignee=null;canonical.meta.assignee_type=null;}
         else {canonical.meta.assignee={id:Number(body.assignee_id),type:'user'};canonical.meta.assignee_type='User';}
         canonical.updated_at++;if(callback)await record();if(timeout==='assign')throw new Error('Synthetic timeout');response={};
       }else throw new Error('Unexpected synthetic request '+path);
@@ -81,8 +84,8 @@ describe('native handoff durable PostgreSQL state',()=>{
   }
   it('runs a persisted menu journey through the real engine and worker into canonical team handoff with a synthetic transport receipt',async()=>{
     const t=await fixture(),node=(id:string,type:string,data:Record<string,unknown>={})=>({id,type,label:id,position:{x:0,y:0},data});
-    const graph={nodes:[node('start','start'),node('menu','menu',{text:'Escolha',variable:'choice',options:[{value:'1',label:'Suporte'},{value:'2',label:'Encerrar'}]}),node('handoff','handoff',t.item.payload),node('end','end')],
-      edges:[{id:'start',source:'start',target:'menu',port:'next'},{id:'support',source:'menu',target:'handoff',port:'option-1'},{id:'end',source:'menu',target:'end',port:'option-2'}]};
+    const graph={nodes:[node('start','start'),node('menu','menu',{text:'Escolha',variable:'choice',options:[{value:'1',label:'Suporte'},{value:'2',label:'Encerrar'}]}),node('name','input',{text:'Qual seu nome?',variable:'nome'}),node('handoff','handoff',t.item.payload),node('end','end')],
+      edges:[{id:'start',source:'start',target:'menu',port:'next'},{id:'support',source:'menu',target:'name',port:'option-1'},{id:'capture',source:'name',target:'handoff',port:'next'},{id:'end',source:'menu',target:'end',port:'option-2'}]};
     await db.database.pool.query('DELETE FROM automation_outbox WHERE organization_id=$1',[t.org]);
     await db.database.pool.query('DELETE FROM automation_executions WHERE organization_id=$1',[t.org]);
     await db.database.pool.query('UPDATE automation_versions SET graph=$2,runtime_state_version=2 WHERE organization_id=$1',[t.org,JSON.stringify(graph)]);
@@ -95,13 +98,22 @@ describe('native handoff durable PostgreSQL state',()=>{
     expect(await dispatcher.runOnce(t.org)).toMatchObject({status:'SENT'});
     const text=(await db.database.pool.query("SELECT id,content,state FROM messaging_messages WHERE organization_id=$1 AND source='AUTOMATION'",[t.org])).rows[0];
     expect(text).toMatchObject({content:{type:'TEXT',text:'Escolha\n1 - Suporte\n2 - Encerrar'},state:'ACCEPTED'});
+    // Silence leaves the persisted wait untouched; an invalid choice only repeats the menu.
+    expect(await worker().runOnce(t.org)).toEqual({processed:false});
+    expect(await router.route(t.org,{...input,eventKey:'synthetic-menu-invalid',text:'9'})).toMatchObject({resumed:true});
+    expect(await worker().runOnce(t.org)).toMatchObject({status:'WAITING'});
+    expect(await dispatcher.runOnce(t.org)).toMatchObject({status:'SENT'});
+    expect(t.requests.filter(r=>r.method==='POST')).toHaveLength(0);
     expect(await router.route(t.org,{...input,eventKey:'synthetic-menu-choice',text:'1'})).toMatchObject({resumed:true});
+    expect(await worker().runOnce(t.org)).toMatchObject({status:'WAITING'});
+    expect(await dispatcher.runOnce(t.org)).toMatchObject({status:'SENT'});
+    expect(await router.route(t.org,{...input,eventKey:'synthetic-name-capture',text:'Pessoa sintética'})).toMatchObject({resumed:true});
     expect(await worker().runOnce(t.org)).toMatchObject({status:'HANDOFF'});
     expect(await dispatcher.runOnce(t.org)).toMatchObject({status:'NOT_SENT'});expect(t.requests.filter(r=>r.method==='POST')).toHaveLength(0);
     // The provider is synthetic here. Its persisted successful transport receipt
     // is deliberately separate from the earlier automation enqueue acknowledgment.
-    await db.database.pool.query("UPDATE messaging_messages SET state='SENT' WHERE id=$1",[text.id]);
-    await db.database.pool.query('DELETE FROM messaging_outbox WHERE message_id=$1',[text.id]);
+    await db.database.pool.query("UPDATE messaging_messages SET state='SENT' WHERE organization_id=$1 AND source='AUTOMATION'",[t.org]);
+    await db.database.pool.query('DELETE FROM messaging_outbox WHERE organization_id=$1',[t.org]);
     await db.database.pool.query("UPDATE automation_outbox SET available_at=now() WHERE organization_id=$1 AND kind='HANDOFF'",[t.org]);
     expect(await dispatcher.runOnce(t.org)).toMatchObject({status:'SENT'});
     const handoff=(await db.database.pool.query("SELECT status,payload,remote_reference FROM automation_outbox WHERE organization_id=$1 AND kind='HANDOFF'",[t.org])).rows[0];
@@ -110,6 +122,20 @@ describe('native handoff durable PostgreSQL state',()=>{
     expect(await router.route(t.org,{...input,eventKey:'synthetic-after-handoff',text:'Oi novamente'})).toMatchObject({execution:null});
     expect(await worker().runOnce(t.org)).toEqual({processed:false});expect(await dispatcher.runOnce(t.org)).toEqual({processed:false});
     expect(t.requests.filter(r=>r.method==='POST').map(r=>r.path.split('/').at(-1))).toEqual(['toggle_status','assignments']);
+    await t.human();
+    const resumeService=createAttendanceResumeService({transact:db.transact}),context=await resumeService.getContext(t.org,t.conversation);
+    const actor=(await db.database.pool.query('select user_id from memberships where organization_id=$1',[t.org])).rows[0].user_id;
+    const resume=await resumeService.requestAttendanceResume(t.org,actor,randomUUID(),{conversationId:t.conversation,expectedOwnerRevision:context.ownerRevision,
+      expectedControlRevision:context.diagnostic.controlRevision,target:{kind:'MENU',nodeId:'menu'}});
+    const resumeClient=()=>new ChatwootClient({baseUrl:`https://${t.org}.example.test`,token:'synthetic-only',fetch:t.fetch});
+    expect(await createAttendanceResumeWorker({transact:db.transact,client:resumeClient}).processAttendanceResume(resume.id,t.org)).toMatchObject({state:'APPLIED'});
+    expect(await worker().runOnce(t.org)).toMatchObject({status:'WAITING'});
+    expect(await router.route(t.org,{...input,eventKey:'synthetic-new-cycle-choice',text:'2'})).toMatchObject({resumed:true});
+    expect(await worker().runOnce(t.org)).toMatchObject({status:'COMPLETED'});
+    expect((await db.database.pool.query("SELECT state FROM automation_executions WHERE organization_id=$1 AND status='COMPLETED'",[t.org])).rows[0].state.variables.nome).toBe('Pessoa sintética');
+    const sessions=(await db.database.pool.query('select cycle,state from attendance_sessions where organization_id=$1 order by cycle',[t.org])).rows;
+    // The engine completes its execution; attendance authority remains active until an explicit closing transition.
+    expect(sessions).toEqual([{cycle:1,state:'RESOLVED'},{cycle:2,state:'BOT_ACTIVE'}]);
   });
   it.each([{teamId:4,agentId:null},{teamId:null,agentId:12}])('confirms $teamId/$agentId with real callback transitions and keeps bot paused',async target=>{
     const t=await fixture(target);expect(await t.service().dispatch(t.item)).toMatchObject({kind:'SENT'});

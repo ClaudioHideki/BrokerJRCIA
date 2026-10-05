@@ -57,7 +57,7 @@ export async function interruptChatwootAttendance(tx:TenantTransaction,input:Att
     lease_token=null,lease_expires_at=null,canonical_error_code='CHATWOOT_ATTENDANCE_CONTROL',updated_at=now()
     WHERE organization_id=$1 AND conversation_id=$2 AND status IN ('PENDING','RUNNING')`,args);
   // HUMAN mode is the pre-existing dispatch pause. Non-human conflict is recorded separately in the control/session state.
-  await tx.query("UPDATE messaging_conversations SET mode='HUMAN',updated_at=now() WHERE organization_id=$1 AND id=$2",args);
+  await tx.query("UPDATE messaging_conversations SET mode='HUMAN',attendance_revision=attendance_revision+1,updated_at=now() WHERE organization_id=$1 AND id=$2",args);
   await tx.query(`UPDATE attendance_sessions SET state=CASE WHEN $3 THEN 'HUMAN_ACTIVE' ELSE 'ADMIN_PAUSED' END,revision=revision+1,updated_at=now()
     WHERE organization_id=$1 AND conversation_id=$2 AND state IN ('BOT_ACTIVE','WAITING_INPUT','HANDOFF_PENDING','WAITING_HUMAN')
       AND ($3 OR state IN ('BOT_ACTIVE','WAITING_INPUT'))`,[...args,human]);

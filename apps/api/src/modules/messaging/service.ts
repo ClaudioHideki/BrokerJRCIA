@@ -21,6 +21,9 @@ import type { MediaStore } from "./media-store.js";
 import { integrationAudit } from "../integrations/chatwoot-service.js";
 import { requireActiveOrganization } from "../tenancy/operational-limits.js";
 import { recordManualAttendanceTakeover } from '../attendance/manual-takeover.js';
+import { readChatwootAttendanceGate } from '../attendance/control-service.js';
+import { AttendanceError } from '../attendance/types.js';
+import { lockAttendanceChannel } from '../attendance/repository.js';
 import {
   claimIdempotency,
   completeIdempotencyRecord,
@@ -400,6 +403,17 @@ export function createMessagingService(
     },
     async setMode(organizationId, conversationId, mode) {
       const value = await transact(organizationId, async (tx) => {
+        if(mode==='BOT'){
+          const conversation=await repository.findConversation(tx,organizationId,conversationId);
+          if(!conversation)throw new AttendanceError('CONVERSATION_NOT_FOUND',404);
+          await lockAttendanceChannel(tx,organizationId,conversation.channelId);
+          // FOR UPDATE also orders against a new connection's FK KEY SHARE admission.
+          await tx.query('SELECT id FROM messaging_channels WHERE organization_id=$1 AND id=$2 FOR UPDATE',[organizationId,conversation.channelId]);
+          const gate=await readChatwootAttendanceGate(tx,{organizationId,channelId:conversation.channelId,conversationId});
+          const native=(await tx.query("SELECT 1 FROM attendance_owners WHERE organization_id=$1 AND channel_id=$2 AND executor='BROKER'",[organizationId,conversation.channelId])).rows.length>0;
+          const connected=(await tx.query('SELECT 1 FROM chatwoot_connections WHERE organization_id=$1 AND channel_id=$2',[organizationId,conversation.channelId])).rows.length>0;
+          if(gate.state!=='NONE'||native||connected)throw new AttendanceError('ATTENDANCE_RESUME_REQUIRED',409);
+        }
         if(mode==='HUMAN')await recordManualAttendanceTakeover(tx,organizationId,conversationId);
         return repository.setConversationMode(tx, {organizationId,conversationId,mode});
       });

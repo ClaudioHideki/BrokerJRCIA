@@ -30,6 +30,13 @@ function mountEditor(request:ApiClient['request']) {
 }
 
 beforeEach(()=>sessionStorage.clear());
+it('explains queued attendance blocked by a human instead of claiming a send failure',async()=>{
+ const request=vi.fn(async()=>({id:automationId,automationId,channelId:automationId,version:1,status:'QUEUED',correlationId:'qa',nodes:[],outbox:[],
+   attendanceDiagnostic:{allowed:false,reason:'HUMAN_CONTROL',controlRevision:8,cycle:1}})) as ApiClient['request'];
+ render(<SessionProvider client={client(request)}><MemoryRouter initialEntries={['/execution/'+automationId]}><Routes><Route path="/execution/:id" element={<AutomationExecutionDetailPage/>}/></Routes></MemoryRouter></SessionProvider>);
+ expect(await screen.findByText(/A central está sob controle humano/)).toBeVisible();
+ expect(screen.getByRole('link',{name:'Retomar bot em Conversas'})).toBeVisible();
+});
 
 describe('Automation Studio',()=>{
   it.each(AUTOMATION_NODE_CATALOG_V1.filter(node=>node.availability==='AVAILABLE').map(node=>node.type))('opens a configuration form for available %s',async type=>{

@@ -11,6 +11,39 @@ function activeTemplateTransaction(): TenantTransaction {
 }
 
 describe('serviço de mensageria', () => {
+  it.each([true,false])('requires coordination for an unmapped remote channel while preserving standalone legacy mode (remote=%s)',async remote=>{
+    let mutations=0;
+    const service=createMessagingService({repository:{
+      async findConversation(){return {id:'conversation',channelId:'channel',mode:'HUMAN'};},
+      async setConversationMode(){mutations++;return {id:'conversation',channelId:'channel',mode:'BOT'};},
+    } as unknown as MessagingRepository,runInOrganizationTransaction:async(_org,work)=>work({query:async(sql:string)=>{
+      const rows=sql.startsWith('select id from messaging_channels')?[{id:'channel'}]
+        :remote&&sql.startsWith('SELECT 1 FROM chatwoot_connections')?[{exists:true}]:[];
+      return {rows,rowCount:rows.length};
+    }} as unknown as TenantTransaction),
+    resolveMetaClient:async()=>{throw new Error('unused');},resolveTypebotClient:async()=>{throw new Error('unused');}});
+    if(remote)await expect(service.setMode('tenant','conversation','BOT')).rejects.toMatchObject({code:'ATTENDANCE_RESUME_REQUIRED'});
+    else await expect(service.setMode('tenant','conversation','BOT')).resolves.toMatchObject({mode:'BOT'});
+    expect(mutations).toBe(remote?0:1);
+  });
+  it('does not activate a centrally controlled bot through the legacy mode shortcut', async () => {
+    let mutations = 0;
+    const service = createMessagingService({
+      repository: {
+        async findConversation() { return { id: 'conversation', channelId: 'channel', mode: 'HUMAN' }; },
+        async setConversationMode() { mutations++; return { id: 'conversation', channelId: 'channel', mode: 'BOT' }; },
+      } as unknown as MessagingRepository,
+      async runInOrganizationTransaction(_org, operation) {
+        return operation({ query: async (sql: string) => {const rows=sql.includes('SELECT c.revision')
+          ? [{ revision: 8, state: 'HUMAN', cycle: 1, local_mode: 'HUMAN', current_scope: true, pending: false, current_cycle: null }]
+          :sql.startsWith('select id from messaging_channels')?[{id:'channel'}]:[];return {rows,rowCount:rows.length};} } as unknown as TenantTransaction);
+      },
+      async resolveMetaClient() { throw new Error('unexpected'); },
+      async resolveTypebotClient() { throw new Error('unexpected'); },
+    });
+    await expect(service.setMode('tenant', 'conversation', 'BOT')).rejects.toMatchObject({ code: 'ATTENDANCE_RESUME_REQUIRED', statusCode: 409 });
+    expect(mutations).toBe(0);
+  });
   it('configura bot somente após validar canal tenant e referência allowlist fora da transação', async () => {
     let inTransaction = false;
     const operations: unknown[] = [];

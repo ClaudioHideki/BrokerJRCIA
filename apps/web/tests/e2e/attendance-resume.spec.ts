@@ -1,0 +1,30 @@
+import { expect,test } from '@playwright/test';
+import { signIn } from './helpers.js';
+
+test('retomada confirmada na API real, com escolha explícita e teclado',async({page})=>{
+  await signIn(page,'JRC E2E Retomada');await page.goto('/mensagens');
+  await page.getByLabel('Canal WhatsApp',{exact:true}).selectOption(process.env.JRC_E2E_RESUME_CHANNEL_ID!);
+  await expect(page.getByText('Modo: Atendimento humano')).toBeVisible();
+  await page.getByRole('button',{name:'Retomar bot',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Retomar bot',exact:true});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/central está sob controle humano|atendimento humano está ativo/)).toBeVisible();
+  await expect(dialog.getByRole('button',{name:'Confirmar retomada'})).toBeDisabled();
+  await dialog.getByLabel('Nova sessão',{exact:true}).check();
+  await dialog.getByRole('button',{name:'Fechar',exact:true}).focus();
+  await page.keyboard.press('Tab');
+  await expect(dialog.locator('input[type="radio"]:enabled').first()).toBeFocused();
+  const accepted=page.waitForResponse(r=>r.request().method()==='POST'&&/\/v1\/attendance\/conversations\/[^/]+\/resume$/.test(r.url()));
+  await dialog.getByRole('button',{name:'Confirmar retomada'}).click();
+  const response=await accepted;expect(response.status()).toBe(202);
+  expect((await response.json()).state).toBe('PENDING');
+  await expect(page.getByText('Modo: Bot',{exact:true})).toBeVisible();
+  await expect(dialog).not.toBeVisible();
+  await page.reload();await page.getByLabel('Canal WhatsApp',{exact:true}).selectOption(process.env.JRC_E2E_RESUME_CHANNEL_ID!);
+  await expect(page.getByText('Modo: Bot',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Assumir atendimento'}).click();
+  await expect(page.getByText('Modo: Atendimento humano')).toBeVisible();
+  await page.getByRole('button',{name:'Retomar bot',exact:true}).click();
+  await expect(dialog.getByLabel('Voltar ao menu')).toBeEnabled();
+  await page.keyboard.press('Escape');await expect(dialog).not.toBeVisible();
+});

@@ -475,6 +475,14 @@ export class ChatwootClient {
     if(result.id!==conversationId||result.account_id!==accountId)throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
     return result;
   }
+  async clearAttendanceAssignment(accountId:number,conversationId:number,kind:'AGENT'|'TEAM') {
+    // Stock Chatwoot chooses assignee_id before team_id. Never combine these fields.
+    await this.request('POST',this.account(accountId)+`/conversations/${integer.parse(conversationId)}/assignments`,
+      kind==='AGENT'?{assignee_id:null}:{team_id:null});
+  }
+  async pendingAttendanceConversation(accountId:number,conversationId:number) {
+    await this.request('POST',this.account(accountId)+`/conversations/${integer.parse(conversationId)}/toggle_status`,{status:'pending'});
+  }
   async conversation(accountId: number, conversationId: number) {
     return z
       .object({
