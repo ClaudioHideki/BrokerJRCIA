@@ -19,7 +19,18 @@ test('caixa QR, rascunho JSON, publicação, vínculo e arquivamento na jornada 
  await page.getByRole('button',{name:'Configurar Boas-vindas'}).click();await page.getByLabel('Mensagem',{exact:true}).fill('Olá, teste JRC.');await page.getByRole('button',{name:'Salvar',exact:true}).click();await expect(page.getByText('Rascunho salvo.',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Publicar',exact:true}).click();await expect(page.getByText('Versão 1 publicada.')).toBeVisible();
  await expectNoAutomaticAccessibilityViolations(page);
- await page.goto(boxUrl);await page.getByLabel('Automação publicada').selectOption({label:'QA automação '+name+' · v1'});await page.getByRole('button',{name:'Vincular automação',exact:true}).click();await expect(page.getByText('Automação vinculada. Novas mensagens usarão esta versão.')).toBeVisible();
+ // Hold the binding read until after a choice: response order must not erase a user's selection.
+ let releaseBinding:()=>void=()=>{},holdBinding=true;
+ const bindingGate=new Promise<void>(resolve=>{releaseBinding=resolve;});
+ await page.route('**/v1/channels/*/automation',async route=>{
+  if(holdBinding&&route.request().method()==='GET'){holdBinding=false;const response=await route.fetch();await bindingGate;await route.fulfill({response});}
+  else await route.continue();
+ });
+ await page.goto(boxUrl);
+ const choice=page.getByLabel('Automação publicada'),button=page.getByRole('button',{name:'Vincular automação',exact:true});
+ await choice.selectOption({label:'QA automação '+name+' · v1'});const selected=await choice.inputValue();
+ await expect(button).toBeDisabled();releaseBinding();await expect(button).toBeEnabled();await expect(choice).toHaveValue(selected);
+ await button.click();await expect(page.getByText('Automação vinculada. Novas mensagens usarão esta versão.')).toBeVisible();
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Desvincular automação'}).click();await expect(page.getByText('Vínculo atualizado.')).toBeVisible();
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Desconectar',exact:true}).click();await expect(page.getByText('WhatsApp desconectado.',{exact:true})).toBeVisible();
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Arquivar cadastro'}).click();await expect(page.getByRole('button',{name:'Restaurar cadastro'})).toBeVisible();

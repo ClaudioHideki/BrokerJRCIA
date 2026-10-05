@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { welcomeFlow } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
@@ -16,6 +16,28 @@ function client(request: ApiClient['request']): ApiClient { return { restore: vi
   registerTenantPurge: vi.fn(() => () => undefined), subscribeToSessionExpiration: vi.fn(() => () => undefined) } as unknown as ApiClient; }
 
 describe('canonical channels UI', () => {
+  it('preserves the chosen automation when the initial binding response arrives later', async () => {
+    const automationId = '11111111-2222-4333-8444-555555555555';
+    let release: (value: unknown) => void = () => {};
+    const pendingBinding = new Promise(resolve => { release = resolve; });
+    const channel = {schemaVersion:1,id,organizationId:org,provider:'QR',identity:{displayName:'Atendimento',maskedAddress:null},providerReference:{providerAccountId:account,instanceId:id},transportStatus:'CONNECTED',providerStatus:'READY',automationStatus:'UNBOUND',humanStatus:'UNBOUND',revision:1,createdAt:timestamp,updatedAt:timestamp};
+    const request = vi.fn(async (path: string) => {
+      if (path === '/v1/flows/status') return {enabled:true};
+      if (path === `/v1/channels/${id}`) return channel;
+      if (path === `/v1/channels/${id}/automation`) return pendingBinding;
+      if (path === '/v1/automations') return {data:[{schemaVersion:1,id:automationId,organizationId:org,name:'Triagem',lifecycleStatus:'PUBLISHED',draft:{revision:1,graph:welcomeFlow()},activeVersion:1,updatedAt:timestamp}]};
+      throw new Error(`Unexpected ${path}`);
+    }) as ApiClient['request'];
+    render(<App client={client(request)} initialEntries={[`/channels/${id}`]}/>);
+    await screen.findByRole('option',{name:'Triagem · v1'});
+    fireEvent.change(screen.getByLabelText('Automação publicada'),{target:{value:automationId}});
+    const button = screen.getByRole('button',{name:'Vincular automação'});
+    const disabledWhileLoading = button.hasAttribute('disabled');
+    await act(async () => { release({binding:null,ownerRevision:3}); await pendingBinding; });
+    expect(screen.getByLabelText('Automação publicada')).toHaveValue(automationId);
+    expect(disabledWhileLoading).toBe(true);
+    expect(button).toBeEnabled();
+  });
   it('shows the request ID when the inbox list is unavailable so support can trace the failure', async () => {
     const requestId = '85a17103-9f0d-4d86-b55d-4184597e17a8';
     const request = vi.fn(async (path: string) => {
