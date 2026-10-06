@@ -33,3 +33,15 @@ Referência de protocolo: [webhooks oficiais](https://www.chatwoot.com/hc/user-g
 ## Estado do programa
 
 P2 A/B/C1/C2 têm evidências locais e commits na branch; C1/C2 estão publicados em ec38dcb. D1 é limite interno de eventos; D2–D5 e wizard integral ainda pendentes. Main 4fe35ba e suas imagens contêm correção de segurança/P1, sem os incrementos P2. Servidor e cenários reais continuam separados do laboratório e do CI.
+
+## Correção do inventário de políticas no CI do P2
+
+Na execução [37494508230](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37494508230), o log fornecido pelo usuário registra 578 testes de integração aprovados e uma falha: o inventário esperava 225 políticas, mas recebeu 227. A migração 0045 cria duas políticas attendance_tenant nas tabelas local_attendance_teams e local_attendance_team_members; o inventário ainda esperava sete políticas de atendimento, sem essas duas.
+
+A correção mantém a comparação exata do inventário e inclui ambas as tabelas na verificação independente de USING/WITH CHECK por organização, ownership jrc_migrator, ENABLE/FORCE RLS e grants. DELETE permanece negado a jrc_app em times e permitido apenas em vínculos de membros, como especificado na migração; jrc_auth e jrc_platform não recebem acesso às novas tabelas. Nenhuma migração ou permissão de produção é alterada por esta correção de teste.
+
+Verificação local: 23 testes de migrações aprovados, incluindo a especificação ampliada; revisão independente sem bloqueios. A primeira execução unitária concorrente às integrações registrou dois timeouts de 30 segundos na auditoria (1.840 aprovados). Os seis testes de auditoria passaram isoladamente; a repetição completa com menor concorrência, sem as integrações paralelas, passou em 271 arquivos/1.842 testes (395,35 s), mantendo os limites originais dos testes.
+
+A tentativa completa de integrações local foi interrompida após falhas em concorrência de réplicas do Dashboard App e timeout de upgrade/readiness; não é uma suíte aprovada. As duas integrações passaram isoladamente: 2 arquivos/8 testes, 13,66 s, mantendo os limites originais. A aprovação completa de PostgreSQL/Redis e das jornadas de navegador ainda depende da nova execução de CI. A falha no inventário impediu a continuação dos gates daquele CI e não comprova uma imagem P2 publicada nem instalação no servidor.
+
+Decisão de entrega: integrar os incrementos concluídos P2 A/B/C1/C2 e o decoder interno D1 à main, reutilizando o checkout. A publicação de imagens será somente da main, após seus gates; D2–D5 e a homologação externa continuam pendentes e não são anunciados como parte funcional deste release.

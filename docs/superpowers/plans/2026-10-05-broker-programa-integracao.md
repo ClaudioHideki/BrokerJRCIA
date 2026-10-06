@@ -19,6 +19,10 @@
 - Desenvolvimento local, CI e implantação são estados distintos.
 - Release de produção exige tarefa explicitamente aprovada.
 
+## Entrega na main por incremento
+
+Decisão do usuário em 06/10/2026: cada incremento concluído e validado deve ser integrado à main, que é a referência do servidor. Reutilizar o checkout atual; não criar branches adicionais para novas etapas nem publicar imagens de entrega a partir de branches de desenvolvimento. Os incrementos P2 já existentes serão integrados após fechar os gates pendentes. Para cada entrega, registrar SHA da main, CI e digests das imagens API/web geradas daquela revisão. O usuário aplica esses digests no Dokploy; código na main, imagem publicada e servidor atualizado são verificações separadas. Um incremento parcial não encerra os critérios pendentes da fase completa.
+
 ## Foco da revisão
 
 1. Humano responde durante retomada ou I/O: bloquear bot — P1.

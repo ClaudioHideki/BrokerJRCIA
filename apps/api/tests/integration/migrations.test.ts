@@ -375,8 +375,8 @@ describe('migrations PostgreSQL', () => {
     );
 
     expect(result.rows).toEqual([
-      // 0034 (2) + 0039 (3) + 0042 handoff ledger.
-      ...Array.from({length:7},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      // 0034 (2) + 0039 (3) + 0042 (1) + 0044 (1) + 0045 (2).
+      ...Array.from({length:9},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
       // 0043 revokes delegated access through the restricted definer function.
       {policyname:'embed_authorizations_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
       {policyname:'embed_sessions_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
@@ -483,10 +483,11 @@ describe('migrations PostgreSQL', () => {
     ].sort((a,b)=>a.policyname.localeCompare(b.policyname)));
   });
 
-  it('checks the reviewed 0034-0042 policy tables, expressions and restricted grants', async () => {
+  it('checks the reviewed 0034-0045 policy tables, expressions and restricted grants', async () => {
     const attendanceTables = [
       'attendance_owners', 'attendance_sessions', 'chatwoot_attendance_controls',
       'chatwoot_mirror_attempts', 'chatwoot_attendance_observations', 'attendance_handoff_operations', 'attendance_resume_operations',
+      'local_attendance_teams', 'local_attendance_team_members',
     ];
     const commercialTables = ['commercial_plans', 'commercial_plan_versions', 'organization_commercial_plans'];
     const removalTables = ['group_company_removal_previews', 'group_company_removals', 'group_company_removal_children'];
@@ -553,8 +554,16 @@ describe('migrations PostgreSQL', () => {
             has_table_privilege('jrc_auth',$1,'DELETE') AS auth_delete`, [`public.${table}`])).rows[0];
         const tenantAccess = attendanceTables.includes(table);
         expect(grants, table).toEqual({ app_select: tenantAccess, app_insert: tenantAccess,
-          app_update: tenantAccess, app_delete: false, auth_select: false, auth_insert: false,
+          app_update: tenantAccess, app_delete: table === 'local_attendance_team_members', auth_select: false, auth_insert: false,
           auth_update: false, auth_delete: false });
+      }
+      for (const table of ['local_attendance_teams', 'local_attendance_team_members']) {
+        const grants = (await connection.query(`SELECT
+          has_table_privilege('jrc_platform',$1,'SELECT') AS can_select,
+          has_table_privilege('jrc_platform',$1,'INSERT') AS can_insert,
+          has_table_privilege('jrc_platform',$1,'UPDATE') AS can_update,
+          has_table_privilege('jrc_platform',$1,'DELETE') AS can_delete`, [`public.${table}`])).rows[0];
+        expect(grants, table).toEqual({ can_select: false, can_insert: false, can_update: false, can_delete: false });
       }
       for (const table of removalTables) {
         const grants = (await connection.query(`SELECT
