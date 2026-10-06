@@ -62,6 +62,7 @@ Incremento C1/C2: [plano](2026-10-06-broker-p2-modos-onboarding.md), [evidência
 - [ ] Mesmo Account/Inbox em hosts diferentes e tenant A/B: catálogos, jobs, mídia e credenciais isolados.
 
 ## D — Transporte central e revogação
+Plano detalhado: [transporte central](2026-10-06-broker-p2-transporte-central.md); [evidência incremental](../../validation/2026-10-06-broker-p2-transporte-central.md). Decoder D1 verificado sem rota/ativação; tarefas de persistência, envio e cutover ainda em execução.
 - [ ] CENTRAL_TRANSPORT alimenta runtime único; preservar origem, assinatura, deduplicação e BOT/HUMAN.
 - [ ] Cutover explícito remove executor legado por caixa, sem execução paralela.
 - [ ] Testar bot+integration webhook duplicado, replay, assinatura inválida, token revogado e troca de tenant com tela aberta.
