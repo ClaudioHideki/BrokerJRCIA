@@ -39,6 +39,13 @@ it('explains queued attendance blocked by a human instead of claiming a send fai
 });
 
 describe('Automation Studio',()=>{
+  it('labels a local handoff simulation without claiming an assignment at a central',async()=>{
+    const payload={handoffVersion:2,destination:{kind:'LOCAL',organizationId:organization.id,channelId:automationId},target:{kind:'QUEUE'}};
+    const request=vi.fn(async(path:string)=>path===`/v1/automations/${automationId}`?definition:path==='/v1/automation-nodes'?{data:AUTOMATION_NODE_CATALOG_V1}:path.endsWith('/simulate')?{status:'HANDOFF',state:{variables:{}},effects:[{kind:'HANDOFF',payload}],trace:[]}:Promise.reject(new Error(path))) as ApiClient['request'];
+    mountEditor(request);fireEvent.click(await screen.findByRole('button',{name:'Testar'}));
+    expect(await screen.findByText(/Fila humana do Broker simulada/)).toBeVisible();
+    expect(screen.queryByText(/Transferência legada/)).toBeNull();
+  });
   it.each(AUTOMATION_NODE_CATALOG_V1.filter(node=>node.availability==='AVAILABLE').map(node=>node.type))('opens a configuration form for available %s',async type=>{
     const graph=welcomeFlow();graph.nodes[1]!.type=type;graph.nodes[1]!.label='Bloco de teste';
     const request=vi.fn(async(path:string)=>path===`/v1/automations/${automationId}`?{...definition,draft:{revision:1,graph}}:path==='/v1/automation-nodes'?{data:AUTOMATION_NODE_CATALOG_V1}:Promise.reject(new Error(path))) as ApiClient['request'];
@@ -240,6 +247,19 @@ describe('Automation Studio',()=>{
     expect(await screen.findByText('Atendimento selecionado')).toBeVisible();
     expect(request).toHaveBeenCalledWith(`/v1/automations/${automationId}/simulate`,expect.objectContaining({body:JSON.stringify({text:'Olá',replies:['1']})}));
   });
+});
+it('shows a committed local queue receipt without claiming confirmation by a central',async()=>{
+ const request=vi.fn(async()=>({id:automationId,automationId,channelId:automationId,version:1,status:'HANDOFF',correlationId:'qa',nodes:[],outbox:[{id:'local-effect',nodeId:'h',kind:'HANDOFF',status:'SENT',attempts:1,remoteReference:'local-handoff:'+automationId,lastError:null}]})) as ApiClient['request'];
+ render(<SessionProvider client={client(request)}><MemoryRouter initialEntries={['/execution/'+automationId]}><Routes><Route path="/execution/:id" element={<AutomationExecutionDetailPage/>}/></Routes></MemoryRouter></SessionProvider>);
+ expect(await screen.findByText('Conversa na fila humana do Broker')).toBeVisible();
+ expect(screen.queryByText('Transferência confirmada na central')).toBeNull();
+});
+it.each(['PENDING','FAILED','UNKNOWN'])('keeps a %s local handoff diagnosis independent of a central before any receipt exists',async status=>{
+ const request=vi.fn(async()=>({id:automationId,automationId,channelId:automationId,version:1,status:'HANDOFF',correlationId:'qa',nodes:[],outbox:[{id:'local-effect',nodeId:'h',kind:'HANDOFF',handoffDestination:'LOCAL',status,attempts:1,remoteReference:null,lastError:null}]})) as ApiClient['request'];
+ render(<SessionProvider client={client(request)}><MemoryRouter initialEntries={['/execution/'+automationId]}><Routes><Route path="/execution/:id" element={<AutomationExecutionDetailPage/>}/></Routes></MemoryRouter></SessionProvider>);
+ expect(await screen.findByText(/Transferência local/)).toBeVisible();
+ expect(screen.queryByText(/consulta à central|confirmação da central|atendimento na central/)).toBeNull();
+ expect(screen.queryByRole('button',{name:'Confirmar envio'})).toBeNull();
 });
 
 it('cancels a queued execution only after confirmation and refreshes its status',async()=>{

@@ -12,6 +12,7 @@ import { automationRuntimeEnabled, recordAutomationHeartbeat } from '../modules/
 import { createIntegrationRuntime } from '../modules/integrations/runtime.js';
 import { createNativeHandoffService } from '../modules/attendance/handoff-service.js';
 import { createAttendanceResumeWorker } from '../modules/attendance/resume-worker.js';
+import { createLocalHandoffService } from '../modules/attendance/local-handoff.js';
 import type { OrganizationTransaction } from '../db/tenant-transaction.js';
 
 export function loadAutomationWorkerConfig(environment:NodeJS.ProcessEnv){const databaseUrl=z.string().url().parse(environment.DATABASE_URL);
@@ -41,9 +42,11 @@ export function createAutomationEffectDispatcher(options:{
   messaging:MessagingRepository;handoff?:Pick<ReturnType<typeof createNativeHandoffService>,'dispatch'>;
 }):ExternalEffectDispatcher {
   const {transact,messaging}=options;
+  const localHandoff=createLocalHandoffService({transact});
   return {dispatch:async item=>{
     if(!item.conversationId)return {kind:'FAILED',error:'AUTOMATION_CONVERSATION_REQUIRED'};
     if(item.kind==='HANDOFF'){
+      if(item.payload.handoffVersion===2)return localHandoff.dispatch(item);
       if(options.handoff)return options.handoff.dispatch(item);
       await transact(item.organizationId,tx=>messaging.setConversationMode(tx,{organizationId:item.organizationId,conversationId:item.conversationId!,mode:'HUMAN'}));
       return {kind:'FAILED',error:'AUTOMATION_HANDOFF_UNAVAILABLE'};

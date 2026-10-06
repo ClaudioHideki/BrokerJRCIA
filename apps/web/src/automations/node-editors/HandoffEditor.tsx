@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AutomationHandoffConfigV1Schema, type AttendanceCatalog, type FlowNode } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../../api/client.js';
 import { getHandoffCatalog, listHandoffConnections } from '../api.js';
+import { LocalHandoffEditor } from './LocalHandoffEditor.js';
 
 type Props = { node: FlowNode; editable: boolean; client: ApiClient; organizationId: string; onChange: (data: FlowNode['data']) => void };
 type Connections = Awaited<ReturnType<typeof listHandoffConnections>>;
@@ -24,7 +25,20 @@ function readinessRequirements(catalog:AttendanceCatalog,teamId:unknown):string[
   return requirements;
 }
 
-export function HandoffEditor({node,editable,client,organizationId,onChange}: Props) {
+export function HandoffEditor(props: Props) {
+  return <DestinationEditor key={`${props.organizationId}:${props.node.id}`} {...props}/>;
+}
+function DestinationEditor(props: Props) {
+  const [mode, setMode] = useState<'LOCAL' | 'CENTRAL'>(props.node.data.handoffVersion === 2 ? 'LOCAL' : 'CENTRAL');
+  return <>
+    {props.editable && <div>
+      <button type="button" aria-pressed={mode === 'LOCAL'} onClick={() => setMode('LOCAL')}>Usar fila do Broker</button>
+      <button type="button" aria-pressed={mode === 'CENTRAL'} onClick={() => setMode('CENTRAL')}>Usar central de atendimento</button>
+    </div>}
+    {mode === 'LOCAL' ? <LocalHandoffEditor {...props}/> : <RemoteHandoffEditor {...props}/>}
+  </>;
+}
+function RemoteHandoffEditor({node,editable,client,organizationId,onChange}: Props) {
   const context = `${organizationId}:${node.id}`;
   const storedDestination = object(node.data.destination), storedTarget = object(node.data.target);
   const integrationId = typeof storedDestination.integrationId === 'string' ? storedDestination.integrationId : '';

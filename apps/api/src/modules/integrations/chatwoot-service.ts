@@ -7,6 +7,7 @@ import type {
 } from "../../db/tenant-transaction.js";
 import { requireActiveOrganization } from "../tenancy/operational-limits.js";
 import { createPostgresMessagingRepository } from "../messaging/repository.js";
+import { lockAttendanceChannel } from '../attendance/repository.js';
 import {
   ChatwootClient,
   ChatwootError,
@@ -415,6 +416,9 @@ export function createChatwootService(options: ChatwootOptions) {
           throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
         if (!(await repo.findChannel(t, org, channelId!)))
           throw new IntegrationError("CHANNEL_NOT_FOUND", 404);
+        // Serialize admission with local publication, binding and handoff checks.
+        // The FK's KEY SHARE alone does not conflict with their channel lock.
+        await lockAttendanceChannel(t, org, channelId!);
         const row = (
           await t.query<ConnectionRow>(
             `INSERT INTO chatwoot_connections(id,organization_id,channel_id,name,inbox_id) VALUES($1,$2,$3,$4,$5)

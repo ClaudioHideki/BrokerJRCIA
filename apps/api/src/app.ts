@@ -8,6 +8,8 @@ import { registerFlowRoutes, type FlowRouteOptions } from './http/routes/flows.j
 import { createFlowService } from './modules/flows/service.js';
 import { registerAutomationRoutes, type AutomationRouteOptions } from './http/routes/automations.js';
 import { registerAttendanceResumeRoutes,type AttendanceResumeRouteOptions } from './http/routes/attendance-resume.js';
+import { registerAttendanceLocalRoutes, type AttendanceLocalRouteOptions } from './http/routes/attendance-local.js';
+import { createLocalAttendanceCatalog } from './modules/attendance/local-catalog.js';
 import { createAttendanceResumeService } from './modules/attendance/resume-service.js';
 import { registerObservabilityRoutes, type ObservabilityRouteOptions } from './http/routes/observability.js';
 import { createAutomationService, createEventRouter, createExecutionService } from './modules/automations/service.js';
@@ -161,6 +163,7 @@ export interface BuildAppOptions {
   flows?: FlowRouteOptions;
   automations?: AutomationRouteOptions;
   attendanceResume?: AttendanceResumeRouteOptions;
+  attendanceLocal?: AttendanceLocalRouteOptions;
   observability?: ObservabilityRouteOptions;
   credentials?: CredentialRouteOptions;
   automationWebhooks?: AutomationWebhookRouteOptions;
@@ -231,6 +234,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       options.flows !== undefined ||
       options.automations !== undefined ||
       options.attendanceResume !== undefined ||
+      options.attendanceLocal !== undefined ||
       options.observability !== undefined ||
       options.credentials !== undefined ||
       options.automationWebhooks !== undefined ||
@@ -260,6 +264,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   let flows = nodeEnv === "test" ? options.flows : undefined;
   let automations = nodeEnv === "test" ? options.automations : undefined;
   let attendanceResume = nodeEnv === "test" ? options.attendanceResume : undefined;
+  let attendanceLocal = nodeEnv === "test" ? options.attendanceLocal : undefined;
   let observability = nodeEnv === "test" ? options.observability : undefined;
   let credentials = nodeEnv === "test" ? options.credentials : undefined;
   let automationWebhooks = nodeEnv === "test" ? options.automationWebhooks : undefined;
@@ -575,11 +580,12 @@ export function buildApp(options: BuildAppOptions = {}) {
     const automationOptions={transact:<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pools.appPool,org,work),repository:automationRepository,enabled:config.automationRuntimeV2Enabled};
     const automationRuntimeReady=createAutomationRuntimeReadiness({transact:automationOptions.transact,schemaCurrent:schemaObjectsReady,probeRedis:async()=>redisClient.isReady&&(await redisClient.ping())==='PONG'});
     attendanceResume={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createAttendanceResumeService(automationOptions)};
+    attendanceLocal={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createLocalAttendanceCatalog(automationOptions)};
     automations={
       jwtSecret:config.jwtSecret,
       authenticateApiKey:apiKeys.authenticateApiKey,
       resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),
-      service:createAutomationService({...automationOptions,runtimeReady:automationRuntimeReady,...(integrationRuntime.chatwoot?{handoffReadiness:createHandoffReadiness({transact:automationOptions.transact,catalog:integrationRuntime.chatwoot.attendanceCatalog,validateTarget:integrationRuntime.chatwoot.validateHumanDestination})}:{})}),
+      service:createAutomationService({...automationOptions,runtimeReady:automationRuntimeReady,handoffReadiness:createHandoffReadiness({transact:automationOptions.transact,...(integrationRuntime.chatwoot?{catalog:integrationRuntime.chatwoot.attendanceCatalog,validateTarget:integrationRuntime.chatwoot.validateHumanDestination}:{})})}),
       executions:createExecutionService(automationOptions),
       migration:createLegacyFlowMigrationService({...automationOptions,runtimeReady:automationRuntimeReady}),
     };
@@ -883,6 +889,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     app.register(scope=>registerAutomationImportRoutes(scope,configured));
   }
   if(attendanceResume){const configured=attendanceResume;app.register(scope=>registerAttendanceResumeRoutes(scope,configured));}
+  if(attendanceLocal){const configured=attendanceLocal;app.register(scope=>registerAttendanceLocalRoutes(scope,configured));}
   if (messaging) {
     const configuredMessaging = messaging;
     void app.register(async (scope) =>

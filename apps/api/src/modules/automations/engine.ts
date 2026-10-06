@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { FlowGraphSchema, AutomationHandoffConfigV1Schema, hasNativeHandoffConfig, automationNodePorts, menuOptions,
+import { FlowGraphSchema, AutomationHandoffConfigSchema, hasNativeHandoffConfig, automationNodePorts, menuOptions,
   type AutomationGraphV1, type FlowNode } from '@jrc/contracts';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
 import { executeDataNode } from '../automation-integrations/data-nodes.js';
@@ -92,7 +92,7 @@ export async function executeAutomation(
     const record={nodeId:node.id,type:node.type,label:node.label,input:{message:variables.message??''},output:{} as Record<string,unknown>};trace.push(record);
     if(node.type==='end') {current=null;continue;}
     if(node.type==='handoff'){
-      const native=hasNativeHandoffConfig(node.data),parsed=native?AutomationHandoffConfigV1Schema.safeParse(node.data):null;
+      const native=hasNativeHandoffConfig(node.data),parsed=native?AutomationHandoffConfigSchema.safeParse(node.data):null;
       if(parsed&&!parsed.success)throw new Error('AUTOMATION_HANDOFF_CONFIG_INVALID');
       const payload=parsed?.success?parsed.data:{};
       record.output=parsed?.success?{status:'HANDOFF_PENDING',destination:parsed.data.destination,target:parsed.data.target}

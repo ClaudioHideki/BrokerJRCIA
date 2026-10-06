@@ -1,4 +1,4 @@
-import { attendanceCatalogSchema, ChatwootStatusSchema, AutomationDefinitionV1Schema, AutomationPublishedVersionV1Schema, NodeDiagnosticSchema, legacyStringsToNodeDiagnostics, type AttendanceDiagnostic, type AutomationDefinitionV1, type AutomationGraphV1, type AutomationPublishedVersionV1 } from '@jrc/contracts';
+import { LocalAttendanceChannelsSchema, attendanceCatalogSchema, ChatwootStatusSchema, AutomationDefinitionV1Schema, AutomationPublishedVersionV1Schema, NodeDiagnosticSchema, legacyStringsToNodeDiagnostics, type AttendanceDiagnostic, type AutomationDefinitionV1, type AutomationGraphV1, type AutomationPublishedVersionV1 } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
 
 export interface AutomationNodeCatalogItem {type:string;category:string;label:string;description:string;version?:number;availability?:'AVAILABLE'|'UNAVAILABLE';unavailableReason?:string|null}
@@ -8,7 +8,7 @@ export async function validateAutomation(client: ApiClient, id: string) {
   if (!Array.isArray(result.errors) || !result.errors.every((item):item is string => typeof item === 'string')) throw new ApiClientError('Diagnósticos inválidos retornados pelo serviço.',502);
   return { valid: result.valid, diagnostics: legacyStringsToNodeDiagnostics(result.errors) };
 }
-export interface AutomationExecution {attendanceDiagnostic?:AttendanceDiagnostic;id:string;automationId:string;version:number;bindingId:string;channelId:string;conversationRef?:string|null;contactRef?:string|null;status:string;currentNodeId:string|null;correlationId:string;startedAt:string;updatedAt:string;completedAt:string|null;durationMs?:number;errorCode?:string|null;input?:unknown;state?:unknown;nodes?:Array<{id:string;nodeId:string;ordinal:number;attempt:number;durationMs:number|null;status:string;input:unknown;output:unknown;errorCode:string|null;startedAt:string;completedAt:string|null}>;outbox?:Array<{id:string;nodeId:string;ordinal:number;kind:string;status:string;attempts:number;remoteReference:string|null;lastError:string|null;createdAt:string;updatedAt:string}>}
+export interface AutomationExecution {attendanceDiagnostic?:AttendanceDiagnostic;id:string;automationId:string;version:number;bindingId:string;channelId:string;conversationRef?:string|null;contactRef?:string|null;status:string;currentNodeId:string|null;correlationId:string;startedAt:string;updatedAt:string;completedAt:string|null;durationMs?:number;errorCode?:string|null;input?:unknown;state?:unknown;nodes?:Array<{id:string;nodeId:string;ordinal:number;attempt:number;durationMs:number|null;status:string;input:unknown;output:unknown;errorCode:string|null;startedAt:string;completedAt:string|null}>;outbox?:Array<{id:string;nodeId:string;ordinal:number;kind:string;handoffDestination?:'LOCAL'|'CENTRAL'|null;status:string;attempts:number;remoteReference:string|null;lastError:string|null;createdAt:string;updatedAt:string}>}
 const parsed=<T>(schema:{safeParse(value:unknown):{success:true;data:T}|{success:false}},value:unknown,message:string):T=>{const result=schema.safeParse(value);if(!result.success)throw new ApiClientError(message,502);return result.data;};
 export async function listAutomationsPage(client:ApiClient,cursor?:string){
   const value=await client.request<{data:unknown[];nextCursor?:string|null}>(`/v1/automations${cursor?`?cursor=${encodeURIComponent(cursor)}`:''}`);
@@ -33,6 +33,18 @@ export type {AutomationDefinitionV1,AutomationGraphV1,AutomationPublishedVersion
 export async function listHandoffConnections(client: ApiClient, signal?: AbortSignal) {
   const status = parsed(ChatwootStatusSchema, await client.request('/v1/integrations/chatwoot', {signal:signal??null}), 'Conexões inválidas retornadas pelo serviço.');
   return status.connections.filter(connection => connection.status === 'READY' && connection.inboxId !== null);
+}
+export async function listLocalHandoffChannels(client: ApiClient, organizationId: string, signal?: AbortSignal) {
+  const result = parsed(LocalAttendanceChannelsSchema,
+    await client.request('/v1/attendance/local-channels', {signal: signal ?? null}),
+    'Catálogo local inválido retornado pelo serviço.');
+  const ids = new Set<string>();
+  for (const item of result.data) {
+    if (item.scope.organizationId !== organizationId || ids.has(item.scope.channelId))
+      throw new ApiClientError('O catálogo não corresponde ao escopo desta empresa e caixa.', 409);
+    ids.add(item.scope.channelId);
+  }
+  return result.data;
 }
 export async function getHandoffCatalog(client: ApiClient, organizationId: string, integrationId: string, signal?: AbortSignal) {
   const catalog = parsed(attendanceCatalogSchema,

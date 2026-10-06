@@ -1,8 +1,9 @@
-import { AutomationGraphV1Schema, AutomationHandoffConfigV1Schema, type AutomationGraphV1 } from '@jrc/contracts';
+import { AutomationGraphV1Schema, AutomationHandoffConfigSchema, type AutomationGraphV1 } from '@jrc/contracts';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import { readChatwootAccount } from '../integrations/chatwoot-context.js';
 import { resolveAttendanceScope } from './repository.js';
 import { AttendanceError } from './types.js';
+import { assertStandaloneDestination } from './destination-adapter.js';
 
 /** Common local admission for every native owner path. Remote policy/target
  * readiness belongs to asynchronous publication and, decisively, dispatch. */
@@ -17,8 +18,12 @@ export async function assertHandoffBinding(tx:TenantTransaction,org:string,chann
     for(const node of graph.nodes.filter(n=>n.type==='start'))walk(node.id);
     for(const node of graph.nodes.filter(n=>reachable.has(n.id))){
       if(node.type==='handoff'){
-        const configured=AutomationHandoffConfigV1Schema.safeParse(node.data);
+        const configured=AutomationHandoffConfigSchema.safeParse(node.data);
         if(!configured.success)throw new AttendanceError('ATTENDANCE_HANDOFF_DESTINATION_REQUIRED',409);
+        if(configured.data.handoffVersion===2){
+          if(configured.data.destination.organizationId!==org||configured.data.destination.channelId!==channelId)throw new AttendanceError('ATTENDANCE_HANDOFF_CONTEXT_CHANGED',409);
+          await assertStandaloneDestination(tx,org,channelId);continue;
+        }
         const scope=await resolveAttendanceScope(tx,org,channelId),account=await readChatwootAccount(tx,org),d=configured.data.destination;
         if(!scope||!account||scope.integrationId!==d.integrationId||scope.destinationRevision!==d.destinationRevision||scope.accountId!==d.accountId||scope.inboxId!==d.inboxId||account.credential_version!==d.credentialRevision)
           throw new AttendanceError('ATTENDANCE_HANDOFF_CONTEXT_CHANGED',409);

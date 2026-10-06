@@ -14,7 +14,7 @@ export interface ExecutionRow {id:string;organizationId:string;automationId:stri
 export type OutboxKind='SEND_TEXT'|'HANDOFF'|'RESUME_EVENT'|'IO_HTTP'|'IO_SQL'|'IO_CODE'|'IO_AI';
 export interface OutboxRow {id:string;organizationId:string;executionId:string;channelId:string;conversationId:string|null;nodeId:string;ordinal:number;kind:OutboxKind;payload:Record<string,unknown>;attempts:number;leaseToken:string}
 export interface NodeExecutionRow {id:string;nodeId:string;ordinal:number;status:string;input:Record<string,unknown>;output:Record<string,unknown>;errorCode:string|null;startedAt:Date;completedAt:Date|null}
-export interface OutboxInspectionRow {id:string;nodeId:string;ordinal:number;kind:OutboxKind;status:string;attempts:number;remoteReference:string|null;lastError:string|null;createdAt:Date;updatedAt:Date}
+export interface OutboxInspectionRow {id:string;nodeId:string;ordinal:number;kind:OutboxKind;handoffDestination?:'LOCAL'|'CENTRAL'|null;status:string;attempts:number;remoteReference:string|null;lastError:string|null;createdAt:Date;updatedAt:Date}
 export interface ExecutionContextRow {conversationId:string|null;contactId:string|null}
 
 // Only the head of an execution may leave the durable outbox. Inspect ALL kinds
@@ -30,6 +30,14 @@ const outboxHeadEligible=`not exists (
   where peer.organization_id=o.organization_id and peer.execution_id=o.execution_id
     and peer.ordinal=o.ordinal and peer.id<>o.id
 )`;
+
+// Local HANDOFF has no HTTP effect and commits its receipt with the state change.
+// A crashed reservation without that receipt can be reclaimed after its lease;
+// external UNKNOWN effects remain barriers and are never retried by this path.
+const outboxClaimEligible=`(o.status='PENDING' AND o.available_at<=now() OR
+  o.status='UNKNOWN' AND o.kind='HANDOFF' AND o.remote_reference IS NULL
+  AND o.payload @> '{"handoffVersion":2,"destination":{"kind":"LOCAL"}}'::jsonb
+  AND o.lease_expires_at<=now())`;
 
 const runtimeTenantActive=`exists(select 1 from organizations runtime_org join flow_features runtime_feature on runtime_feature.organization_id=runtime_org.id where runtime_org.id=$1 and runtime_org.status='ACTIVE' and runtime_feature.enabled)`;
 const definitionColumns=`id,organization_id AS "organizationId",name,lifecycle_status AS "lifecycleStatus",draft_graph AS "draftGraph",draft_revision AS "draftRevision",active_version AS "activeVersion",updated_at AS "updatedAt"`;
@@ -145,7 +153,9 @@ export function createPostgresAutomationRepository():AutomationRepository{return
   async getExecution(tx,org,id){return (await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions where organization_id=$1 and id=$2`,[org,id])).rows[0]??null;},
   async listExecutions(tx,org,automationId){return (await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions where organization_id=$1 and ($2::uuid is null or automation_id=$2) order by started_at desc limit 200`,[org,automationId??null])).rows;},
   async listNodeExecutions(tx,org,executionId){return (await tx.query<NodeExecutionRow>(`select id,node_id AS "nodeId",ordinal,status,input,output,error_code AS "errorCode",started_at AS "startedAt",completed_at AS "completedAt" from automation_node_executions where organization_id=$1 and execution_id=$2 order by ordinal`,[org,executionId])).rows;},
-  async listExecutionOutbox(tx,org,executionId){return (await tx.query<OutboxInspectionRow>(`select id,node_id as "nodeId",ordinal,kind,status,attempts,remote_reference as "remoteReference",last_error as "lastError",created_at as "createdAt",updated_at as "updatedAt" from automation_outbox where organization_id=$1 and execution_id=$2 order by ordinal`,[org,executionId])).rows;},
+  async listExecutionOutbox(tx,org,executionId){return (await tx.query<OutboxInspectionRow>(`select id,node_id as "nodeId",ordinal,kind,
+    CASE WHEN kind='HANDOFF' THEN CASE WHEN payload @> '{"handoffVersion":2,"destination":{"kind":"LOCAL"}}'::jsonb THEN 'LOCAL' ELSE 'CENTRAL' END ELSE NULL END AS "handoffDestination",
+    status,attempts,remote_reference as "remoteReference",last_error as "lastError",created_at as "createdAt",updated_at as "updatedAt" from automation_outbox where organization_id=$1 and execution_id=$2 order by ordinal`,[org,executionId])).rows;},
   async getExecutionContext(tx,org,executionId){return (await tx.query<ExecutionContextRow>(`select e.conversation_id as "conversationId",c.contact_id as "contactId" from automation_executions e left join messaging_conversations c on c.organization_id=e.organization_id and c.id=e.conversation_id where e.organization_id=$1 and e.id=$2`,[org,executionId])).rows[0]??{conversationId:null,contactId:null};},
   async reconcileUnknownOutbox(tx,input){const row=(await tx.query<{status:string;kind:string}>(`select status,kind from automation_outbox where organization_id=$1 and execution_id=$2 and id=$3 for update`,[input.org,input.executionId,input.outboxId])).rows[0];if(!row||row.status!=='UNKNOWN')return false;
     // Native handoff requires canonical remote evidence. An operator label or
@@ -177,23 +187,33 @@ export function createPostgresAutomationRepository():AutomationRepository{return
     return released;
   },
   async claimOutbox(tx,org,leaseToken,leaseMs,kinds){
-    const candidates=(await tx.query<{id:string;executionId:string;channelId:string;kind:OutboxKind}>(`select o.id,o.execution_id AS "executionId",e.channel_id AS "channelId",o.kind
+    const candidates=(await tx.query<{id:string;executionId:string;channelId:string;kind:OutboxKind;recoverLocal:boolean}>(`select o.id,o.execution_id AS "executionId",e.channel_id AS "channelId",o.kind,o.status='UNKNOWN' AS "recoverLocal"
       from automation_outbox o join automation_executions e on e.organization_id=o.organization_id and e.id=o.execution_id
-      where o.organization_id=$1 and ${runtimeTenantActive} and o.status='PENDING' and o.available_at<=now() and o.kind=any($2::text[])
+      where o.organization_id=$1 and ${runtimeTenantActive} and ${outboxClaimEligible} and o.kind=any($2::text[])
       and e.status NOT IN ('CANCELED','FAILED','UNKNOWN') and ${outboxHeadEligible}
       order by o.created_at,o.execution_id,o.ordinal,o.id limit 50`,[org,kinds])).rows;
     for(const channel of [...new Set(candidates.map(row=>row.channelId))].sort())await lockAttendanceChannelRead(tx,org,channel);
     const locked=(await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions where organization_id=$1 and id=any($2::uuid[])
       and status NOT IN ('CANCELED','FAILED','UNKNOWN') order by id for no key update skip locked`,[org,candidates.map(row=>row.executionId)])).rows;
     for(const candidate of candidates){
-      const execution=locked.find(row=>row.id===candidate.executionId);if(!execution||!await runtimeAuthorityAllows(tx,execution,candidate.kind!=='HANDOFF'))continue;
+      const execution=locked.find(row=>row.id===candidate.executionId);if(!execution)continue;
+      const permitted=await runtimeAuthorityAllows(tx,execution,candidate.kind!=='HANDOFF');
+      if(!permitted&&!candidate.recoverLocal)continue;
       // Recheck after the execution lock, in a fresh READ COMMITTED statement.
       // The candidate list can be stale. The reservation becomes UNKNOWN before
       // commit, so subsequent workers still see the barrier during external IO.
       const available=(await tx.query(`select o.id from automation_outbox o where o.organization_id=$1 and o.id=$2
-        and o.status='PENDING' and o.available_at<=now() and o.kind=any($3::text[]) and ${outboxHeadEligible}
+        and ${outboxClaimEligible} and o.kind=any($3::text[]) and ${outboxHeadEligible}
         for update of o skip locked`,[org,candidate.id,kinds])).rowCount;
       if(!available)continue;
+      if(!permitted){
+        // No local transaction committed and current authority no longer allows
+        // it. Close this barrier without changing the new owner or human state.
+        await tx.query(`UPDATE automation_outbox SET status='FAILED',last_error='HANDOFF_AUTHORITY_CHANGED',
+          lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE organization_id=$1 AND id=$2
+          AND status='UNKNOWN' AND ${outboxClaimEligible.replaceAll('o.','automation_outbox.')}`,[org,candidate.id]);
+        continue;
+      }
       return (await tx.query<OutboxRow>(`update automation_outbox set status='UNKNOWN',attempts=attempts+1,lease_token=$3,
         lease_expires_at=now()+($4::int*interval '1 millisecond'),updated_at=now() where organization_id=$1 and id=$2
         returning id,organization_id AS "organizationId",execution_id AS "executionId",$5::uuid AS "channelId",$6::uuid AS "conversationId",

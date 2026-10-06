@@ -4,6 +4,8 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/attendance/local-channels': policy('apps/api/src/http/routes/attendance-local.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_CHANNEL_ACTIVE_NO_CENTRAL_AUTHORITY'),
   'POST /v1/attendance/conversations/{id}/resume': policy('apps/api/src/http/routes/attendance-resume.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
     'TENANT_IDEMPOTENCY_KEY_REQUEST_HASH_SINGLE_CONVERSATION_OPERATION','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_OWNER_CONTROL_BINDING_DESTINATION_CREDENTIAL_REVISIONS_REMOTE_CONFIRMATION'),
   ...Object.fromEntries(['GET /v1/attendance/conversations/{id}/resume-context','GET /v1/attendance/resume-operations/{id}'].map(route=>[route,policy(

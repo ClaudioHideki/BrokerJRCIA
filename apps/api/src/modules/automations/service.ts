@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AUTOMATION_ORIGIN, AutomationGraphV1Schema, legacyStringsToNodeDiagnostics, nodeDiagnosticsToStrings, type NodeDiagnostic, type AutomationGraphV1 } from '@jrc/contracts';
+import { AUTOMATION_ORIGIN, AutomationGraphV1Schema, AutomationHandoffConfigSchema, legacyStringsToNodeDiagnostics, nodeDiagnosticsToStrings, type NodeDiagnostic, type AutomationGraphV1 } from '@jrc/contracts';
 import { z } from 'zod';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import { executeAutomation, validateAutomationGraph } from './engine.js';
@@ -75,7 +75,7 @@ export function createAutomationService(options:AutomationServiceOptions){
     const visit=async(current:AutomationGraphV1)=>{
       if(!AutomationGraphV1Schema.safeParse(current).success)throw new AutomationError('AUTOMATION_PUBLISHED_GRAPH_INVALID',409);
       if(current.nodes.some(node=>node.type==='handoff')){
-        const missing=current.nodes.find(node=>node.type==='handoff'&&node.data.handoffVersion!==1);
+        const missing=current.nodes.find(node=>node.type==='handoff'&&!AutomationHandoffConfigSchema.safeParse(node.data).success);
         if(missing)throw new AutomationError('AUTOMATION_HANDOFF_DESTINATION_REQUIRED',422,[{nodeId:missing.id,field:'data.destination',code:'HANDOFF_DESTINATION_REQUIRED',message:`${missing.label}: selecione uma caixa e um time ou atendente antes de publicar.`}]);
         if(!options.handoffReadiness)throw new AutomationError('AUTOMATION_HANDOFF_UNAVAILABLE',409);
         try{checks.push(await options.handoffReadiness.prepare(org,current,channelId));}
@@ -128,7 +128,7 @@ export function createAutomationService(options:AutomationServiceOptions){
       const snapshot=await options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
         const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);await validateDependencies(tx,org,id,row.draftGraph,2);return row;});
       const readiness=await prepareHandoffs(org,snapshot.draftGraph);
-      return options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
+      return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
       await readiness.assertCurrent(tx);
       const next=(row.activeVersion??0)+1,checksum=createHash('sha256').update(canonical(row.draftGraph)).digest('hex');const published=await repository.insertVersion(tx,{org,id,version:next,graph:row.draftGraph,checksum,runtimeStateVersion:2});await repository.activateVersion(tx,org,id,next);return version(published);});},
     setArchived:(org:string,id:string,archived:boolean,actorId?:string)=>{return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);

@@ -217,6 +217,7 @@ export function createPostgresHandoffRepository():HandoffRepository {
         e.channel_id AS "channelId",e.conversation_id AS "conversationId",o.node_id AS "nodeId",o.ordinal,o.kind,o.payload,o.attempts,o.lease_token AS "leaseToken"
         FROM automation_outbox o JOIN automation_executions e ON e.organization_id=o.organization_id AND e.id=o.execution_id
         WHERE o.organization_id=$1 AND o.kind='HANDOFF' AND o.status='UNKNOWN'
+          AND NOT (o.payload @> '{"handoffVersion":2,"destination":{"kind":"LOCAL"}}'::jsonb)
           AND (o.lease_expires_at IS NULL OR o.lease_expires_at<=now())
           AND NOT EXISTS(SELECT 1 FROM attendance_handoff_operations h WHERE h.organization_id=o.organization_id AND h.outbox_id=o.id)
         ORDER BY o.created_at,o.id LIMIT 1`,[org])).rows[0];
