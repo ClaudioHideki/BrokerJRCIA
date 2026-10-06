@@ -84,6 +84,25 @@ export async function removeMembership(
   transaction: MembershipTransaction,
   input: { organizationId: string; userId: string },
 ): Promise<void> {
+  // Serialize with new directory/session references before deciding whether the
+  // identity may be deleted. A referenced identity is retained as a tombstone;
+  // DISABLED revokes access while preserving assignment history and team rows.
+  const target = await transaction.query(
+    'SELECT user_id FROM memberships WHERE organization_id = $1 AND user_id = $2 FOR UPDATE',
+    [input.organizationId, input.userId],
+  );
+  if (!target.rowCount) return;
+  const preserved = await transaction.query(
+    `UPDATE memberships m SET status = 'DISABLED', updated_at = now()
+      WHERE m.organization_id = $1 AND m.user_id = $2 AND (
+        EXISTS (SELECT 1 FROM local_attendance_team_members t
+          WHERE t.organization_id = m.organization_id AND t.user_id = m.user_id)
+        OR EXISTS (SELECT 1 FROM attendance_sessions s
+          WHERE s.organization_id = m.organization_id AND s.local_agent_id = m.user_id)
+      )`,
+    [input.organizationId, input.userId],
+  );
+  if (preserved.rowCount) return;
   await transaction.query(
     'DELETE FROM memberships WHERE organization_id = $1 AND user_id = $2',
     [input.organizationId, input.userId],

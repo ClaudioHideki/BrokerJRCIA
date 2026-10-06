@@ -41,3 +41,15 @@ A correção pontual atualiza somente versão, URL e SHA512 de source-map-js par
 Regressão completa após a atualização: 263 arquivos e 1.733 testes PASS em 364,12 segundos; build limpo, bundle e limite do submódulo PASS. O audit atualizado retornou zero vulnerabilidades em todas as severidades. `git diff --check` foi verificado antes do commit. A suíte E2E completa local anteriormente recusada não foi repetida.
 
 O incremento P2 A foi registrado separadamente em `1bd6906`; não faz parte desta correção de segurança. A geração de imagens corrigidas requer o novo commit na main e aprovação do workflow; os digests de 9bc0b7c acima continuam sendo evidência apenas da versão anterior.
+
+## Release intermediário confirmado: 4fe35ba
+
+Main: `4fe35badb475ff5d5ea69b3c91b198b5731a5f29`.
+
+- [CI](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37468304706): completed/success.
+- [Imagens](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37468365833): completed/success.
+- Artefato de release: revision correspondente, component all, published true, SBOM true, provenance mode=max e assinatura github-oidc.
+- API: `ghcr.io/claudiohideki/brokerjrcia-api@sha256:01176c85eb21ed134d1dbf7d24508abebe64d193bfb475b38a8856b105c8b981`.
+- Web: `ghcr.io/claudiohideki/brokerjrcia-web@sha256:d8e43b30c9e44d547e3fdbe8a372852455f3eae26bd62844067bfb12036f0332`.
+
+Essas imagens incluem a retomada P1, a correção do seletor de vínculo e a dependência corrigida. Não incluem P2 A/B nem encerram o programa. Não foi executada implantação no Dokploy; não confundir publicação do artefato com funcionamento real no servidor ou homologação das integrações.

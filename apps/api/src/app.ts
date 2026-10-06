@@ -10,6 +10,7 @@ import { registerAutomationRoutes, type AutomationRouteOptions } from './http/ro
 import { registerAttendanceResumeRoutes,type AttendanceResumeRouteOptions } from './http/routes/attendance-resume.js';
 import { registerAttendanceLocalRoutes, type AttendanceLocalRouteOptions } from './http/routes/attendance-local.js';
 import { createLocalAttendanceCatalog } from './modules/attendance/local-catalog.js';
+import { createLocalAttendanceDirectoryService } from './modules/attendance/local-directory-service.js';
 import { createAttendanceResumeService } from './modules/attendance/resume-service.js';
 import { registerObservabilityRoutes, type ObservabilityRouteOptions } from './http/routes/observability.js';
 import { createAutomationService, createEventRouter, createExecutionService } from './modules/automations/service.js';
@@ -580,7 +581,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     const automationOptions={transact:<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pools.appPool,org,work),repository:automationRepository,enabled:config.automationRuntimeV2Enabled};
     const automationRuntimeReady=createAutomationRuntimeReadiness({transact:automationOptions.transact,schemaCurrent:schemaObjectsReady,probeRedis:async()=>redisClient.isReady&&(await redisClient.ping())==='PONG'});
     attendanceResume={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createAttendanceResumeService(automationOptions)};
-    attendanceLocal={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createLocalAttendanceCatalog(automationOptions)};
+    attendanceLocal={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createLocalAttendanceCatalog(automationOptions),directory:createLocalAttendanceDirectoryService(automationOptions)};
     automations={
       jwtSecret:config.jwtSecret,
       authenticateApiKey:apiKeys.authenticateApiKey,

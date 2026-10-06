@@ -325,6 +325,14 @@ export function createMessagingService(
     },
     async listMessages(organizationId, conversationId) {
       return transact(organizationId, async (tx) => {
+        const conversation = await repository.findConversation(tx,organizationId,conversationId);
+        if (!conversation) throw new MessagingRepositoryError("CONVERSATION_NOT_FOUND", 404);
+        return {data:(await repository.listConversationMessages(tx,organizationId,conversationId,100)).map(messageView)};
+      });
+    },
+    async getConversation(organizationId, conversationId) {
+      return transact(organizationId, async (tx) => {
+        await requireActiveOrganization(tx,organizationId);
         const conversation = await repository.findConversation(
           tx,
           organizationId,
@@ -332,16 +340,11 @@ export function createMessagingService(
         );
         if (!conversation)
           throw new MessagingRepositoryError("CONVERSATION_NOT_FOUND", 404);
-        return {
-          data: (
-            await repository.listConversationMessages(
-              tx,
-              organizationId,
-              conversationId,
-              100,
-            )
-          ).map(messageView),
-        };
+        const channel=await repository.findChannel(tx,organizationId,conversation.channelId);
+        if(!channel || channel.organizationId!==organizationId || conversation.organizationId!==organizationId)
+          throw new MessagingRepositoryError('CONVERSATION_NOT_FOUND',404);
+        const {id,channelId,contactId,mode}=conversation;
+        return {id,channelId,contactId,mode};
       });
     },
     async sendTemplate(organizationId, channelId, rawInput, idempotencyKey) {

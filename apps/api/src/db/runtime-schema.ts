@@ -1,4 +1,4 @@
-export const RUNTIME_SCHEMA_BASELINE = '0044_attendance_resume_operations';
+export const RUNTIME_SCHEMA_BASELINE = '0045_local_attendance_directory';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -14,6 +14,73 @@ const requiredObjectsSql = `SELECT
   AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.current_tenant_authentication_valid(uuid,integer)') AND prosecdef)
   AND
   pg_catalog.to_regclass('public.messaging_media') IS NOT NULL
+  AND NOT pg_catalog.has_any_column_privilege('jrc_app',pg_catalog.to_regclass('public.users'),'SELECT')
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES ('public.local_attendance_teams'),('public.local_attendance_team_members')) AS required(relation_name)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+      WHERE c.oid=pg_catalog.to_regclass(required.relation_name) AND c.relrowsecurity AND c.relforcerowsecurity
+        AND EXISTS (SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='attendance_tenant'))
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES ('public.local_attendance_teams'),('public.local_attendance_team_members')) AS required(relation_name)
+    WHERE NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'SELECT')
+       OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'INSERT')
+       OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'UPDATE')
+       OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c,
+         LATERAL pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault('r',c.relowner))) a
+         WHERE c.oid=pg_catalog.to_regclass(required.relation_name) AND a.grantee=0)
+  )
+  AND pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.local_attendance_team_members'),'DELETE')
+  AND NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.local_attendance_teams'),'DELETE')
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES
+      ('public.local_attendance_teams','local_attendance_teams_pkey','p'),
+      ('public.local_attendance_team_members','local_attendance_team_members_pkey','p')
+    ) AS required(relation_name,constraint_name,constraint_type)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c
+      WHERE c.conrelid=pg_catalog.to_regclass(required.relation_name) AND c.conname=required.constraint_name
+        AND c.contype::text=required.constraint_type AND c.convalidated)
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES
+      ('public.memberships',ARRAY['organization_id','user_id']::text[]),
+      ('public.local_attendance_teams',ARRAY['organization_id','team_id']::text[])
+    ) AS required(relation_name,source_columns)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c
+      WHERE c.conrelid=pg_catalog.to_regclass('public.local_attendance_team_members')
+        AND c.confrelid=pg_catalog.to_regclass(required.relation_name) AND c.contype='f' AND c.convalidated
+        AND (SELECT array_agg(a.attname::text ORDER BY k.ord)
+          FROM unnest(c.conkey) WITH ORDINALITY k(num,ord)
+          JOIN pg_catalog.pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.num)=required.source_columns
+        AND (SELECT array_agg(a.attname::text ORDER BY k.ord)
+          FROM unnest(c.confkey) WITH ORDINALITY k(num,ord)
+          JOIN pg_catalog.pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=k.num)
+          =CASE required.relation_name WHEN 'public.memberships' THEN ARRAY['organization_id','user_id']::text[] ELSE ARRAY['organization_id','id']::text[] END)
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES ('public.current_local_attendance_members()'),('public.lock_local_attendance_member(uuid)')) AS required(function_name)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
+      WHERE p.oid=pg_catalog.to_regprocedure(required.function_name) AND p.prosecdef
+        AND pg_catalog.pg_get_userbyid(p.proowner)='jrc_migrator'
+        AND p.proconfig @> ARRAY['search_path=pg_catalog, public']::text[]
+        AND pg_catalog.has_function_privilege('jrc_app',p.oid,'EXECUTE')
+        AND NOT pg_catalog.has_function_privilege('jrc_auth',p.oid,'EXECUTE')
+        AND NOT pg_catalog.has_function_privilege('jrc_platform',p.oid,'EXECUTE')
+        AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
+          WHERE a.grantee=0 AND a.privilege_type='EXECUTE'))
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES ('local_team_id'),('local_agent_id')) AS required(column_name)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+      WHERE a.attrelid=pg_catalog.to_regclass('public.attendance_sessions')
+        AND a.attname=required.column_name AND a.atttypid='uuid'::regtype AND a.attnum>0 AND NOT a.attisdropped)
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES ('attendance_local_team_fk','f'),('attendance_local_agent_fk','f'),('attendance_local_target_scope','c')) AS required(constraint_name,constraint_type)
+    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c
+      WHERE c.conrelid=pg_catalog.to_regclass('public.attendance_sessions') AND c.conname=required.constraint_name
+        AND c.contype::text=required.constraint_type AND c.convalidated)
+  )
   AND pg_catalog.to_regclass('public.attendance_resume_operations') IS NOT NULL
   AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.messaging_conversations')
     AND attname='attendance_revision' AND attnotnull AND attnum>0 AND NOT attisdropped)

@@ -310,3 +310,9 @@ it('shows action-required and pending handoff states without displaying raw remo
  expect(screen.getByText(/Revise o destino e o atendimento na central antes de retomar o bot/)).toBeVisible();
  expect(screen.queryByText(/synthetic-private-data/)).toBeNull();expect(screen.queryByRole('button',{name:'Confirmar envio'})).toBeNull();
 });
+
+it.each(['LOCAL_AGENT_UNAVAILABLE','LOCAL_TEAM_EMPTY'])('shows the safe local target diagnostic %s',async code=>{
+ const request=vi.fn(async()=>({id:automationId,automationId,channelId:automationId,version:1,status:'HANDOFF',correlationId:'qa',nodes:[],outbox:[{id:'local',nodeId:'Local',kind:'HANDOFF',status:'FAILED',attempts:1,remoteReference:null,lastError:code,handoffDestination:'LOCAL'}]})) as ApiClient['request'];
+ render(<SessionProvider client={client(request)}><MemoryRouter initialEntries={['/execution/'+automationId]}><Routes><Route path="/execution/:id" element={<AutomationExecutionDetailPage/>}/></Routes></MemoryRouter></SessionProvider>);
+ expect(await screen.findByText(code)).toBeVisible();
+});

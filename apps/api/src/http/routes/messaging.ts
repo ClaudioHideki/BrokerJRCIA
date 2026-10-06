@@ -38,6 +38,7 @@ import { SendTextRequestSchema, type SendTextRequest } from "@jrc/contracts";
 import { MediaError, safeMediaName, type BinaryMedia } from "@jrc/providers";
 
 export interface MessagingService {
+  getConversation?(organizationId: string, conversationId: string): Promise<ConversationView>;
   retryMessage?(
     organizationId: string,
     id: string,
@@ -410,6 +411,15 @@ export async function registerMessagingRoutes(
     },
     (request) =>
       options.service.listMessages(tenant(request), request.params.id),
+  );
+  api.get(
+    "/v1/messaging/conversations/:id",
+    {preHandler:read,schema:{params:idParams,querystring:emptyQuery,response:{200:ConversationViewSchema}}},
+    async (request,reply) => {
+      reply.header('cache-control','no-store');
+      if(!options.service.getConversation)throw Object.assign(new Error('Conversation lookup unavailable'),{status:503});
+      return options.service.getConversation(tenant(request),request.params.id);
+    },
   );
   api.post(
     "/v1/messaging/channels/:id/messages",

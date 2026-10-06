@@ -13,7 +13,7 @@
 - Nenhum HTTP dentro de transação; UNKNOWN não autoriza repetir efeitos externos.
 - Sem distribuição automática nova; implantação e homologação externa permanecem separadas.
 - Não criar IDs fictícios de Account/Inbox nem alterar versões publicadas.
-- Release P1 preservada na main em 9bc0b7c (árvore igual ao candidato 0ba33a2). A correção isolada do vínculo está na main em 1c6e49a83db7635671330165df512f169ca974fc, com CI aprovado. A geração de imagens desse commit foi bloqueada pelo audit de source-map-js; corrigir a dependência antes de repetir. P2 permanece separado.
+- Release P1 preservada na main em 9bc0b7c (árvore igual ao candidato 0ba33a2). A correção do vínculo entrou em 1c6e49a; o audit foi corrigido por source-map-js 1.2.2 na main 4fe35badb475ff5d5ea69b3c91b198b5731a5f29. CI 37468304706 e imagens 37468365833 aprovados; digests em [registro de imagens](../../validation/2026-10-05-broker-main-images-and-binding.md). P2 permanece separado.
 
 ## Foco da revisão
 1. Central desconectada após salvar transferência local: bloquear vínculo/execução — tarefa A.
@@ -48,10 +48,11 @@ Interfaces:
 - [x] Rodar regressões, build/typecheck, npm test, contratos, OpenAPI e diff check; revisão independente sem bloqueios. Commit do incremento A após estes checks; evidências em [fila local](../../validation/2026-10-06-broker-p2-fila-local.md).
 
 ## B — Catálogo local completo e atribuição manual
-- [ ] Modelar times/membros/fila e agente UUID separados de IDs Chatwoot numéricos; migration com RLS e lifecycle.
-- [ ] Validar usuários ativos e memberships atuais por função estreita; referência revogada impede publicação/atribuição.
-- [ ] Implementar destino time/agente e atribuição manual, sem algoritmo automático.
-- [ ] Testar membro revogado, empresa suspensa, fila sem atendente e takeover concorrente.
+Plano detalhado e registro: [times/agentes](2026-10-06-broker-p2-times-agentes.md), [evidências locais](../../validation/2026-10-06-broker-p2-times-agentes.md).
+- [x] Modelar times/membros/fila e agente UUID separados de IDs Chatwoot numéricos; migration com RLS e lifecycle.
+- [x] Validar usuários ativos e memberships atuais por função estreita; referência revogada impede publicação/atribuição.
+- [x] Implementar destino time/agente e atribuição manual, sem algoritmo automático.
+- [x] Testar membro revogado, empresa suspensa, fila sem atendente e takeover concorrente.
 
 ## C — Modos e onboarding observados
 - [ ] Reutilizar onboarding, destination approval e compatibility existentes.

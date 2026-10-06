@@ -77,6 +77,7 @@ function documentationOptions() {
     attendanceLocal: {
       jwtSecret:`${DOCUMENTATION_SECRET}-jwt`,authenticateApiKey:unavailable,resolveCurrentRole:unavailable,
       service:new Proxy({}, {get(){return unavailable;}}) as ReturnType<typeof import('../modules/attendance/local-catalog.js').createLocalAttendanceCatalog>,
+      directory:new Proxy({}, {get(){return unavailable;}}) as ReturnType<typeof import('../modules/attendance/local-directory-service.js').createLocalAttendanceDirectoryService>,
     },
     observability: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,

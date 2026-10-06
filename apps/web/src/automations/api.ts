@@ -1,5 +1,6 @@
 import { LocalAttendanceChannelsSchema, attendanceCatalogSchema, ChatwootStatusSchema, AutomationDefinitionV1Schema, AutomationPublishedVersionV1Schema, NodeDiagnosticSchema, legacyStringsToNodeDiagnostics, type AttendanceDiagnostic, type AutomationDefinitionV1, type AutomationGraphV1, type AutomationPublishedVersionV1 } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
+import {LocalAttendanceDirectorySchema} from '@jrc/contracts';
 
 export interface AutomationNodeCatalogItem {type:string;category:string;label:string;description:string;version?:number;availability?:'AVAILABLE'|'UNAVAILABLE';unavailableReason?:string|null}
 export async function validateAutomation(client: ApiClient, id: string) {
@@ -45,6 +46,13 @@ export async function listLocalHandoffChannels(client: ApiClient, organizationId
     ids.add(item.scope.channelId);
   }
   return result.data;
+}
+export async function getLocalHandoffCatalog(client:ApiClient,organizationId:string,channelId:string,signal?:AbortSignal){
+ const value=parsed(LocalAttendanceDirectorySchema,await client.request(`/v1/attendance/local-channels/${encodeURIComponent(channelId)}/catalog`,{signal:signal??null}),'Catálogo humano do Broker inválido.');
+ if(value.scope.organizationId!==organizationId||value.scope.channelId!==channelId)throw new ApiClientError('O catálogo não corresponde ao escopo desta empresa e caixa.',409);
+ const agents=new Set(value.agents.map(a=>a.id)),teams=new Set(value.teams.map(t=>t.id));
+ if(agents.size!==value.agents.length||teams.size!==value.teams.length||value.teams.some(t=>new Set(t.memberIds).size!==t.memberIds.length||t.memberIds.some(id=>!agents.has(id))))throw new ApiClientError('Catálogo humano do Broker inválido.',502);
+ return value;
 }
 export async function getHandoffCatalog(client: ApiClient, organizationId: string, integrationId: string, signal?: AbortSignal) {
   const catalog = parsed(attendanceCatalogSchema,

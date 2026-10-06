@@ -8,6 +8,7 @@ import {
 
 import {
   ConversationsResponseSchema,
+  ConversationViewSchema,
   CreateTextTemplateRequestSchema,
   MessagesResponseSchema,
   MessagingChannelsResponseSchema,
@@ -15,6 +16,7 @@ import {
   TemplateStatusResponseSchema,
   SubmittedTemplateSchema,
   type ConversationView,
+  type LocalQueueItem,
   type MessageView,
   type MessagingChannelView,
   type TemplateView,
@@ -23,6 +25,7 @@ import {
 import { ApiClientError, type ApiClient } from "../api/client.js";
 import { useApiClient, useSession } from "../auth/SessionProvider.js";
 import { AttendanceResumeDialog } from './AttendanceResumeDialog.js';
+import {LocalAttendancePanel} from '../attendance/LocalAttendancePanel.js';
 
 function safeError(error: unknown, fallback: string) {
   const apiError = error instanceof ApiClientError ? error : null;
@@ -130,6 +133,7 @@ export function MessagingPage() {
   const pendingTemplateSubmission = useRef<{ payload: string; key: string } | null>(null);
   const [conversations, setConversations] = useState<ConversationView[]>([]);
   const [conversationId, setConversationId] = useState("");
+  const conversationNavigation = useRef(0);
   const [messages, setMessages] = useState<MessageView[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [loadingChannel, setLoadingChannel] = useState(false);
@@ -152,6 +156,7 @@ export function MessagingPage() {
   }, []);
 
   const resetState = useCallback(() => {
+    conversationNavigation.current += 1;
     setChannels([]);
     setChannelId("");
     setTemplates([]);
@@ -349,6 +354,31 @@ export function MessagingPage() {
 
   const selectedConversation =
     conversations.find((item) => item.id === conversationId) ?? null;
+
+  function openAssignedConversation(row: LocalQueueItem) {
+    const generation = tenantGeneration.current, assignedChannel = channelId;
+    const navigation = ++conversationNavigation.current;
+    const controller = new AbortController();
+    controllers.current.add(controller);
+    // Remove the previous composer immediately; never carry its draft into another conversation.
+    setConversationId(""); setMessages([]); setDraft(""); pendingSend.current = null;
+    setResumingConversation(null); setError(null);
+    void client.request(`/v1/messaging/conversations/${encodeURIComponent(row.conversationId)}`,{signal:controller.signal}).then(raw => {
+      if(controller.signal.aborted || navigation !== conversationNavigation.current || generation !== tenantGeneration.current || assignedChannel !== activeChannelId.current) return;
+      const parsed=ConversationViewSchema.safeParse(raw);
+      if(!parsed.success || parsed.data.id!==row.conversationId || parsed.data.channelId!==assignedChannel)
+        throw new ApiClientError("A conversa assumida não está disponível nesta caixa. Atualize o canal antes de responder.",409);
+      const confirmed=parsed.data;
+      setConversations(data=>[...data.filter(item=>item.id!==confirmed.id),confirmed]); setConversationId(confirmed.id); setMessageRevision(value => value + 1);
+    }).catch(cause => {
+      if(!controller.signal.aborted && navigation === conversationNavigation.current && generation === tenantGeneration.current && assignedChannel === activeChannelId.current)
+        setError(safeError(cause,"Não foi possível abrir a conversa assumida. Atualize o canal antes de responder."));
+    }).finally(() => controllers.current.delete(controller));
+  }
+  function startAssignmentNavigation() {
+    const navigation=++conversationNavigation.current,generation=tenantGeneration.current,assignedChannel=channelId;
+    return ()=>navigation===conversationNavigation.current&&generation===tenantGeneration.current&&assignedChannel===activeChannelId.current;
+  }
   const selectedChannel =
     channels.find((item) => item.id === channelId) ?? null;
   const sendableTemplates = templates.filter(
@@ -691,7 +721,7 @@ export function MessagingPage() {
             <select
               id="messaging-channel"
               value={channelId}
-              onChange={(event) => setChannelId(event.target.value)}
+              onChange={(event) => {conversationNavigation.current+=1;setChannelId(event.target.value);setConversationId('');setDraft('');pendingSend.current=null;}}
             >
               {channels.map((channel) => (
                 <option key={channel.id} value={channel.id}>
@@ -707,11 +737,11 @@ export function MessagingPage() {
               id="messaging-conversation"
               value={conversationId}
               disabled={loadingChannel || conversations.length === 0}
-              onChange={(event) => setConversationId(event.target.value)}
+              onChange={(event) => {conversationNavigation.current+=1;setConversationId(event.target.value);setDraft('');pendingSend.current=null;}}
             >
               {conversations.map((conversation) => (
                 <option key={conversation.id} value={conversation.id}>
-                  {conversation.contactId}
+                  {conversation.contactId} · Conversa {conversation.id}
                 </option>
               ))}
             </select>
@@ -722,6 +752,7 @@ export function MessagingPage() {
             <a className="button button--secondary" href="/automations">Gerenciar automações</a>{' '}
             <a href="/channels">Gerenciar caixas de entrada</a>
           </section>
+          {!loadingChannel&&session&&organizationId&&channelId&&<LocalAttendancePanel key={`${organizationId}:${tenantRevision}:${channelId}`} client={client} organizationId={organizationId} channelId={channelId} actorId={session.user.id} role={session.activeOrganization.role} onAssignmentStart={startAssignmentNavigation} onAssigned={openAssignedConversation}/>}
           {loadingChannel ? (
             <div className="state-card" aria-busy="true">
               Carregando canal…

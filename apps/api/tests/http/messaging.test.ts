@@ -17,6 +17,7 @@ async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER'
     jwtSecret: secret, async authenticateApiKey(raw) { return raw === 'existing-instance-key' ? { apiKeyId: channel, organizationId: org, scopes: ['instances:read', 'instances:connect'] } : null; },
     async resolveCurrentRole() { return currentRole; },
     service: {
+      ...{async getConversation(organizationId:string,conversationId:string){organizations.push(organizationId);return {id:conversationId,channelId:channel,contactId:channel,mode:'HUMAN' as const,privateField:'must-not-leak'};}},
       async listChannels(organizationId: string) { organizations.push(organizationId); return { data: [{ id: channel, provider: 'META' as const, ownerRevision: 0, botPublicId: null, credentialReference: 'must-not-leak' }] }; },
       async listTemplates() { return { data: [] }; }, async listConversations() { return { data: [] }; }, async listMessages() { return { data: [] }; },
       async getTemplateStatus(organizationId, channelId, templateId) {
@@ -43,6 +44,15 @@ async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER'
     setCurrentRole(value: typeof role | null) { currentRole = value; } };
 }
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
+it('opens a conversation by exact identity with current tenant, no-store and public fields only',async()=>{
+ const h=await harness('OPERATOR'),url=`/v1/messaging/conversations/${channel}`;
+ const response=await h.app.inject({method:'GET',url,headers:h.headers});
+ expect(response.statusCode).toBe(200);expect(response.headers['cache-control']).toBe('no-store');
+ expect(response.json()).toEqual({id:channel,channelId:channel,contactId:channel,mode:'HUMAN'});expect(h.organizations).toEqual([org]);
+ h.setCurrentRole(null);expect((await h.app.inject({method:'GET',url,headers:h.headers})).statusCode).toBe(403);
+ expect((await h.app.inject({method:'GET',url,headers:{authorization:'Bearer existing-instance-key'}})).statusCode).not.toBe(200);
+ expect(h.organizations).toEqual([org]);
+});
 it('envia texto com idempotência, tenant derivado e bloqueio de VIEWER',async()=>{
  const h=await harness();const input={method:'POST' as const,url:`/v1/messaging/channels/${channel}/text`,headers:{...h.headers,'idempotency-key':channel},payload:{conversationId:channel,text:'Olá'}};
  expect((await h.app.inject(input)).statusCode).toBe(202);expect(h.organizations).toEqual([org]);

@@ -3,7 +3,7 @@ import { AutomationLocalHandoffConfigV2Schema } from '@jrc/contracts';
 import type { OrganizationTransaction } from '../../db/tenant-transaction.js';
 import type { OutboxRow } from '../automations/repository.js';
 import type { OutboxDispatchResult } from '../automations/service.js';
-import { assertStandaloneDestination } from './destination-adapter.js';
+import { assertLocalHumanTarget } from './local-directory.js';
 import { lockAttendanceChannel } from './repository.js';
 import { runtimeAuthorityAllows } from './runtime-authority.js';
 import { interruptChatwootAttendance } from './control-service.js';
@@ -34,7 +34,7 @@ export function createLocalHandoffService(options:{transact<T>(org:string,work:O
   const config=AutomationLocalHandoffConfigV2Schema.safeParse(row.payload);
   if(!config.success)return fail('HANDOFF_DESTINATION_REQUIRED_REPUBLISH');
   if(config.data.destination.organizationId!==item.organizationId||config.data.destination.channelId!==item.channelId)return fail('HANDOFF_SCOPE_MISMATCH');
-  try{await assertStandaloneDestination(tx,item.organizationId,item.channelId);}
+  try{await assertLocalHumanTarget(tx,item.organizationId,item.channelId,config.data.target);}
   catch(error){if(error instanceof AttendanceError)return fail(error.code);throw error;}
   const binding=(await tx.query(`SELECT 1 FROM automation_bindings WHERE organization_id=$1 AND id=$2
     AND channel_id=$3 AND automation_id=$4 AND version=$5 AND status IN ('ACTIVE','PAUSED')`,
@@ -56,11 +56,13 @@ export function createLocalHandoffService(options:{transact<T>(org:string,work:O
   const cycle=session?.cycle??Number((await tx.query<{cycle:number}>('SELECT coalesce(max(cycle),0)+1 AS cycle FROM attendance_sessions WHERE organization_id=$1 AND conversation_id=$2',[item.organizationId,item.conversationId])).rows[0]!.cycle);
   const owner=(await tx.query<{revision:number}>('SELECT revision FROM attendance_owners WHERE organization_id=$1 AND channel_id=$2',[item.organizationId,item.channelId])).rows[0]!;
   await interruptChatwootAttendance(tx,{organizationId:item.organizationId,channelId:item.channelId,conversationId:item.conversationId},false);
-  await tx.query(`INSERT INTO attendance_sessions(organization_id,id,channel_id,conversation_id,cycle,execution_id,automation_id,version,state,owner_revision)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,'WAITING_HUMAN',$9)
+  const target=config.data.target;
+  await tx.query(`INSERT INTO attendance_sessions(organization_id,id,channel_id,conversation_id,cycle,execution_id,automation_id,version,state,owner_revision,local_team_id,local_agent_id)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,'WAITING_HUMAN',$9,$10,$11)
     ON CONFLICT(organization_id,conversation_id,cycle) DO UPDATE SET state='WAITING_HUMAN',execution_id=EXCLUDED.execution_id,
-      automation_id=EXCLUDED.automation_id,version=EXCLUDED.version,owner_revision=EXCLUDED.owner_revision,revision=attendance_sessions.revision+1,updated_at=now()`,
-    [item.organizationId,session?.id??randomUUID(),item.channelId,item.conversationId,cycle,item.executionId,execution.automationId,execution.version,owner.revision]);
+      automation_id=EXCLUDED.automation_id,version=EXCLUDED.version,owner_revision=EXCLUDED.owner_revision,
+      local_team_id=EXCLUDED.local_team_id,local_agent_id=EXCLUDED.local_agent_id,revision=attendance_sessions.revision+1,updated_at=now()`,
+    [item.organizationId,session?.id??randomUUID(),item.channelId,item.conversationId,cycle,item.executionId,execution.automationId,execution.version,owner.revision,target.kind==='TEAM'?target.teamId:null,target.kind==='AGENT'?target.agentId:null]);
   await tx.query("UPDATE automation_outbox SET status='SENT',remote_reference=$3,last_error=NULL,lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE organization_id=$1 AND id=$2",[item.organizationId,item.id,receipt]);
   return {kind:'SENT',remoteReference:receipt};
  })};

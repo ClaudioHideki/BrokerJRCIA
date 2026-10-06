@@ -1376,6 +1376,1037 @@
         ]
       }
     },
+    "/v1/attendance/local-channels/{channelId}/catalog": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channelId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "agents": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "email": {
+                            "format": "email",
+                            "maxLength": 320,
+                            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+                            "type": "string"
+                          },
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "role": {
+                            "enum": [
+                              "OWNER",
+                              "ADMIN",
+                              "OPERATOR"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "email",
+                          "role"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    },
+                    "scope": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "channelId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "LOCAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "organizationId",
+                        "channelId"
+                      ],
+                      "type": "object"
+                    },
+                    "teams": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "memberIds": {
+                            "items": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "maxItems": 1000,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "name": {
+                            "maxLength": 120,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "revision",
+                          "memberIds"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "agents",
+                    "teams"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/attendance/local-channels/{channelId}/queue": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channelId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "conversationId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "cycle": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "sessionId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "sessionRevision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "state": {
+                            "enum": [
+                              "WAITING_HUMAN",
+                              "HUMAN_ACTIVE"
+                            ],
+                            "type": "string"
+                          },
+                          "target": {
+                            "oneOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "QUEUE"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "TEAM"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "teamId": {
+                                    "format": "uuid",
+                                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "teamId"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "agentId": {
+                                    "format": "uuid",
+                                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "AGENT"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "agentId"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "conversationId",
+                          "sessionId",
+                          "sessionRevision",
+                          "cycle",
+                          "state",
+                          "target"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    },
+                    "scope": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "channelId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "LOCAL"
+                          ],
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "organizationId",
+                        "channelId"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/attendance/local-conversations/{conversationId}/assignment": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedSessionId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "sessionRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "target": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "QUEUE"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "TEAM"
+                            ],
+                            "type": "string"
+                          },
+                          "teamId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "teamId"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "agentId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "AGENT"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "agentId"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "expectedSessionId",
+                  "sessionRevision",
+                  "target"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "conversationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "cycle": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "sessionId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "sessionRevision": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "state": {
+                      "enum": [
+                        "WAITING_HUMAN",
+                        "HUMAN_ACTIVE"
+                      ],
+                      "type": "string"
+                    },
+                    "target": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "QUEUE"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "TEAM"
+                              ],
+                              "type": "string"
+                            },
+                            "teamId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "teamId"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "agentId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": [
+                                "AGENT"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "agentId"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "conversationId",
+                    "sessionId",
+                    "sessionRevision",
+                    "cycle",
+                    "state",
+                    "target"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/attendance/local-teams": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "agents": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "email": {
+                            "format": "email",
+                            "maxLength": 320,
+                            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+                            "type": "string"
+                          },
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "role": {
+                            "enum": [
+                              "OWNER",
+                              "ADMIN",
+                              "OPERATOR"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "email",
+                          "role"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    },
+                    "teams": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "memberIds": {
+                            "items": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "maxItems": 1000,
+                            "type": "array"
+                          },
+                          "name": {
+                            "maxLength": 120,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "status": {
+                            "enum": [
+                              "ACTIVE",
+                              "ARCHIVED"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "status",
+                          "revision",
+                          "memberIds"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "agents",
+                    "teams"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "memberIds": {
+                      "items": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    },
+                    "name": {
+                      "maxLength": 120,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "revision": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "status": {
+                      "enum": [
+                        "ACTIVE",
+                        "ARCHIVED"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "status",
+                    "revision",
+                    "memberIds"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/attendance/local-teams/{teamId}": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "teamId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": [
+                      "ACTIVE",
+                      "ARCHIVED"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "name",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "memberIds": {
+                      "items": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    },
+                    "name": {
+                      "maxLength": 120,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "revision": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "status": {
+                      "enum": [
+                        "ACTIVE",
+                        "ARCHIVED"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "status",
+                    "revision",
+                    "memberIds"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/attendance/local-teams/{teamId}/members": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "teamId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "memberIds": {
+                    "items": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "maxItems": 1000,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "memberIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "memberIds": {
+                      "items": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    },
+                    "name": {
+                      "maxLength": 120,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "revision": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "status": {
+                      "enum": [
+                        "ACTIVE",
+                        "ARCHIVED"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "status",
+                    "revision",
+                    "memberIds"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/attendance/resume-operations/{id}": {
       "get": {
         "parameters": [
@@ -26112,6 +27143,81 @@
                     "direction",
                     "state",
                     "text"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/messaging/conversations/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "contactId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "id": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "mode": {
+                      "enum": [
+                        "BOT",
+                        "HUMAN"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "channelId",
+                    "contactId",
+                    "mode"
                   ],
                   "type": "object"
                 }

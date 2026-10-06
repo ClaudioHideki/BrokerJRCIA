@@ -19,12 +19,12 @@ describe('repository baseline', () => {
 
     expect(migrations.slice(-6)).toEqual([
 
-      '0039_chatwoot_attendance_observations.sql',
       '0040_automation_input_queue.sql',
       '0041_automation_runtime_versions.sql',
       '0042_native_handoff_operations.sql',
       '0043_user_password_reset.sql',
       '0044_attendance_resume_operations.sql',
+      '0045_local_attendance_directory.sql',
     ]);
     expect(rootManifests).toEqual(['MANIFESTO_ARQUIVOS_SHA256.txt']);
   });

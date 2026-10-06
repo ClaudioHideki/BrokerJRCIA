@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MessagingChannelsResponseSchema } from '@jrc/contracts';
 
@@ -118,6 +118,83 @@ function loadedRequest(overrides: {
 }
 
 describe('MessagingPage', () => {
+  it('keeps the second claimed conversation open when the first lookup finishes later',async()=>{
+    const first='22222222-3333-4444-8555-666666666666',second='33333333-4444-4555-8666-777777777777';
+    const rows=[first,second].map(id=>({conversationId:id,sessionId:id,sessionRevision:2,cycle:1,state:'WAITING_HUMAN',target:{kind:'QUEUE'}}));
+    const base=loadedRequest({provider:'BAILEYS'});let resolve:(v:unknown)=>void=()=>{};
+    const request=vi.fn(async(path:string,init?:RequestInit)=>{
+      if(path.endsWith('/queue'))return {scope:{kind:'LOCAL',organizationId:ORGANIZATION_ID,channelId:CHANNEL_ID},data:rows};
+      if(path.endsWith('/assignment'))return {...rows.find(row=>path.includes(row.conversationId)),state:'HUMAN_ACTIVE',sessionRevision:3,target:{kind:'AGENT',agentId:session('OPERATOR').user.id}};
+      if(path===`/v1/messaging/conversations/${first}`)return new Promise(r=>{resolve=r;});
+      if(path===`/v1/messaging/conversations/${second}`)return {id:second,channelId:CHANNEL_ID,contactId:CONTACT_ID,mode:'HUMAN'};
+      if(path===`/v1/messaging/conversations/${second}/messages`)return {data:[{id:MESSAGE_ID,direction:'INCOMING',state:'DELIVERED',text:'Segunda conversa assumida'}]};
+      return base(path,init);
+    }) as ApiClient['request'];
+    renderPage(clientFor(request,'OPERATOR'));await screen.findByText('Olá, preciso de ajuda');
+    fireEvent.click(screen.getByRole('button',{name:'Consultar fila do Broker'}));
+    const claims=await screen.findAllByRole('button',{name:'Assumir conversa'});
+    fireEvent.click(claims[0]!);await waitFor(()=>expect(claims[1]).toBeEnabled());fireEvent.click(claims[1]!);
+    await screen.findByText('Segunda conversa assumida');
+    await act(async()=>{resolve({id:first,channelId:CHANNEL_ID,contactId:CONTACT_ID,mode:'HUMAN'});});
+    expect(screen.getByLabelText('Conversa')).toHaveValue(second);expect(screen.getByLabelText('Responder')).toHaveValue('');
+  });
+  it('does not expose the local queue until the initial channel load has completed',async()=>{
+    const base=loadedRequest({provider:'BAILEYS'});let resolve:(v:unknown)=>void=()=>{};
+    const request=vi.fn(async(path:string,init?:RequestInit)=>path.endsWith('/conversations')?new Promise(r=>{resolve=r;}):base(path,init)) as ApiClient['request'];
+    renderPage(clientFor(request,'OPERATOR'));await screen.findByText('Carregando canal…');
+    expect(screen.queryByRole('button',{name:'Consultar fila do Broker'})).toBeNull();
+    await act(async()=>{resolve({data:[{id:CONVERSATION_ID,channelId:CHANNEL_ID,contactId:CONTACT_ID,mode:'BOT'}]});});
+    expect(await screen.findByRole('button',{name:'Consultar fila do Broker'})).toBeVisible();
+  });
+  it.each(['lookup','claim'])('does not reopen an assigned conversation after a later explicit selection during %s', async pending => {
+    const second='22222222-3333-4444-8555-666666666666', sid='33333333-4444-4555-8666-777777777777';
+    const row={conversationId:second,sessionId:sid,sessionRevision:2,cycle:1,state:'WAITING_HUMAN',target:{kind:'QUEUE'}};
+    const base=loadedRequest({provider:'BAILEYS'});let claimed=false,resolve:(v:unknown)=>void=()=>{};
+    const request=vi.fn(async(path:string,init?:RequestInit)=>{
+      if(path.endsWith('/queue'))return {scope:{kind:'LOCAL',organizationId:ORGANIZATION_ID,channelId:CHANNEL_ID},data:[row]};
+      if(path.endsWith('/assignment')){claimed=true;return pending==='claim'?new Promise(r=>{resolve=r;}):{...row,state:'HUMAN_ACTIVE',sessionRevision:3,target:{kind:'AGENT',agentId:session('OPERATOR').user.id}};}
+      if(claimed&&path===`/v1/messaging/conversations/${second}`)return pending==='lookup'?new Promise(r=>{resolve=r;}):{id:second,channelId:CHANNEL_ID,contactId:CONTACT_ID,mode:'HUMAN'};
+      if(path===`/v1/messaging/conversations/${second}/messages`)return {data:[{id:MESSAGE_ID,direction:'INCOMING',state:'DELIVERED',text:'Conversa tardia'}]};
+      return base(path,init);
+    }) as ApiClient['request'];
+    renderPage(clientFor(request,'OPERATOR'));await screen.findByText('Olá, preciso de ajuda');
+    fireEvent.click(screen.getByRole('button',{name:'Consultar fila do Broker'}));fireEvent.click(await screen.findByRole('button',{name:'Assumir conversa'}));
+    await waitFor(()=>expect(request).toHaveBeenCalledWith(pending==='lookup'?`/v1/messaging/conversations/${second}`:`/v1/attendance/local-conversations/${second}/assignment`,expect.anything()));
+    fireEvent.change(screen.getByLabelText('Conversa'),{target:{value:CONVERSATION_ID}});
+    await act(async()=>{resolve(pending==='lookup'?{id:second,channelId:CHANNEL_ID,contactId:CONTACT_ID,mode:'HUMAN'}:{...row,state:'HUMAN_ACTIVE',sessionRevision:3,target:{kind:'AGENT',agentId:session('OPERATOR').user.id}});});
+    expect(screen.getByLabelText('Conversa')).toHaveValue(CONVERSATION_ID);
+    expect(screen.queryByText('Conversa tardia')).toBeNull();
+  });
+  it.each([true, false])('opens the confirmed queue conversation and never retains the previous composer (listed=%s)', async listed => {
+    const second = '22222222-3333-4444-8555-666666666666', sessionId = '33333333-4444-4555-8666-777777777777';
+    const row = {conversationId:second,sessionId,sessionRevision:2,cycle:1,state:'WAITING_HUMAN',target:{kind:'QUEUE'}};
+    const base = loadedRequest({provider:'BAILEYS'}); let claimed = false;
+    const request = vi.fn(async (path:string, init?:RequestInit) => {
+      if(path.endsWith('/queue')) return {scope:{kind:'LOCAL',organizationId:ORGANIZATION_ID,channelId:CHANNEL_ID},data:[row]};
+      if(path.endsWith('/assignment')) {claimed=true;return {...row,state:'HUMAN_ACTIVE',sessionRevision:3,target:{kind:'AGENT',agentId:session('OPERATOR').user.id}};}
+      if(claimed&&path===`/v1/messaging/conversations/${second}`) return {id:second,channelId:listed?CHANNEL_ID:second,contactId:CONTACT_ID,mode:'HUMAN'};
+      if(path===`/v1/messaging/conversations/${second}/messages`) return {data:[{id:MESSAGE_ID,direction:'INCOMING',state:'DELIVERED',text:'Histórico da conversa assumida'}]};
+      if(path.endsWith('/text')) return {id:MESSAGE_ID,state:'ACCEPTED'};
+      return base(path,init);
+    }) as ApiClient['request'];
+    renderPage(clientFor(request,'OPERATOR')); await screen.findByText('Olá, preciso de ajuda');
+    fireEvent.change(screen.getByLabelText('Responder'),{target:{value:'Rascunho para a conversa anterior'}});
+    fireEvent.click(screen.getByRole('button',{name:'Consultar fila do Broker'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Assumir conversa'}));
+    if(listed) {
+      await screen.findByText('Histórico da conversa assumida');
+      expect(screen.getByLabelText('Conversa')).toHaveValue(second);
+      expect(screen.getByLabelText('Responder')).toHaveValue('');
+      expect(screen.queryByText('Olá, preciso de ajuda')).toBeNull();
+      fireEvent.change(screen.getByLabelText('Responder'),{target:{value:'Resposta para B'}});
+      fireEvent.click(screen.getByRole('button',{name:'Enviar mensagem'}));
+      await waitFor(()=>expect(request).toHaveBeenCalledWith(`/v1/messaging/channels/${CHANNEL_ID}/text`,expect.objectContaining({body:JSON.stringify({conversationId:second,text:'Resposta para B'})})));
+    } else {
+      expect(await screen.findByRole('alert')).toHaveTextContent(/conversa assumida não está disponível/i);
+      expect(screen.queryByLabelText('Responder')).toBeNull();
+      expect(screen.queryByText('Olá, preciso de ajuda')).toBeNull();
+    }
+  });
   it('rejects a channel response without ownerRevision before loading history or enabling mutations', async () => {
     const request = vi.fn(async (path: string) => {
       if (path === '/v1/messaging/channels') return { data: [{

@@ -3,7 +3,7 @@ import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import { readChatwootAccount } from '../integrations/chatwoot-context.js';
 import { resolveAttendanceScope } from './repository.js';
 import { AttendanceError } from './types.js';
-import { assertStandaloneDestination } from './destination-adapter.js';
+import { assertLocalHumanTarget } from './local-directory.js';
 
 /** Common local admission for every native owner path. Remote policy/target
  * readiness belongs to asynchronous publication and, decisively, dispatch. */
@@ -22,7 +22,7 @@ export async function assertHandoffBinding(tx:TenantTransaction,org:string,chann
         if(!configured.success)throw new AttendanceError('ATTENDANCE_HANDOFF_DESTINATION_REQUIRED',409);
         if(configured.data.handoffVersion===2){
           if(configured.data.destination.organizationId!==org||configured.data.destination.channelId!==channelId)throw new AttendanceError('ATTENDANCE_HANDOFF_CONTEXT_CHANGED',409);
-          await assertStandaloneDestination(tx,org,channelId);continue;
+          await assertLocalHumanTarget(tx,org,channelId,configured.data.target);continue;
         }
         const scope=await resolveAttendanceScope(tx,org,channelId),account=await readChatwootAccount(tx,org),d=configured.data.destination;
         if(!scope||!account||scope.integrationId!==d.integrationId||scope.destinationRevision!==d.destinationRevision||scope.accountId!==d.accountId||scope.inboxId!==d.inboxId||account.credential_version!==d.credentialRevision)

@@ -17,6 +17,7 @@ import type { TenantTransaction } from '../../src/db/tenant-transaction.js';
 import { createChatwootService } from '../../src/modules/integrations/chatwoot-service.js';
 import { createIntegrationSecrets } from '../../src/modules/integrations/secrets.js';
 import type { OutboxRow } from '../../src/modules/automations/repository.js';
+import {assertHandoffBinding} from '../../src/modules/attendance/handoff-binding.js';
 let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();},60000);
 afterAll(async()=>{await db?.dispose();});
@@ -32,6 +33,45 @@ async function fixture(remote=false){
  const item:OutboxRow={id,organizationId:t.org,executionId:execution,channelId:t.channel,conversationId:t.conversation,nodeId:'handoff',ordinal:1,kind:'HANDOFF',payload,attempts:1,leaseToken};
  return {...t,item,execution,binding};
 }
+async function humanTarget(t:Awaited<ReturnType<typeof fixture>>,kind:'TEAM'|'AGENT'){
+ const agent=randomUUID(),team=randomUUID();
+ await db.database.pool.query("INSERT INTO users(id,email,password_hash) VALUES($1,$2,'test-only')",[agent,`${agent}@example.test`]);
+ await db.database.pool.query("INSERT INTO memberships(organization_id,user_id,role) VALUES($1,$2,'OPERATOR')",[t.org,agent]);
+ await db.database.pool.query('INSERT INTO local_attendance_teams(organization_id,id,name) VALUES($1,$2,$3)',[t.org,team,'Synthetic team']);
+ await db.database.pool.query('INSERT INTO local_attendance_team_members(organization_id,team_id,user_id) VALUES($1,$2,$3)',[t.org,team,agent]);
+ const target=kind==='TEAM'?{kind,teamId:team}:{kind,agentId:agent},payload={...t.item.payload,target};
+ await db.database.pool.query('UPDATE automation_outbox SET payload=$2 WHERE id=$1',[t.item.id,JSON.stringify(payload)]);
+ return {agent,team,target,payload};
+}
+it('looks up an exact conversation under its active tenant without the list-page limit',async()=>{
+ const t=await fixture(),other=await fixture();
+ const service=createMessagingService({repository:createPostgresMessagingRepository(),runInOrganizationTransaction:db.transact,
+  resolveMetaClient:async()=>{throw new Error('No external provider in this lab');},resolveTypebotClient:async()=>{throw new Error('No external provider in this lab');}});
+ expect(await service.getConversation?.(t.org,t.conversation)).toMatchObject({id:t.conversation,channelId:t.channel,mode:'BOT'});
+ await expect(service.getConversation?.(other.org,t.conversation)).rejects.toThrow('CONVERSATION_NOT_FOUND');
+ await db.database.pool.query("UPDATE organizations SET status='SUSPENDED' WHERE id=$1",[t.org]);
+ await expect(service.getConversation?.(t.org,t.conversation)).rejects.toThrow('ORGANIZATION_NOT_ACTIVE');
+});
+it.each(['TEAM','AGENT'] as const)('commits the %s target without falsely marking a person active',async kind=>{
+ const t=await fixture(),h=await humanTarget(t,kind),service=createLocalHandoffService({transact:db.transact});
+ expect(await service.dispatch(t.item)).toMatchObject({kind:'SENT'});
+ expect((await db.database.pool.query('SELECT state,local_team_id,local_agent_id FROM attendance_sessions WHERE organization_id=$1',[t.org])).rows).toEqual([{state:'WAITING_HUMAN',local_team_id:kind==='TEAM'?h.team:null,local_agent_id:kind==='AGENT'?h.agent:null}]);
+ expect(await service.dispatch(t.item)).toMatchObject({kind:'SENT'});
+});
+it.each(['TEAM','AGENT'] as const)('rechecks the %s member at publication, binding and dispatch',async kind=>{
+ const t=await fixture(),h=await humanTarget(t,kind);
+ const graph={nodes:[{id:'start',type:'start',label:'Start',position:{x:0,y:0},data:{}},{id:'h',type:'handoff',label:'Human',position:{x:100,y:0},data:h.payload}],edges:[{id:'s',source:'start',target:'h',port:'next'}]};
+ const readiness=createHandoffReadiness({transact:db.transact}),prepared=await readiness.prepare(t.org,graph,t.channel);
+ await db.database.pool.query('UPDATE automation_versions SET graph=$2 WHERE organization_id=$1',[t.org,JSON.stringify(graph)]);
+ await db.transact(t.org,tx=>assertHandoffBinding(tx,t.org,t.channel,t.automation,1));
+ await db.database.pool.query("UPDATE memberships SET status='DISABLED' WHERE organization_id=$1 AND user_id=$2",[t.org,h.agent]);
+ const code=kind==='TEAM'?'LOCAL_TEAM_EMPTY':'LOCAL_AGENT_UNAVAILABLE';
+ await expect(db.transact(t.org,tx=>prepared.assertCurrent(tx))).rejects.toThrow(code);
+ await expect(db.transact(t.org,tx=>assertHandoffBinding(tx,t.org,t.channel,t.automation,1))).rejects.toThrow(code);
+ expect(await createLocalHandoffService({transact:db.transact}).dispatch(t.item)).toMatchObject({kind:'FAILED',error:code});
+ expect((await db.database.pool.query('SELECT mode FROM messaging_conversations WHERE id=$1',[t.conversation])).rows[0].mode).toBe('HUMAN');
+ expect((await db.database.pool.query('SELECT state FROM attendance_sessions WHERE organization_id=$1',[t.org])).rows).toEqual([]);
+});
 it('lists a local queue scoped to its channel and never exposes remote identities',async()=>{
  const t=await fixture(),other=await fixture();
  const list=await createLocalAttendanceCatalog({transact:db.transact}).listChannels(t.org);
@@ -163,9 +203,10 @@ it('rejects an execution whose binding belongs to another channel of the same te
  expect(await createLocalHandoffService({transact:db.transact}).dispatch(t.item)).toMatchObject({kind:'FAILED',error:'HANDOFF_AUTHORITY_CHANGED'});
  expect((await db.database.pool.query('SELECT * FROM attendance_sessions WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
 });
-it('runs menu, capture, local queue, operator reply and coordinated menu resume with a synthetic transport receipt',async()=>{
+it.each(['QUEUE','TEAM','AGENT'] as const)('runs menu, capture, local %s, operator reply and coordinated menu resume with a synthetic transport receipt',async kind=>{
  const t=await fixture(),node=(id:string,type:string,data:Record<string,unknown>={})=>({id,type,label:id,position:{x:0,y:0},data});
- const graph={nodes:[node('start','start'),node('menu','menu',{text:'Escolha',variable:'choice',options:[{value:'1',label:'Atendimento'},{value:'2',label:'Encerrar'}]}),node('name','input',{text:'Qual seu nome?',variable:'nome'}),node('handoff','handoff',t.item.payload),node('end','end')],
+ const human=kind==='QUEUE'?null:await humanTarget(t,kind);
+ const graph={nodes:[node('start','start'),node('menu','menu',{text:'Escolha',variable:'choice',options:[{value:'1',label:'Atendimento'},{value:'2',label:'Encerrar'}]}),node('name','input',{text:'Qual seu nome?',variable:'nome'}),node('handoff','handoff',human?.payload??t.item.payload),node('end','end')],
   edges:[{id:'start',source:'start',target:'menu',port:'next'},{id:'human',source:'menu',target:'name',port:'option-1'},{id:'capture',source:'name',target:'handoff',port:'next'},{id:'end',source:'menu',target:'end',port:'option-2'}]};
  await db.database.pool.query('DELETE FROM automation_outbox WHERE organization_id=$1',[t.org]);
  await db.database.pool.query('DELETE FROM automation_executions WHERE organization_id=$1',[t.org]);
@@ -204,5 +245,8 @@ it('runs menu, capture, local queue, operator reply and coordinated menu resume 
  expect(await router.route(t.org,{...input,eventKey:'synthetic-local-new-cycle',text:'2'})).toMatchObject({resumed:true});
  expect(await worker().runOnce(t.org)).toMatchObject({status:'COMPLETED'});
  expect((await db.database.pool.query("SELECT state FROM automation_executions WHERE organization_id=$1 AND status='COMPLETED'",[t.org])).rows[0].state.variables.nome).toBe('Pessoa sintética');
- expect((await db.database.pool.query('SELECT cycle,state,integration_id FROM attendance_sessions WHERE organization_id=$1 ORDER BY cycle',[t.org])).rows).toEqual([{cycle:1,state:'RESOLVED',integration_id:null},{cycle:2,state:'BOT_ACTIVE',integration_id:null}]);
+ expect((await db.database.pool.query('SELECT cycle,state,integration_id,local_team_id,local_agent_id FROM attendance_sessions WHERE organization_id=$1 ORDER BY cycle',[t.org])).rows).toEqual([
+  {cycle:1,state:'RESOLVED',integration_id:null,local_team_id:kind==='TEAM'?human!.team:null,local_agent_id:kind==='AGENT'?human!.agent:null},
+  {cycle:2,state:'BOT_ACTIVE',integration_id:null,local_team_id:null,local_agent_id:null},
+ ]);
 });

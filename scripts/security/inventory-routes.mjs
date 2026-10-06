@@ -4,6 +4,14 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  ...Object.fromEntries(['GET /v1/attendance/local-teams','GET /v1/attendance/local-channels/{channelId}/catalog'].map(route=>[route,policy('apps/api/src/http/routes/attendance-local.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_ACTIVE_LOCAL_IDENTITIES')])),
+  ...Object.fromEntries(['POST /v1/attendance/local-teams','PUT /v1/attendance/local-teams/{teamId}','PUT /v1/attendance/local-teams/{teamId}/members'].map(route=>[route,policy('apps/api/src/http/routes/attendance-local.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'CURRENT_TEAM_REVISION_TRANSACTIONAL_AUDIT','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_ACTIVE_LOCAL_MEMBER_IDENTITIES')])),
+  'GET /v1/attendance/local-channels/{channelId}/queue':policy('apps/api/src/http/routes/attendance-local.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR',true,
+    'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_LOCAL_CHANNEL_NO_CENTRAL_AUTHORITY'),
+  'POST /v1/attendance/local-conversations/{conversationId}/assignment':policy('apps/api/src/http/routes/attendance-local.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR_SELF_CLAIM',true,
+    'EXPECTED_SESSION_REVISION_CHANNEL_LOCK_TRANSACTIONAL_AUDIT','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_LOCAL_SESSION_CURRENT_TARGET_NO_RESUME'),
   'GET /v1/attendance/local-channels': policy('apps/api/src/http/routes/attendance-local.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
     'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_CHANNEL_ACTIVE_NO_CENTRAL_AUTHORITY'),
   'POST /v1/attendance/conversations/{id}/resume': policy('apps/api/src/http/routes/attendance-resume.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
@@ -791,6 +799,15 @@ const ROUTE_POLICIES = Object.freeze({
     "NOT_APPLICABLE",
     "NONE",
     "RLS_ORGANIZATION_AND_CONVERSATION_ID",
+  ),
+  "GET /v1/messaging/conversations/{id}": policy(
+    "apps/api/src/http/routes/messaging.ts",
+    "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "OWNER_ADMIN_OPERATOR_VIEWER",
+    true,
+    "NOT_APPLICABLE",
+    "NONE",
+    "RLS_ACTIVE_ORGANIZATION_CONVERSATION_AND_CHANNEL",
   ),
   "POST /v1/messaging/channels/{id}/messages": policy(
     "apps/api/src/http/routes/messaging.ts",

@@ -78,7 +78,7 @@ function handoffEffectStatus(status:string,local=false):string {
 }
 function HandoffEffectDetails({status,lastError,local=false}:{status:string;lastError:string|null;local?:boolean}) {
  if(local&&status==='SENT')return <p>O Broker registrou a transferência local e pausou o bot para atendimento humano.</p>;
- const safeCode=lastError&&/^(?:HANDOFF|ATTENDANCE|CHATWOOT|AUTOMATION|ORGANIZATION)_[A-Z0-9_]{1,100}$/.test(lastError)?lastError:null;
+ const safeCode=lastError&&(/^(?:HANDOFF|ATTENDANCE|CHATWOOT|AUTOMATION|ORGANIZATION)_[A-Z0-9_]{1,100}$/.test(lastError)||['LOCAL_AGENT_UNAVAILABLE','LOCAL_TEAM_EMPTY'].includes(lastError))?lastError:null;
  if(local)return <div><p>{status==='UNKNOWN'?'O Broker recuperará a reserva local após o prazo de execução. A conversa ainda não está confirmada na fila humana.': ['FAILED','ACTION_REQUIRED'].includes(status)?'Revise o canal e o atendimento no Broker antes de retomar o bot. A entrada na fila humana não foi confirmada.':'Aguarde o registro da fila humana no Broker. Uma ação enfileirada ainda não confirma a transferência.'}</p>{lastError&&<p>Diagnóstico: {safeCode?<code>{safeCode}</code>:'detalhes protegidos; consulte o suporte com o Correlation ID.'}</p>}</div>;
  return <div>{status==='UNKNOWN'?<p>Reconciliação automática por consulta à central. A transferência continua sem confirmação; não haverá reenvio nem confirmação manual por esta tela.</p>
   :['FAILED','ACTION_REQUIRED'].includes(status)?<p>Revise o destino e o atendimento na central antes de retomar o bot. A transferência não foi confirmada.</p>
