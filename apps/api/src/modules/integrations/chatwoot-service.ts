@@ -18,6 +18,7 @@ import {
   verifyChatwootSignature,
 } from "./secrets.js";
 import { recordChatwootAttendanceEvent } from './chatwoot-attendance-store.js';
+import { createChatwootRuntimeIngress } from './chatwoot-runtime-ingress.js';
 import type { MediaStore } from "../messaging/media-store.js";
 import { createChatwootDestinationService, lockChatwootDestination } from './chatwoot-destination.js';
 import { IntegrationError } from './integration-error.js';
@@ -642,6 +643,21 @@ export function createChatwootService(options: ChatwootOptions) {
     ) {
       const org = await options.resolveIntegration(id);
       if (!org) throw new IntegrationError("INVALID_WEBHOOK_SIGNATURE", 401);
+      const central=await tx(org,async t=>(await t.query(`SELECT 1 FROM chatwoot_connections c JOIN messaging_channels m
+        ON m.organization_id=c.organization_id AND m.id=c.channel_id WHERE c.organization_id=$1 AND c.id=$2 AND m.transport='CENTRAL_TRANSPORT'`,[org,id])).rowCount!==0);
+      if(central){
+        try {
+          await createChatwootRuntimeIngress({transact:tx,secrets:env.vault,resolveIntegration:async incomingId=>incomingId===id?org:null})
+            .receive({integrationId:id,raw,timestamp,signature});
+        }catch(error){
+          if(error instanceof IntegrationError)throw error;
+          const code=error instanceof Error?error.message:'CENTRAL_EVENT_INVALID';
+          if(code==='CENTRAL_SIGNATURE_INVALID')throw new IntegrationError(code,401);
+          if(code==='CENTRAL_CONTEXT_CHANGED'||code==='CENTRAL_BINDING_NOT_READY'||code==='CENTRAL_BINDING_NOT_FOUND')throw new IntegrationError(code,409);
+          throw new IntegrationError('CENTRAL_EVENT_INVALID',400);
+        }
+        return;
+      }
       await tx(org, async (t) => {
         const c = await readChatwootConnection(t, org, id),
           a = await readChatwootAccount(t, org);

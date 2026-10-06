@@ -77,6 +77,10 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
   await lockScope(tx,s);
   let event=classifyChatwootAttendanceEvent(raw,s);
   if(!event)return {observationId:null,duplicate:false,disposition:'IGNORED' as const};
+  // A central-origin message is already transported. Keep human control but
+  // never enqueue the public reply back to that same inbox.
+  const transport=(await tx.query<{transport:string}>('SELECT transport FROM messaging_channels WHERE organization_id=$1 AND id=$2',[s.organizationId,s.channelId])).rows[0]?.transport;
+  if(transport==='CENTRAL_TRANSPORT')event={...event,mayForwardReply:false};
   const original=record(raw);
   const key=event.kind==='CONVERSATION_CONTROL'?`control:${event.remoteConversationId}:${createHash('sha256').update(JSON.stringify(event)).digest('hex')}`:`message:${event.remoteMessageId}`;
   const prior=(await tx.query<Observation>(`SELECT id,event,disposition,reply_payload,conversation_id,cycle FROM chatwoot_attendance_observations

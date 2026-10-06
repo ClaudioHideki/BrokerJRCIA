@@ -135,6 +135,7 @@ interface ClaimDatabaseRow extends QueryResultRow {
   channelOrganizationId?: string;
   channelProviderAccountId?: string;
   channelProvider?: "META" | "BAILEYS";
+  channelTransport?: "BROKER_TRANSPORT" | "CENTRAL_TRANSPORT";
   channelInstanceId?: string | null;
   channelPhoneNumberId?: string;
   channelWabaId?: string;
@@ -220,6 +221,7 @@ const CLAIM_COLUMNS = `
   channel.id AS "channelId", channel.organization_id AS "channelOrganizationId",
   channel.provider_account_id AS "channelProviderAccountId",
   channel.provider AS "channelProvider", channel.instance_id AS "channelInstanceId",
+  channel.transport AS "channelTransport",
   channel.phone_number_id AS "channelPhoneNumberId", channel.waba_id AS "channelWabaId",
   channel.credential_reference AS "channelCredentialReference",
   channel.bot_public_id AS "channelBotPublicId",
@@ -266,6 +268,7 @@ function asMessage(row: MessageDatabaseRow): Message {
 }
 
 function asClaim(row: ClaimDatabaseRow): OutboxClaim {
+  if(row.channelTransport==='CENTRAL_TRANSPORT')throw new MessagingRepositoryError('INVALID_OUTBOX_CLAIM',409);
   if (row.message && row.contact && row.channel) {
     return {
       message: row.message,
@@ -464,6 +467,8 @@ export interface MessagingRepository {
       upstreamMessageId: string;
       content: MessageContent;
       occurredAt?: Date;
+      /** Central ingress awaits a canonical remote read before routing. */
+      scheduleBot?: boolean;
     },
   ): Promise<{
     kind: "created" | "duplicate";
@@ -603,7 +608,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       return (
         await transaction.query<ChannelDatabaseRow>(
           `SELECT ${CHANNEL_COLUMNS}, coalesce((select revision from attendance_owners ao where ao.organization_id=messaging_channels.organization_id and ao.channel_id=messaging_channels.id),0) AS "ownerRevision" FROM messaging_channels
-          WHERE organization_id = $1 ORDER BY created_at DESC, id DESC`,
+          WHERE organization_id = $1 AND transport='BROKER_TRANSPORT' ORDER BY created_at DESC, id DESC`,
           [organizationId],
         )
       ).rows;
@@ -614,7 +619,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       return first(
         await transaction.query<ChannelDatabaseRow>(
           `SELECT ${CHANNEL_COLUMNS}, coalesce((select revision from attendance_owners ao where ao.organization_id=messaging_channels.organization_id and ao.channel_id=messaging_channels.id),0) AS "ownerRevision" FROM messaging_channels
-          WHERE organization_id = $1 AND id = $2`,
+          WHERE organization_id = $1 AND id = $2 AND transport='BROKER_TRANSPORT'`,
           [organizationId, channelId],
         ),
       );
@@ -676,7 +681,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
            FROM messaging_channels channel
            JOIN messaging_contacts contact ON contact.organization_id = channel.organization_id
           WHERE channel.organization_id = $2 AND channel.id = $3 AND contact.id = $4
-         ON CONFLICT (organization_id, channel_id, contact_id) DO UPDATE
+         ON CONFLICT (organization_id, channel_id, contact_id) WHERE remote_conversation_key IS NULL DO UPDATE
            SET updated_at = messaging_conversations.updated_at
          RETURNING ${CONVERSATION_COLUMNS}`,
         [input.id, input.organizationId, input.channelId, input.contactId],
@@ -988,9 +993,12 @@ export function createPostgresMessagingRepository(): MessagingRepository {
             AND conversation.bot_public_id IS NOT NULL
             AND conversation.bot_origin_reference IS NOT NULL
             AND message.content->>'type' = 'TEXT'
+            AND $3::boolean
+            AND EXISTS(SELECT 1 FROM messaging_channels channel WHERE channel.organization_id=message.organization_id
+              AND channel.id=message.channel_id AND channel.transport='BROKER_TRANSPORT')
          ON CONFLICT (organization_id, message_id) DO NOTHING
          RETURNING true AS scheduled`,
-        [input.organizationId, message.id],
+        [input.organizationId, message.id, input.scheduleBot !== false],
       );
       return {
         kind,
@@ -1164,6 +1172,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
              JOIN messaging_contacts contact
                ON contact.organization_id = conversation.organization_id AND contact.id = conversation.contact_id
             WHERE outbox.organization_id = $1 AND outbox.lease_token IS NULL
+              AND EXISTS(SELECT 1 FROM messaging_channels channel WHERE channel.organization_id=message.organization_id
+                AND channel.id=message.channel_id AND channel.transport='BROKER_TRANSPORT')
               AND message.state = 'ACCEPTED'
               AND (contact.suppressed_at IS NOT NULL
                    OR contact.consent_status = 'OPTED_OUT'
@@ -1204,6 +1214,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                ON contact.organization_id = conversation.organization_id AND contact.id = conversation.contact_id
             WHERE outbox.organization_id = $1 AND outbox.lease_token IS NULL
               AND outbox.available_at <= $3 AND message.state = 'ACCEPTED'
+              AND EXISTS(SELECT 1 FROM messaging_channels channel WHERE channel.organization_id=message.organization_id
+                AND channel.id=message.channel_id AND channel.transport='BROKER_TRANSPORT')
               AND (message.content->>'type'<>'MEDIA' OR EXISTS(SELECT 1 FROM messaging_media asset WHERE asset.organization_id=message.organization_id AND asset.id=message.media_id AND asset.status IN ('READY','FAILED')))
               AND contact.suppressed_at IS NULL
               AND contact.consent_status <> 'OPTED_OUT'
@@ -1317,6 +1329,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
            JOIN messaging_channels channel
              ON channel.organization_id = message.organization_id AND channel.id = message.channel_id
           WHERE outbox.organization_id = $1 AND outbox.message_id = $2
+            AND channel.transport='BROKER_TRANSPORT'
             AND outbox.lease_token = $3 AND outbox.lease_expires_at > now()
             AND message.state = 'ACCEPTED'
           FOR UPDATE OF outbox, message, conversation, contact`,

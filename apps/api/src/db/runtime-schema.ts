@@ -1,10 +1,33 @@
-export const RUNTIME_SCHEMA_BASELINE = '0045_local_attendance_directory';
+export const RUNTIME_SCHEMA_BASELINE = '0046_central_transport';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
 // The app role cannot read drizzle.__drizzle_migrations. This is a structural
 // readiness probe, not a migration journal/hash comparison.
 const requiredObjectsSql = `SELECT
+  EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.messaging_channels')
+    AND attname='transport' AND attnotnull AND attnum>0 AND NOT attisdropped)
+  AND NOT EXISTS(SELECT 1 FROM (VALUES ('public.central_transport_bindings'),('public.central_runtime_events')) AS required(relation_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass(required.relation_name)
+      AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'
+      AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='central_tenant'))
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'INSERT')
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'UPDATE')
+    OR pg_catalog.has_table_privilege('jrc_auth',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR pg_catalog.has_table_privilege('jrc_platform',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR EXISTS(SELECT 1 FROM pg_catalog.pg_class c,
+      LATERAL pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault('r',c.relowner))) a
+      WHERE c.oid=pg_catalog.to_regclass(required.relation_name) AND a.grantee=0))
+  AND NOT EXISTS(SELECT 1 FROM (VALUES
+    ('public.messaging_channels','messaging_channels_organization_fk','f'),
+    ('public.messaging_channels','messaging_channels_kind_fields','c'),
+    ('public.central_transport_bindings','central_transport_bindings_origin_account_id_inbox_id_key','u'),
+    ('public.central_runtime_events','central_runtime_events_organization_id_channel_id_event_key_key','u')
+    ) AS required(relation_name,constraint_name,constraint_type)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass(required.relation_name)
+      AND c.conname=required.constraint_name AND c.contype::text=required.constraint_type AND c.convalidated))
+  AND
   NOT EXISTS (SELECT 1 FROM (VALUES ('public.users'),('public.login_sessions'),('public.refresh_tokens'),('public.chatwoot_embed_authorizations'),('public.chatwoot_embed_sessions')) AS required(relation_name)
     WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
       WHERE a.attrelid=pg_catalog.to_regclass(required.relation_name) AND a.attname='auth_version' AND a.attnotnull AND a.attnum>0 AND NOT a.attisdropped))

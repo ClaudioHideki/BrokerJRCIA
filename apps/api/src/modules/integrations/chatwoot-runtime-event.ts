@@ -46,7 +46,7 @@ const scopedKey = (scope: CentralRuntimeEventBinding, identity: unknown) => 'cha
 type Base = { scope: CentralRuntimeEventBinding; mayExecute: false; mayForwardReply: false; requiresCanonicalRead: true; dedupeKey: string | null };
 export type CentralRuntimeEvent = Base & (
   { kind: 'CONTACT_TEXT'; remoteConversationId: number; remoteMessageId: number; contactId: number; text: string } |
-  { kind: 'ATTENDANCE_OBSERVATION' | 'BROKER_ECHO'; classification: ChatwootAttendanceEvent; remoteConversationId: number; remoteMessageId?: number } |
+  { kind: 'ATTENDANCE_OBSERVATION' | 'BROKER_ECHO'; classification: ChatwootAttendanceEvent; observationPayload: unknown; remoteConversationId: number; remoteMessageId?: number } |
   { kind: 'IGNORED' }
 );
 
@@ -96,14 +96,24 @@ export function decodeChatwootRuntimeEvent(input: {
     // The existing classifier accepts numeric IDs. Normalize only the safely
     // parsed sender ID; do not infer a sender type or trust claimed echo metadata.
     const sender = record(message.sender), senderId = eventId.safeParse(sender.id);
-    const normalized = { ...message, sender: senderId.success ? { id: senderId.data, type: sender.type } : message.sender };
+    const senderType = z.enum(['user', 'agent_bot', 'contact']).safeParse(sender.type);
+    const attributes = record(message.additional_attributes), contentAttributes = record(message.content_attributes);
+    const marker = z.uuid().safeParse(contentAttributes.jrc_broker_message_id);
+    // The store needs a normalized control DTO, never private text, attachments,
+    // actor metadata or arbitrary attributes from the original callback.
+    const normalized = { event: message.event, id: message.id, account: message.account, inbox: message.inbox,
+      conversation: conv, message_type: message.message_type, private: message.private,
+      sender: senderId.success ? { id: senderId.data, ...(senderType.success ? { type: senderType.data } : {}) } : undefined,
+      additional_attributes: attributes.campaign_id != null ? { campaign_id: true } : {},
+      content_attributes: { ...(contentAttributes.automation_rule_id != null ? { automation_rule_id: true } : {}),
+        ...(marker.success ? { jrc_broker_message_id: marker.data } : {}) } };
     const echo = input.echo && bindingSchema.safeParse(Object.fromEntries(Object.entries(input.echo)
       .filter(([key]) => key !== 'remoteConversationId' && key !== 'remoteMessageId')));
     const evidence = echo && echo.success && sameBinding(scope, echo.data) ? input.echo : undefined;
     const classified = classifyChatwootAttendanceEvent(normalized, scope, evidence);
     if (!classified || classified.kind === 'SYSTEM_MESSAGE') return { ...base, kind: 'IGNORED' };
     return { ...base, ...identity, kind: classified.kind === 'BROKER_ECHO' ? 'BROKER_ECHO' : 'ATTENDANCE_OBSERVATION',
-      classification: { ...classified, mayForwardReply: false } };
+      classification: { ...classified, mayForwardReply: false }, observationPayload: normalized };
   }
   if (['conversation_created', 'conversation_updated', 'conversation_status_changed'].includes(header.data.event)) {
     const control = controlSchema.safeParse(payload);
@@ -112,8 +122,14 @@ export function decodeChatwootRuntimeEvent(input: {
     requireScope(control.data.account_id ?? scope.accountId, control.data.inbox_id);
     let classification: ChatwootAttendanceEvent | null;
     try { classification = classifyChatwootAttendanceEvent(control.data, scope); } catch { return fail('CENTRAL_EVENT_INVALID'); }
-    if (!classification) return fail('CENTRAL_EVENT_INVALID');
-    return { ...base, kind: 'ATTENDANCE_OBSERVATION', remoteConversationId: control.data.id, classification,
+    if (!classification || classification.kind !== 'CONVERSATION_CONTROL') return fail('CENTRAL_EVENT_INVALID');
+    const assigned = classification.assignee;
+    const observationPayload = { event: control.data.event, id: control.data.id, account: control.data.account,
+      inbox_id: control.data.inbox_id, status: classification.status, updated_at: classification.remoteUpdatedAt,
+      meta: { ...(assigned.kind === 'NONE' ? { assignee: null } : assigned.kind === 'HUMAN' || assigned.kind === 'EXTERNAL_BOT'
+        ? { assignee: { id: assigned.id, type: assigned.kind === 'HUMAN' ? 'user' : 'agent_bot' } } : {}),
+        team: classification.teamId === null ? null : { id: classification.teamId } } };
+    return { ...base, kind: 'ATTENDANCE_OBSERVATION', remoteConversationId: control.data.id, classification, observationPayload,
       dedupeKey: scopedKey(scope, ['control', classification]) };
   }
   return { ...base, kind: 'IGNORED' };

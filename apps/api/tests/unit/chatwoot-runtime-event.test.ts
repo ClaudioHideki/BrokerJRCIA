@@ -92,7 +92,9 @@ describe('central runtime authenticated event boundary', () => {
       mayExecute: false, mayForwardReply: false, requiresCanonicalRead: true });
   });
   it('a private note interrupts without exposing its content', () => {
-    const event = decode({ ...outgoing, private: true, content: 'synthetic private note' });
+    const event = decode({ ...outgoing, private: true, content: 'synthetic private note',
+      sender: { id: 12, type: 'user', extra: 'synthetic private note' },
+      additional_attributes: { unrelated: 'synthetic private note' }, content_attributes: { unrelated: 'synthetic private note' } });
     expect(event).toMatchObject({ kind: 'ATTENDANCE_OBSERVATION', classification: { kind: 'HUMAN_PRIVATE', interruptsBot: true } });
     expect(JSON.stringify(event)).not.toContain('synthetic private note');
   });

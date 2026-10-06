@@ -377,6 +377,7 @@ describe('migrations PostgreSQL', () => {
     expect(result.rows).toEqual([
       // 0034 (2) + 0039 (3) + 0042 (1) + 0044 (1) + 0045 (2).
       ...Array.from({length:9},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:2},()=>({policyname:'central_tenant',roles:['jrc_app'],cmd:'ALL'})),
       // 0043 revokes delegated access through the restricted definer function.
       {policyname:'embed_authorizations_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
       {policyname:'embed_sessions_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
@@ -491,7 +492,8 @@ describe('migrations PostgreSQL', () => {
     ];
     const commercialTables = ['commercial_plans', 'commercial_plan_versions', 'organization_commercial_plans'];
     const removalTables = ['group_company_removal_previews', 'group_company_removals', 'group_company_removal_children'];
-    const tables = [...attendanceTables, ...commercialTables, ...removalTables];
+    const centralTables = ['central_transport_bindings','central_runtime_events'];
+    const tables = [...attendanceTables, ...centralTables, ...commercialTables, ...removalTables];
     type ReviewedPolicy = { tablename: string; policyname: string; roles: string[]; cmd: string;
       permissive: string; qual: string | null; with_check: string | null };
     const connection = await database.pool.connect();
@@ -512,6 +514,10 @@ describe('migrations PostgreSQL', () => {
       const expected: ReviewedPolicy[] = [
         ...attendanceTables.flatMap(table => [
           policy(table, 'attendance_tenant', 'jrc_app', 'ALL', reference.qual, reference.with_check),
+          policy(table, 'lifecycle_migrator', 'jrc_migrator'),
+        ]),
+        ...centralTables.flatMap(table => [
+          policy(table, 'central_tenant', 'jrc_app', 'ALL', reference.qual, reference.with_check),
           policy(table, 'lifecycle_migrator', 'jrc_migrator'),
         ]),
         ...commercialTables.flatMap(table => [
@@ -552,7 +558,7 @@ describe('migrations PostgreSQL', () => {
             has_table_privilege('jrc_auth',$1,'INSERT') AS auth_insert,
             has_table_privilege('jrc_auth',$1,'UPDATE') AS auth_update,
             has_table_privilege('jrc_auth',$1,'DELETE') AS auth_delete`, [`public.${table}`])).rows[0];
-        const tenantAccess = attendanceTables.includes(table);
+        const tenantAccess = attendanceTables.includes(table) || centralTables.includes(table);
         expect(grants, table).toEqual({ app_select: tenantAccess, app_insert: tenantAccess,
           app_update: tenantAccess, app_delete: table === 'local_attendance_team_members', auth_select: false, auth_insert: false,
           auth_update: false, auth_delete: false });

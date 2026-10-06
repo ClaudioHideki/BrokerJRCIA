@@ -196,10 +196,16 @@ export function createAutomationService(options:AutomationServiceOptions){
 export type AutomationService=ReturnType<typeof createAutomationService>;
 export interface RouteAutomationEvent {channelId:string;conversationId?:string|null;eventKey:string;text:string;payload?:Record<string,unknown>}
 export function createEventRouter(options:AutomationServiceOptions){
-  const repository=options.repository??createPostgresAutomationRepository();return {route:(org:string,event:RouteAutomationEvent)=>options.enabled===false?Promise.resolve({duplicate:false,execution:null}):options.transact(org,async tx=>{
+  const repository=options.repository??createPostgresAutomationRepository();
+  // Durable ingress already owns the channel lock. Reuse its transaction instead
+  // of opening another connection which would wait on the caller's own lock.
+  const routeWithinTransaction=async(tx:TenantTransaction,org:string,event:RouteAutomationEvent)=>{
+    if(options.enabled===false)return {duplicate:false,execution:null};
     const eventId=randomUUID();const inserted=await repository.insertEvent(tx,{org,id:eventId,eventKey:event.eventKey,type:'MESSAGE',payload:event.payload??{text:event.text}});if(!inserted)return {duplicate:true,execution:null};
     const routed=await repository.routeEvent(tx,{org,eventId,executionId:randomUUID(),correlationId:randomUUID(),channelId:event.channelId,conversationId:event.conversationId??null,eventKey:event.eventKey,input:{text:event.text,eventType:'MESSAGE',...(event.payload??{})}});
-    return routed?{duplicate:false,execution:execution(routed.execution),resumed:routed.resumed}:{duplicate:false,execution:null};})};
+    return routed?{duplicate:false,execution:execution(routed.execution),resumed:routed.resumed}:{duplicate:false,execution:null};
+  };
+  return {routeWithinTransaction,route:(org:string,event:RouteAutomationEvent)=>options.enabled===false?Promise.resolve({duplicate:false,execution:null}):options.transact(org,tx=>routeWithinTransaction(tx,org,event))};
 }
 
 export function createExecutionService(options:AutomationServiceOptions){

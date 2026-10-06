@@ -316,6 +316,13 @@
       "when": 1791412800000,
       "tag": "0045_local_attendance_directory",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791499200000,
+      "tag": "0046_central_transport",
+      "breakpoints": true
     }
   ]
 }

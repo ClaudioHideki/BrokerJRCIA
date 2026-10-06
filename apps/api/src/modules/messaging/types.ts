@@ -37,11 +37,13 @@ export type MessageContent =
   | MediaMessageContent;
 
 export interface MessagingChannel {
+  /** Omitted only by legacy in-process physical fixtures. */
+  transport?: "BROKER_TRANSPORT";
   ownerRevision?: number;
   id: string;
   organizationId: string;
   providerAccountId: string;
-  /** Absent only in legacy in-process consumers; persisted channels always have a provider. */
+  /** Absent only in legacy in-process consumers; persisted physical channels always have a provider. */
   provider?: "META" | "BAILEYS";
   instanceId?: string | null;
   phoneNumberId: string | null;
@@ -52,6 +54,17 @@ export interface MessagingChannel {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface CentralMessagingChannel extends Omit<MessagingChannel, 'transport' | 'provider' | 'providerAccountId' | 'credentialReference' | 'instanceId'> {
+  transport: 'CENTRAL_TRANSPORT';
+  provider: null;
+  providerAccountId: null;
+  credentialReference: null;
+  instanceId: null;
+  phoneNumberId: null;
+  wabaId: null;
+}
+export type MessagingTransportChannel = MessagingChannel | CentralMessagingChannel;
 
 export interface MessagingContact {
   id: string;

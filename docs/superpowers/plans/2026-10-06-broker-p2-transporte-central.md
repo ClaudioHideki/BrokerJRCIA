@@ -43,14 +43,16 @@
 ## Task 2 — Canal central, persistência e ingresso durável
 **Files:** Create migration 0046_central_transport.sql, messaging/central-transport.ts e integrations/chatwoot-runtime-ingress.ts; update messaging/types.ts, repository.ts, db/runtime-schema.ts, lifecycle inventory, contracts/channels-v1.ts e messaging/schemas.ts, channels/facade.ts, HTTP channels/integrations e app.ts.
 **Interfaces:** transport discriminado BROKER_TRANSPORT/CENTRAL_TRANSPORT; central sem provider account/instance/Meta asset fictícios. Vínculo persistido aponta para destino aprovado e conta, versão/owner esperados. UNIQUE de origem/account/inbox controla reivindicação. Ingresso reserva message ID de ambos callbacks sob lock org+canal; registra contexto/revisões; materializa conversa/contact/message e encaminha somente ao createEventRouter atual.
-- [ ] RED PostgreSQL: RLS/tenant, binding corrente, suspensão, credencial revogada, duplicate callback, troca concorrente e rollback; registry de migration e schema probe obrigatórios.
-- [ ] Implementar persistência/ingresso sem HTTP em transação e sem autorizar bot pelo payload.
-- [ ] Atualizar triggers de mirror: central-origin não gera MIRROR_MESSAGE nem CHATWOOT_REPLY para enviar novamente.
-- [ ] Guardar entradas não autorizadas sem iniciar automação. Histórico não dispara bot.
+- [x] RED PostgreSQL: RLS/tenant, binding corrente, suspensão, credencial revogada, duplicate callback, troca concorrente e rollback; registry de migration e schema probe obrigatórios.
+- [x] Implementar persistência/ingresso sem HTTP em transação e sem autorizar bot pelo payload.
+- [x] Atualizar triggers de mirror: central-origin não gera MIRROR_MESSAGE nem CHATWOOT_REPLY para enviar novamente.
+- [x] Guardar entradas não autorizadas sem iniciar automação. Histórico não dispara bot.
+
+**Limite do incremento D2:** preparação e processamento canônico internos, com ingresso montado na rota existente. Criação/contratos/facade/UI públicos centrais serão entregues na Task 4 após o dispatcher e o scheduler da Task 3; o wizard só oferecerá origem central com adaptador funcional. READY no vínculo confirma contexto de ingresso, não capacidade de envio ou cutover. Repositórios/claims físicos excluem canais centrais; não há fallback para Meta. Revisão identificou reclassificação do payload bruto com IDs string; três regressões RED e 25 testes de ingresso GREEN comprovam a correção. Gates completos de entrega constam da Task 5 e do registro de validação.
 
 ## Task 3 — Saída exclusiva, recibo e reconciliação
 **Files:** Create messaging/central-dispatcher.ts; update dispatcher.ts, worker.ts, commands/messaging-worker.ts, commands/automation-worker.ts e integração de catálogo/readiness.
-**Interfaces:** resolver explícito para transporte central, sem else que caia no Meta. Reutilizar ChatwootClient.sendText/consulta canônica, outbox durável, mapping de IDs e revalidação de controle. SEND_TEXT local ACCEPTED não é entrega; recibo remoto observado não promete leitura no aparelho.
+**Interfaces:** resolver explícito para transporte central, sem else que caia no Meta. Reutilizar ChatwootClient.sendMessage, attendanceConversation/conversation e o cliente HTTP seguro; acrescentar leitura canônica da mensagem com IDs exatos. Reutilizar outbox durável, mapping de IDs e revalidação de controle. SEND_TEXT local ACCEPTED não é entrega; recibo remoto observado não promete leitura no aparelho.
 - [ ] RED: menu/pergunta/resposta/handoff no runtime real, transporte sintético identificado; token/destino trocados antes/depois IO; um só POST, nenhum envio QR/Meta/mirror.
 - [ ] Implementar reserva → HTTP → confirmação; timeout/lease expirada = UNKNOWN, sem replay automático.
 - [ ] Provar eco persistido e takeover antes de envio/entre ACK e commit; conflito bloqueia conclusão falsa.
