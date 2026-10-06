@@ -19,6 +19,21 @@ describe('canonical channel routes', () => {
   const apps: Array<ReturnType<typeof buildApp>> = [];
   afterEach(async () => Promise.all(apps.splice(0).map(app => app.close())));
 
+  it('observes operation mode only for the current admin with no-store and no API-key access', async()=>{
+    let role:'OWNER'|'OPERATOR'|null='OWNER';
+    const operationProfile=vi.fn().mockResolvedValue({schemaVersion:1,organizationId:org,channelId:id,messagingChannelId:account,observedAt:timestamp,mode:'STANDALONE',transport:'BROKER_TRANSPORT',readiness:'READY',blockers:[],central:null,deliveryVerified:false,capabilitiesObservedAt:null,callbackObservedAt:null});
+    const app=buildApp({nodeEnv:'test',passwordVerifierInitializer:async()=>({verifyPasswordOrDummy:async()=>false}),channels:{jwtSecret:secret,authenticateApiKey:async()=>null,resolveCurrentRole:async()=>role,service:{operationProfile} as unknown as ChannelFacade}});
+    apps.push(app);
+    const authorization=`Bearer ${await issueAccessToken({userId:user,organizationId:org,role:'OWNER'},secret)}`;
+    const result=await app.inject({method:'GET',url:`/v1/channels/${id}/operation-profile`,headers:{authorization}});
+    expect(result.statusCode).toBe(200);expect(result.headers['cache-control']).toBe('no-store');
+    expect(operationProfile).toHaveBeenCalledWith(org,id);expect(result.json()).toMatchObject({mode:'STANDALONE',deliveryVerified:false});
+    role='OPERATOR';expect((await app.inject({method:'GET',url:`/v1/channels/${id}/operation-profile`,headers:{authorization}})).statusCode).toBe(403);
+    role=null;expect((await app.inject({method:'GET',url:`/v1/channels/${id}/operation-profile`,headers:{authorization}})).statusCode).toBe(403);
+    expect((await app.inject({method:'GET',url:`/v1/channels/${id}/operation-profile`,headers:{'x-api-key':'synthetic'}})).statusCode).not.toBe(200);
+    expect(operationProfile).toHaveBeenCalledTimes(1);
+  });
+
   it('lists channels and applies current tenant role on writes', async () => {
     let role: 'OWNER' | 'VIEWER' = 'OWNER';
     const service = { list: vi.fn().mockResolvedValue({ data: [channel] }), get: vi.fn().mockResolvedValue(channel),

@@ -7,6 +7,7 @@ import {listAutomations} from '../automations/api.js';
 import {bindChannelAutomation,bindChannelDestination,disconnectChannel,getChannel,getChannelAutomation,pairChannel,patchChannel,reconnectChannel,refreshChannelStatus} from '../channels/api.js';
 import {statusLabel,destinationStatusLabel} from './Channels.js';
 import {ChannelDeletion} from '../channels/ChannelDeletion.js';
+import {ChannelOperationSetup} from '../channels/ChannelOperationSetup.js';
 const failures:Record<string,string>={
  CHANNEL_DISCONNECT_REQUIRED:'Desconecte o WhatsApp e confirme o status antes de arquivar.',CHANNEL_HAS_PENDING_WORK:'Há envios ou operações pendentes. Conclua ou reconcilie antes de arquivar.',
  CHANNEL_UNLINK_REQUIRED:'Desvincule a automação e pause o atendimento antes de arquivar.',CHANNEL_ARCHIVED:'Restaure esta caixa antes de operar.',
@@ -18,11 +19,11 @@ const failures:Record<string,string>={
  CONNECT_RECONCILIATION_REQUIRED:'O estado do pareamento anterior ainda não foi confirmado. Atualize o status. Se continuar pendente, peça à equipe JRC a reconciliação antes de tentar outra conexão.',
 };
 export function ChannelDetailPage(){
- const {id=''}=useParams(),{session}=useSession();
- return <ChannelDetail key={`${session?.activeOrganization.id??''}:${id}`}/>;
+ const {id=''}=useParams(),{session,tenantRevision}=useSession();
+ return <ChannelDetail key={`${session?.activeOrganization.id??''}:${tenantRevision}:${id}`}/>;
 }
 function ChannelDetail(){
- const {id=''}=useParams(),client=useApiClient(),{session}=useSession();
+ const {id=''}=useParams(),client=useApiClient(),{session,tenantRevision}=useSession();
  const [ownerRevision,setOwnerRevision]=useState(0),[bindingLoaded,setBindingLoaded]=useState(false);const selectionEdited=useRef(false);
  const [channel,setChannel]=useState<ChannelV1|null>(null),[action,setAction]=useState<ConnectionAction|null>(null),[binding,setBinding]=useState<AutomationBindingV1|null>(null);
  const [automations,setAutomations]=useState<AutomationDefinitionV1[]>([]),[automationId,setAutomationId]=useState(''),[displayName,setDisplayName]=useState(''),[destination,setDestination]=useState('');
@@ -49,6 +50,7 @@ function ChannelDetail(){
  return <section className="channel-detail"><Link className="back-link" to="/channels">← Caixas de entrada</Link>{error&&<p role="alert" className="notice notice--error">{error}</p>}{notice&&<p role="status" className="notice notice--success">{notice}</p>}
  {!channel?<p>Carregando caixa…</p>:<><p className="eyebrow">{channel.provider==='QR'?'WhatsApp por QR Code':'WhatsApp oficial Meta'}</p><h1>{channel.identity.displayName??'Caixa WhatsApp'}</h1>
  {archived&&<p className="notice">Cadastro arquivado. O histórico está preservado.</p>}
+ {canManage&&session&&<ChannelOperationSetup client={client} organizationId={session.activeOrganization.id} channelId={id} tenantRevision={tenantRevision}/>}
  <div className="metric-grid"><div className="metric"><small>WhatsApp</small><strong>{statusLabel[channel.transportStatus]}</strong><span>Número: {channel.identity.maskedAddress??'Ainda não identificado'}</span></div><div className="metric"><small>Automação JRC</small><strong>{channel.automationName??'Nenhuma selecionada'}</strong><span>{statusLabel[channel.automationStatus]}</span></div><div className="metric"><small>Central de atendimento</small><strong>{channel.destination?.name??'Sem vínculo'}</strong><span>{destinationStatusLabel(channel.humanStatus)}</span></div></div>
  {!archived&&<><section className="panel"><h2>1. Conectar o WhatsApp</h2><div className="button-row"><button className="button button--secondary" disabled={busy} onClick={()=>void run(async()=>{setChannel(await refreshChannelStatus(client,id));},'Status atualizado.')}>Atualizar status</button>{channel.provider==='QR'&&canPair&&<><button className="button button--secondary" disabled={busy} onClick={()=>void pair(true)}>Reconectar</button>{channel.transportStatus!=='DISCONNECTED'&&<button className="button button--danger" disabled={busy} onClick={()=>void disconnect()}>Desconectar</button>}</>}</div>
  {channel.provider==='QR'&&canPair&&channel.transportStatus!=='CONNECTED'&&<><p>No celular, abra WhatsApp → Dispositivos conectados → Conectar dispositivo.</p><button className="button button--primary" disabled={busy} onClick={()=>void pair()}>Gerar QR Code</button>

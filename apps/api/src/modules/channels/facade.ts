@@ -9,6 +9,7 @@ import type { createMetaOnboardingService } from '../meta-onboarding/service.js'
 import type { ChatwootService } from '../integrations/chatwoot-service.js';
 import {lockOwnershipMutations,readOwnerRevision,transitionChannelOwner} from '../attendance/transition.js';
 import { readAutomationAccess } from '../automations/availability.js';
+import {createChannelOperationProfile} from './operation-profile.js';
 
 export class ChannelFacadeError extends Error {
   constructor(readonly code: string, readonly status: 400 | 403 | 404 | 409 | 503) { super(code); }
@@ -113,6 +114,8 @@ function bindingView(row: AutomationBindingRow): AutomationBindingV1 {
 }
 
 export interface ChannelFacadeOptions {
+  managedOrigin?:string;
+  externalDestinationsEnabled?:boolean;
   automationStatus?(org:string):Promise<{canPublish:boolean;reasons:string[]}>;
   instances: InstanceService;
   meta: Pick<ReturnType<typeof createMetaOnboardingService>, 'start'>;
@@ -189,6 +192,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
     replayed: result.replayed, pending: result.pending, reconciliationRequired: result.reconciliationRequired,
   });
   return {
+    operationProfile:createChannelOperationProfile(options).get,
     async list(org: string,includeArchived=false,page:{pageSize:number;cursor?:string}={pageSize:50}) {
       if (!Number.isInteger(page.pageSize) || page.pageSize < 1 || page.pageSize > 100) throw new ChannelFacadeError('CHANNEL_PAGE_SIZE_INVALID',400);
       const cursor = page.cursor ? readChannelCursor(page.cursor) : undefined;

@@ -615,6 +615,7 @@ const ROUTE_POLICIES = Object.freeze({
       ),
     ]),
   ),
+  "GET /v1/channels/{id}/operation-profile": policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'READ_ONLY','NO_STORE','RLS_ORGANIZATION_CANONICAL_CHANNEL_ORIGIN_ACCOUNT_INBOX_CREDENTIAL_REVISION_OBSERVATION_NOT_AUTHORIZATION'),
   "GET /v1/channels/{id}/status": policy(
     "apps/api/src/http/routes/channels.ts",
     "JWT_CURRENT_MEMBERSHIP",

@@ -55,7 +55,8 @@ Plano detalhado e registro: [times/agentes](2026-10-06-broker-p2-times-agentes.m
 - [x] Testar membro revogado, empresa suspensa, fila sem atendente e takeover concorrente.
 
 ## C — Modos e onboarding observados
-- [ ] Reutilizar onboarding, destination approval e compatibility existentes.
+Incremento C1/C2: [plano](2026-10-06-broker-p2-modos-onboarding.md), [evidências locais](../../validation/2026-10-06-broker-p2-modos-onboarding.md). Consulta por caixa e orientação verificadas; ativação do transporte central e wizard integral permanecem pendentes de D.
+- [x] Reutilizar onboarding, destination approval e compatibility existentes.
 - [ ] Expor STANDALONE/JRC_MANAGED/CHATWOOT_EXTERNAL com BROKER_TRANSPORT ou CENTRAL_TRANSPORT e readiness observada.
 - [ ] Wizard conta/credencial/caixa/bot/webhook/capacidades; não substituir webhook silenciosamente.
 - [ ] Mesmo Account/Inbox em hosts diferentes e tenant A/B: catálogos, jobs, mídia e credenciais isolados.

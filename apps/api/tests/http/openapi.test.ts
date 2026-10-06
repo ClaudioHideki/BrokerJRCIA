@@ -10,6 +10,7 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/channels/{id}/operation-profile',
   'GET /v1/messaging/conversations/{id}',
   'GET /v1/attendance/local-channels',
   'GET /v1/attendance/local-channels/{channelId}/catalog',

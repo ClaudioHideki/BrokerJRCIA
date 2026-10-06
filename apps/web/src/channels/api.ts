@@ -1,5 +1,6 @@
 import {
   ChannelAutomationV1Schema,
+  ChannelOperationProfileSchema,
   ChannelListV1Schema,
   ChannelMutationV1Schema,
   ChannelV1Schema,
@@ -28,6 +29,11 @@ export async function listChannels(client: ApiClient,includeArchived=false,page?
 }
 export async function getChannel(client: ApiClient, id: string) {
   return parse(ChannelV1Schema, await client.request<unknown>(`/v1/channels/${encodeURIComponent(id)}`));
+}
+export async function getChannelOperationProfile(client:ApiClient,org:string,id:string,signal?:AbortSignal){
+ const value=parse(ChannelOperationProfileSchema,await client.request<unknown>(`/v1/channels/${encodeURIComponent(id)}/operation-profile`,{...(signal?{signal}:{})}));
+ if(value.organizationId!==org||value.channelId!==id)throw new ApiClientError('O perfil não corresponde à empresa e caixa selecionadas.',409);
+ return value;
 }
 export async function createChannel(client: ApiClient, input: CreateChannelV1, idempotencyKey: string) {
   return parse(CreateChannelResponseV1Schema, await client.request<unknown>('/v1/channels', {

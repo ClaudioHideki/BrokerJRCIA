@@ -467,6 +467,8 @@ export function buildApp(options: BuildAppOptions = {}) {
       authenticateApiKey: apiKeys.authenticateApiKey,
       resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
       service: createChannelFacade({
+        externalDestinationsEnabled:z.enum(['true','false']).default('false').parse(messagingEnvironment.CHATWOOT_EXTERNAL_DESTINATIONS_ENABLED)==='true',
+        ...(messagingEnvironment.CHATWOOT_BASE_URL?{managedOrigin:new URL(messagingEnvironment.CHATWOOT_BASE_URL).origin}:{}),
         automationStatus: org => automations!.service.status(org,'ADMIN'),
         instances: instances.service,
         meta: metaOnboardingService,

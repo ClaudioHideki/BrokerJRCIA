@@ -2,7 +2,7 @@ import { AttendanceError } from '../../modules/attendance/types.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { BindChannelAutomationV1Schema, BindChannelDestinationV1Schema, ChannelAutomationV1Schema,
+import { ChannelOperationProfileSchema, BindChannelAutomationV1Schema, BindChannelDestinationV1Schema, ChannelAutomationV1Schema,
   ChannelListV1Schema, ChannelMutationV1Schema, ChannelV1Schema, CreateChannelResponseV1Schema,
   CreateChannelV1Schema, IdempotencyHeadersSchema, PairChannelResponseV1Schema, PatchChannelV1Schema,
   PROBLEM_CONTENT_TYPE, ProblemDetailsSchema } from '@jrc/contracts';
@@ -85,6 +85,9 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
   api.get('/v1/channels/:id', { preHandler: read, schema: { params, querystring: empty, response: { 200: ChannelV1Schema,
     400: ProblemDetailsSchema, 401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema } } },
   request => options.service.get(org(request), request.params.id));
+  api.get('/v1/channels/:id/operation-profile',{preHandler:manage,schema:{params,querystring:empty,
+    response:{200:ChannelOperationProfileSchema,400:ProblemDetailsSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,404:ProblemDetailsSchema}}},
+    request=>options.service.operationProfile(org(request),request.params.id));
   api.patch('/v1/channels/:id', { preHandler: write, schema: { params, querystring: empty,
     body: PatchChannelV1Schema, response: { 200: ChannelV1Schema, 400: ProblemDetailsSchema,
       401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema, 409: ProblemDetailsSchema } } },

@@ -25,3 +25,4 @@ export * from './automation-node-definitions.js';
 export * from './attendance-catalog.js';
 export * from './automation-handoff-v1.js';
 export * from './attendance-destination-v2.js';
+export * from './channel-operation-profile.js';
