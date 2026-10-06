@@ -17,6 +17,18 @@ Atualizações de escopo expressamente solicitadas:
 
 Stack mantida: Node 24.19.0, TypeScript strict, Fastify, PostgreSQL/Drizzle, Redis, React/Vite, Zod, Vitest e Playwright. Reutilizar workers, inbox/outbox e contratos; nenhuma troca geral de stack ou atualização de dependências.
 
+### Ampliação solicitada em 06/10 — escala e funcionamento no servidor
+
+Dimensionar para 500 empresas e até 10.000 conexões WhatsApp, distribuídas entre QR e Meta, com empresas que chegam a 250.000 conversas/mês considerando suas filiais. Esses números são requisitos de planejamento, não capacidade já demonstrada. Conexões WhatsApp não são conexões PostgreSQL. Ainda faltam características do servidor, distribuição de carga por empresa, mensagens por conversa, volume de mídia, retenção e pico para dimensionar recursos.
+
+O mesmo caminho funcional deve existir no Broker e nas interfaces Flow/QR das centrais: empresa autenticada → conexão → caixa vinculada → automação construída no canvas → versão publicada → mensagem recebida → execução única → resposta pelo transporte autoritativo → transferência humana → pausa → retomada explícita. Account/Inbox/Times/Agentes/Etiquetas pertencem ao tenant e à instalação vinculados; credencial administrativa global não substitui essa identidade.
+
+Uma entrega funcional inclui configuração operacional, diagnóstico e teste no servidor com caixa de homologação. Não encerrar uma fase apenas com componentes internos ou funcionalidades permanentemente desabilitadas. Flags de migração/liberação devem ter procedimento de ativação e rollback, e cada pré-requisito ausente deve aparecer como ação concreta na interface. Manter autorização, isolamento, confirmação humana e prevenção de envio duplicado; removê-los contrariaria o funcionamento solicitado.
+
+A extensão de infraestrutura inclui roteamento durável de instâncias entre motores QR, reconexão com atraso progressivo e jitter, reemissão de QR quando a sessão exigir nova autenticação, orçamento de conexões de banco por réplica, distribuição justa de trabalho, controle de backlog e armazenamento privado de mídia compatível com S3. PostgreSQL conserva estado transacional e metadados; mídia externa exige integridade, autorização por empresa, retenção e recuperação verificadas. Redis e sessões QR precisam de persistência e restore compatíveis com o estado das filas. Nenhuma reconexão do Broker pode afirmar recuperação quando o provedor exigir nova autenticação.
+
+Homologar o fluxo real no ambiente produtivo com a caixa do Welton já autorizada. Repetir nos tenants JRC A/B e Chatwoot externo quando forem configurados, conforme decisão anterior. Testes de carga usam dados sintéticos e transporte simulado em ambiente separado dimensionado como o servidor; o piloto produtivo verifica o caminho real e suas métricas. Não disparar milhares de conversas a clientes para fabricar prova de capacidade.
+
 ## 2. Modos e origem do transporte
 
 | Modo | Executor | Catálogo e atendimento humano |

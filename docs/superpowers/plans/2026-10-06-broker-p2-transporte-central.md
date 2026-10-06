@@ -65,6 +65,6 @@
 
 ## Task 5 — Verificação e preparação do release
 - [ ] Unit + PostgreSQL + HTTP/UI + build/OpenAPI + contratos/bundle/audit + diffcheck e revisão independente.
-- [ ] Publicar branch, integrar main após gates; CI E2E e imagens vinculadas ao mesmo SHA/digests. Não repetir E2E completa local recusada.
+- [ ] Entregar cada incremento concluído e validado diretamente na main, reutilizando o checkout, conforme decisão do usuário em 06/10. Não criar outra branch nem publicar imagens de entrega de uma branch de desenvolvimento. CI E2E e imagens vinculadas ao mesmo SHA/digests da main. Não repetir E2E completa local recusada.
 - [ ] Registro de instalação/rollback/migrations/flags não secretas para usuário executar no Dokploy.
 - [ ] Manter testes reais JRC A/B/Chatwoot externo pendentes e seguir fases P3–P10 do programa; D local não prova homologação externa.

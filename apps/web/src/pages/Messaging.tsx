@@ -721,7 +721,7 @@ export function MessagingPage() {
             <select
               id="messaging-channel"
               value={channelId}
-              onChange={(event) => {conversationNavigation.current+=1;setChannelId(event.target.value);setConversationId('');setDraft('');pendingSend.current=null;}}
+              onChange={(event) => {if(event.target.value===channelId)return;conversationNavigation.current+=1;setChannelId(event.target.value);setConversationId('');setDraft('');pendingSend.current=null;}}
             >
               {channels.map((channel) => (
                 <option key={channel.id} value={channel.id}>

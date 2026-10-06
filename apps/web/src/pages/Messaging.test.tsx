@@ -118,6 +118,15 @@ function loadedRequest(overrides: {
 }
 
 describe('MessagingPage', () => {
+  it.each(['BOT','HUMAN'] as const)('preserves the selected conversation and draft when the current channel is selected again (%s)',async mode=>{
+    renderPage(clientFor(loadedRequest({mode})));
+    await screen.findByText('Olá, preciso de ajuda');
+    fireEvent.change(screen.getByLabelText('Responder'),{target:{value:'Rascunho da conversa atual'}});
+    fireEvent.change(screen.getByLabelText('Canal WhatsApp'),{target:{value:CHANNEL_ID}});
+    expect(screen.getByLabelText('Conversa')).toHaveValue(CONVERSATION_ID);
+    expect(screen.getByLabelText('Responder')).toHaveValue('Rascunho da conversa atual');
+    expect(screen.getByText(mode==='BOT'?'Modo: Bot':'Modo: Atendimento humano')).toBeVisible();
+  });
   it('keeps the second claimed conversation open when the first lookup finishes later',async()=>{
     const first='22222222-3333-4444-8555-666666666666',second='33333333-4444-4555-8666-777777777777';
     const rows=[first,second].map(id=>({conversationId:id,sessionId:id,sessionRevision:2,cycle:1,state:'WAITING_HUMAN',target:{kind:'QUEUE'}}));

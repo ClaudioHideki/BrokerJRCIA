@@ -45,3 +45,15 @@ Verificação local: 23 testes de migrações aprovados, incluindo a especifica�
 A tentativa completa de integrações local foi interrompida após falhas em concorrência de réplicas do Dashboard App e timeout de upgrade/readiness; não é uma suíte aprovada. As duas integrações passaram isoladamente: 2 arquivos/8 testes, 13,66 s, mantendo os limites originais. A aprovação completa de PostgreSQL/Redis e das jornadas de navegador ainda depende da nova execução de CI. A falha no inventário impediu a continuação dos gates daquele CI e não comprova uma imagem P2 publicada nem instalação no servidor.
 
 Decisão de entrega: integrar os incrementos concluídos P2 A/B/C1/C2 e o decoder interno D1 à main, reutilizando o checkout. A publicação de imagens será somente da main, após seus gates; D2–D5 e a homologação externa continuam pendentes e não são anunciados como parte funcional deste release.
+
+## Main 2c97533 — diagnóstico autorizado do CI e retomada
+
+O usuário autorizou o download dos logs da execução [37500993351](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37500993351). PostgreSQL/Redis passou nessa execução. As jornadas de navegador registraram 35 aprovadas, cinco não executadas e duas falhas no cenário de retomada: desktop após reload, ao procurar Modo: Bot; celular na leitura inicial do modo humano, depois de a jornada desktop terminar antes de restaurar esse estado.
+
+A seleção repetida do canal atual limpava conversationId e o rascunho, mesmo sem alterar channelId. Como o efeito de carregamento depende de channelId, a conversa não era recarregada. Dois testes de regressão reproduziram a perda do compositor nos modos BOT e HUMAN. A correção ignora somente a seleção do canal já ativo; uma troca real mantém a invalidação da navegação e a limpeza dos dados anteriores. Não altera autorização, atribuição, retomada remota ou controle humano.
+
+Verificações da correção: 28 testes da tela de mensagens aprovados; jornada focada de retomada com API, PostgreSQL e Redis reais de laboratório aprovada em desktop e celular (2/2, 59,1 s), com central sintética e sem WhatsApp real. Typecheck aprovado. Suíte unitária completa: 271 arquivos e 1.844 testes aprovados (402,81 s). Revisão independente estática sem bloqueios. A suíte E2E local completa não foi repetida.
+
+Separadamente, a execução local completa de PostgreSQL/Redis registrou 576 aprovados e três falhas QR: ausência de claim da outbox e INVALID_OUTBOX_CLAIM. O arquivo passou isoladamente (17/17, 12,77 s) e no CI da main. A diferença local ainda não tem causa comprovada; não é registrada como aprovação completa nem tratada como resolvida pela correção da tela.
+
+Os gates da próxima main, publicação das imagens e atualização do servidor serão verificados separadamente. D2–D5 continuam pendentes.

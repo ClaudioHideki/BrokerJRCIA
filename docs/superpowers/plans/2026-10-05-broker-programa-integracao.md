@@ -164,11 +164,15 @@ Continuar A1–A8 de 29/09, sem confundir grupos econômicos com grupos WhatsApp
 
 ## P8 — candidato do Broker
 
+Escala acrescentada em 06/10: 500 empresas, até 10.000 conexões QR/Meta e perfil de empresa com 250.000 conversas/mês. Executar também o [plano de capacidade e operação](2026-10-06-broker-capacidade-operacao.md). Capacidade demonstrada exige medir conexões ativas, mensagens, mídia, pico e recuperação; o total cadastrado isoladamente não comprova throughput. Antecipar o levantamento e a instrumentação durante P2–P7; executar carga após integrar os caminhos funcionais e antes da expansão comercial.
+
 - [ ] Rodar build, typecheck, unitários, HTTP, PostgreSQL/Redis, E2E, contratos, imagens e controles de release existentes.
 - [ ] Testar upgrade de banco vazio e de cópia sanitizada da versão instalada; preservar journal.
 - [ ] Provar restore, recuperação de fila e sessão; não prometer exatamente uma entrega em efeito UNKNOWN.
 - [ ] Testar indisponibilidade da central/provedor, assinatura inválida, reentrega, retomada de worker e backlog por empresa.
 - [ ] Executar matriz do documento de validação e anexar evidências por perfil.
+- [ ] Homologar cada entrega funcional no servidor usando a caixa exclusiva de testes; publicar configuração e procedimento de ativação. Componentes internos parciais não encerram a fase nem justificam anunciar operação completa.
+- [ ] Medir capacidade e recuperação da infraestrutura e registrar o limite observado por perfil, sem confundir sessão QR simulada com conexão WhatsApp real.
 - [ ] Congelar commit/digests, release notes, flags e rollback por comportamento. Não reverter banco cegamente.
 - [ ] Preparar comandos revisáveis de Dokploy com mudança mínima; deploy só na tarefa de release aprovada.
 
