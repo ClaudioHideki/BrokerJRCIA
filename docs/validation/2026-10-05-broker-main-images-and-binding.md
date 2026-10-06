@@ -29,3 +29,15 @@ Na tela, as consultas do catálogo e do vínculo inicial eram paralelas. Uma res
 Evidências locais observadas: teste unitário RED → GREEN, suíte Channels 10/10 e E2E da jornada 2/2. Build, typecheck e auditoria do bundle aprovados. Regressão completa da correção isolada: 263 arquivos e 1.733 testes aprovados (381,43 segundos). Revisão independente concluída sem achados bloqueantes. Uma nova execução adicional da suíte E2E completa não foi autorizada; o resultado local disponível da jornada afetada é 2/2, obtido antes de isolar o trabalho P2. O CI da nova main deverá verificar a suíte completa no candidato publicado.
 
 As mudanças do primeiro incremento do P2 foram preservadas separadamente em stash; não estão incluídas nesta correção de release. Nenhuma implantação foi executada.
+
+## Atualização em 06/10/2026: bloqueio da imagem por dependência
+
+A correção do vínculo chegou à main em `1c6e49a83db7635671330165df512f169ca974fc`. Seu CI https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37372981801 foi aprovado, incluindo E2E. A primeira tentativa de imagem, 37373019507, não adquiriu runner hospedado. A repetição https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37461503650 iniciou e falhou por um motivo diferente.
+
+O usuário forneceu o trecho final: 263 arquivos/1.733 testes PASS, bundle sem achados e submódulo PASS; `npm audit --audit-level=high` bloqueou source-map-js 1.2.1 pelo aviso [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q). O artefato de imagens não existe porque a publicação foi impedida antes do build das imagens. Nenhum log remoto foi baixado.
+
+A correção pontual atualiza somente versão, URL e SHA512 de source-map-js para 1.2.2 no package-lock.json; preserva licença e gates. `npm view source-map-js@1.2.2` confirmou a integridade do lock; audit local RED mostrou uma vulnerabilidade alta e GREEN mostrou zero em todas as severidades. Build limpo, bundle (11 arquivos/nenhum achado) e limite do submódulo passaram. Revisão independente não identificou bloqueios; sua tentativa própria de consulta ao registro não produziu validação TLS utilizável, portanto a integridade externa foi confirmada pelo executor.
+
+Regressão completa após a atualização: 263 arquivos e 1.733 testes PASS em 364,12 segundos; build limpo, bundle e limite do submódulo PASS. O audit atualizado retornou zero vulnerabilidades em todas as severidades. `git diff --check` foi verificado antes do commit. A suíte E2E completa local anteriormente recusada não foi repetida.
+
+O incremento P2 A foi registrado separadamente em `1bd6906`; não faz parte desta correção de segurança. A geração de imagens corrigidas requer o novo commit na main e aprovação do workflow; os digests de 9bc0b7c acima continuam sendo evidência apenas da versão anterior.
