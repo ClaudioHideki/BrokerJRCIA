@@ -4,6 +4,19 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  ...Object.fromEntries([
+    'GET /v1/channels/central/inboxes', 'GET /v1/channels/central/inboxes/{inboxId}/preview',
+    'GET /v1/channels/central/operations/{operationId}', 'GET /v1/channels/central/operations/by-key/{key}',
+    'GET /v1/channels/{id}/central-operation',
+  ].map(route=>[route,policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_APPROVED_ACCOUNT_DESTINATION_OPERATION_NO_SECRET_RESPONSE')])),
+  ...Object.fromEntries([
+    'POST /v1/channels/central/operations/{operationId}/advance',
+    'POST /v1/channels/central/operations/{operationId}/rollback',
+    'POST /v1/channels/central/operations/{operationId}/cancel',
+  ].map(route=>[route,policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'EXPECTED_REVISION_DURABLE_LEASE_UNKNOWN_READBACK_NO_BLIND_POST_REPLAY','NO_STORE_METADATA_ONLY',
+    'RLS_CURRENT_ACTOR_OPERATION_ACCOUNT_DESTINATION_CREDENTIAL_REVISIONS_EXACT_REMOTE_IDENTITY')])),
   ...Object.fromEntries(['GET /v1/attendance/local-teams','GET /v1/attendance/local-channels/{channelId}/catalog'].map(route=>[route,policy('apps/api/src/http/routes/attendance-local.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
     'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_ACTIVE_LOCAL_IDENTITIES')])),
   ...Object.fromEntries(['POST /v1/attendance/local-teams','PUT /v1/attendance/local-teams/{teamId}','PUT /v1/attendance/local-teams/{teamId}/members'].map(route=>[route,policy('apps/api/src/http/routes/attendance-local.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,

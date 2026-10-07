@@ -10,13 +10,15 @@ export interface ChatwootEventScope {
   integrationId: string;
   accountId: number;
   inboxId: number;
+  /** Supplied only from the current persisted central binding, never webhook metadata. */
+  brokerBotId?: number;
 }
 /** Evidence must come from our persisted message map, never content_attributes supplied in a webhook. */
 export interface PersistedBrokerEcho extends ChatwootEventScope {
   remoteConversationId: number;
   remoteMessageId: number;
 }
-type Assignee = { kind: 'NONE' | 'UNKNOWN' } | { kind: 'HUMAN' | 'EXTERNAL_BOT'; id: number };
+type Assignee = { kind: 'NONE' | 'UNKNOWN' } | { kind: 'HUMAN' | 'EXTERNAL_BOT' | 'BROKER_BOT'; id: number };
 type MessageKind = 'HUMAN_PUBLIC' | 'HUMAN_PRIVATE' | 'EXTERNAL_BOT' | 'AUTOMATED_REPLY' |
   'UNVERIFIED_REPLY' | 'BROKER_ECHO' | 'CONTACT_MESSAGE' | 'SYSTEM_MESSAGE';
 export type ChatwootAttendanceEvent = {
@@ -102,9 +104,11 @@ export function classifyChatwootAttendanceEvent(raw: unknown, scope: ChatwootEve
   if (event !== 'conversation_created' && event !== 'conversation_updated' && event !== 'conversation_status_changed') return null;
   const conversation = controlSchema.parse(raw);
   requireScope(conversation.account.id, conversation.inbox_id, scope);
-  const meta = record(conversation.meta), assigned = assignee(meta);
+  const meta = record(conversation.meta);
+  let assigned=assignee(meta);
+  if(assigned.kind==='EXTERNAL_BOT'&&assigned.id===scope.brokerBotId)assigned={kind:'BROKER_BOT',id:assigned.id};
   const teamId = meta.team == null ? null : id.parse(record(meta.team).id);
   return { kind: 'CONVERSATION_CONTROL', remoteConversationId: conversation.id, remoteUpdatedAt: conversation.updated_at ?? null,
     status: conversation.status, assignee: assigned, teamId, mayForwardReply: false,
-    interruptsBot: conversation.status !== 'pending' || assigned.kind !== 'NONE' };
+    interruptsBot: conversation.status !== 'pending' || (assigned.kind !== 'NONE'&&assigned.kind!=='BROKER_BOT') };
 }

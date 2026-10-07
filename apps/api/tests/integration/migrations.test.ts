@@ -377,7 +377,7 @@ describe('migrations PostgreSQL', () => {
     expect(result.rows).toEqual([
       // 0034 (2) + 0039 (3) + 0042 (1) + 0044 (1) + 0045 (2).
       ...Array.from({length:9},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
-      ...Array.from({length:2},()=>({policyname:'central_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:3},()=>({policyname:'central_tenant',roles:['jrc_app'],cmd:'ALL'})),
       // 0043 revokes delegated access through the restricted definer function.
       {policyname:'embed_authorizations_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
       {policyname:'embed_sessions_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
@@ -492,7 +492,7 @@ describe('migrations PostgreSQL', () => {
     ];
     const commercialTables = ['commercial_plans', 'commercial_plan_versions', 'organization_commercial_plans'];
     const removalTables = ['group_company_removal_previews', 'group_company_removals', 'group_company_removal_children'];
-    const centralTables = ['central_transport_bindings','central_runtime_events'];
+    const centralTables = ['central_transport_bindings','central_runtime_events','central_cutover_operations'];
     const tables = [...attendanceTables, ...centralTables, ...commercialTables, ...removalTables];
     type ReviewedPolicy = { tablename: string; policyname: string; roles: string[]; cmd: string;
       permissive: string; qual: string | null; with_check: string | null };

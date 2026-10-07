@@ -62,6 +62,8 @@ export function createFlowChatwootService(options: Options) {
       allowLocal: a.destination?.mode === 'MANAGED' && options.allowLocal === true });
   }
   async function noDirectAutomation(tx: TenantTransaction, org: string, inboxId: number) {
+    if((await tx.query("SELECT 1 FROM central_cutover_operations WHERE organization_id=$1 AND inbox_id=$2 AND status NOT IN ('ROLLED_BACK','CANCELED')",[org,inboxId])).rowCount)
+      throw new FlowError('CENTRAL_INBOX_CLAIMED',409);
     const conflicts = await tx.query(`select 1 from chatwoot_connections i join messaging_channels c on c.organization_id=i.organization_id and c.id=i.channel_id
       where i.organization_id=$1 and i.inbox_id=$2 and i.status<>'DISABLED' and c.bot_public_id is not null`, [org, inboxId]);
     if (conflicts.rowCount) throw new FlowError('FLOW_CHANNEL_HAS_AUTOMATION', 409);

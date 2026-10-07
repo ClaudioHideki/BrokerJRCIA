@@ -474,6 +474,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         meta: metaOnboardingService,
         ...(integrationRuntime.qr?{activateQr:integrationRuntime.qr.activate}:{}),
         chatwoot: integrationRuntime.chatwoot,
+        ...(integrationRuntime.centralCutover?{central:integrationRuntime.centralCutover}:{}),
         transact: (organizationId, operation) =>
           withOrganizationTransaction(pools.appPool, organizationId, operation),
       }),

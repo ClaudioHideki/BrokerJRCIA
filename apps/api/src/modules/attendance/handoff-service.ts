@@ -21,9 +21,10 @@ function scoped(op:HandoffOperation,value:Canonical) {
   if(value.id!==s.remoteConversationId||value.account_id!==s.scope.accountId||value.inbox_id!==s.scope.inboxId)
     throw new NativeHandoffError('HANDOFF_REMOTE_SCOPE_MISMATCH');
 }
-function unassigned(op:HandoffOperation,value:Canonical,opening:boolean) {
+function unassigned(op:HandoffOperation,value:Canonical,opening:boolean,brokerBotId?:number|null) {
   scoped(op,value);
-  if(value.meta.assignee!==null||value.meta.team!==null||value.meta.assignee_type!=null||
+  const own=opening&&brokerBotId!=null&&value.meta.assignee?.id===brokerBotId&&value.meta.assignee_type==='AgentBot';
+  if(!own&&(value.meta.assignee!==null||value.meta.assignee_type!=null)||value.meta.team!==null||
     value.status!==(opening?'pending':'open'))throw new NativeHandoffError('HANDOFF_REMOTE_CONTROL_CHANGED');
 }
 function confirmed(op:HandoffOperation,value:Canonical) {
@@ -40,7 +41,7 @@ function policy(op:HandoffOperation,catalog:AttendanceCatalog) {
   if(!catalog.scope||Object.entries(s.scope).some(([key,value])=>catalog.scope[key as keyof AttendanceScope]!==value)||catalog.credentialRevision!==s.credentialRevision)
     throw new NativeHandoffError('HANDOFF_CONTEXT_CHANGED');
   if(catalog.inboxPolicy?.greetingEnabled!==false||catalog.inboxPolicy?.autoAssignmentEnabled!==false||
-    catalog.capabilities?.agentBot!=='SUPPORTED'||catalog.remoteBot!==null||
+    catalog.capabilities?.agentBot!=='SUPPORTED'||catalog.remoteBot!==null&&catalog.remoteBot.id!==catalog.brokerBotId||
     s.target.teamId!==null&&!catalog.teams.some(team=>team.id===s.target.teamId&&team.autoAssignment===false)||
     s.target.agentId!==null&&!catalog.agents.some(agent=>agent.id===s.target.agentId&&agent.inboxMember))
     throw new NativeHandoffError('HANDOFF_INBOX_POLICY_UNSAFE');
@@ -72,8 +73,8 @@ export function createNativeHandoffService(options:Options) {
         const s=op.snapshot;
         const validated=await options.attendanceService.validateTarget(s.scope,s.target);
         if(validated.credentialRevision!==s.credentialRevision)throw new NativeHandoffError('HANDOFF_CONTEXT_CHANGED');
-        policy(op,await options.attendanceService.catalog(op.organizationId,s.scope.integrationId));
-        unassigned(op,await canonical(op,true),true);
+        const initialCatalog=await options.attendanceService.catalog(op.organizationId,s.scope.integrationId);policy(op,initialCatalog);
+        unassigned(op,await canonical(op,true),true,initialCatalog.brokerBotId);
         let account=await options.transact(op.organizationId,async t=>{
           const account=await repository.guard(t,op,true);op=await repository.stage(t,op,'OPEN_DISPATCHED');return account;
         });

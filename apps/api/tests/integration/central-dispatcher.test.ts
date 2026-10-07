@@ -17,7 +17,7 @@ let db: Awaited<ReturnType<typeof attendanceDatabase>>;
 const codec=createIntegrationSecrets(Buffer.alloc(32,19).toString('base64'));
 beforeAll(async()=>{db=await attendanceDatabase();},60000);
 afterAll(async()=>{await db?.dispose();});
-async function fixture(journey=false) {
+async function fixture(journey=false,ownBot=false) {
  const org=randomUUID(),channel=randomUUID(),integration=randomUUID(),origin=`https://${org}.example.test`,secret='synthetic-secret';
  const seed=await db.database.pool.connect();
  try{
@@ -40,9 +40,11 @@ async function fixture(journey=false) {
   graph.edges[1]!.target='name';graph.edges.push({id:'capture',source:'name',target:'handoff',port:'next'});
   await db.database.pool.query('UPDATE automation_versions SET graph=$2 WHERE organization_id=$1 AND automation_id=$3',[org,JSON.stringify(graph),draft.id]);}
  await db.transact(org,async tx=>{const own=await transitionChannelOwner(tx,org,{channelId:channel,botPublicId:draft.id,botOriginReference:AUTOMATION_ORIGIN,version:1});await tx.query('UPDATE central_transport_bindings SET owner_revision=$3 WHERE organization_id=$1 AND channel_id=$2',[org,channel,own.ownerRevision]);});
- const conversation={id:101,account_id:7,inbox_id:9,status:'pending',meta:{sender:{id:301},assignee:null,team:null as null|{id:number}}};
+ if(ownBot)await db.transact(org,tx=>tx.query("UPDATE central_transport_bindings SET bot_id=19,bot_callback='https://broker.example.test/events' WHERE channel_id=$1",[channel]));
+ const conversation={id:101,account_id:7,inbox_id:9,status:'pending',meta:{sender:{id:301},assignee:ownBot?{id:19,type:'agent_bot'}:null,assignee_type:ownBot?'AgentBot':null,team:null as null|{id:number}}};
  const incoming=new Map<number,string>([[201,'Synthetic greeting']]);
- const ingress=createChatwootRuntimeIngress({transact:db.transact,secrets:codec,resolveIntegration:async()=>org,router:createEventRouter({transact:db.transact,enabled:true}),readCanonical:async(_binding,conv,id)=>({conversation:{...conversation,id:conv},message:{id,conversation_id:conv,message_type:'incoming',private:false,content:incoming.get(id)!,sender:{id:301,type:'contact'},created_at:Math.floor(Date.now()/1000)}})});
+ let inboxBotId=19;
+ const ingress=createChatwootRuntimeIngress({transact:db.transact,secrets:codec,resolveIntegration:async()=>org,router:createEventRouter({transact:db.transact,enabled:true}),readCanonical:async(_binding,conv,id)=>({inboxBot:ownBot?{id:inboxBotId,outgoing_url:'https://broker.example.test/events'}:null,conversation:{...conversation,id:conv},message:{id,conversation_id:conv,message_type:'incoming',private:false,content:incoming.get(id)!,sender:{id:301,type:'contact'},created_at:Math.floor(Date.now()/1000)}})});
  const callback=async(extra:Record<string,unknown>={})=>{if(extra.message_type!=='outgoing')incoming.set(Number(extra.id??201),String(extra.content??'Synthetic greeting'));const raw=Buffer.from(JSON.stringify({event:'message_created',id:201,account:{id:7},inbox:{id:9},conversation:{id:101,inbox_id:9,contact_inbox:{contact_id:301}},private:false,message_type:'incoming',content:'Synthetic greeting',sender:{id:301,type:'contact'},...extra})),timestamp=String(Math.floor(Date.now()/1000));return ingress.receive({integrationId:integration,raw,timestamp,signature:'sha256='+createHmac('sha256',secret).update(timestamp+'.').update(raw).digest('hex')});};
  const received=await callback();await ingress.process(org,received.eventId!);
  await createExecutionService({transact:db.transact,enabled:true}).runOnce(org);
@@ -65,8 +67,8 @@ async function fixture(journey=false) {
   if(path.endsWith('/teams'))return Response.json([{id:4,name:'Synthetic team',account_id:7,allow_auto_assign:false}]);
   if(path.endsWith('/labels'))return Response.json({payload:[]});
   if(path.endsWith('/custom_attribute_definitions'))return Response.json([]);
-  if(path.endsWith('/agent_bot'))return Response.json({agent_bot:null});
-  if(path.endsWith('/toggle_status')){conversation.status='open';await callback({event:'conversation_updated',id:101,inbox_id:9,status:'open',meta:conversation.meta});return Response.json({});}
+  if(path.endsWith('/agent_bot'))return Response.json({agent_bot:ownBot?{id:inboxBotId,name:'Broker',outgoing_url:'https://broker.example.test/events',secret:'synthetic'}:null});
+  if(path.endsWith('/toggle_status')){conversation.status='open';conversation.meta.assignee=null;conversation.meta.assignee_type=null;await callback({event:'conversation_updated',id:101,inbox_id:9,status:'open',meta:conversation.meta});return Response.json({});}
   if(path.endsWith('/assignments')){conversation.meta.team={id:4};await callback({event:'conversation_updated',id:101,inbox_id:9,status:'open',meta:conversation.meta});return Response.json({});}
   const conv=Number(path.split('/').at(-1));
   if(conv===blockedConversation)return new Response('',{status:503});
@@ -78,8 +80,23 @@ async function fixture(journey=false) {
  const catalog=createChatwootAttendanceService({transact:db.transact,client:()=>client});
  const handoff=createNativeHandoffService({transact:db.transact,client:()=>client,attendanceService:{catalog:catalog.catalog,validateTarget:catalog.validateTarget}});
  const journeyEffects=createOutboxDispatcher({transact:db.transact,enabled:true},createAutomationEffectDispatcher({transact:db.transact,messaging:createPostgresMessagingRepository(),handoff}));
- return {org,channel,integration,message,callback,requests,remote,dispatcher,ingress,catalog,journeyEffects,worker:()=>createExecutionService({transact:db.transact,enabled:true}),blockConversation:(id:number)=>{blockedConversation=id;},setFail:()=>{fail=true;},setHook:(hook:()=>Promise<void>)=>{postHook=hook;}};
+ return {org,channel,integration,message,callback,requests,remote,dispatcher,ingress,catalog,journeyEffects,setInboxBot:(id:number)=>{inboxBotId=id;},worker:()=>createExecutionService({transact:db.transact,enabled:true}),blockConversation:(id:number)=>{blockedConversation=id;},setFail:()=>{fail=true;},setHook:(hook:()=>Promise<void>)=>{postHook=hook;}};
 }
+it('refuses sending when only the inbox bot changes but the conversation remains assigned to the Broker',async()=>{
+ const t=await fixture(false,true);t.setInboxBot(20);await t.dispatcher().runOnce(t.org);
+ expect(t.requests.filter(x=>x.startsWith('POST'))).toHaveLength(0);
+ expect((await db.transact(t.org,tx=>tx.query('SELECT state FROM messaging_messages WHERE id=$1',[t.message.id]))).rows).toEqual([{state:'FAILED'}]);
+});
+it('refuses admitting another Flow input after the inbox bot changes without changing the conversation assignee',async()=>{
+ const t=await fixture(false,true);t.setInboxBot(20);const next=await t.callback({id:202,content:'1'});
+ await expect(t.ingress.process(t.org,next.eventId!)).rejects.toThrow('CENTRAL_REMOTE_BOT_CHANGED');
+ expect((await db.transact(t.org,tx=>tx.query('SELECT disposition FROM central_runtime_events WHERE id=$1',[next.eventId]))).rows).toEqual([{disposition:'RECEIVED'}]);
+});
+it('sends through the unique runtime when the canonical conversation is assigned to its own AgentBot',async()=>{
+ const t=await fixture(false,true);await t.dispatcher().runOnce(t.org);
+ expect(t.requests.filter(x=>x.startsWith('POST'))).toHaveLength(1);
+ expect((await db.transact(t.org,tx=>tx.query('SELECT state FROM messaging_messages WHERE id=$1',[t.message.id]))).rows).toEqual([{state:'SENT'}]);
+});
 it('sends once via central and proves a canonical receipt, without QR/Meta/mirror jobs',async()=>{
  const t=await fixture();expect(t.message.state).toBe('ACCEPTED');
  await Promise.all([t.dispatcher().runOnce(t.org),t.dispatcher().runOnce(t.org)]);
@@ -159,8 +176,8 @@ it('observes native WhatsApp inbox membership and validates its human target',as
  expect(catalog.agents).toEqual([{id:12,name:'Synthetic agent',inboxMember:true}]);
  expect(await t.catalog.validateTarget(catalog.scope,{teamId:4,agentId:null})).toMatchObject({target:{teamId:4,agentId:null}});
 });
-it('runs menu, capture and canonical human transfer through the actual runtime with synthetic HTTP only',async()=>{
- const t=await fixture(true);await t.dispatcher().runOnce(t.org);
+it.each([false,true])('runs menu, capture and canonical human transfer with own AgentBot=%s through the actual runtime with synthetic HTTP only',async own=>{
+ const t=await fixture(true,own);await t.dispatcher().runOnce(t.org);
  const choice=await t.callback({id:202,content:'1'});await t.ingress.process(t.org,choice.eventId!);
  expect(await t.worker().runOnce(t.org)).toMatchObject({status:'WAITING'});
  expect(await t.journeyEffects.runOnce(t.org)).toMatchObject({status:'SENT'});

@@ -7,6 +7,7 @@ import { ChatwootClient,ChatwootError } from './chatwoot-client.js';
 import { publicChatwootCapabilities } from './chatwoot-compatibility.js';
 import { readChatwootAccount,type AccountRow } from './chatwoot-context.js';
 import { IntegrationError } from './integration-error.js';
+import {classificationScope} from './chatwoot-attendance-store.js';
 
 type Options={transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;client(account:AccountRow):ChatwootClient};
 /** The type permits probing; support still requires the actual authenticated catalog endpoints. */
@@ -44,7 +45,8 @@ export function createChatwootAttendanceService(options:Options) {
       const account=await readChatwootAccount(tx,org);
       if(!scope||scope.integrationId!==id||!account)throw new IntegrationError('CHATWOOT_ACCOUNT_NOT_READY',409);
       const transport=(await tx.query<{transport:string}>('SELECT transport FROM messaging_channels WHERE organization_id=$1 AND id=$2',[org,scope.channelId])).rows[0]?.transport;
-      return {scope,account,transport};
+      const authority=await classificationScope(tx,{...scope,credentialRevision:account.credential_version});
+      return {scope,account,transport,brokerBotId:authority.brokerBotId??null};
     });
   }
   async function catalog(org:string,id:string):Promise<AttendanceCatalog> {
@@ -57,7 +59,7 @@ export function createChatwootAttendanceService(options:Options) {
       ]);
       if(inbox.id!==scope.inboxId||!supportsAttendanceInbox(initial.transport,inbox.channel_type))throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
       const current=await snapshot(org,id);
-      if(!sameScope(current.scope,scope)||current.transport!==initial.transport||current.account.credential_version!==account.credential_version||current.account.base_url!==account.base_url)
+      if(!sameScope(current.scope,scope)||current.transport!==initial.transport||current.brokerBotId!==initial.brokerBotId||current.account.credential_version!==account.credential_version||current.account.base_url!==account.base_url)
         throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
       const assigned=new Set(members.map(member=>member.id));
       const knownAgents=new Set(agents.map(agent=>agent.id));
@@ -71,6 +73,7 @@ export function createChatwootAttendanceService(options:Options) {
         hours:{enabled:inbox.working_hours_enabled??null,timezone:inbox.timezone??null,days:(inbox.working_hours??[]).map(day=>({day:day.day_of_week,closed:day.closed_all_day,allDay:day.open_all_day??false,
           openHour:day.open_hour??null,openMinute:day.open_minutes??null,closeHour:day.close_hour??null,closeMinute:day.close_minutes??null}))},
         remoteBot:bot.data?{id:bot.data.id,name:bot.data.name}:null,
+        ...(current.brokerBotId?{brokerBotId:current.brokerBotId}:{}),
         inboxPolicy:{greetingEnabled:inbox.greeting_enabled??null,autoAssignmentEnabled:inbox.enable_auto_assignment??null},
         capabilities:{teams:teams.state,agents:'SUPPORTED',inboxMembership:'SUPPORTED',labels:labels.state,attributes:attributes.state,
           hours:hasUsableHours(inbox)?'SUPPORTED':'UNVERIFIED',agentBot:bot.state,

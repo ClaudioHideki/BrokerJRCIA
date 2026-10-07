@@ -12,7 +12,7 @@ const creation=z.strictObject({organizationId:z.uuid(),channelId:z.uuid(),integr
 type ContextRow={channelId:string;organizationId:string;integrationId:string;origin:string;accountId:string;inboxId:string;
  destinationRevision:number;credentialVersion:number;ownerRevision:number;status:CentralRuntimeEventBinding['status'];
  accountStatus:string;connectionStatus:string;approval:string;tenantStatus:string;encryptedToken:string|null;encryptedWebhookSecret:string|null;
- currentOrigin:string;currentAccountId:string|null;currentInboxId:string|null;currentDestinationRevision:number;currentCredentialVersion:number;currentOwnerRevision:number};
+ currentOrigin:string;currentAccountId:string|null;currentInboxId:string|null;currentDestinationRevision:number;currentCredentialVersion:number;currentOwnerRevision:number;botId:string|null;botCallback:string|null};
 export async function readCentralTransportBinding(tx:TenantTransaction,org:string,integrationId:string,lock=false) {
  if(lock){
   const channel=(await tx.query<{channel_id:string}>('SELECT channel_id FROM central_transport_bindings WHERE organization_id=$1 AND integration_id=$2',[org,integrationId])).rows[0];
@@ -21,7 +21,7 @@ export async function readCentralTransportBinding(tx:TenantTransaction,org:strin
  }
  const row=(await tx.query<ContextRow>(`SELECT b.organization_id AS "organizationId",b.channel_id AS "channelId",b.integration_id AS "integrationId",
  b.origin,b.account_id AS "accountId",b.inbox_id AS "inboxId",b.destination_revision AS "destinationRevision",b.credential_version AS "credentialVersion",
- b.owner_revision AS "ownerRevision",b.status,a.status AS "accountStatus",c.status AS "connectionStatus",d.approval_status AS approval,o.status AS "tenantStatus",
+ b.owner_revision AS "ownerRevision",b.bot_id AS "botId",b.bot_callback AS "botCallback",b.status,a.status AS "accountStatus",c.status AS "connectionStatus",d.approval_status AS approval,o.status AS "tenantStatus",
  a.encrypted_token AS "encryptedToken",c.encrypted_webhook_secret AS "encryptedWebhookSecret",
  a.base_url AS "currentOrigin",a.account_id AS "currentAccountId",c.inbox_id AS "currentInboxId",d.revision AS "currentDestinationRevision",
  a.credential_version AS "currentCredentialVersion",coalesce((SELECT revision FROM attendance_owners own WHERE own.organization_id=b.organization_id AND own.channel_id=b.channel_id),0) AS "currentOwnerRevision"
@@ -39,17 +39,17 @@ export async function readCentralTransportBinding(tx:TenantTransaction,org:strin
   throw new Error('CENTRAL_CONTEXT_CHANGED');
  const binding:CentralRuntimeEventBinding={organizationId:org,channelId:row.channelId,integrationId,origin:row.origin,accountId:Number(row.accountId),inboxId:Number(row.inboxId),
   destinationRevision:row.destinationRevision,credentialVersion:row.credentialVersion,ownerRevision:row.ownerRevision,status:row.status,transport:'CENTRAL_TRANSPORT'};
- return {binding,encryptedWebhookSecret:row.encryptedWebhookSecret};
+ return {binding,encryptedWebhookSecret:row.encryptedWebhookSecret,botId:row.botId===null?null:Number(row.botId),botCallback:row.botCallback};
 }
 
 /** Capture credential and destination under the same short SQL locks; HTTP follows commit. */
 export async function readCentralTransportContext(tx:TenantTransaction,org:string,integrationId:string) {
- const {binding}=await readCentralTransportBinding(tx,org,integrationId,true);
+ const {binding,botId,botCallback}=await readCentralTransportBinding(tx,org,integrationId,true);
  const account=await readChatwootAccount(tx,org);
  if(!account||account.base_url!==binding.origin||Number(account.account_id)!==binding.accountId||
   account.credential_version!==binding.credentialVersion||account.destination?.revision!==binding.destinationRevision||
   account.destination.baseUrl!==binding.origin||account.destination.approvalStatus!=='APPROVED')throw new Error('CENTRAL_CONTEXT_CHANGED');
- return {binding,account};
+ return {binding,account,botId,botCallback};
 }
 
 /** Internal preparation only. HTTP creation/cutover becomes available with the

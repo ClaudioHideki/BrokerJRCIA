@@ -11,11 +11,11 @@ import {seedAttendanceTenant} from './helpers/attendance.js';
 import {createIsolatedPostgresDatabase,requireTestDatabaseAdminUrl} from './helpers/postgres.js';
 import {withGlobalRoleLock} from './helpers/global-role-lock.js';
 
-it('upgrades D2 preserving physical UNKNOWN receipts and central events without claiming delivery',async()=>{
- const admin=requireTestDatabaseAdminUrl(),db=await createIsolatedPostgresDatabase(admin),root=resolve(tmpdir()),folder=await mkdtemp(join(root,'jrc-d3-upgrade-'));
+it('upgrades D3 to D4 preserving UNKNOWN receipts, events and existing central history without activating a bot',async()=>{
+ const admin=requireTestDatabaseAdminUrl(),db=await createIsolatedPostgresDatabase(admin),root=resolve(tmpdir()),folder=await mkdtemp(join(root,'jrc-d4-upgrade-'));
  try {
   const source=resolve('apps/api/drizzle/migrations'),journal=JSON.parse(await readFile(join(source,'meta/_journal.json'),'utf8'));
-  journal.entries=journal.entries.filter((entry:{idx:number})=>entry.idx<46);
+  journal.entries=journal.entries.filter((entry:{idx:number})=>entry.idx<47);
   await mkdir(join(folder,'meta'));await writeFile(join(folder,'meta/_journal.json'),JSON.stringify(journal));
   for(const entry of journal.entries)await copyFile(join(source,entry.tag+'.sql'),join(folder,entry.tag+'.sql'));
   await withGlobalRoleLock(admin,async()=>{

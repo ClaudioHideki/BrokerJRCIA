@@ -31,6 +31,12 @@ describe('resume coordination across the database and central',()=>{
     expect((await db.database.pool.query('select input from automation_executions where organization_id=$1',[t.org])).rows[0].input)
       .toEqual({text:'',eventType:'RESUME'});
   });
+  it.each([19,23])('resumes the native central inbox only with the persisted own AgentBot (remote %s)',async bot=>{
+    const t=await resumeFixture(db,true,true);t.setBot(bot);const op=await t.reserve();
+    const result=await createAttendanceResumeWorker({transact:db.transact,client:t.client}).processAttendanceResume(op.id,t.org);
+    expect(result).toMatchObject(bot===19?{state:'APPLIED'}:{state:'ACTION_REQUIRED',errorCode:'ATTENDANCE_REMOVE_COMPETING_AGENT_BOT'});
+    expect(t.writes).toHaveLength(bot===19?3:0);
+  });
   it('never resumes when a human intervenes during HTTP',async()=>{
     const t=await resumeFixture(db),op=await t.reserve();t.setAfterWrite(t.human);
     const w=createAttendanceResumeWorker({transact:db.transact,client:t.client});

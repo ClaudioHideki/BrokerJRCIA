@@ -6,6 +6,7 @@ import { createAutomationService, createEventRouter } from '../../src/modules/au
 import { transitionChannelOwner } from '../../src/modules/attendance/transition.js';
 import { AUTOMATION_ORIGIN } from '@jrc/contracts';
 import { createChatwootService } from '../../src/modules/integrations/chatwoot-service.js';
+import {readCentralTransportBinding} from '../../src/modules/messaging/central-transport.js';
 
 let db: Awaited<ReturnType<typeof attendanceDatabase>>;
 const codec = createIntegrationSecrets(Buffer.alloc(32, 19).toString('base64'));
@@ -59,6 +60,20 @@ it('installs tenant-isolated central storage with no invented physical identity'
   const other = await fixture();
   expect((await db.transact(other.org, tx => tx.query('SELECT * FROM central_transport_bindings WHERE channel_id=$1', [t.channel]))).rowCount).toBe(0);
   expect((await db.database.pool.query("SELECT has_table_privilege('jrc_auth','central_runtime_events','SELECT') AS allowed")).rows[0].allowed).toBe(false);
+});
+it('keeps the central ingress usable after a canonical owner transition without manual revision updates',async()=>{
+ const t=await fixture(),automation=createAutomationService({transact:db.transact,enabled:true});
+ const graph={nodes:[{id:'start',type:'start',label:'Start',position:{x:0,y:0},data:{}},{id:'end',type:'end',label:'End',position:{x:100,y:0},data:{}}],edges:[{id:'next',source:'start',target:'end',port:'next'}]};
+ const draft=await automation.create(t.org,{name:'Synthetic transition',graph});await automation.publish(t.org,draft.id,1);
+ const changed=await db.transact(t.org,tx=>transitionChannelOwner(tx,t.org,{channelId:t.channel,botPublicId:draft.id,botOriginReference:AUTOMATION_ORIGIN,expectedOwnerRevision:0}));
+ expect((await db.transact(t.org,tx=>readCentralTransportBinding(tx,t.org,t.integration))).binding.ownerRevision).toBe(changed.ownerRevision);
+});
+it('records individual callback evidence only for authenticated events in the current binding context',async()=>{
+ const t=await fixture(),service=await receiver();
+ await expect(service.receive({...signed(t),signature:'sha256='+'0'.repeat(64)})).rejects.toThrow();
+ expect((await db.transact(t.org,tx=>tx.query('SELECT callback_verified_at FROM central_transport_bindings WHERE channel_id=$1',[t.channel]))).rows[0].callback_verified_at).toBeNull();
+ await service.receive(signed(t));
+ expect((await db.transact(t.org,tx=>tx.query('SELECT callback_verified_at,callback_credential_version,callback_destination_revision FROM central_transport_bindings WHERE channel_id=$1',[t.channel]))).rows[0]).toEqual({callback_verified_at:expect.any(Date),callback_credential_version:1,callback_destination_revision:1});
 });
 it('does not let a second company claim the same remote origin/account/inbox or leave a partial channel', async () => {
   const t = await fixture();

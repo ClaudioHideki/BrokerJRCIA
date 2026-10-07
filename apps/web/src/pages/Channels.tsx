@@ -5,7 +5,7 @@ import { ApiClientError } from '../api/client.js';
 import { useApiClient, useSession } from '../auth/SessionProvider.js';
 import { listChannels } from '../channels/api.js';
 
-const labels = { QR: 'WhatsApp por QR Code', META: 'WhatsApp oficial Meta' } as const;
+const labels = { QR: 'WhatsApp por QR Code', META: 'WhatsApp oficial Meta',CENTRAL:'WhatsApp conectado na central' } as const;
 const statusLabel: Record<string, string> = {
   CREATED: 'Criado', PAIRING: 'Aguardando pareamento', CONNECTED: 'Conectado', DISCONNECTED: 'Desconectado',
   DEGRADED: 'Com falha', UNKNOWN: 'Indisponível', PENDING: 'Pendente', READY: 'Pronto', REVOKED: 'Revogado',

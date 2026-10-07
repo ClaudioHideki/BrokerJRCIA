@@ -17,7 +17,7 @@ type Options={transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>
  resolveIntegration(id:string):Promise<string|null>;secrets:{decrypt(context:string,value:string):string};
  router?:ReturnType<typeof createEventRouter>;enabled?:boolean;
  /** Trusted adapter performs scoped GETs outside the transaction; never webhook metadata. */
- readCanonical?(binding:CentralRuntimeEventBinding,conversationId:number,messageId:number):Promise<{conversation:unknown;message:unknown}>};
+ readCanonical?(binding:CentralRuntimeEventBinding,conversationId:number,messageId:number):Promise<{conversation:unknown;message:unknown;inboxBot?:unknown}>};
 type StoredInput={id:string;channel_id:string;integration_id:string;event_key:string;kind:string;destination_revision:number;credential_version:number;owner_revision:number;
  remote_conversation_id:string;remote_message_id:string|null;conversation_id:string|null;message_id:string|null;disposition:string;created_at:Date;
  lease_token:string|null;lease_expires_at:Date|null;attempts:number};
@@ -42,6 +42,7 @@ export function createChatwootRuntimeIngress(options:Options) {
    if(current.encryptedWebhookSecret!==snapshot.encryptedWebhookSecret)throw new Error('CENTRAL_CONTEXT_CHANGED');
    const event=decodeChatwootRuntimeEvent({...input,secret,binding:snapshot.binding,current:current.binding});
    if(event.kind==='IGNORED'||!event.dedupeKey)return {duplicate:false,eventId:null,conversationId:null,disposition:'IGNORED' as const};
+   await tx.query('UPDATE central_transport_bindings SET callback_verified_at=now(),callback_credential_version=$3,callback_destination_revision=$4 WHERE organization_id=$1 AND integration_id=$2',[org,id,current.binding.credentialVersion,current.binding.destinationRevision]);
    const prior=(await tx.query<{id:string;conversation_id:string|null;disposition:string}>(`SELECT id,conversation_id,disposition FROM central_runtime_events
     WHERE organization_id=$1 AND channel_id=$2 AND event_key=$3`,[org,event.scope.channelId,event.dedupeKey])).rows[0];
    if(prior)return {duplicate:true,eventId:prior.id,conversationId:prior.conversation_id,disposition:prior.disposition};
@@ -87,10 +88,15 @@ export function createChatwootRuntimeIngress(options:Options) {
   if(!snapshot.event.remote_message_id||!snapshot.event.conversation_id||!snapshot.event.message_id)throw new Error('CENTRAL_EVENT_INVALID');
   const remoteConversationId=Number(snapshot.event.remote_conversation_id),remoteMessageId=Number(snapshot.event.remote_message_id);
   const canonical=await readCanonical(snapshot.context.binding,remoteConversationId,remoteMessageId);
+  if(snapshot.context.botId!==null){
+   const bot=z.object({id:positiveId,outgoing_url:z.string()}).parse(canonical.inboxBot);
+   if(bot.id!==snapshot.context.botId||!snapshot.context.botCallback||bot.outgoing_url!==snapshot.context.botCallback)throw new Error('CENTRAL_REMOTE_BOT_CHANGED');
+  }
   // Canonical checks and the event's immutable expected revisions are both
   // checked after GET. A mutable token/destination/owner cannot authorize an old input.
   return options.transact(org,async tx=>{
    const current=await readCentralTransportBinding(tx,org,snapshot.event.integration_id,true);
+   if(current.botId!==snapshot.context.botId||current.botCallback!==snapshot.context.botCallback)throw new Error('CENTRAL_CONTEXT_CHANGED');
    const event=(await tx.query<StoredInput>('SELECT * FROM central_runtime_events WHERE organization_id=$1 AND id=$2 FOR UPDATE',[org,eventKey])).rows[0]!;
    if(leaseToken&&(event.lease_token!==leaseToken||!event.lease_expires_at||event.lease_expires_at.getTime()<=Date.now()))throw new Error('CENTRAL_INGRESS_LEASE_LOST');
    if(!sameContext(snapshot.context.binding,current.binding)||event.destination_revision!==current.binding.destinationRevision||

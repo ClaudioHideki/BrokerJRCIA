@@ -43,11 +43,11 @@ export function createCentralDispatcher(options:Options) {
  const {transact}=options;
  async function context(org:string,r:Receipt) {
   return transact(org,async tx=>{
-   const {binding,account}=await readCentralTransportContext(tx,org,r.integration_id);
+   const {binding,account,botId,botCallback}=await readCentralTransportContext(tx,org,r.integration_id);
    if(!matches(r,binding))throw new Error('CENTRAL_CONTEXT_CHANGED');
    const message=(await tx.query<{content:{type:string;text?:string};state:string}>('SELECT content,state FROM messaging_messages WHERE organization_id=$1 AND id=$2 AND channel_id=$3 AND conversation_id=$4',[org,r.message_id,r.channel_id,r.conversation_id])).rows[0];
    if(!message||message.content.type!=='TEXT'||typeof message.content.text!=='string')throw new Error('CENTRAL_TEXT_REQUIRED');
-   return {binding,account,text:message.content.text};
+   return {binding,account,botId,botCallback,text:message.content.text};
   });
  }
  async function uncertain(org:string,r:Receipt,ack?:number) {
@@ -124,9 +124,12 @@ export function createCentralDispatcher(options:Options) {
   let c:Awaited<ReturnType<typeof context>>,client:ChatwootClient;
   try{c=await context(org,r);client=options.client(c.account);
    const senderId=await client.centralSender(c.binding.accountId);
+   const inboxBot=await client.inboxFlowBot(c.binding.accountId,c.binding.inboxId);
+   if((inboxBot?.id??null)!==c.botId||c.botId!==null&&(!c.botCallback||inboxBot?.outgoing_url!==c.botCallback))throw new Error('CENTRAL_REMOTE_BOT_CHANGED');
    const canonical=await client.attendanceConversation(c.binding.accountId,Number(r.remote_conversation_id));
    const claimed=await transact(org,async tx=>{
-    const {binding}=await readCentralTransportBinding(tx,org,r.integration_id,true);
+    const {binding,botId,botCallback}=await readCentralTransportBinding(tx,org,r.integration_id,true);
+    if(botId!==c.botId||botCallback!==c.botCallback)throw new Error('CENTRAL_CONTEXT_CHANGED');
     if(!matches(r,binding))throw new Error('CENTRAL_CONTEXT_CHANGED');
     await initializeChatwootAttendanceMap(tx,observationScope(binding),{conversationId:r.conversation_id,remoteConversationId:Number(r.remote_conversation_id),canonical});
     const gate=await readChatwootAttendanceGate(tx,authority(org,r));

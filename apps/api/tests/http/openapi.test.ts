@@ -10,6 +10,10 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/channels/central/inboxes', 'GET /v1/channels/central/inboxes/{inboxId}/preview',
+  'GET /v1/channels/central/operations/{operationId}', 'GET /v1/channels/central/operations/by-key/{key}',
+  'GET /v1/channels/{id}/central-operation', 'POST /v1/channels/central/operations/{operationId}/advance',
+  'POST /v1/channels/central/operations/{operationId}/rollback', 'POST /v1/channels/central/operations/{operationId}/cancel',
   'GET /v1/channels/{id}/operation-profile',
   'GET /v1/messaging/conversations/{id}',
   'GET /v1/attendance/local-channels',

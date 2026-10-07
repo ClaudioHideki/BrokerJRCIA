@@ -126,6 +126,7 @@ export async function transitionChannelOwner(tx:TenantTransaction,org:string,inp
   const integration=(await tx.query<{id:string}>('select id from chatwoot_connections where organization_id=$1 and channel_id=$2',[org,input.channelId])).rows[0]?.id??null;
   await tx.query(`insert into attendance_owners(organization_id,channel_id,integration_id,revision,executor,automation_id,version,remote_binding_id) values($1,$2,$3,$4,$5,$6,$7,$8)
     on conflict(organization_id,channel_id) do update set integration_id=$3,revision=$4,executor=$5,automation_id=$6,version=$7,remote_binding_id=$8,updated_at=now()`,[org,input.channelId,integration,revision+1,executor,native?input.botPublicId:null,version,input.remoteBindingId??null]);
+  await tx.query('UPDATE central_transport_bindings SET owner_revision=$3,updated_at=now() WHERE organization_id=$1 AND channel_id=$2',[org,input.channelId,revision+1]);
   await tx.query(`update attendance_sessions set state='ADMIN_PAUSED',revision=revision+1,updated_at=now() where organization_id=$1 and channel_id=$2 and state in ('BOT_ACTIVE','WAITING_INPUT')`,[org,input.channelId]);
   return {binding,ownerRevision:revision+1,changed:true};
 }

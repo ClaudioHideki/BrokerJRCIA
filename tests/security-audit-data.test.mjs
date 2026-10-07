@@ -38,6 +38,18 @@ function openApiOperations(openapi) {
 }
 
 describe('dados reproduzíveis da auditoria de segurança', () => {
+  it('registra o cutover central com autorização atual e reconciliação sem replay', async () => {
+    const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
+    const inventory = await buildRouteInventory({ rootDirectory: ROOT, openapi });
+    const central = inventory.filter(route => route.path.startsWith('/v1/channels/central/') || route.path.endsWith('/central-operation'));
+    expect(central).toHaveLength(8);
+    for (const route of central) {
+      expect(route).toMatchObject({ authentication: 'JWT_CURRENT_MEMBERSHIP', permission: 'OWNER_ADMIN', tenantRls: true,
+        challengeExposure: 'NO_STORE_METADATA_ONLY', handlerFile: 'apps/api/src/http/routes/channels.ts' });
+      expect(route.idempotency).toBe(route.method === 'GET' ? 'READ_ONLY' : 'EXPECTED_REVISION_DURABLE_LEASE_UNKNOWN_READBACK_NO_BLIND_POST_REPLAY');
+      expect(route.ownershipCheck).toContain('RLS_CURRENT_');
+    }
+  });
   it('mantém inventário completo e explícito para todas as rotas OpenAPI', async () => {
     const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
     const stored = JSON.parse(await readFile(resolve(AUDIT_ROOT, 'route-inventory.json'), 'utf8'));

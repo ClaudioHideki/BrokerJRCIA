@@ -55,17 +55,17 @@ Plano detalhado e registro: [times/agentes](2026-10-06-broker-p2-times-agentes.m
 - [x] Testar membro revogado, empresa suspensa, fila sem atendente e takeover concorrente.
 
 ## C — Modos e onboarding observados
-Incremento C1/C2: [plano](2026-10-06-broker-p2-modos-onboarding.md), [evidências locais](../../validation/2026-10-06-broker-p2-modos-onboarding.md). Consulta por caixa e orientação verificadas; ativação do transporte central e wizard integral permanecem pendentes de D.
+Incremento C1/C2: [plano](2026-10-06-broker-p2-modos-onboarding.md), [evidências locais](../../validation/2026-10-06-broker-p2-modos-onboarding.md). Consulta por caixa e orientação verificadas; transporte central e wizard público implementados em D2–D4 com evidência local. Instalação e homologação reais continuam pendentes.
 - [x] Reutilizar onboarding, destination approval e compatibility existentes.
-- [ ] Expor STANDALONE/JRC_MANAGED/CHATWOOT_EXTERNAL com BROKER_TRANSPORT ou CENTRAL_TRANSPORT e readiness observada.
-- [ ] Wizard conta/credencial/caixa/bot/webhook/capacidades; não substituir webhook silenciosamente.
+- [x] Expor STANDALONE/JRC_MANAGED/CHATWOOT_EXTERNAL com BROKER_TRANSPORT ou CENTRAL_TRANSPORT e readiness observada.
+- [x] Wizard conta/credencial/caixa/bot/webhook/capacidades; não substituir webhook silenciosamente.
 - [ ] Mesmo Account/Inbox em hosts diferentes e tenant A/B: catálogos, jobs, mídia e credenciais isolados.
 
 ## D — Transporte central e revogação
-Plano detalhado: [transporte central](2026-10-06-broker-p2-transporte-central.md); [evidência incremental](../../validation/2026-10-06-broker-p2-transporte-central.md). Decoder D1 verificado sem rota/ativação; tarefas de persistência, envio e cutover ainda em execução.
-- [ ] CENTRAL_TRANSPORT alimenta runtime único; preservar origem, assinatura, deduplicação e BOT/HUMAN.
-- [ ] Cutover explícito remove executor legado por caixa, sem execução paralela.
-- [ ] Testar bot+integration webhook duplicado, replay, assinatura inválida, token revogado e troca de tenant com tela aberta.
+Plano detalhado: [transporte central](2026-10-06-broker-p2-transporte-central.md); [evidência incremental](../../validation/2026-10-06-broker-p2-transporte-central.md). D1–D4 implementados e verificados localmente: persistência, transporte exclusivo, cutover e recuperação guiada. Verificações CI/imagens e homologação externa são registradas separadamente.
+- [x] CENTRAL_TRANSPORT alimenta runtime único; preservar origem, assinatura, deduplicação e BOT/HUMAN.
+- [x] Cutover explícito remove executor legado por caixa, sem execução paralela.
+- [x] Testar bot+integration webhook duplicado, replay, assinatura inválida, token revogado e troca de tenant com tela aberta.
 
 ## E — Homologação P2
 - Configuração dos tenants JRC A/B e da instalação externa será feita ao final, conforme decisão do usuário em 06/10/2026. Preparação e ordem em [guia de homologação](../../validation/2026-10-06-broker-preparacao-homologacao.md); aprovação externa permanece pendente.

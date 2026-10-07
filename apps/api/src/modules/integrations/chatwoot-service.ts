@@ -8,6 +8,7 @@ import type {
 import { requireActiveOrganization } from "../tenancy/operational-limits.js";
 import { createPostgresMessagingRepository } from "../messaging/repository.js";
 import { lockAttendanceChannel } from '../attendance/repository.js';
+import {lockOwnershipMutations} from '../attendance/transition.js';
 import {
   ChatwootClient,
   ChatwootError,
@@ -150,6 +151,13 @@ export function createChatwootService(options: ChatwootOptions) {
     if (!row)
       throw new IntegrationError("CHATWOOT_ACCOUNT_NOT_CONFIGURED", 409);
     return row;
+  }
+  async function physicalMutation(t:TenantTransaction,org:string,id:string){
+    await lockOwnershipMutations(t,org);
+    if((await t.query(`SELECT 1 FROM chatwoot_connections c JOIN messaging_channels m ON m.organization_id=c.organization_id AND m.id=c.channel_id
+      WHERE c.organization_id=$1 AND c.id=$2 AND (m.transport='CENTRAL_TRANSPORT' OR EXISTS(SELECT 1 FROM central_cutover_operations op
+      WHERE op.organization_id=c.organization_id AND op.inbox_id=c.inbox_id AND op.status NOT IN ('ROLLED_BACK','CANCELED')))`,[org,id])).rowCount)
+      throw new IntegrationError('CENTRAL_INBOX_CLAIMED',409);
   }
   async function rememberInbox(org: string, id: string, remote: ChatwootInbox, snapshot: AccountRow) {
     await tx(org, t => observeChatwootCapabilities(t, snapshot, { apiInbox: remote.channel_type === 'Channel::Api', webhookSecret: Boolean(remote.secret) }));
@@ -410,6 +418,9 @@ export function createChatwootService(options: ChatwootOptions) {
       const id = randomUUID();
       const connection = await tx(org, async (t) => {
         await requireActiveOrganization(t, org);
+        await lockOwnershipMutations(t,org);
+        if(input.inboxId&&(await t.query("SELECT 1 FROM central_cutover_operations WHERE organization_id=$1 AND inbox_id=$2 AND status NOT IN ('ROLLED_BACK','CANCELED')",[org,input.inboxId])).rowCount)
+          throw new IntegrationError('CENTRAL_INBOX_CLAIMED',409);
         await lockChatwootDestination(t, org);
         const current = await readChatwootAccount(t, org);
         const destination = requireApprovedDestination(current?.destination, org, env.origin);
@@ -498,7 +509,7 @@ export function createChatwootService(options: ChatwootOptions) {
     async reconcileConnection(org: string, id: string) {
       const a = await account(org),
         client = env.client(a);
-      const c = await tx(org, (t) => readChatwootConnection(t, org, id));
+      const c = await tx(org, async t => {await physicalMutation(t,org,id);return readChatwootConnection(t,org,id);});
       if (!c) throw new IntegrationError("INTEGRATION_NOT_FOUND", 404);
       const matches = (await client.listInboxes(Number(a.account_id))).filter(
         (i) => i.webhook_url === env.callback(id),
@@ -526,6 +537,7 @@ export function createChatwootService(options: ChatwootOptions) {
         client = env.client(a);
       const c = await tx(org, async (t) => {
         await requireActiveOrganization(t, org);
+        await physicalMutation(t,org,id);
         const row = (
           await t.query<ConnectionRow>(
             "UPDATE chatwoot_connections SET status='PENDING',updated_at=now() WHERE organization_id=$1 AND id=$2 AND status='FAILED' RETURNING *",
@@ -616,6 +628,7 @@ export function createChatwootService(options: ChatwootOptions) {
     ) {
       await tx(org, async (t) => {
         await requireActiveOrganization(t, org);
+        await physicalMutation(t,org,id);
         const c = await readChatwootConnection(t, org, id);
         if (!c) throw new IntegrationError("INTEGRATION_NOT_FOUND", 404);
         if (enabled && (!c.inbox_id || !c.encrypted_webhook_secret))

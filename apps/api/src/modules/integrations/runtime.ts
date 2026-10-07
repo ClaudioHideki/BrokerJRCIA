@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import {createCentralCutoverService} from '../channels/central-cutover-service.js';
 import { z } from "zod";
 import { withOrganizationTransaction } from "../../db/tenant-transaction.js";
 import {
@@ -259,20 +260,25 @@ export function createIntegrationRuntime(
     enabled:automationRuntimeEnabled(environment),router:createEventRouter({transact,enabled:automationRuntimeEnabled(environment)}),
     resolveIntegration:async id=>(await pool.query<{organization_id:string}>('SELECT * FROM resolve_chatwoot_integration($1)',[id])).rows[0]?.organization_id??null,
     async readCanonical(binding,conversationId,messageId){
-      const account=await transact(binding.organizationId,async tx=>{
+      const snapshot=await transact(binding.organizationId,async tx=>{
         const current=await readCentralTransportContext(tx,binding.organizationId,binding.integrationId);
         if(JSON.stringify(current.binding)!==JSON.stringify(binding))throw new Error('CENTRAL_CONTEXT_CHANGED');
-        return current.account;
+        return current;
       });
-      const client=centralEnvironment.client(account);
+      const client=centralEnvironment.client(snapshot.account);
+      const bot=await client.inboxFlowBot(binding.accountId,binding.inboxId);
+      if((bot?.id??null)!==snapshot.botId||snapshot.botId!==null&&(!snapshot.botCallback||bot?.outgoing_url!==snapshot.botCallback))throw new Error('CENTRAL_REMOTE_BOT_CHANGED');
       const [conversation,message]=await Promise.all([client.attendanceConversation(binding.accountId,conversationId),
         client.canonicalMessage(binding.accountId,binding.inboxId,conversationId,messageId)]);
-      return {conversation,message};
+      await transact(binding.organizationId,async tx=>{const current=await readCentralTransportContext(tx,binding.organizationId,binding.integrationId);
+        if(JSON.stringify(current.binding)!==JSON.stringify(binding)||current.botId!==snapshot.botId||current.botCallback!==snapshot.botCallback)throw new Error('CENTRAL_CONTEXT_CHANGED');});
+      return {conversation,message,inboxBot:bot};
     }}):undefined;
   return {
     qr,
     chatwoot,
     centralIngress,
+    centralCutover:centralEnvironment?createCentralCutoverService({transact,client:centralEnvironment.client,vault:centralEnvironment.vault,callback:centralEnvironment.callback}):undefined,
     centralDispatcher:centralEnvironment?createCentralDispatcher({transact,client:centralEnvironment.client,enabled:automationRuntimeEnabled(environment)}):undefined,
     flowChatwoot: options ? createFlowChatwootService({ ...options, async resolveBinding(id) {
       return (await pool.query<{ organization_id: string }>('SELECT * FROM resolve_flow_chatwoot_binding($1)', [id])).rows[0]?.organization_id;

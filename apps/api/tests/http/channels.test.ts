@@ -18,6 +18,17 @@ const channel = { schemaVersion: 1 as const, id, organizationId: org, provider: 
 describe('canonical channel routes', () => {
   const apps: Array<ReturnType<typeof buildApp>> = [];
   afterEach(async () => Promise.all(apps.splice(0).map(app => app.close())));
+  it('scopes central cutover actions to current administrators and expected operation revision',async()=>{
+    let role:'OWNER'|'OPERATOR'='OWNER';const operation={id,channelId:null,integrationId:account,inboxId:9,status:'PENDING',step:'DETACH',revision:1,reconciliationRequired:false};
+    const central={get:vi.fn(async()=>operation),advance:vi.fn(async()=>operation),preview:vi.fn(async()=>({expectedCredentialVersion:1,expectedDestinationRevision:1,expectedBotId:17,expectedRemoteFingerprint:'a'.repeat(64)})),listInboxes:vi.fn(async()=>({data:[]}))};
+    const app=buildApp({nodeEnv:'test',passwordVerifierInitializer:async()=>({verifyPasswordOrDummy:async()=>false}),channels:{jwtSecret:secret,authenticateApiKey:async()=>null,resolveCurrentRole:async()=>role,service:{central} as unknown as ChannelFacade}});apps.push(app);
+    const authorization=`Bearer ${await issueAccessToken({userId:user,organizationId:org,role:'OWNER'},secret)}`;
+    expect((await app.inject({method:'GET',url:'/v1/channels/central/inboxes/9/preview',headers:{authorization}})).statusCode).toBe(200);
+    const advanced=await app.inject({method:'POST',url:`/v1/channels/central/operations/${id}/advance`,headers:{authorization},payload:{expectedRevision:1}});
+    expect(advanced.statusCode).toBe(200);expect(central.advance).toHaveBeenCalledWith(org,user,id,1);
+    role='OPERATOR';expect((await app.inject({method:'POST',url:`/v1/channels/central/operations/${id}/advance`,headers:{authorization},payload:{expectedRevision:1}})).statusCode).toBe(403);
+    expect(central.advance).toHaveBeenCalledTimes(1);
+  });
 
   it('observes operation mode only for the current admin with no-store and no API-key access', async()=>{
     let role:'OWNER'|'OPERATOR'|null='OWNER';

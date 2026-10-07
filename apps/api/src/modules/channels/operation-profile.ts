@@ -20,6 +20,34 @@ export function createChannelOperationProfile(options:{
 }){
  return {get:(org:string,id:string)=>options.transact(org,async tx=>{
   await requireActiveOrganization(tx,org);
+  const native=(await tx.query<{integration_id:string;origin:string;account_id:string;inbox_id:string;destination_revision:number;credential_version:number;
+   status:string;connection_status:string;account_status:string;approval_status:string;mode:'MANAGED'|'EXTERNAL';current_origin:string;current_account:string;current_credential:number;current_destination:number;has_token:boolean;
+   inactive:boolean;bot_id:string|null;capabilities_observed_at:Date|null;callback_verified_at:Date|null;callback_credential_version:number|null;callback_destination_revision:number|null;observed_at:Date}>(`SELECT b.*,b.integration_id,c.status AS connection_status,
+   a.status AS account_status,a.base_url AS current_origin,a.account_id AS current_account,a.credential_version AS current_credential,a.encrypted_token IS NOT NULL AS has_token,
+   d.revision AS current_destination,d.approval_status,d.mode,m.deleting_at IS NOT NULL AS inactive,statement_timestamp() AS observed_at
+   FROM central_transport_bindings b JOIN messaging_channels m ON m.organization_id=b.organization_id AND m.id=b.channel_id
+   JOIN chatwoot_connections c ON c.organization_id=b.organization_id AND c.id=b.integration_id
+   JOIN chatwoot_accounts a ON a.organization_id=b.organization_id JOIN chatwoot_destinations d ON d.organization_id=b.organization_id
+   WHERE b.organization_id=$1 AND b.channel_id=$2`,[org,id])).rows[0];
+  if(native){
+   const r=native,blockers:ChannelOperationBlocker[]=[];
+   const matched=r.origin===r.current_origin&&Number(r.account_id)===Number(r.current_account)&&r.credential_version===r.current_credential&&r.destination_revision===r.current_destination
+    &&(r.mode==='EXTERNAL'||r.origin===options.managedOrigin);
+   if(!matched)blockers.push('CENTRAL_SCOPE_UNVERIFIED');
+   if(r.inactive)blockers.push('CHANNEL_INACTIVE');
+   if(r.approval_status!=='APPROVED')blockers.push('DESTINATION_NOT_APPROVED');
+   if(r.account_status!=='READY'||!r.has_token)blockers.push('ACCOUNT_NOT_READY');
+   if(r.status!=='READY'||r.connection_status!=='READY')blockers.push('CONNECTION_NOT_READY');
+   if(r.mode==='EXTERNAL'&&!options.externalDestinationsEnabled)blockers.push('CENTRAL_INTEGRATION_DISABLED');
+   const capabilitiesObservedAt=matched&&r.bot_id&&r.capabilities_observed_at&&r.capabilities_observed_at<=r.observed_at?r.capabilities_observed_at.toISOString():null;
+   if(!capabilitiesObservedAt)blockers.push('CAPABILITIES_UNVERIFIED');
+   const callbackObservedAt=matched&&r.callback_credential_version===r.current_credential&&r.callback_destination_revision===r.current_destination&&r.callback_verified_at&&r.callback_verified_at<=r.observed_at?r.callback_verified_at.toISOString():null;
+   if(!callbackObservedAt)blockers.push('CALLBACK_UNVERIFIED');
+   return ChannelOperationProfileSchema.parse({schemaVersion:1,organizationId:org,channelId:id,messagingChannelId:id,observedAt:r.observed_at.toISOString(),
+    mode:matched?(r.mode==='MANAGED'?'JRC_MANAGED':'CHATWOOT_EXTERNAL'):null,transport:matched?'CENTRAL_TRANSPORT':null,readiness:blockers.length?'BLOCKED':'READY',blockers,
+    central:matched?{origin:r.origin,accountId:Number(r.account_id),inboxId:Number(r.inbox_id),integrationId:r.integration_id,destinationRevision:r.destination_revision,credentialVersion:r.credential_version}:null,
+    deliveryVerified:false,capabilitiesObservedAt,callbackObservedAt});
+  }
   // One statement snapshot includes raw configuration and residual authority. A failed
   // account/destination JOIN must never erase the configured central.
   const rows=(await tx.query<Snapshot>(`WITH source AS (

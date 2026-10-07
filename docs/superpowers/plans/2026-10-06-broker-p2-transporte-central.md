@@ -63,12 +63,14 @@
 ## Task 4 — Cutover e configuração guiada
 **Files:** Create central cutover operation service/HTTP/UI; reuse flows/chatwoot-service.ts revogação/reconciliação e attendance/transition.ts, onboarding/control auth e ChannelOperationSetup.
 **Interfaces:** revisão esperada, operação idempotente, exclusividade por caixa, observar remoção do bot antigo antes de READY; preservar sessões antigas e rollback explícito. Wizard oferece origem de transporte somente após adaptador funcional; nunca troca webhook em silêncio.
-- [ ] RED: executor legado ativo, desligamento incerto, duas empresas mesma caixa, webhook existente e rejeição de permissões atuais; teste de troca de tenant com operação pendente.
-- [ ] Implementar transição/readback/revalidação, sem reutilizar token/binding de outra conta e sem execução paralela.
-- [ ] Integrar perfil C: capacidades/callback individuais atuais e readiness sem confundir disponibilidade/publicação/entrega.
+- [x] RED: executor legado ativo, desligamento incerto, duas empresas mesma caixa, webhook existente e rejeição de permissões atuais; teste de troca de tenant com operação pendente.
+- [x] Implementar transição/readback/revalidação, sem reutilizar token/binding de outra conta e sem execução paralela.
+- [x] Integrar perfil C: capacidades/callback individuais atuais e readiness sem confundir disponibilidade/publicação/entrega.
+
+**D4 local (07/10):** 1.874 unitários, 673 PostgreSQL/Redis e dois compilados aprovados; build/OpenAPI, gates de segurança e revisão independente aprovados. Wizard/cutover públicos implementados, com recuperação/reversão e proteção contra bot concorrente. CI e imagens precisam corresponder ao commit final da main. Roteiro: ../../validation/2026-10-07-broker-d4-instalacao-homologacao.md. Homologação externa permanece NOT_RUN.
 
 ## Task 5 — Verificação e preparação do release
-- [ ] Unit + PostgreSQL + HTTP/UI + build/OpenAPI + contratos/bundle/audit + diffcheck e revisão independente.
+- [x] Unit + PostgreSQL + HTTP/UI + build/OpenAPI + contratos/bundle/audit + diffcheck e revisão independente.
 - [ ] Entregar cada incremento concluído e validado diretamente na main, reutilizando o checkout, conforme decisão do usuário em 06/10. Não criar outra branch nem publicar imagens de entrega de uma branch de desenvolvimento. CI E2E e imagens vinculadas ao mesmo SHA/digests da main. Não repetir E2E completa local recusada.
-- [ ] Registro de instalação/rollback/migrations/flags não secretas para usuário executar no Dokploy.
+- [x] Registro de instalação/rollback/migrations/flags não secretas para usuário executar no Dokploy.
 - [ ] Manter testes reais JRC A/B/Chatwoot externo pendentes e seguir fases P3–P10 do programa; D local não prova homologação externa.

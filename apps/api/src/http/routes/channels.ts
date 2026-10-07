@@ -10,6 +10,7 @@ import { DeletionPreviewSchema, DeletionRequestedSchema, DeletionStatusSchema, R
 import { LifecycleError, type LifecycleService } from '../../modules/lifecycle/service.js';
 import type { ChannelFacade } from '../../modules/channels/facade.js';
 import { ChannelFacadeError } from '../../modules/channels/facade.js';
+import {CentralInboxListSchema,CentralInboxPreviewSchema,CentralCutoverOperationSchema} from '@jrc/contracts';
 import type { Role } from '../plugins/authorization.js';
 import { authenticateRequest, type AuthenticationOptions } from '../plugins/authentication.js';
 import { registerRequestContext } from '../plugins/request-context.js';
@@ -54,6 +55,16 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
   const actor = (request: FastifyRequest) => request.authentication!.actorId!;
   const context = (request: FastifyRequest) => ({ credentialKind: 'JWT' as const, organizationId: org(request), actorId: actor(request),
     requestId: request.id, deadline: request.operationDeadline, signal: request.operationSignal });
+  const central=()=>{if(!options.service.central)throw new ChannelFacadeError('CHATWOOT_NOT_CONFIGURED',503);return options.service.central;};
+  const centralErrors={400:ProblemDetailsSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,404:ProblemDetailsSchema,409:ProblemDetailsSchema,503:ProblemDetailsSchema};
+  api.get('/v1/channels/central/inboxes',{preHandler:manage,schema:{querystring:empty,response:{200:CentralInboxListSchema,...centralErrors}}},request=>central().listInboxes(org(request),actor(request)));
+  api.get('/v1/channels/central/inboxes/:inboxId/preview',{preHandler:manage,schema:{params:z.strictObject({inboxId:z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER)}),querystring:empty,response:{200:CentralInboxPreviewSchema,...centralErrors}}},request=>central().preview(org(request),actor(request),request.params.inboxId));
+  api.get('/v1/channels/central/operations/:operationId',{preHandler:manage,schema:{params:z.strictObject({operationId:z.uuid()}),querystring:empty,response:{200:CentralCutoverOperationSchema,...centralErrors}}},request=>central().get(org(request),request.params.operationId));
+  api.get('/v1/channels/central/operations/by-key/:key',{preHandler:manage,schema:{params:z.strictObject({key:z.string().min(1).max(128).regex(/^[A-Za-z0-9._:-]+$/)}),querystring:empty,response:{200:CentralCutoverOperationSchema,...centralErrors}}},request=>central().byKey(org(request),request.params.key));
+  api.post('/v1/channels/central/operations/:operationId/cancel',{preHandler:manage,schema:{params:z.strictObject({operationId:z.uuid()}),querystring:empty,body:z.strictObject({expectedRevision:z.number().int().positive()}),response:{200:CentralCutoverOperationSchema,...centralErrors}}},request=>central().cancel(org(request),actor(request),request.params.operationId,request.body.expectedRevision));
+  api.post('/v1/channels/central/operations/:operationId/advance',{preHandler:manage,schema:{params:z.strictObject({operationId:z.uuid()}),querystring:empty,body:z.strictObject({expectedRevision:z.number().int().positive()}),response:{200:CentralCutoverOperationSchema,...centralErrors}}},request=>central().advance(org(request),actor(request),request.params.operationId,request.body.expectedRevision));
+  api.post('/v1/channels/central/operations/:operationId/rollback',{preHandler:manage,schema:{params:z.strictObject({operationId:z.uuid()}),querystring:empty,body:z.strictObject({expectedRevision:z.number().int().positive()}),response:{200:CentralCutoverOperationSchema,...centralErrors}}},request=>central().rollback(org(request),actor(request),request.params.operationId,request.body.expectedRevision));
+  api.get('/v1/channels/:id/central-operation',{preHandler:manage,schema:{params,querystring:empty,response:{200:CentralCutoverOperationSchema,...centralErrors}}},request=>central().operationForChannel(org(request),request.params.id));
 
   if(options.lifecycle){
     const operationParams=params.extend({operationId:z.uuid()});

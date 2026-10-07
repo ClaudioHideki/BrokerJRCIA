@@ -1,4 +1,4 @@
-export const RUNTIME_SCHEMA_BASELINE = '0047_central_dispatch';
+export const RUNTIME_SCHEMA_BASELINE = '0048_central_cutover';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -15,7 +15,7 @@ const requiredObjectsSql = `SELECT
   AND
   EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.messaging_channels')
     AND attname='transport' AND attnotnull AND attnum>0 AND NOT attisdropped)
-  AND NOT EXISTS(SELECT 1 FROM (VALUES ('public.central_transport_bindings'),('public.central_runtime_events')) AS required(relation_name)
+  AND NOT EXISTS(SELECT 1 FROM (VALUES ('public.central_transport_bindings'),('public.central_runtime_events'),('public.central_cutover_operations')) AS required(relation_name)
     WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass(required.relation_name)
       AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'
       AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='central_tenant'))
@@ -279,6 +279,12 @@ const requiredObjectsSql = `SELECT
         )
     )
   )
+  AND NOT EXISTS(SELECT 1 FROM (VALUES ('central_cutover_remote_claim'),('central_cutover_active_integration')) AS required(index_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_index WHERE indexrelid=pg_catalog.to_regclass('public.'||required.index_name) AND indisunique AND indisvalid))
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid=pg_catalog.to_regclass('public.central_cutover_operations') AND conname='central_cutover_lease' AND convalidated)
+  AND NOT EXISTS(SELECT 1 FROM (VALUES ('bot_id'),('bot_callback'),('capabilities_observed_at'),('callback_verified_at'),('callback_credential_version'),('callback_destination_revision')) AS required(column_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.central_transport_bindings') AND attname=required.column_name AND attnum>0 AND NOT attisdropped))
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.lifecycle_pending_count_before_central_cutover(uuid,uuid,uuid)') AND prosecdef)
   AS ready`;
 
 export async function probeRequiredRuntimeSchema(query: SchemaProbeQuery): Promise<boolean> {

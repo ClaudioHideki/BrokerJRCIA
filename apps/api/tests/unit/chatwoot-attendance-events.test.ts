@@ -8,6 +8,12 @@ const message = { event: 'message_created', id: 101, account: { id: 1 }, inbox: 
   message_type: 'outgoing', private: false, sender: { id: 9, type: 'user' }, content: 'Private customer text' };
 
 describe('authenticated Chatwoot attendance event classification', () => {
+  it('only recognizes the persisted Broker AgentBot as its own control assignee',()=>{
+    const raw={...conversation,event:'conversation_updated',meta:{...conversation.meta,assignee:{id:19,type:'agent_bot'},assignee_type:'AgentBot'}};
+    expect(classifyChatwootAttendanceEvent(raw,{...scope,brokerBotId:19})).toMatchObject({kind:'CONVERSATION_CONTROL',assignee:{kind:'BROKER_BOT',id:19},interruptsBot:false});
+    expect(classifyChatwootAttendanceEvent(raw,{...scope,brokerBotId:20})).toMatchObject({kind:'CONVERSATION_CONTROL',assignee:{kind:'EXTERNAL_BOT',id:19},interruptsBot:true});
+    expect(classifyChatwootAttendanceEvent({...raw,status:'open'},{...scope,brokerBotId:19})).toMatchObject({interruptsBot:true});
+  });
   it('identifies a public human reply without retaining customer content or sender email', () => {
     const result = classifyChatwootAttendanceEvent({ ...message, sender: { ...message.sender, email: 'private@example.test' } }, scope);
     expect(result).toEqual({ kind: 'HUMAN_PUBLIC', remoteConversationId: 7, remoteMessageId: 101, senderId: 9, mayForwardReply: true, interruptsBot: true });

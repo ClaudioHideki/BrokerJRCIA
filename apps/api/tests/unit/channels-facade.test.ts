@@ -13,6 +13,15 @@ const now = '2030-01-01T12:00:00.000Z';
 afterEach(() => vi.restoreAllMocks());
 
 describe('channel facade', () => {
+  it('represents the central inbox and refuses physical pairing or destination replacement',async()=>{
+    const row={id,organization_id:org,provider:'CENTRAL' as const,provider_account_id:null,instance_id:null,connection_id:null,name:'Central synthetic',instance_status:null,meta_status:'READY' as const,
+      bot_public_id:null,bot_origin_reference:null,flow_published_version:null,flow_enabled:null,human_status:'READY',created_at:now,updated_at:now,
+      messaging_channel_id:id,integration_id:account,inbox_id:9,account_id:7};
+    const service=createChannelFacade({instances:{} as InstanceService,meta:{start:vi.fn()},chatwoot:{connect:vi.fn()},transact:async(_org,work)=>work({query:vi.fn(async()=>({rows:[row]}))} as never)});
+    expect(await service.get(org,id)).toMatchObject({provider:'CENTRAL',providerReference:{integrationId:account,accountId:7,inboxId:9},messagingChannelId:id});
+    await expect(service.pair({credentialKind:'JWT',organizationId:org,actorId:account} as never,id,'synthetic')).rejects.toMatchObject({code:'CHANNEL_PAIR_UNSUPPORTED'});
+    await expect(service.bindDestination(org,id,{name:'Changed',replaceExistingWebhook:true})).rejects.toMatchObject({code:'CENTRAL_DESTINATION_CUTOVER_REQUIRED'});
+  });
   it.each(['AUTOMATION_RUNTIME_DISABLED','AUTOMATION_MODULE_DISABLED','AUTOMATION_DEPENDENCY_UNAVAILABLE'])('does not bypass %s when binding from a channel',async code=>{
     const transact=vi.fn(async()=>{throw new Error('BINDING_MUST_NOT_MUTATE');});
     const service=createChannelFacade({instances:{} as InstanceService,meta:{start:vi.fn()},transact,

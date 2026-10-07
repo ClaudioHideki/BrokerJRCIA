@@ -9,6 +9,8 @@ import { captureResume, readResumeRow, requireResumeActor, resumeView, type Resu
 import type { ResumeServiceOptions } from './resume-service.js';
 import { lockAttendanceChannel,resolveAttendanceScope } from './repository.js';
 import { AttendanceError } from './types.js';
+import {classificationScope} from '../integrations/chatwoot-attendance-store.js';
+import {supportsAttendanceInbox} from '../integrations/chatwoot-attendance-service.js';
 
 type Options=ResumeServiceOptions & {client?(account:AccountRow):ChatwootClient};
 const safeError=(error:unknown,fallback:string)=>error instanceof AttendanceError?error.code:fallback;
@@ -30,7 +32,10 @@ export function createAttendanceResumeWorker(options:Options) {
     const context=await captureResume(tx,op.organizationId,{conversationId:op.conversationId,expectedControlRevision:s.controlRevision,expectedOwnerRevision:s.ownerRevision,target:s.target});
     const mode=(await tx.query<{mode:string}>('SELECT mode FROM messaging_conversations WHERE organization_id=$1 AND id=$2',[op.organizationId,op.conversationId])).rows[0]?.mode;
     if(mode!=='HUMAN'||!sameSnapshot(s,context.snapshot))throw new AttendanceError('ATTENDANCE_RESUME_CONTEXT_CHANGED',409);
-    return {op:current,account:context.account};
+    const transport=(await tx.query<{transport:string}>('SELECT transport FROM messaging_channels WHERE organization_id=$1 AND id=$2',[op.organizationId,op.channelId])).rows[0]?.transport;
+    const authority=s.scope?await classificationScope(tx,{...s.scope,credentialRevision:s.credentialRevision!}):null;
+    const brokerBotCallback=(await tx.query<{bot_callback:string|null}>('SELECT bot_callback FROM central_transport_bindings WHERE organization_id=$1 AND channel_id=$2',[op.organizationId,op.channelId])).rows[0]?.bot_callback??null;
+    return {op:current,account:context.account,transport,brokerBotId:authority?.brokerBotId??null,brokerBotCallback};
   }
   async function finish(op:ResumeRow,state:'UNKNOWN'|'ACTION_REQUIRED'|'CANCELED',error:string,lease:string) {
     return options.transact(op.organizationId,async tx=>{
@@ -112,19 +117,21 @@ export function createAttendanceResumeWorker(options:Options) {
     let dispatched=false;
     let watermark:number|null=null;
     try{
-      const {account}=await options.transact(org,tx=>guarded(tx,op,lease));
+      const {account,transport,brokerBotId,brokerBotCallback}=await options.transact(org,tx=>guarded(tx,op,lease));
       const s=op.snapshot;
       if(s.scope){
         if(!account||!options.client)throw new AttendanceError('ATTENDANCE_RESUME_REMOTE_UNAVAILABLE',409);
         const client=options.client(account),scope=s.scope,remote=s.remoteConversationId!;
         const inbox=await client.attendanceInbox(scope.accountId,scope.inboxId),bot=await client.inboxFlowBot(scope.accountId,scope.inboxId);
-        if(inbox.id!==scope.inboxId||inbox.channel_type!=='Channel::Api')throw new AttendanceError('ATTENDANCE_SCOPE_CHANGED',409);
+        if(inbox.id!==scope.inboxId||!supportsAttendanceInbox(transport,inbox.channel_type))throw new AttendanceError('ATTENDANCE_SCOPE_CHANGED',409);
         if(inbox.greeting_enabled!==false)throw new AttendanceError('ATTENDANCE_DISABLE_INBOX_GREETING',409);
         if(inbox.enable_auto_assignment!==false)throw new AttendanceError('ATTENDANCE_DISABLE_INBOX_AUTO_ASSIGNMENT',409);
-        if(bot!==null)throw new AttendanceError('ATTENDANCE_REMOVE_COMPETING_AGENT_BOT',409);
+        if(bot!==null&&bot.id!==brokerBotId)throw new AttendanceError('ATTENDANCE_REMOVE_COMPETING_AGENT_BOT',409);
+        if(transport==='CENTRAL_TRANSPORT'&&(!brokerBotId||bot?.id!==brokerBotId||!brokerBotCallback||bot.outgoing_url!==brokerBotCallback))throw new AttendanceError('ATTENDANCE_REMOVE_COMPETING_AGENT_BOT',409);
         const before=await client.attendanceConversation(scope.accountId,remote);
         if(before.inbox_id!==scope.inboxId||before.updated_at===undefined)throw new AttendanceError('ATTENDANCE_RESUME_REMOTE_CONTROL_UNVERIFIED',409);
-        if(before.meta.assignee_type==='AgentBot'||before.meta.assignee!==null&&before.meta.assignee.type!=='user'&&before.meta.assignee_type!=='User')throw new AttendanceError('ATTENDANCE_REMOVE_COMPETING_AGENT_BOT',409);
+        const own=brokerBotId!==null&&before.meta.assignee_type==='AgentBot'&&before.meta.assignee?.id===brokerBotId;
+        if(!own&&(before.meta.assignee_type==='AgentBot'||before.meta.assignee!==null&&before.meta.assignee.type!=='user'&&before.meta.assignee_type!=='User'))throw new AttendanceError('ATTENDANCE_REMOVE_COMPETING_AGENT_BOT',409);
         await options.transact(org,async tx=>{await guarded(tx,op,lease);await tx.query("UPDATE attendance_resume_operations SET snapshot=snapshot||$3::jsonb WHERE organization_id=$1 AND id=$2",[org,id,JSON.stringify({originalTeamId:before.meta.team?.id??null,originalStatus:before.status,originalRemoteUpdatedAt:before.updated_at})]);});
         await phase(op,lease,'CLEAR_AGENT');dispatched=true;await client.clearAttendanceAssignment(scope.accountId,remote,'AGENT');
         await phase(op,lease,'CLEAR_TEAM');await client.clearAttendanceAssignment(scope.accountId,remote,'TEAM');

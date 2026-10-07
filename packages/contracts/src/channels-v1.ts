@@ -77,6 +77,11 @@ export const ChannelV1Schema = z.discriminatedUnion('provider', [
       connectionId: z.uuid(),
     }),
   }),
+  z.strictObject({
+    ...commonChannelShape,
+    provider: z.literal('CENTRAL'),
+    providerReference: z.strictObject({integrationId:z.uuid(),accountId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),inboxId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER)}),
+  }),
 ]);
 
 export const ChannelListV1Schema = z.strictObject({ data: z.array(ChannelV1Schema), nextCursor: z.string().min(1).max(256).nullable().optional() });
@@ -87,6 +92,9 @@ export const CreateChannelV1Schema = z.discriminatedUnion('provider', [
     providerAccountId: z.uuid(),
   }),
   z.strictObject({ provider: z.literal('META') }),
+  z.strictObject({provider:z.literal('CENTRAL'),name:z.string().trim().min(1).max(100),inboxId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    expectedCredentialVersion:z.number().int().positive(),expectedDestinationRevision:z.number().int().positive(),
+    expectedRemoteFingerprint:z.string().regex(/^[a-f0-9]{64}$/),expectedBotId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),replaceExistingBot:z.boolean()}),
 ]);
 export const PatchChannelV1Schema = z.strictObject({
   displayName: z.string().trim().min(1).max(100),
@@ -111,7 +119,13 @@ export const MetaChannelSetupV1Schema = z.strictObject({
     graphVersion: z.string().min(1),
   }),
 });
-export const CreateChannelResponseV1Schema = z.discriminatedUnion('provider', [ChannelMutationV1Schema, MetaChannelSetupV1Schema]);
+export const CentralCutoverOperationSchema=z.strictObject({id:z.uuid(),channelId:z.uuid().nullable(),integrationId:z.uuid(),inboxId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+ status:z.enum(['PENDING','DISPATCHED','UNKNOWN','COMPLETE','ROLLED_BACK','CANCELED']),step:z.enum(['DETACH','CREATE','ATTACH','VERIFY']),revision:z.number().int().positive(),reconciliationRequired:z.boolean(),rollbackStep:z.enum(['DETACH','RESTORE','VERIFY']).nullable().optional()});
+export const CentralChannelSetupV1Schema=z.strictObject({provider:z.literal('CENTRAL'),pending:z.boolean(),operation:CentralCutoverOperationSchema});
+export const CentralInboxPreviewSchema=z.strictObject({expectedCredentialVersion:z.number().int().positive(),expectedDestinationRevision:z.number().int().positive(),
+ expectedRemoteFingerprint:z.string().regex(/^[a-f0-9]{64}$/),expectedBotId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable()});
+export const CentralInboxListSchema=z.strictObject({data:z.array(z.strictObject({id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),name:z.string().max(1000),channelType:z.string().max(100)})).max(10000)});
+export const CreateChannelResponseV1Schema = z.discriminatedUnion('provider', [ChannelMutationV1Schema, MetaChannelSetupV1Schema,CentralChannelSetupV1Schema]);
 export const BindChannelDestinationV1Schema = z.strictObject({
   name: z.string().trim().min(1).max(120),
   inboxId: z.number().int().positive().optional(),

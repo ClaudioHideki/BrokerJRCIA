@@ -85,6 +85,7 @@ export class ChatwootClient {
     method: "GET" | "POST" | "PATCH",
     path: string,
     body?: unknown,
+    allowEmpty = false,
   ): Promise<unknown> {
     const safe = method !== "POST";
     let response: Response;
@@ -126,7 +127,7 @@ export class ChatwootClient {
     }
     try {
       const reader = response.body?.getReader();
-      if (!reader) throw new Error();
+      if (!reader) { if (allowEmpty) return undefined; throw new Error(); }
       const chunks: Uint8Array[] = [];
       let size = 0;
       for (;;) {
@@ -139,6 +140,7 @@ export class ChatwootClient {
         }
         chunks.push(chunk.value);
       }
+      if (allowEmpty && size === 0) return undefined;
       return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
     } catch {
       throw new ChatwootError("CHATWOOT_INVALID_RESPONSE", safe, !safe);
@@ -190,7 +192,7 @@ export class ChatwootClient {
   }
   async setInboxFlowBot(accountId: number, inboxId: number, botId: number | null) {
     await this.request('POST', this.account(accountId) + `/inboxes/${integer.parse(inboxId)}/set_agent_bot`,
-      { agent_bot: botId === null ? null : integer.parse(botId) });
+      { agent_bot: botId === null ? null : integer.parse(botId) }, true);
   }
   async flowConversation(accountId: number, conversationId: number) {
     return z.object({ id: integer, account_id: integer, inbox_id: integer, status: z.string(),

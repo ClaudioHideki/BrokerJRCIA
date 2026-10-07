@@ -16,6 +16,17 @@ type Observation={id:string;event:ChatwootAttendanceEvent;disposition:Dispositio
 type Control={conversation_id:string;remote_conversation_id:string|null;cycle:number;revision:number;state:string;observed_remote_updated_at:number|null};
 const record=(raw:unknown):Record<string,unknown>=>raw!==null&&typeof raw==='object'&&!Array.isArray(raw)?raw as Record<string,unknown>:{};
 const scopeValues=(s:ChatwootObservationScope)=>[s.organizationId,s.integrationId,s.destinationRevision,s.accountId,s.inboxId];
+export async function classificationScope(tx:TenantTransaction,s:ChatwootObservationScope){
+ const own=(await tx.query<{bot_id:string}>(`SELECT b.bot_id FROM central_transport_bindings b
+  JOIN messaging_channels m ON m.organization_id=b.organization_id AND m.id=b.channel_id AND m.transport='CENTRAL_TRANSPORT'
+  JOIN chatwoot_connections c ON c.organization_id=b.organization_id AND c.id=b.integration_id AND c.channel_id=b.channel_id AND c.status='READY'
+  JOIN chatwoot_accounts a ON a.organization_id=b.organization_id AND a.base_url=b.origin AND a.account_id=b.account_id AND a.credential_version=b.credential_version AND a.status='READY'
+  JOIN chatwoot_destinations d ON d.organization_id=b.organization_id AND d.base_url=b.origin AND d.revision=b.destination_revision AND d.approval_status='APPROVED'
+  WHERE b.organization_id=$1 AND b.channel_id=$2 AND b.integration_id=$3 AND b.destination_revision=$4 AND b.credential_version=$5
+   AND b.status='READY' AND b.bot_id IS NOT NULL AND m.deleting_at IS NULL
+   AND b.owner_revision=coalesce((SELECT revision FROM attendance_owners own WHERE own.organization_id=b.organization_id AND own.channel_id=b.channel_id),0)`,[s.organizationId,s.channelId,s.integrationId,s.destinationRevision,s.credentialRevision])).rows[0];
+ return {...s,...(own?{brokerBotId:Number(own.bot_id)}:{})};
+}
 
 async function lockScope(tx:TenantTransaction,s:ChatwootObservationScope) {
   await lockAttendanceChannel(tx,s.organizationId,s.channelId);
@@ -75,7 +86,7 @@ async function applyObservation(tx:TenantTransaction,s:ChatwootObservationScope,
 /** Authenticated callback admission: no network and no dependency on transport queue progress. */
 export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:ChatwootObservationScope,raw:unknown) {
   await lockScope(tx,s);
-  let event=classifyChatwootAttendanceEvent(raw,s);
+  let event=classifyChatwootAttendanceEvent(raw,await classificationScope(tx,s));
   if(!event)return {observationId:null,duplicate:false,disposition:'IGNORED' as const};
   // A central-origin message is already transported. Keep human control but
   // never enqueue the public reply back to that same inbox.
@@ -141,7 +152,7 @@ export async function initializeChatwootAttendanceMap(tx:TenantTransaction,s:Cha
   await lockScope(tx,s);
   const raw=record(input.canonical);
   if(raw.id!==input.remoteConversationId||raw.account_id!==s.accountId||raw.inbox_id!==s.inboxId)throw new IntegrationError('CHATWOOT_BINDING_MISMATCH',409);
-  const canonical=classifyChatwootAttendanceEvent({...raw,account:{id:s.accountId},event:'conversation_updated'},s);
+  const canonical=classifyChatwootAttendanceEvent({...raw,account:{id:s.accountId},event:'conversation_updated'},await classificationScope(tx,s));
   if(!canonical||canonical.kind!=='CONVERSATION_CONTROL')throw new IntegrationError('CHATWOOT_CONTROL_INVALID',409);
   await createControl(tx,s,input.conversationId,input.remoteConversationId);
   const current=(await tx.query<Control&{integration_id:string;destination_revision:number}>(`SELECT conversation_id,remote_conversation_id,cycle,revision,state,observed_remote_updated_at,integration_id,destination_revision

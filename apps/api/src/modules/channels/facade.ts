@@ -10,6 +10,8 @@ import type { ChatwootService } from '../integrations/chatwoot-service.js';
 import {lockOwnershipMutations,readOwnerRevision,transitionChannelOwner} from '../attendance/transition.js';
 import { readAutomationAccess } from '../automations/availability.js';
 import {createChannelOperationProfile} from './operation-profile.js';
+import type {createCentralCutoverService} from './central-cutover-service.js';
+import {readCentralTransportBinding} from '../messaging/central-transport.js';
 
 export class ChannelFacadeError extends Error {
   constructor(readonly code: string, readonly status: 400 | 403 | 404 | 409 | 503) { super(code); }
@@ -26,9 +28,10 @@ const writeChannelCursor = (row: ChannelRow) => Buffer.from(JSON.stringify({ upd
 
 interface ChannelRow {
   owner_revision?:number;
-  id: string; organization_id: string; provider: 'BAILEYS' | 'META'; provider_account_id: string;
+  id: string; organization_id: string; provider: 'BAILEYS' | 'META' | 'CENTRAL'; provider_account_id: string|null;
+  account_id?:number|string|null;
   instance_id: string | null; connection_id: string | null; name: string | null;
-  instance_status: string | null; meta_status: 'PENDING' | 'READY' | 'REVOKED' | null;
+  instance_status: string | null; meta_status: string | null;
   bot_public_id: string | null; bot_origin_reference: string | null; flow_published_version: number | null;
   flow_enabled: boolean | null; human_status: string | null; created_at: Date | string; updated_at: Date | string;
   archived_at?:Date|string|null;
@@ -87,15 +90,17 @@ export function channelView(row: ChannelRow): ChannelV1 {
   if (row.provider === 'BAILEYS') return {
     ...common,
     provider: 'QR',
-    providerReference: { providerAccountId: row.provider_account_id, instanceId: row.instance_id! },
+    providerReference: { providerAccountId: row.provider_account_id!, instanceId: row.instance_id! },
     transportStatus: qrTransport(row.instance_status),
     providerStatus: row.instance_status === 'ERROR' || row.instance_status === 'PROVISIONING_FAILED' ? 'DEGRADED'
       : row.instance_status === 'PROVISIONING' ? 'PENDING' : 'READY',
   };
+  if(row.provider==='CENTRAL')return {...common,provider:'CENTRAL',providerReference:{integrationId:row.integration_id!,accountId:Number(row.account_id),inboxId:Number(row.inbox_id)},
+    transportStatus:row.meta_status==='READY'?'CONNECTED':row.meta_status==='DISABLED'?'DISCONNECTED':'UNKNOWN',providerStatus:row.meta_status==='READY'?'READY':row.meta_status==='DISABLED'?'DISABLED':'UNKNOWN'};
   return {
     ...common,
     provider: 'META',
-    providerReference: { providerAccountId: row.provider_account_id, connectionId: row.connection_id! },
+    providerReference: { providerAccountId: row.provider_account_id!, connectionId: row.connection_id! },
     transportStatus: row.meta_status === 'READY' ? 'CONNECTED' : row.meta_status === 'REVOKED' ? 'DISCONNECTED' : 'CREATED',
     providerStatus: row.meta_status === 'READY' ? 'READY' : row.meta_status === 'REVOKED' ? 'REVOKED' : 'PENDING',
   };
@@ -117,6 +122,7 @@ export interface ChannelFacadeOptions {
   managedOrigin?:string;
   externalDestinationsEnabled?:boolean;
   automationStatus?(org:string):Promise<{canPublish:boolean;reasons:string[]}>;
+  central?:ReturnType<typeof createCentralCutoverService>;
   instances: InstanceService;
   meta: Pick<ReturnType<typeof createMetaOnboardingService>, 'start'>;
   activateQr?(org:string,instanceId:string):Promise<{id:string}>;
@@ -135,7 +141,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
         cw.status AS human_status,i.created_at,GREATEST(i.updated_at,COALESCE(c.updated_at,i.updated_at),COALESCE(cw.updated_at,i.updated_at)) AS updated_at,
         c.id AS messaging_channel_id,ab.status AS automation_binding_status,ad.name AS automation_name,
         coalesce((select revision from attendance_owners ao where ao.organization_id=c.organization_id and ao.channel_id=c.id),0) AS owner_revision,
-        cw.id AS integration_id,cw.inbox_id,cw.name AS inbox_name,h.observed_last4,i.archived_at
+        cw.id AS integration_id,cw.inbox_id,cw.name AS inbox_name,h.observed_last4,i.archived_at,NULL::bigint AS account_id
       FROM instances i
       JOIN provider_accounts pa ON pa.organization_id=i.organization_id AND pa.id=i.provider_account_id AND pa.provider='BAILEYS'
       LEFT JOIN messaging_channels c ON c.organization_id=i.organization_id AND c.instance_id=i.id
@@ -149,7 +155,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
       UNION ALL
       SELECT m.id,m.organization_id,'META'::text,c.provider_account_id,NULL::uuid,m.id,'WhatsApp oficial',NULL::text,m.status,
         c.bot_public_id,c.bot_origin_reference,f.published_version,ff.enabled,cw.status,c.created_at,GREATEST(m.updated_at,c.updated_at,COALESCE(cw.updated_at,m.updated_at)),
-        c.id,ab.status,ad.name,coalesce((select revision from attendance_owners ao where ao.organization_id=c.organization_id and ao.channel_id=c.id),0),cw.id,cw.inbox_id,cw.name,NULL::text,NULL::timestamptz
+        c.id,ab.status,ad.name,coalesce((select revision from attendance_owners ao where ao.organization_id=c.organization_id and ao.channel_id=c.id),0),cw.id,cw.inbox_id,cw.name,NULL::text,NULL::timestamptz,NULL::bigint
       FROM meta_connections m
       JOIN messaging_channels c ON c.organization_id=m.organization_id AND c.id=m.channel_id AND c.provider='META'
       LEFT JOIN flows f ON f.organization_id=c.organization_id AND f.id::text=c.bot_public_id AND c.bot_origin_reference='jrc-flows-native'
@@ -157,7 +163,17 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
       LEFT JOIN chatwoot_connections cw ON cw.organization_id=c.organization_id AND cw.channel_id=c.id
       LEFT JOIN automation_bindings ab ON ab.organization_id=c.organization_id AND ab.channel_id=c.id AND ab.status IN ('ACTIVE','PAUSED') AND ab.automation_id::text=c.bot_public_id
       LEFT JOIN automation_definitions ad ON ad.organization_id=ab.organization_id AND ad.id=ab.automation_id
-      WHERE m.organization_id=$1 ${id ? 'AND m.id=$2' : ''}`;
+      WHERE m.organization_id=$1 ${id ? 'AND m.id=$2' : ''}
+      UNION ALL
+      SELECT c.id,c.organization_id,'CENTRAL'::text,NULL::uuid,NULL::uuid,NULL::uuid,cw.name,NULL::text,b.status,
+       c.bot_public_id,c.bot_origin_reference,NULL::integer,ff.enabled,cw.status,c.created_at,GREATEST(c.updated_at,b.updated_at,cw.updated_at),
+       c.id,ab.status,ad.name,coalesce((select revision from attendance_owners ao where ao.organization_id=c.organization_id and ao.channel_id=c.id),0),cw.id,cw.inbox_id,cw.name,NULL::text,NULL::timestamptz,b.account_id
+      FROM messaging_channels c JOIN central_transport_bindings b ON b.organization_id=c.organization_id AND b.channel_id=c.id
+      JOIN chatwoot_connections cw ON cw.organization_id=c.organization_id AND cw.id=b.integration_id
+      LEFT JOIN flow_features ff ON ff.organization_id=c.organization_id
+      LEFT JOIN automation_bindings ab ON ab.organization_id=c.organization_id AND ab.channel_id=c.id AND ab.status IN ('ACTIVE','PAUSED') AND ab.automation_id::text=c.bot_public_id
+      LEFT JOIN automation_definitions ad ON ad.organization_id=ab.organization_id AND ad.id=ab.automation_id
+      WHERE c.organization_id=$1 AND c.transport='CENTRAL_TRANSPORT' ${id ? 'AND c.id=$2' : ''}`;
     if (!page) return options.transact(org, async tx => (await tx.query<ChannelRow>(`${union} ORDER BY updated_at DESC,id`, params)).rows);
     const conditions = page.includeArchived ? [] : ['channel_rows.archived_at IS NULL'];
     if (page.cursor) {
@@ -177,6 +193,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
     return channelView(found);
   }
   async function messagingChannelId(org: string, channel: ChannelV1,activate=false): Promise<string> {
+    if(channel.provider==='CENTRAL')return channel.id;
     if(activate&&channel.provider==='QR'&&options.activateQr)return (await options.activateQr(org,channel.providerReference.instanceId)).id;
     return options.transact(org, async tx => {
       const query = channel.provider === 'QR'
@@ -192,6 +209,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
     replayed: result.replayed, pending: result.pending, reconciliationRequired: result.reconciliationRequired,
   });
   return {
+    central:options.central,
     operationProfile:createChannelOperationProfile(options).get,
     async list(org: string,includeArchived=false,page:{pageSize:number;cursor?:string}={pageSize:50}) {
       if (!Number.isInteger(page.pageSize) || page.pageSize < 1 || page.pageSize > 100) throw new ChannelFacadeError('CHANNEL_PAGE_SIZE_INVALID',400);
@@ -245,6 +263,11 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
         const action = await options.meta.start(context.organizationId, actorId);
         return { provider: 'META' as const, action: { type: 'EMBEDDED_SIGNUP' as const, ...action } };
       }
+      if(input.provider==='CENTRAL'){
+        if(!options.central)throw new ChannelFacadeError('CHATWOOT_NOT_CONFIGURED',503);
+        const operation=await options.central.prepare(context.organizationId,actorId,input,idempotencyKey);
+        return {provider:'CENTRAL' as const,pending:operation.status!=='COMPLETE',operation};
+      }
       const result = await options.instances.createInstance(context, { name: input.name, provider: 'BAILEYS',
         providerAccountId: input.providerAccountId, idempotencyKey });
       return { provider: 'QR' as const, channel: fromInstance(result.instance), operationId: result.operationId,
@@ -296,12 +319,19 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
         const access=await readAutomationAccess(tx,org);
         if(access?.status!=='ACTIVE')throw new ChannelFacadeError('ORGANIZATION_NOT_ACTIVE',403);
         if(!access.moduleEnabled)throw new ChannelFacadeError('AUTOMATION_MODULE_DISABLED',403);
+        if(channel.provider==='CENTRAL'){
+          await readCentralTransportBinding(tx,org,channel.providerReference.integrationId,true);
+          const evidence=(await tx.query(`SELECT 1 FROM central_transport_bindings WHERE organization_id=$1 AND channel_id=$2 AND bot_id IS NOT NULL
+            AND capabilities_observed_at IS NOT NULL AND callback_verified_at IS NOT NULL AND callback_credential_version=credential_version AND callback_destination_revision=destination_revision`,[org,channelId])).rowCount;
+          if(!evidence)throw new ChannelFacadeError('CENTRAL_CALLBACK_TEST_REQUIRED',409);
+        }
         const result=await transitionChannelOwner(tx,org,{...input,channelId,botPublicId:input.automationId,botOriginReference:AUTOMATION_ORIGIN});
         return {binding:bindingView(result.binding!),ownerRevision:result.ownerRevision};
       });
     },    async bindDestination(org: string, id: string, input: BindChannelDestinationV1, actorId?: string) {
       if (!options.chatwoot) throw new ChannelFacadeError('CHATWOOT_NOT_CONFIGURED', 503);
       const channel = await get(org, id);
+      if(channel.provider==='CENTRAL')throw new ChannelFacadeError('CENTRAL_DESTINATION_CUTOVER_REQUIRED',409);
       let source: { instanceId: string } | { channelId: string };
       if (channel.provider === 'QR') source = { instanceId: channel.providerReference.instanceId };
       else {

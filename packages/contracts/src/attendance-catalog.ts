@@ -16,6 +16,7 @@ export const attendanceCatalogSchema=z.strictObject({
     closeHour:z.number().int().min(0).max(23).nullable(),closeMinute:z.number().int().min(0).max(59).nullable(),
   })).max(7)}),
   remoteBot:z.strictObject({id,name}).nullable(),
+  brokerBotId:id.nullable().optional(),
   inboxPolicy:z.strictObject({greetingEnabled:z.boolean().nullable(),autoAssignmentEnabled:z.boolean().nullable()}),
   capabilities:z.strictObject({teams:capability,agents:capability,inboxMembership:capability,labels:capability,attributes:capability,hours:capability,agentBot:capability,signatures:capability,controlEvents:capability,initialPending:capability}),
 });
