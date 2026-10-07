@@ -28,6 +28,11 @@ import { createOnboardingService } from './chatwoot-onboarding.js';
 import type { ChatwootControlAuth } from './chatwoot-control-auth.js';
 import type { InstanceService } from '../instances/service.js';
 import { createFlowChatwootService } from '../flows/chatwoot-service.js';
+import { createCentralDispatcher } from '../messaging/central-dispatcher.js';
+import { createChatwootRuntimeIngress } from './chatwoot-runtime-ingress.js';
+import { readCentralTransportContext } from '../messaging/central-transport.js';
+import { createEventRouter } from '../automations/service.js';
+import { automationRuntimeEnabled } from '../automations/availability.js';
 
 type QrConfig = Pick<
   QrServiceOptions,
@@ -249,9 +254,26 @@ export function createIntegrationRuntime(
       });
   }
   const chatwoot = options ? createChatwootService(options) : undefined;
+  const centralEnvironment=options?chatwootEnvironment(options):undefined;
+  const centralIngress=options&&centralEnvironment?createChatwootRuntimeIngress({transact,secrets:centralEnvironment.vault,
+    enabled:automationRuntimeEnabled(environment),router:createEventRouter({transact,enabled:automationRuntimeEnabled(environment)}),
+    resolveIntegration:async id=>(await pool.query<{organization_id:string}>('SELECT * FROM resolve_chatwoot_integration($1)',[id])).rows[0]?.organization_id??null,
+    async readCanonical(binding,conversationId,messageId){
+      const account=await transact(binding.organizationId,async tx=>{
+        const current=await readCentralTransportContext(tx,binding.organizationId,binding.integrationId);
+        if(JSON.stringify(current.binding)!==JSON.stringify(binding))throw new Error('CENTRAL_CONTEXT_CHANGED');
+        return current.account;
+      });
+      const client=centralEnvironment.client(account);
+      const [conversation,message]=await Promise.all([client.attendanceConversation(binding.accountId,conversationId),
+        client.canonicalMessage(binding.accountId,binding.inboxId,conversationId,messageId)]);
+      return {conversation,message};
+    }}):undefined;
   return {
     qr,
     chatwoot,
+    centralIngress,
+    centralDispatcher:centralEnvironment?createCentralDispatcher({transact,client:centralEnvironment.client,enabled:automationRuntimeEnabled(environment)}):undefined,
     flowChatwoot: options ? createFlowChatwootService({ ...options, async resolveBinding(id) {
       return (await pool.query<{ organization_id: string }>('SELECT * FROM resolve_flow_chatwoot_binding($1)', [id])).rows[0]?.organization_id;
     } }) : undefined,

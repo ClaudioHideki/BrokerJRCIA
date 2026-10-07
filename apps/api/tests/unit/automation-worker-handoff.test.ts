@@ -4,7 +4,8 @@ import type { OutboxRow } from '../../src/modules/automations/repository.js';
 const item={id:'effect',organizationId:'tenant',executionId:'execution',channelId:'channel',conversationId:'conversation',nodeId:'h',ordinal:0,kind:'HANDOFF',payload:{handoffVersion:1},attempts:1,leaseToken:'lease'} as OutboxRow;
 function setup(handoff?:{dispatch:ReturnType<typeof vi.fn>}){
   const messaging={setConversationMode:vi.fn(),enqueueOutgoing:vi.fn(async()=>({message:{id:'queued'}}))};
-  const dispatcher=createAutomationEffectDispatcher({transact:async(_org,work)=>work({} as never),messaging:messaging as never,...(handoff?{handoff}:{})});
+  const query=vi.fn(async()=>({rowCount:1,rows:[{transport:'BROKER_TRANSPORT'}]}));
+  const dispatcher=createAutomationEffectDispatcher({transact:async(_org,work)=>work({query} as never),messaging:messaging as never,...(handoff?{handoff}:{})});
   return {dispatcher,messaging};
 }
 describe('automation worker native handoff dispatch',()=>{

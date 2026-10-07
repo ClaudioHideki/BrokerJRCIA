@@ -10,15 +10,17 @@ import { initializeChatwootAttendanceMap } from './chatwoot-attendance-store.js'
 import { createEventRouter } from '../automations/service.js';
 import { runtimeAuthorityAllows } from '../attendance/runtime-authority.js';
 import type { CentralRuntimeEventBinding } from './chatwoot-runtime-event.js';
+import { ChatwootError } from './chatwoot-client.js';
 export { createCentralTransportChannel };
 
 type Options={transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;
  resolveIntegration(id:string):Promise<string|null>;secrets:{decrypt(context:string,value:string):string};
- router?:ReturnType<typeof createEventRouter>;
+ router?:ReturnType<typeof createEventRouter>;enabled?:boolean;
  /** Trusted adapter performs scoped GETs outside the transaction; never webhook metadata. */
  readCanonical?(binding:CentralRuntimeEventBinding,conversationId:number,messageId:number):Promise<{conversation:unknown;message:unknown}>};
 type StoredInput={id:string;channel_id:string;integration_id:string;event_key:string;kind:string;destination_revision:number;credential_version:number;owner_revision:number;
- remote_conversation_id:string;remote_message_id:string|null;conversation_id:string|null;message_id:string|null;disposition:string;created_at:Date};
+ remote_conversation_id:string;remote_message_id:string|null;conversation_id:string|null;message_id:string|null;disposition:string;created_at:Date;
+ lease_token:string|null;lease_expires_at:Date|null;attempts:number};
 const positiveId=z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const canonicalMessage=z.object({id:positiveId,conversation_id:positiveId,message_type:z.union([z.literal('incoming'),z.literal(0)]),private:z.literal(false),
  content:z.string().min(1).max(4096),content_type:z.literal('text').optional(),attachments:z.array(z.unknown()).max(0).optional(),
@@ -26,7 +28,7 @@ const canonicalMessage=z.object({id:positiveId,conversation_id:positiveId,messag
 const sameContext=(left:CentralRuntimeEventBinding,right:CentralRuntimeEventBinding)=>JSON.stringify(left)===JSON.stringify(right);
 export function createChatwootRuntimeIngress(options:Options) {
  const messaging=createPostgresMessagingRepository();
- return {async receive(input:{integrationId:string;raw:Buffer;timestamp:string|undefined;signature:string|undefined}) {
+ const service={async receive(input:{integrationId:string;raw:Buffer;timestamp:string|undefined;signature:string|undefined}) {
   const id=z.uuid().parse(input.integrationId);
   if(!Buffer.isBuffer(input.raw)||input.raw.length>256*1024)throw new Error('CENTRAL_EVENT_INVALID');
   const org=await options.resolveIntegration(id);
@@ -71,13 +73,14 @@ export function createChatwootRuntimeIngress(options:Options) {
    }
    return {duplicate:false,eventId,conversationId,disposition:event.kind==='CONTACT_TEXT'?'RECEIVED' as const:'OBSERVED' as const};
   });
- },async process(organizationId:string,eventId:string){
+ },async process(organizationId:string,eventId:string,leaseToken?:string){
   const org=z.uuid().parse(organizationId),eventKey=z.uuid().parse(eventId);
   if(!options.readCanonical||!options.router)throw new Error('CENTRAL_RUNTIME_NOT_CONFIGURED');
   const readCanonical=options.readCanonical,router=options.router;
   const snapshot=await options.transact(org,async tx=>{
    const event=(await tx.query<StoredInput>('SELECT * FROM central_runtime_events WHERE organization_id=$1 AND id=$2',[org,eventKey])).rows[0];
    if(!event)throw new Error('CENTRAL_EVENT_NOT_FOUND');
+   if(leaseToken&&(event.lease_token!==leaseToken||!event.lease_expires_at||event.lease_expires_at.getTime()<=Date.now()))throw new Error('CENTRAL_INGRESS_LEASE_LOST');
    return {event,context:await readCentralTransportBinding(tx,org,event.integration_id)};
   });
   if(snapshot.event.disposition!=='RECEIVED'||snapshot.event.kind!=='CONTACT_TEXT')return {duplicate:true,disposition:snapshot.event.disposition};
@@ -89,6 +92,7 @@ export function createChatwootRuntimeIngress(options:Options) {
   return options.transact(org,async tx=>{
    const current=await readCentralTransportBinding(tx,org,snapshot.event.integration_id,true);
    const event=(await tx.query<StoredInput>('SELECT * FROM central_runtime_events WHERE organization_id=$1 AND id=$2 FOR UPDATE',[org,eventKey])).rows[0]!;
+   if(leaseToken&&(event.lease_token!==leaseToken||!event.lease_expires_at||event.lease_expires_at.getTime()<=Date.now()))throw new Error('CENTRAL_INGRESS_LEASE_LOST');
    if(!sameContext(snapshot.context.binding,current.binding)||event.destination_revision!==current.binding.destinationRevision||
     event.credential_version!==current.binding.credentialVersion||event.owner_revision!==current.binding.ownerRevision)throw new Error('CENTRAL_CONTEXT_CHANGED');
    if(event.disposition!=='RECEIVED')return {duplicate:true,disposition:event.disposition};
@@ -107,5 +111,25 @@ export function createChatwootRuntimeIngress(options:Options) {
    await tx.query('UPDATE central_runtime_events SET disposition=$3,updated_at=now() WHERE organization_id=$1 AND id=$2',[org,eventKey,disposition]);
    return {duplicate:false,disposition};
   });
+ },async runOnce(org:string){
+  if(options.enabled===false)return {processed:false};
+  const token=randomUUID();
+  const event=await options.transact(org,async tx=>(await tx.query<StoredInput>(`UPDATE central_runtime_events SET lease_token=$2,
+   lease_expires_at=now()+interval '120 seconds',attempts=attempts+1 WHERE organization_id=$1 AND id=(SELECT id FROM central_runtime_events
+    WHERE organization_id=$1 AND disposition='RECEIVED' AND available_at<=now() AND (lease_token IS NULL OR lease_expires_at<=now())
+    ORDER BY available_at,created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *`,[org,token])).rows[0]);
+  if(!event)return {processed:false};
+  try{
+   const result=await service.process(org,event.id,token);
+   await options.transact(org,tx=>tx.query('UPDATE central_runtime_events SET lease_token=NULL,lease_expires_at=NULL WHERE organization_id=$1 AND id=$2 AND lease_token=$3',[org,event.id,token]));
+   return {processed:true,...result};
+  }catch(error){
+   const retry=error instanceof ChatwootError&&error.retrySafe&&event.attempts<10;
+   await options.transact(org,tx=>tx.query(`UPDATE central_runtime_events SET disposition=$4,error_code=$5,
+    available_at=now()+interval '30 seconds',lease_token=NULL,lease_expires_at=NULL,updated_at=now()
+    WHERE organization_id=$1 AND id=$2 AND lease_token=$3`,[org,event.id,token,retry?'RECEIVED':'FAILED',retry?'CENTRAL_READ_UNAVAILABLE':'CENTRAL_CANONICAL_OR_CONTEXT_INVALID']));
+   return {processed:true,disposition:retry?'RECEIVED':'FAILED'};
+  }
  }};
+ return service;
 }

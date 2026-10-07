@@ -99,6 +99,7 @@ export function decodeChatwootRuntimeEvent(input: {
     const senderType = z.enum(['user', 'agent_bot', 'contact']).safeParse(sender.type);
     const attributes = record(message.additional_attributes), contentAttributes = record(message.content_attributes);
     const marker = z.uuid().safeParse(contentAttributes.jrc_broker_message_id);
+    const proof = z.string().regex(/^[A-Za-z0-9_-]{43}$/).safeParse(contentAttributes.jrc_broker_dispatch_proof);
     // The store needs a normalized control DTO, never private text, attachments,
     // actor metadata or arbitrary attributes from the original callback.
     const normalized = { event: message.event, id: message.id, account: message.account, inbox: message.inbox,
@@ -106,7 +107,8 @@ export function decodeChatwootRuntimeEvent(input: {
       sender: senderId.success ? { id: senderId.data, ...(senderType.success ? { type: senderType.data } : {}) } : undefined,
       additional_attributes: attributes.campaign_id != null ? { campaign_id: true } : {},
       content_attributes: { ...(contentAttributes.automation_rule_id != null ? { automation_rule_id: true } : {}),
-        ...(marker.success ? { jrc_broker_message_id: marker.data } : {}) } };
+        ...(marker.success ? { jrc_broker_message_id: marker.data } : {}),
+        ...(proof.success ? { jrc_broker_dispatch_proof: proof.data } : {}) } };
     const echo = input.echo && bindingSchema.safeParse(Object.fromEntries(Object.entries(input.echo)
       .filter(([key]) => key !== 'remoteConversationId' && key !== 'remoteMessageId')));
     const evidence = echo && echo.success && sameBinding(scope, echo.data) ? input.echo : undefined;

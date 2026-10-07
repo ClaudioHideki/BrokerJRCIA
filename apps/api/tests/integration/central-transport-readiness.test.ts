@@ -5,7 +5,7 @@ let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();},60000);
 afterAll(async()=>{await db?.dispose();});
 it('requires central persistence as the runtime baseline',async()=>{
- expect(RUNTIME_SCHEMA_BASELINE).toBe('0046_central_transport');
+ expect(RUNTIME_SCHEMA_BASELINE).toBe('0047_central_dispatch');
  expect(await probeRequiredRuntimeSchema(sql=>db.database.pool.query(sql))).toBe(true);
 });
 it.each([
@@ -18,6 +18,10 @@ it.each([
  'ALTER TABLE central_transport_bindings DROP CONSTRAINT central_transport_bindings_origin_account_id_inbox_id_key',
  'ALTER TABLE central_runtime_events DROP CONSTRAINT central_runtime_events_organization_id_channel_id_event_key_key',
  'ALTER TABLE messaging_channels DROP COLUMN transport CASCADE',
+ 'ALTER TABLE chatwoot_mirror_attempts DROP CONSTRAINT central_dispatch_identity',
+ 'ALTER TABLE chatwoot_mirror_attempts DROP CONSTRAINT central_dispatch_execution_fk',
+ 'DROP INDEX central_dispatch_one_message',
+ 'ALTER TABLE central_runtime_events DROP COLUMN available_at',
 ])('rejects a weakened central storage boundary: %s',async change=>{
  const tx=await db.database.pool.connect();
  try{await tx.query('BEGIN');await tx.query('SET LOCAL ROLE jrc_migrator');await tx.query(change);await tx.query('SET LOCAL ROLE jrc_app');

@@ -1,10 +1,18 @@
-export const RUNTIME_SCHEMA_BASELINE = '0046_central_transport';
+export const RUNTIME_SCHEMA_BASELINE = '0047_central_dispatch';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
 // The app role cannot read drizzle.__drizzle_migrations. This is a structural
 // readiness probe, not a migration journal/hash comparison.
 const requiredObjectsSql = `SELECT
+  EXISTS(SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid=pg_catalog.to_regclass('public.chatwoot_mirror_attempts')
+    AND conname='central_dispatch_identity' AND convalidated)
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid=pg_catalog.to_regclass('public.chatwoot_mirror_attempts')
+    AND conname='central_dispatch_execution_fk' AND convalidated)
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_index WHERE indexrelid=pg_catalog.to_regclass('public.central_dispatch_one_message') AND indisunique AND indisvalid)
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.central_runtime_events')
+    AND attname='available_at' AND attnotnull AND attnum>0 AND NOT attisdropped)
+  AND
   EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.messaging_channels')
     AND attname='transport' AND attnotnull AND attnum>0 AND NOT attisdropped)
   AND NOT EXISTS(SELECT 1 FROM (VALUES ('public.central_transport_bindings'),('public.central_runtime_events')) AS required(relation_name)

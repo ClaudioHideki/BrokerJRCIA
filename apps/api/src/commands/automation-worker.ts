@@ -14,6 +14,8 @@ import { createNativeHandoffService } from '../modules/attendance/handoff-servic
 import { createAttendanceResumeWorker } from '../modules/attendance/resume-worker.js';
 import { createLocalHandoffService } from '../modules/attendance/local-handoff.js';
 import type { OrganizationTransaction } from '../db/tenant-transaction.js';
+import { lockAttendanceChannel } from '../modules/attendance/repository.js';
+import { reserveCentralAutomationSend } from '../modules/messaging/central-dispatcher.js';
 
 export function loadAutomationWorkerConfig(environment:NodeJS.ProcessEnv){const databaseUrl=z.string().url().parse(environment.DATABASE_URL);
   if(new URL(databaseUrl).username!=='jrc_app')throw new Error('AUTOMATION_WORKER_REQUIRES_APP_ROLE');return {databaseUrl,intervalMs:z.coerce.number().int().min(100).max(60000).default(1000).parse(environment.AUTOMATION_WORKER_INTERVAL_MS)};}
@@ -53,7 +55,13 @@ export function createAutomationEffectDispatcher(options:{
     }
     try{
       const text=typeof item.payload.text==='string'?item.payload.text:'';if(!text)return {kind:'FAILED',error:'AUTOMATION_TEXT_REQUIRED'};
-      const queued=await transact(item.organizationId,tx=>messaging.enqueueOutgoing(tx,{id:randomUUID(),organizationId:item.organizationId,channelId:item.channelId,conversationId:item.conversationId!,source:'AUTOMATION',content:{type:'TEXT',text},idempotencyKey:`automation:${item.id}`,bodyHash:createHash('sha256').update(text).digest('hex'),policy:{requireOptIn:false}}));
+      const queued=await transact(item.organizationId,async tx=>{
+        await lockAttendanceChannel(tx,item.organizationId,item.channelId);
+        const transport=(await tx.query<{transport:string}>('SELECT transport FROM messaging_channels WHERE organization_id=$1 AND id=$2',[item.organizationId,item.channelId])).rows[0]?.transport;
+        const queued=await messaging.enqueueOutgoing(tx,{id:randomUUID(),organizationId:item.organizationId,channelId:item.channelId,conversationId:item.conversationId!,source:'AUTOMATION',content:{type:'TEXT',text},idempotencyKey:`automation:${item.id}`,bodyHash:createHash('sha256').update(text).digest('hex'),policy:{requireOptIn:false}});
+        if(transport==='CENTRAL_TRANSPORT')await reserveCentralAutomationSend(tx,item,queued.message);
+        return queued;
+      });
       return {kind:'SENT',remoteReference:queued.message.id};
     }catch(error){const code=error instanceof Error?error.message:'AUTOMATION_EFFECT_FAILED';return ['CONVERSATION_PAUSED','CONTACT_SUPPRESSED','CONTACT_CONSENT_REQUIRED'].includes(code)?{kind:'FAILED',error:code}:{kind:'NOT_SENT',error:code,retryAt:new Date(Date.now()+30000)};}
   }};

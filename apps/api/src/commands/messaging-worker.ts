@@ -169,6 +169,8 @@ export async function runMessagingWorker(
             await withOrganizationTransaction(pool,organizationId,tx=>recordHeartbeat(tx,organizationId,'MESSAGING_WORKER',heartbeatInstanceId));
             await integrations.identity?.runOnce(organizationId);
             await integrations.media?.runOnce(organizationId);
+            await integrations.centralIngress?.runOnce(organizationId);
+            await integrations.centralDispatcher?.runOnce(organizationId);
             await worker.runOnce(organizationId);
             await integrations.chatwootWorker?.runOnce(organizationId);
             await integrations.flowChatwoot?.runOnce(organizationId);

@@ -159,6 +159,14 @@ export class ChatwootClient {
     )
       throw new ChatwootError("CHATWOOT_ACCOUNT_ACCESS_REQUIRED");
   }
+  /** Author of messages created through this user token, verified in the exact account. */
+  async centralSender(accountId: number): Promise<number> {
+    const profile = record(await this.request('GET', '/api/v1/profile'));
+    const accounts = z.array(z.object({ id: integer, role: z.string() })).max(10000).parse(profile.accounts);
+    if (!accounts.some(account => account.id === accountId && account.role === 'administrator'))
+      throw new ChatwootError('CHATWOOT_ACCOUNT_ACCESS_REQUIRED');
+    return integer.parse(profile.id);
+  }
   async listInboxes(accountId: number): Promise<ChatwootInbox[]> {
     const data = record(
       await this.request("GET", this.account(accountId) + "/inboxes"),
@@ -540,10 +548,31 @@ export class ChatwootClient {
       throw new ChatwootError("CHATWOOT_MESSAGE_AMBIGUOUS");
     return matches[0]?.id;
   }
+  /** Chatwoot exposes a bounded message list, not a GET for an individual message. */
+  async canonicalMessage(accountId:number,inboxId:number,conversationId:number,messageId:number) {
+    const messages=await this.centralMessages(accountId,inboxId,conversationId,messageId);
+    const matches=messages.filter(message=>message.id===messageId);
+    if(matches.length!==1)throw new ChatwootError('CHATWOOT_MESSAGE_NOT_PROVEN',true);
+    return matches[0]!;
+  }
+  async centralMessages(accountId:number,inboxId:number,conversationId:number,beforeId?:number) {
+    integer.parse(inboxId);
+    const query=beforeId===undefined?'':`?before=${integer.max(Number.MAX_SAFE_INTEGER-1).parse(beforeId)+1}`;
+    const data=record(await this.request('GET',this.account(accountId)+`/conversations/${integer.parse(conversationId)}/messages${query}`));
+    const schema=z.object({id:integer,account_id:integer.optional(),inbox_id:integer,conversation_id:integer,
+      message_type:z.union([z.literal(0),z.literal(1),z.literal(2),z.literal(3),z.enum(['incoming','outgoing','activity','template'])]),
+      private:z.boolean(),content:z.string().nullable(),content_type:z.string().optional(),attachments:z.array(z.unknown()).max(100).optional(),
+      content_attributes:z.record(z.string(),z.unknown()).default({}),status:z.enum(['sent','delivered','read','failed']).optional(),
+      sender:z.object({id:integer,type:z.string().optional()}).nullable().optional(),created_at:z.number().finite().nonnegative()});
+    const messages=parseCatalog(z.array(schema).max(100),data.payload);
+    if(messages.some(message=>message.account_id!==undefined&&message.account_id!==accountId||message.inbox_id!==inboxId||message.conversation_id!==conversationId))
+      throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
+    return messages.map(message=>({...message,message_type:typeof message.message_type==='number'?['incoming','outgoing','activity','template'][message.message_type]!:message.message_type}));
+  }
   async sendMessage(
     accountId: number,
     conversationId: number,
-    input: { text: string; incoming: boolean; brokerMessageId: string },
+    input: { text: string; incoming: boolean; brokerMessageId: string; dispatchProof?: string },
   ): Promise<number> {
     const data = record(
       await this.request(
@@ -554,7 +583,8 @@ export class ChatwootClient {
           content: input.text,
           message_type: input.incoming ? "incoming" : "outgoing",
           private: false,
-          content_attributes: { jrc_broker_message_id: input.brokerMessageId },
+          content_attributes: { jrc_broker_message_id: input.brokerMessageId,
+            ...(input.dispatchProof ? {jrc_broker_dispatch_proof: z.string().regex(/^[A-Za-z0-9_-]{43}$/).parse(input.dispatchProof)} : {}) },
         },
       ),
     );

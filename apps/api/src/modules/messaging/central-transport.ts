@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
 import type { CentralRuntimeEventBinding } from '../integrations/chatwoot-runtime-event.js';
+import { readChatwootAccount } from '../integrations/chatwoot-context.js';
 
 const positiveId=z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const creation=z.strictObject({organizationId:z.uuid(),channelId:z.uuid(),integrationId:z.uuid(),
@@ -39,6 +40,16 @@ export async function readCentralTransportBinding(tx:TenantTransaction,org:strin
  const binding:CentralRuntimeEventBinding={organizationId:org,channelId:row.channelId,integrationId,origin:row.origin,accountId:Number(row.accountId),inboxId:Number(row.inboxId),
   destinationRevision:row.destinationRevision,credentialVersion:row.credentialVersion,ownerRevision:row.ownerRevision,status:row.status,transport:'CENTRAL_TRANSPORT'};
  return {binding,encryptedWebhookSecret:row.encryptedWebhookSecret};
+}
+
+/** Capture credential and destination under the same short SQL locks; HTTP follows commit. */
+export async function readCentralTransportContext(tx:TenantTransaction,org:string,integrationId:string) {
+ const {binding}=await readCentralTransportBinding(tx,org,integrationId,true);
+ const account=await readChatwootAccount(tx,org);
+ if(!account||account.base_url!==binding.origin||Number(account.account_id)!==binding.accountId||
+  account.credential_version!==binding.credentialVersion||account.destination?.revision!==binding.destinationRevision||
+  account.destination.baseUrl!==binding.origin||account.destination.approvalStatus!=='APPROVED')throw new Error('CENTRAL_CONTEXT_CHANGED');
+ return {binding,account};
 }
 
 /** Internal preparation only. HTTP creation/cutover becomes available with the

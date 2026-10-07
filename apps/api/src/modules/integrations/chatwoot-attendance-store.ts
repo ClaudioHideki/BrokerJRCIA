@@ -97,7 +97,10 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
       if(marker.success)candidate=(await tx.query<{id:string}>(`SELECT a.id FROM chatwoot_mirror_attempts a JOIN messaging_messages m ON m.organization_id=a.organization_id AND m.id=a.message_id
         WHERE a.organization_id=$1 AND a.integration_id=$2 AND a.destination_revision=$3 AND a.account_id=$4 AND a.inbox_id=$5
           AND a.remote_conversation_id=$6 AND a.message_id=$7 AND a.state IN ('DISPATCHED','UNKNOWN') AND m.direction='OUTGOING'
-        ORDER BY a.created_at DESC LIMIT 1`,[...scopeValues(s),event.remoteConversationId,marker.data])).rows[0]?.id??null;
+          AND (a.transport='BROKER_TRANSPORT' OR (a.dispatch_proof=$8 AND a.sender_id=$9))
+        ORDER BY a.created_at DESC LIMIT 1`,[...scopeValues(s),event.remoteConversationId,marker.data,
+          z.string().regex(/^[A-Za-z0-9_-]{43}$/).safeParse(record(original.content_attributes).jrc_broker_dispatch_proof).data??null,
+          event.senderId])).rows[0]?.id??null;
     }
   }
   let reply:Record<string,unknown>|null=null;

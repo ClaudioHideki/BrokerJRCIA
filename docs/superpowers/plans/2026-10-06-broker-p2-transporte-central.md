@@ -53,10 +53,12 @@
 ## Task 3 — Saída exclusiva, recibo e reconciliação
 **Files:** Create messaging/central-dispatcher.ts; update dispatcher.ts, worker.ts, commands/messaging-worker.ts, commands/automation-worker.ts e integração de catálogo/readiness.
 **Interfaces:** resolver explícito para transporte central, sem else que caia no Meta. Reutilizar ChatwootClient.sendMessage, attendanceConversation/conversation e o cliente HTTP seguro; acrescentar leitura canônica da mensagem com IDs exatos. Reutilizar outbox durável, mapping de IDs e revalidação de controle. SEND_TEXT local ACCEPTED não é entrega; recibo remoto observado não promete leitura no aparelho.
-- [ ] RED: menu/pergunta/resposta/handoff no runtime real, transporte sintético identificado; token/destino trocados antes/depois IO; um só POST, nenhum envio QR/Meta/mirror.
-- [ ] Implementar reserva → HTTP → confirmação; timeout/lease expirada = UNKNOWN, sem replay automático.
-- [ ] Provar eco persistido e takeover antes de envio/entre ACK e commit; conflito bloqueia conclusão falsa.
-- [ ] Catálogo remoto revalida membership/capacidade do tipo de inbox efetivo, sem paridade presumida.
+- [x] RED: menu/pergunta/resposta/handoff no runtime real, transporte sintético identificado; token/destino trocados antes/depois IO; um só POST, nenhum envio QR/Meta/mirror.
+- [x] Implementar reserva → HTTP → confirmação; timeout/lease expirada = UNKNOWN, sem replay automático.
+- [x] Provar eco persistido e takeover antes de envio/entre ACK e commit; conflito bloqueia conclusão falsa.
+- [x] Catálogo remoto revalida membership/capacidade do tipo de inbox efetivo, sem paridade presumida.
+
+**Verificação D3 (07/10):** revisão independente concluída após correção de três bloqueios; 1.854 testes unitários e 642 PostgreSQL/Redis aprovados em execuções completas sequenciais. Jornada real de laboratório com HTTP remoto sintético. Build, gates e publicação da main registrados separadamente no documento de validação. Task 4 permanece pendente; não há ativação ou homologação central nativa em produção.
 
 ## Task 4 — Cutover e configuração guiada
 **Files:** Create central cutover operation service/HTTP/UI; reuse flows/chatwoot-service.ts revogação/reconciliação e attendance/transition.ts, onboarding/control auth e ChannelOperationSetup.

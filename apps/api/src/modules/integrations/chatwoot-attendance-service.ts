@@ -9,6 +9,8 @@ import { readChatwootAccount,type AccountRow } from './chatwoot-context.js';
 import { IntegrationError } from './integration-error.js';
 
 type Options={transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;client(account:AccountRow):ChatwootClient};
+/** The type permits probing; support still requires the actual authenticated catalog endpoints. */
+export const supportsAttendanceInbox=(transport:string|undefined,type:string)=>type==='Channel::Api'||transport==='CENTRAL_TRANSPORT'&&type==='Channel::Whatsapp';
 const sameScope=(a:AttendanceScope,b:AttendanceScope)=>Object.keys(a).every(key=>a[key as keyof AttendanceScope]===b[key as keyof AttendanceScope]);
 function hasUsableHours(inbox:Awaited<ReturnType<ChatwootClient['attendanceInbox']>>) {
   if(inbox.working_hours_enabled===undefined||!inbox.timezone||!inbox.working_hours)return false;
@@ -41,7 +43,8 @@ export function createChatwootAttendanceService(options:Options) {
       catch(error){if(error instanceof AttendanceError)throw new IntegrationError(error.code,error.statusCode);throw error;}
       const account=await readChatwootAccount(tx,org);
       if(!scope||scope.integrationId!==id||!account)throw new IntegrationError('CHATWOOT_ACCOUNT_NOT_READY',409);
-      return {scope,account};
+      const transport=(await tx.query<{transport:string}>('SELECT transport FROM messaging_channels WHERE organization_id=$1 AND id=$2',[org,scope.channelId])).rows[0]?.transport;
+      return {scope,account,transport};
     });
   }
   async function catalog(org:string,id:string):Promise<AttendanceCatalog> {
@@ -52,9 +55,9 @@ export function createChatwootAttendanceService(options:Options) {
         optional(()=>client.teams(scope.accountId)),optional(()=>client.labels(scope.accountId)),optional(()=>client.attributeDefinitions(scope.accountId)),
         optional(()=>client.inboxFlowBot(scope.accountId,scope.inboxId)),
       ]);
-      if(inbox.id!==scope.inboxId||inbox.channel_type!=='Channel::Api')throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
+      if(inbox.id!==scope.inboxId||!supportsAttendanceInbox(initial.transport,inbox.channel_type))throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
       const current=await snapshot(org,id);
-      if(!sameScope(current.scope,scope)||current.account.credential_version!==account.credential_version||current.account.base_url!==account.base_url)
+      if(!sameScope(current.scope,scope)||current.transport!==initial.transport||current.account.credential_version!==account.credential_version||current.account.base_url!==account.base_url)
         throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
       const assigned=new Set(members.map(member=>member.id));
       const knownAgents=new Set(agents.map(agent=>agent.id));
