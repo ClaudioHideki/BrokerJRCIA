@@ -13,6 +13,7 @@ import { lockOwnershipMutations,readOwnerRevision,transitionChannelOwner } from 
 import { lockAttendanceChannel } from '../attendance/repository.js';
 import type { HandoffReadiness, PreparedHandoffReadiness } from '../attendance/handoff-readiness.js';
 import { readAttendanceDiagnostic } from '../attendance/diagnostics.js';
+import { unknownOutboxDiagnostic } from './outbox-diagnostics.js';
 
 export class AutomationError extends Error {
   readonly details: NodeDiagnostic[];
@@ -227,13 +228,14 @@ export function createExecutionService(options:AutomationServiceOptions){
   };
 }
 
-export type OutboxDispatchResult={kind:'SENT';remoteReference?:string;resumePayload?:Record<string,unknown>}|{kind:'NOT_SENT';retryAt:Date;error:string}|{kind:'FAILED';error:string;resumePayload?:Record<string,unknown>};
+export type OutboxDispatchResult={kind:'SENT';remoteReference?:string;resumePayload?:Record<string,unknown>}|{kind:'NOT_SENT';retryAt:Date;error:string}|{kind:'FAILED';error:string;resumePayload?:Record<string,unknown>}|{kind:'UNKNOWN';error:string};
 export interface ExternalEffectDispatcher {dispatch(item:OutboxRow):Promise<OutboxDispatchResult>}
 export function createOutboxDispatcher(options:AutomationServiceOptions,external:ExternalEffectDispatcher,kinds:OutboxKind[]=['SEND_TEXT','HANDOFF','RESUME_EVENT']){const repository=options.repository??createPostgresAutomationRepository();return {runOnce:async(org:string)=>{
   if(options.enabled===false)return {processed:false};
   const leaseToken=randomUUID(),item=await options.transact(org,tx=>repository.claimOutbox(tx,org,leaseToken,120000,kinds));if(!item)return {processed:false};
   // The row is already UNKNOWN before the external call. A process crash can therefore never cause a blind replay.
-  let result:OutboxDispatchResult;try{result=await external.dispatch(item);}catch{return {processed:true,id:item.id,status:'UNKNOWN' as const};}
+  let result:OutboxDispatchResult;try{result=await external.dispatch(item);}catch{result={kind:'UNKNOWN',error:'AUTOMATION_EFFECT_UNKNOWN'};}
+  if(result.kind==='UNKNOWN'){const diagnostic=unknownOutboxDiagnostic(result.error);await options.transact(org,tx=>repository.recordUnknownOutbox(tx,org,item.id,leaseToken,diagnostic));return {processed:true,id:item.id,status:'UNKNOWN' as const};}
   if(result.kind==='SENT')await options.transact(org,async tx=>{if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});await repository.settleOutbox(tx,org,item.id,leaseToken,{status:'SENT',...(result.remoteReference?{remoteReference:result.remoteReference}:{})});});
   else if(result.kind==='NOT_SENT')await options.transact(org,tx=>repository.settleOutbox(tx,org,item.id,leaseToken,{status:'PENDING',error:result.error,availableAt:result.retryAt}));
   else await options.transact(org,async tx=>{if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});await repository.settleOutbox(tx,org,item.id,leaseToken,{status:'FAILED',error:result.error});});

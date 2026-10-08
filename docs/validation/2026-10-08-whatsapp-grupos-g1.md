@@ -28,9 +28,20 @@ Consultas ao provedor acontecem fora das transações. Leases e revisões são c
 
 A primeira regressão PostgreSQL terminou com 729 testes aprovados e quatro referências de baseline/código de erro desatualizadas. Essas asserções foram corrigidas: os quatro arquivos afetados passaram integralmente na repetição, 34/34 testes. A primeira regressão unitária aprovou 2.285 testes e teve um timeout na geração do PDF de auditoria. Uma tentativa isolada também observou alteração do fingerprint enquanto os arquivos auditados eram modificados. A fonte foi congelada para a repetição completa: **294 arquivos e 2.286 testes aprovados**. Os limites explícitos dos testes e os defaults de CI foram preservados.
 
-Build limpo e entrypoints compilados: 2/2 testes aprovados com PostgreSQL/Redis locais. O primeiro comando compilado sem essas variáveis pulou o caso de runtime; a repetição incluiu esse caso. Gate original do submódulo Evolution aprovado com o Git instalado, sem alteração do upstream. Release check aprovado, 254 rotas e zero achados nos scanners. `git diff --check` aprovado. O CI da nova revisão ainda precisa executar a matriz completa, incluindo navegador/container/restore; nenhum navegador local foi executado.
+Build limpo e entrypoints compilados: 2/2 testes aprovados com PostgreSQL/Redis locais. O primeiro comando compilado sem essas variáveis pulou o caso de runtime; a repetição incluiu esse caso. Gate original do submódulo Evolution aprovado com o Git instalado, sem alteração do upstream. Release check aprovado, 254 rotas e zero achados nos scanners. `git diff --check` aprovado. Nenhum navegador local foi executado.
 
-Os resultados finais, SHA da main, CI e digests serão acrescentados após concluir os gates. O adaptador privado S3/MinIO C2a incluído neste candidato é uma fundação testada; ainda não substitui a persistência de mídia em produção.
+O adaptador privado S3/MinIO C2a incluído nesta release é uma fundação testada; ainda não substitui a persistência de mídia em produção.
+
+## Main e imagens verificadas
+
+Main `386103cd94982680a3a0e08e93231387b3897945`. [CI 37815849855](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37815849855) aprovado nesse SHA, incluindo a matriz PostgreSQL/Redis completa, jornadas de navegador, OpenAPI, container, restore drill e segurança. [Imagens 37817442029](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37817442029) aprovadas no mesmo SHA, com SBOM, provenance mode=max e assinatura GitHub OIDC registrada pelo workflow.
+
+```dotenv
+JRC_API_IMAGE=ghcr.io/claudiohideki/brokerjrcia-api@sha256:d3ab559ac14540d922dd2e5d9ec14f5dc2e08f6ec5a1e6439d6e4f5cf01fb722
+JRC_WEB_IMAGE=ghcr.io/claudiohideki/brokerjrcia-web@sha256:886d61497dec4e2a8b700c39a200abb42ea1928d3f0b248132cc46ebe3bdb3c5
+```
+
+Verificação direta no GHCR: os dois manifests coincidem com a tag SHA e o artefato, com plataforma linux/amd64 e manifest de atestação. A verificação criptográfica independente do Cosign não foi executada. Nenhuma instalação ou consulta real de grupos na Evolution do servidor foi confirmada.
 
 ## Homologação após instalação
 

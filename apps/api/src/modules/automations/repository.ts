@@ -4,6 +4,7 @@ import type { RuntimeResult, RuntimeState } from './types.js';
 import { promoteAttendanceInput } from '../attendance/event-router.js';
 import { runtimeAuthorityAllows } from '../attendance/runtime-authority.js';
 import { AttendanceError } from '../attendance/types.js';
+import { unknownOutboxDiagnostic } from './outbox-diagnostics.js';
 
 export interface DefinitionRow {id:string;organizationId:string;name:string;lifecycleStatus:'DRAFT'|'PUBLISHED'|'ARCHIVED';draftGraph:AutomationGraphV1;draftRevision:number;activeVersion:number|null;updatedAt:Date}
 export interface DefinitionPageCursor {updatedAt:string;id:string}
@@ -75,6 +76,7 @@ export interface AutomationRepository {
  releaseDueWaits(tx:TenantTransaction,org:string,limit:number):Promise<number>;
  claimOutbox(tx:TenantTransaction,org:string,leaseToken:string,leaseMs:number,kinds:OutboxKind[]):Promise<OutboxRow|null>;
  settleOutbox(tx:TenantTransaction,org:string,id:string,leaseToken:string,result:{status:'SENT'|'PENDING'|'FAILED';remoteReference?:string;error?:string;availableAt?:Date}):Promise<boolean>;
+ recordUnknownOutbox(tx:TenantTransaction,org:string,id:string,leaseToken:string,error:string):Promise<boolean>;
 }
 
 export function createPostgresAutomationRepository():AutomationRepository{return {
@@ -223,5 +225,6 @@ export function createPostgresAutomationRepository():AutomationRepository{return
     return null;
   },
   async settleOutbox(tx,org,id,leaseToken,result){return Boolean((await tx.query(`update automation_outbox set status=$4,remote_reference=coalesce($5,remote_reference),last_error=$6,available_at=coalesce($7,available_at),lease_token=null,lease_expires_at=null,updated_at=now() where organization_id=$1 and id=$2 and lease_token=$3 and status='UNKNOWN'`,[org,id,leaseToken,result.status,result.remoteReference??null,result.error??null,result.availableAt??null])).rowCount);},
+  async recordUnknownOutbox(tx,org,id,leaseToken,error){return Boolean((await tx.query(`update automation_outbox set last_error=$4,updated_at=now() where organization_id=$1 and id=$2 and lease_token=$3 and status='UNKNOWN'`,[org,id,leaseToken,unknownOutboxDiagnostic(error)])).rowCount);},
 };}
 import { lockAttendanceChannelRead } from '../attendance/repository.js';
