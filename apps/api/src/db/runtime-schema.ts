@@ -1,10 +1,39 @@
-export const RUNTIME_SCHEMA_BASELINE = '0048_central_cutover';
+export const RUNTIME_SCHEMA_BASELINE = '0049_qr_outbound_observations';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
 // The app role cannot read drizzle.__drizzle_migrations. This is a structural
 // readiness probe, not a migration journal/hash comparison.
 const requiredObjectsSql = `SELECT
+  NOT EXISTS(SELECT 1 FROM (VALUES ('public.qr_dispatch_attempts'),('public.qr_outbound_observations')) AS required(relation_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass(required.relation_name)
+      AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'
+      AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='qr_tenant'))
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'INSERT')
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'UPDATE')
+    OR pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'DELETE')
+    OR pg_catalog.has_table_privilege('jrc_auth',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR pg_catalog.has_table_privilege('jrc_platform',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR EXISTS(SELECT 1 FROM pg_catalog.pg_class c,
+      LATERAL pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault('r',c.relowner))) a
+      WHERE c.oid=pg_catalog.to_regclass(required.relation_name) AND a.grantee=0))
+  AND NOT EXISTS(SELECT 1 FROM (VALUES
+    ('public.qr_dispatch_attempts','qr_dispatch_confirmation'),
+    ('public.qr_outbound_observations','qr_observation_disposition')) AS required(relation_name,constraint_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass(required.relation_name)
+      AND c.conname=required.constraint_name AND c.contype='c' AND c.convalidated))
+  AND NOT EXISTS(SELECT 1 FROM (VALUES ('public.qr_dispatch_attempts'),('public.qr_outbound_observations')) AS required(relation_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=pg_catalog.to_regclass(required.relation_name)
+      AND a.attname='revision' AND a.attnotnull AND a.atttypid=pg_catalog.to_regtype('pg_catalog.int4') AND a.attnum>0 AND NOT a.attisdropped))
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_enum e JOIN pg_catalog.pg_type t ON t.oid=e.enumtypid
+    WHERE t.oid=pg_catalog.to_regtype('public.messaging_message_source') AND e.enumlabel='EXTERNAL_OBSERVED')
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t
+    WHERE t.tgrelid=pg_catalog.to_regclass('public.qr_outbound_observations')
+      AND t.tgname='lifecycle_qr_outbound_observations_block'
+      AND t.tgenabled IN ('O','A') AND NOT t.tgisinternal AND t.tgtype=7
+      AND t.tgfoid=pg_catalog.to_regprocedure('public.lifecycle_reject_channel_write()'))
+  AND
   EXISTS(SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid=pg_catalog.to_regclass('public.chatwoot_mirror_attempts')
     AND conname='central_dispatch_identity' AND convalidated)
   AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid=pg_catalog.to_regclass('public.chatwoot_mirror_attempts')

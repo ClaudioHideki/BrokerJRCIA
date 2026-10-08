@@ -24,6 +24,7 @@ import { recordManualAttendanceTakeover } from '../attendance/manual-takeover.js
 import { readChatwootAttendanceGate } from '../attendance/control-service.js';
 import { AttendanceError } from '../attendance/types.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
+import { abandonQrOutboundObservation, listQrOutboundObservations, abandonQrDispatchAttempt, listQrDispatchAttempts } from './qr-outbound-observation.js';
 import {
   claimIdempotency,
   completeIdempotencyRecord,
@@ -49,6 +50,7 @@ export function messageView(message: Message): MessageView {
   return {
     id: message.id,
     direction: message.direction,
+    ...(message.source === 'EXTERNAL_OBSERVED' ? { source: 'EXTERNAL_OBSERVED' as const } : {}),
     state: message.state,
     ...(message.retrySafe !== undefined
       ? { retrySafe: message.retrySafe }
@@ -106,6 +108,16 @@ export function createMessagingService(
     return channel;
   }
   return {
+    listQrOutboundObservations:(org,conversation)=>transact(org,tx=>listQrOutboundObservations(tx,org,conversation)),
+    listQrDispatchAttempts:(org,conversation)=>transact(org,tx=>listQrDispatchAttempts(tx,org,conversation)),
+    abandonQrDispatchAttempt:(org,id,input,actorId)=>transact(org,async tx=>{
+      await requireActiveOrganization(tx,org);
+      return abandonQrDispatchAttempt(tx,{...input,organizationId:org,id,actorId});
+    }),
+    abandonQrOutboundObservation:(org,id,input,actorId)=>transact(org,async tx=>{
+      await requireActiveOrganization(tx,org);
+      return abandonQrOutboundObservation(tx,{...input,organizationId:org,id,actorId});
+    }),
     async retryMessage(organizationId, id, reason, actorId) {
       return transact(organizationId, async (tx) => {
         await requireActiveOrganization(tx, organizationId);

@@ -337,6 +337,13 @@
       "when": 1791672000000,
       "tag": "0048_central_cutover",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791758400000,
+      "tag": "0049_qr_outbound_observations",
+      "breakpoints": true
     }
   ]
 }

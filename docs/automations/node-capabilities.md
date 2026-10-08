@@ -10,20 +10,21 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 | menu | AVAILABLE | FlowCanvas: texto/opções/variável | engine: espera/opção numerada |
 | condition | AVAILABLE | FlowCanvas: campo/comparação/valor | engine: yes/no |
 | variable | AVAILABLE | FlowCanvas: variável/valor | engine: interpolação no estado |
+| delay | AVAILABLE | FlowCanvas: segundos | engine: prazo persistido; scheduler; simulação por tempo virtual |
 | handoff | AVAILABLE | HandoffEditor: catálogo da caixa e time ou agente | engine: HANDOFF_PENDING simulado; worker: confirmação remota |
 | end | AVAILABLE | FlowCanvas: nome | engine: fim da execução do bot |
+| schedule | AVAILABLE | ScheduleEditor: fuso, semana e exceções por data | engine: open/closed pelo instante fornecido; simulação com relógio virtual |
 
 Os formulários simples acima são os existentes; o menu visual com adicionar/remover/reordenar opções faz parte de U3a. `end` encerra o bot, não resolve a conversa na central.
 
 | Tipos | Criação | Pendência |
 | --- | --- | --- |
-| delay | UNAVAILABLE | R4/U5: silêncio e simulação com relógio |
 | subflow | UNAVAILABLE | R6/U3b/U5: seleção e simulação das dependências publicadas |
 | data-set, data-rename, data-pick, data-merge, data-map, data-filter, json-parse, json-stringify, expression | UNAVAILABLE | R6/U3b: dados e formulários completos |
 | http | UNAVAILABLE | R7/U3b/U5: consulta delimitada, credenciais e simulação |
 | ai-generate, ai-classify, ai-extract, ai-summarize | UNAVAILABLE | R7/U3b/U5: IA delimitada e simulação |
 | sql, code, ai-agent | UNAVAILABLE | Fora do escopo de criação Broker; compatibilidade histórica mantida |
-| media, schedule, tag, attribute, note, resolve | UNAVAILABLE | R3–R7/U3b: catálogo, executor, formulário e simulação pendentes |
+| media, tag, attribute, note, resolve | UNAVAILABLE | R3–R7/U3b: catálogo, executor, formulário e simulação pendentes |
 
 Evidências automatizadas: `packages/contracts/tests/automation-node-definitions.test.ts` verifica catálogo/portas/campos/matriz; `apps/api/tests/unit/automation-engine.test.ts` executa cada tipo AVAILABLE pelo mesmo motor puro usado na simulação e preserva SQL histórico; `apps/api/tests/unit/automation-conversation-simulation.test.ts` verifica continuação conversacional; `apps/web/src/pages/AutomationStudio.test.tsx` abre cada formulário AVAILABLE e verifica diagnóstico por ID. HTTP e cliente validam transporte de diagnósticos.
 

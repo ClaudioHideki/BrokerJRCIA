@@ -368,11 +368,12 @@ export function createChatwootWorker(options: ChatwootOptions) {
           id: string;
           conversation_id: string;
           direction: string;
+          source: string;
           content: MessageContent;
           state: string;
           canonical_error_code: string | null;
         }>(
-          "SELECT id,conversation_id,direction,content,state,canonical_error_code FROM messaging_messages WHERE organization_id=$1 AND id=$2 AND channel_id=$3",
+          "SELECT id,conversation_id,direction,source,content,state,canonical_error_code FROM messaging_messages WHERE organization_id=$1 AND id=$2 AND channel_id=$3",
           [org, job.message_id, c.channel_id],
         )
       ).rows[0];
@@ -408,6 +409,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
       return { a, c, message, contact, map, mappedMessage,owner };
     });
     const { a, c, message, contact } = context;
+    const externalObserved=message.source==='EXTERNAL_OBSERVED';
+    const originLabel='[Saída observada no WhatsApp]';
     if (
       message.direction === "OUTGOING" &&
       ["ACCEPTED", "SENDING", "UNKNOWN"].includes(message.state)
@@ -431,7 +434,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
       if (!options.media) throw new MediaError("MEDIA_NOT_CONFIGURED");
       media = {
         ...(await options.media.read(org, message.content.mediaId)),
-        ...(message.content.caption
+        ...(externalObserved ? {caption:`${originLabel}${message.content.caption?'\n'+message.content.caption:''}`.slice(0,1024)} : message.content.caption
           ? { caption: message.content.caption }
           : {}),
       };
@@ -525,7 +528,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
     if (!remoteMessageId) {
       const text =
         message.content.type === "TEXT"
-          ? message.content.text
+          ? externalObserved?`${originLabel}\n${message.content.text}`:message.content.text
           : message.content.type === "TEMPLATE"
             ? message.content.name
             : undefined;
@@ -545,6 +548,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
             {
               incoming: message.direction === "INCOMING",
               brokerMessageId: message.id,
+              ...(externalObserved?{messageOrigin:'EXTERNAL_OBSERVED' as const}:{}),
             },
           )
         : await client.sendMessage(
@@ -554,6 +558,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
               text: text!,
               incoming: message.direction === "INCOMING",
               brokerMessageId: message.id,
+              ...(externalObserved?{messageOrigin:'EXTERNAL_OBSERVED' as const}:{}),
             },
           );
       } catch(error) {

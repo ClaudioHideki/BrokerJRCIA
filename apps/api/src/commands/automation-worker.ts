@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { setTimeout } from 'node:timers/promises';
 import { Pool } from 'pg';
+import { loadDatabasePoolBudget } from '../db/pool-budget.js';
 import { z } from 'zod';
 import { withOrganizationTransaction } from '../db/tenant-transaction.js';
 import { createExecutionService, createOutboxDispatcher, type ExternalEffectDispatcher } from '../modules/automations/service.js';
@@ -67,7 +68,7 @@ export function createAutomationEffectDispatcher(options:{
   }};
 }
 
-export async function runAutomationWorker(environment:NodeJS.ProcessEnv=process.env,watch=false){const config=loadAutomationWorkerConfig(environment),pool=new Pool({connectionString:config.databaseUrl,max:4,connectionTimeoutMillis:5000,statement_timeout:30000});
+export async function runAutomationWorker(environment:NodeJS.ProcessEnv=process.env,watch=false){const config=loadAutomationWorkerConfig(environment),pool=new Pool({connectionString:config.databaseUrl,...loadDatabasePoolBudget(environment,'AUTOMATION_WORKER'),statement_timeout:30000});
   const instanceId=workerInstanceId();
   const enabled=automationRuntimeEnabled(environment),repository=createPostgresAutomationRepository(),transact=<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pool,org,work),execution=createExecutionService({transact,repository,enabled});
   const integrations=createIntegrationRuntime(environment,pool);

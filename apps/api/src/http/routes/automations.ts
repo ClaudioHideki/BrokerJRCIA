@@ -4,6 +4,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { AUTOMATION_NODE_CATALOG_V1, AutomationGraphV1Schema, IdempotencyHeadersSchema, nodeDiagnosticsToStrings, type NodeDiagnostic } from '@jrc/contracts';
 import {tenantOperationalProblem} from '../../modules/tenancy/operational-limits.js';
 import { z } from 'zod';
+import { SimulationInputSchema } from '../../modules/automations/simulation.js';
 import type { Role } from '../plugins/authorization.js';
 import { authenticateRequest, type AuthenticationOptions } from '../plugins/authentication.js';
 import { AutomationError, type AutomationService, type createExecutionService } from '../../modules/automations/service.js';
@@ -43,7 +44,7 @@ export async function registerAutomationRoutes(app:FastifyInstance,options:Autom
   api.get('/v1/automations/:id',{preHandler:read,schema:{params,querystring:empty}},request=>options.service.get(org(request),request.params.id));
   api.put('/v1/automations/:id',{preHandler:write,schema:{params,querystring:empty,body:draft.extend({revision:z.number().int().positive()})}},request=>options.service.save(org(request),request.params.id,request.body));
   api.post('/v1/automations/:id/validate',{preHandler:read,schema:{params,querystring:empty,body:empty}},request=>options.service.validate(org(request),request.params.id));
-  api.post('/v1/automations/:id/simulate',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({text:z.string().max(4096),replies:z.array(z.string().max(4096)).max(30).optional()})}},request=>options.service.simulate(org(request),request.params.id,{text:request.body.text,...(request.body.replies?{replies:request.body.replies}:{})}));
+  api.post('/v1/automations/:id/simulate',{preHandler:write,schema:{params,querystring:empty,body:SimulationInputSchema}},request=>options.service.simulate(org(request),request.params.id,request.body));
   api.post('/v1/automations/:id/publish',{preHandler:write,schema:{params,headers:IdempotencyHeadersSchema,querystring:empty,body:z.strictObject({revision:z.number().int().positive()})}},request=>options.service.publish(org(request),request.params.id,request.body.revision));
   api.post('/v1/automations/:id/archive',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({archived:z.boolean()})}},request=>options.service.setArchived(org(request),request.params.id,request.body.archived,request.authentication!.actorId!));
   api.get('/v1/automations/:id/versions',{preHandler:read,schema:{params,querystring:empty}},request=>options.service.versions(org(request),request.params.id));

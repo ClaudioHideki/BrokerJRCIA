@@ -37,9 +37,11 @@ describe('native handoff version 1', () => {
     expect(validateAutomationGraph(graph({handoffVersion:1}))).toContainEqual(expect.objectContaining({nodeId:'handoff',field:'data.destination',code:'INVALID_CONFIG'}));
     expect(validateAutomationGraph(graph({destination:config.destination}))).toContainEqual(expect.objectContaining({nodeId:'handoff',field:'data.handoffVersion',code:'INVALID_CONFIG'}));
   });
-  it('makes only the complete native handoff family newly creatable', () => {
+  it('keeps complete handoff and implemented time nodes creatable without exposing unfinished actions', () => {
     expect(getNodeDefinition('handoff',1)?.availability).toBe('AVAILABLE');
-    for(const type of ['http','sql','code','ai-agent','delay','subflow','media','schedule','tag','attribute','note','resolve'])
+    for(const type of ['delay','schedule'])
+      expect(getNodeDefinition(type,1)?.availability).toBe('AVAILABLE');
+    for(const type of ['http','sql','code','ai-agent','subflow','media','tag','attribute','note','resolve'])
       expect(getNodeDefinition(type,1)?.availability).toBe('UNAVAILABLE');
   });
 });

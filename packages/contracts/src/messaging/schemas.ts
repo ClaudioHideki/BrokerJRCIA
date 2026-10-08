@@ -5,6 +5,27 @@ export const SendTextRequestSchema = z.strictObject({
 });
 export type SendTextRequest = z.infer<typeof SendTextRequestSchema>;
 
+export const QrOutboundObservationViewSchema = z.strictObject({
+  id:z.uuid(),revision:z.number().int().positive(),blocking:z.boolean(),
+  disposition:z.enum(['RECONCILE','ABANDONED']),
+  reason:z.enum(['QR_ACK_PENDING','QR_PROVIDER_ID_CONFLICT','QR_ABANDONED_ATTEMPT_UNRESOLVED','QR_OBSERVATION_ABANDONED','QR_LIFECYCLE_RECONCILE']),
+  attempts:z.array(z.strictObject({id:z.uuid(),messageId:z.uuid(),state:z.enum(['DISPATCHED','UNKNOWN','ABANDONED'])})),
+});
+export type QrOutboundObservationView=z.infer<typeof QrOutboundObservationViewSchema>;
+export const QrOutboundObservationsResponseSchema=z.strictObject({data:z.array(QrOutboundObservationViewSchema)});
+export const AbandonQrOutboundObservationRequestSchema=z.strictObject({
+  expectedRevision:z.number().int().positive(),attemptIds:z.array(z.uuid()).max(100).refine(ids=>new Set(ids).size===ids.length),
+  reason:z.string().trim().min(5).max(500),
+});
+export type AbandonQrOutboundObservationRequest=z.infer<typeof AbandonQrOutboundObservationRequestSchema>;
+export const QrDispatchAttemptViewSchema=z.strictObject({
+  id:z.uuid(),messageId:z.uuid(),revision:z.number().int().positive(),state:z.enum(['DISPATCHED','UNKNOWN','ABANDONED']),
+});
+export type QrDispatchAttemptView=z.infer<typeof QrDispatchAttemptViewSchema>;
+export const QrDispatchAttemptsResponseSchema=z.strictObject({data:z.array(QrDispatchAttemptViewSchema)});
+export const AbandonQrDispatchAttemptRequestSchema=z.strictObject({expectedRevision:z.number().int().positive(),reason:z.string().trim().min(5).max(500)});
+export type AbandonQrDispatchAttemptRequest=z.infer<typeof AbandonQrDispatchAttemptRequestSchema>;
+
 export const SendTemplateRequestSchema = z.strictObject({
   conversationId: z.uuid(),
   name: z.string().regex(/^[a-z0-9_]{1,512}$/),
@@ -78,6 +99,7 @@ export const ConversationsResponseSchema = z.object({
 export const MessageViewSchema = z.object({
   id: z.uuid(),
   direction: z.enum(["INCOMING", "OUTGOING"]),
+  source: z.enum(["CONTACT", "OPERATOR", "AUTOMATION", "EXTERNAL_OBSERVED"]).optional(),
   state: z.enum([
     "ACCEPTED",
     "SENDING",

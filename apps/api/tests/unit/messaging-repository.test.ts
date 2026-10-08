@@ -485,6 +485,7 @@ describe('PostgresMessagingRepository outbox lifecycle', () => {
     const sent = { ...MESSAGE, state: 'SENT' as const, upstreamMessageId: 'wamid.early' };
     const read = { ...MESSAGE, state: 'READ' as const, upstreamMessageId: 'wamid.early' };
     const transaction = transactionReturning(
+      [{ channel_id: CHANNEL_ID, provider: 'META' }],
       [{ channelId: CHANNEL_ID }],
       [],
       [{ ...MESSAGE, state: 'SENDING' }],
@@ -508,6 +509,7 @@ describe('PostgresMessagingRepository outbox lifecycle', () => {
       canonicalErrorCode: 'META_TEMPLATE_NOT_APPROVED',
     };
     const transaction = transactionReturning(
+      [{ channel_id: CHANNEL_ID, provider: 'META' }],
       [MESSAGE],
       [failed],
       [],

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AUTOMATION_NODE_CATALOG_V1, welcomeFlow } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
 import { SessionProvider } from '../auth/SessionProvider.js';
@@ -30,6 +30,7 @@ function mountEditor(request:ApiClient['request']) {
 }
 
 beforeEach(()=>sessionStorage.clear());
+afterEach(()=>vi.restoreAllMocks());
 it('explains queued attendance blocked by a human instead of claiming a send failure',async()=>{
  const request=vi.fn(async()=>({id:automationId,automationId,channelId:automationId,version:1,status:'QUEUED',correlationId:'qa',nodes:[],outbox:[],
    attendanceDiagnostic:{allowed:false,reason:'HUMAN_CONTROL',controlRevision:8,cycle:1}})) as ApiClient['request'];
@@ -39,6 +40,49 @@ it('explains queued attendance blocked by a human instead of claiming a send fai
 });
 
 describe('Automation Studio',()=>{
+  it('discards a pending simulation when its clock is changed and preserves the new input',async()=>{
+    let resolve!: (value:unknown)=>void;
+    const pending=new Promise(done=>{resolve=done;});
+    const request=vi.fn(async(path:string)=>{
+      if(path===`/v1/automations/${automationId}`)return definition;
+      if(path==='/v1/automation-nodes')return {data:AUTOMATION_NODE_CATALOG_V1};
+      if(path.endsWith('/simulate'))return pending;
+      throw new Error(path);
+    }) as ApiClient['request'];
+    mountEditor(request);fireEvent.click(await screen.findByRole('button',{name:'Testar'}));
+    fireEvent.change(screen.getByLabelText('Data e hora do teste (UTC)'),{target:{value:'2030-01-02T00:00:00'}});
+    await act(async()=>resolve({status:'WAITING',state:{variables:{private:'old simulation'}},effects:[{kind:'SEND_TEXT',payload:{text:'Resultado anterior'}}],trace:[],wait:{kind:'DELAY',wakeAt:'2030-01-01T00:00:05Z'}}));
+    expect(screen.getByLabelText('Data e hora do teste (UTC)')).toHaveValue('2030-01-02T00:00');
+    fireEvent.click(screen.getByRole('button',{name:'Respostas'}));
+    expect(screen.getByText('Execute um teste para ver as respostas.')).toBeVisible();
+    expect(screen.queryByText('Resultado anterior')).toBeNull();
+    expect(screen.queryByRole('button',{name:'Avançar até o fim da espera'})).toBeNull();
+    expect(screen.getByRole('button',{name:'Testar'})).toBeEnabled();
+  });
+  it('advances a virtual wait and preserves the ordered timeline when answering after it',async()=>{
+    vi.spyOn(Date,'now').mockReturnValue(Date.parse('2030-01-01T00:00:00.000Z'));
+    const simulatedBodies:unknown[]=[];
+    const request=vi.fn(async(path:string,init?:RequestInit)=>{
+      if(path===`/v1/automations/${automationId}`)return definition;
+      if(path==='/v1/automation-nodes')return {data:AUTOMATION_NODE_CATALOG_V1};
+      if(path.endsWith('/simulate')){
+        const body=JSON.parse(String(init?.body));simulatedBodies.push(body);
+        if(simulatedBodies.length===1)return {status:'WAITING',state:{variables:{}},effects:[],trace:[],wait:{kind:'DELAY',wakeAt:'2030-01-01T00:00:05.000Z'}};
+        if(simulatedBodies.length===2)return {status:'WAITING',state:{variables:{}},effects:[{kind:'SEND_TEXT',payload:{text:'Qual seu nome?'}}],trace:[],wait:{kind:'EVENT'}};
+        return {status:'COMPLETED',state:{variables:{answer:'Pessoa'}},effects:[{kind:'SEND_TEXT',payload:{text:'Olá Pessoa'}}],trace:[]};
+      }
+      throw new Error(path);
+    }) as ApiClient['request'];
+    mountEditor(request);fireEvent.click(await screen.findByRole('button',{name:'Testar'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Avançar até o fim da espera'}));
+    expect(await screen.findByText('Qual seu nome?')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Próxima resposta'),{target:{value:'Pessoa'}});
+    fireEvent.click(screen.getByRole('button',{name:'Enviar resposta no teste'}));
+    expect(await screen.findByText('Olá Pessoa')).toBeVisible();
+    expect(simulatedBodies[1]).toMatchObject({clock:'2030-01-01T00:00:00.000Z',events:[{type:'ELAPSE',seconds:5}]});
+    expect(simulatedBodies[2]).toMatchObject({clock:'2030-01-01T00:00:00.000Z',events:[{type:'ELAPSE',seconds:5},{type:'MESSAGE',text:'Pessoa'}]});
+    expect(simulatedBodies[2]).not.toHaveProperty('replies');
+  });
   it('labels a local handoff simulation without claiming an assignment at a central',async()=>{
     const payload={handoffVersion:2,destination:{kind:'LOCAL',organizationId:organization.id,channelId:automationId},target:{kind:'QUEUE'}};
     const request=vi.fn(async(path:string)=>path===`/v1/automations/${automationId}`?definition:path==='/v1/automation-nodes'?{data:AUTOMATION_NODE_CATALOG_V1}:path.endsWith('/simulate')?{status:'HANDOFF',state:{variables:{}},effects:[{kind:'HANDOFF',payload}],trace:[]}:Promise.reject(new Error(path))) as ApiClient['request'];
@@ -245,7 +289,11 @@ describe('Automation Studio',()=>{
     fireEvent.change(screen.getByLabelText('Próxima resposta'),{target:{value:'1'}});
     fireEvent.click(screen.getByRole('button',{name:'Enviar resposta no teste'}));
     expect(await screen.findByText('Atendimento selecionado')).toBeVisible();
-    expect(request).toHaveBeenCalledWith(`/v1/automations/${automationId}/simulate`,expect.objectContaining({body:JSON.stringify({text:'Olá',replies:['1']})}));
+    const simulationCalls=vi.mocked(request).mock.calls.filter(([path])=>path.endsWith('/simulate'));
+    const firstInput=JSON.parse(String(simulationCalls[0]?.[1]?.body));
+    const continuedInput=JSON.parse(String(simulationCalls.at(-1)?.[1]?.body));
+    expect(continuedInput).toEqual({text:'Olá',replies:['1'],clock:firstInput.clock});
+    expect(Number.isFinite(Date.parse(firstInput.clock))).toBe(true);
   });
 });
 it('shows a committed local queue receipt without claiming confirmation by a central',async()=>{

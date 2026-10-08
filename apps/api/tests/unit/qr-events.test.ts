@@ -22,8 +22,16 @@ describe('eventos QR canônicos', () => {
   it('recusa evento de outra instância', () => {
     expect(() => normalizeQrEvent(envelope(message), 'other-instance')).toThrow('QR_INSTANCE_MISMATCH');
   });
-  it('ignora ecos, grupos e históricos sem disparar atendimento', () => {
-    expect(normalizeQrEvent(envelope({ ...message, key: { ...message.key, fromMe: true } }), 'jrc-private-instance')).toEqual([]);
+  it('retém saída observada sem afirmar que fromMe identifica um humano', () => {
+    expect(normalizeQrEvent(envelope({ ...message, source: 'android', key: { ...message.key, fromMe: true } }), 'jrc-private-instance')).toEqual([
+      { kind: 'outbound', upstreamMessageId: 'qr-message-1', externalId: '15550000001', displayName: null, content: { type: 'TEXT', text: 'Olá JRC' }, occurredAt: new Date(1789470000000) },
+    ]);
+  });
+  it('retém mídia fromMe compatível sem autoria inventada', () => {
+    const raw = { ...message, key: { ...message.key, fromMe: true, remoteJid: '123@lid', remoteJidAlt: '15550000002@s.whatsapp.net' }, message: { imageMessage: { caption: 'Imagem sintética' } } };
+    expect(normalizeQrEvent(envelope(raw), 'jrc-private-instance')[0]).toMatchObject({ kind: 'outbound-media', externalId: '15550000002', displayName: null, caption: 'Imagem sintética', media: { source: 'QR', sourceKey: 'qr-message-1', kind: 'image', descriptor: { messageId: 'qr-message-1' } } });
+  });
+  it('ignora grupos e históricos sem disparar atendimento', () => {
     expect(normalizeQrEvent(envelope({ ...message, key: { ...message.key, remoteJid: 'group@g.us' } }), 'jrc-private-instance')).toEqual([]);
     expect(normalizeQrEvent(envelope(message, 'messages.set'), 'jrc-private-instance')).toEqual([]);
   });

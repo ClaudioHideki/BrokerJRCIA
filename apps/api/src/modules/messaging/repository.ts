@@ -1,7 +1,10 @@
 import { isOrganizationActive } from "../tenancy/operational-limits.js";
 import { transitionChannelOwner } from '../attendance/transition.js';
 import { AttendanceError } from '../attendance/types.js';
-import { lockAttendanceChannelRead } from '../attendance/repository.js';
+import { lockAttendanceChannel, lockAttendanceChannelRead } from '../attendance/repository.js';
+import { beginQrDispatchAttempt, completeQrDispatchAttempt, recoverQrOutboundObservations } from './qr-outbound-observation.js';
+import {canAdvanceMessageState,lockMessageStatusKey as lockMetaStatusKey} from './message-state.js';
+export {canAdvanceMessageState} from './message-state.js';
 import { AUTOMATION_ORIGIN } from '@jrc/contracts';
 import type { QueryResultRow } from "pg";
 
@@ -49,25 +52,6 @@ export class MessagingRepositoryError extends Error {
     super(code);
     this.name = "MessagingRepositoryError";
   }
-}
-
-const FORWARD_TRANSITIONS: Readonly<
-  Record<MessageState, ReadonlySet<MessageState>>
-> = {
-  ACCEPTED: new Set(["ACCEPTED", "SENDING", "FAILED"]),
-  SENDING: new Set(["SENDING", "SENT", "FAILED", "UNKNOWN"]),
-  SENT: new Set(["SENT", "DELIVERED", "READ", "FAILED"]),
-  DELIVERED: new Set(["DELIVERED", "READ"]),
-  READ: new Set(["READ"]),
-  FAILED: new Set(["FAILED"]),
-  UNKNOWN: new Set(["UNKNOWN", "SENT", "DELIVERED", "READ", "FAILED"]),
-};
-
-export function canAdvanceMessageState(
-  from: MessageState,
-  to: MessageState,
-): boolean {
-  return FORWARD_TRANSITIONS[from].has(to);
 }
 
 export function isCustomerServiceWindowOpen(
@@ -248,20 +232,6 @@ function first<T>(result: { rows: T[] }): T | null {
   return result.rows[0] ?? null;
 }
 
-async function lockMetaStatusKey(
-  transaction: TenantTransaction,
-  organizationId: string,
-  channelId: string,
-  upstreamMessageId: string,
-): Promise<void> {
-  await transaction.query(
-    `SELECT pg_advisory_xact_lock(
-              hashtextextended(concat_ws(chr(31), $1::text, $2::text, $3::text), 0)
-            )`,
-    [organizationId, channelId, upstreamMessageId],
-  );
-}
-
 function asMessage(row: MessageDatabaseRow): Message {
   const { idempotencyBodyHash: _idempotencyBodyHash, ...message } = row;
   return message;
@@ -355,6 +325,7 @@ function asBotClaim(row: BotClaimDatabaseRow): BotTurnClaim {
 }
 
 export interface MessagingRepository {
+  recoverQrOutboundObservations?(transaction: TenantTransaction, organizationId: string): Promise<void>;
   createChannel(
     transaction: TenantTransaction,
     input: {
@@ -576,6 +547,7 @@ export interface MessagingRepository {
 
 export function createPostgresMessagingRepository(): MessagingRepository {
   return {
+    recoverQrOutboundObservations,
     async createChannel(transaction, input) {
       const result = await transaction.query<ChannelDatabaseRow>(
         `INSERT INTO messaging_channels
@@ -1134,6 +1106,9 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                ON message.organization_id = outbox.organization_id AND message.id = outbox.message_id
             WHERE outbox.organization_id = $1 AND outbox.lease_expires_at <= $2
               AND message.state = 'SENDING'
+              -- QR expiration belongs to its channel-locked durable recoverer.
+              AND NOT EXISTS(SELECT 1 FROM messaging_channels channel WHERE channel.organization_id=message.organization_id
+                AND channel.id=message.channel_id AND channel.provider='BAILEYS')
             FOR UPDATE OF outbox SKIP LOCKED
          ), marked AS (
            UPDATE messaging_messages message
@@ -1233,6 +1208,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                 )
               )
               AND (message.source <> 'AUTOMATION' OR conversation.mode = 'BOT')
+              AND NOT EXISTS(SELECT 1 FROM qr_outbound_observations observation WHERE observation.organization_id=message.organization_id
+                AND observation.conversation_id=message.conversation_id AND observation.blocking)
               AND chatwoot_channel_identity_ready(message.organization_id,message.channel_id)
               AND NOT EXISTS (
                 SELECT 1 FROM messaging_channels c JOIN instances i ON i.organization_id=c.organization_id AND i.id=c.instance_id
@@ -1248,7 +1225,9 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                   AND earlier.direction = 'OUTGOING'
                   AND earlier.sequence_number < message.sequence_number
                   AND (
-                    earlier.state IN ('ACCEPTED', 'SENDING', 'UNKNOWN')
+                    earlier.state IN ('ACCEPTED', 'SENDING')
+                    OR (earlier.state='UNKNOWN' AND NOT EXISTS(SELECT 1 FROM qr_dispatch_attempts abandoned
+                      WHERE abandoned.organization_id=earlier.organization_id AND abandoned.message_id=earlier.id AND abandoned.state='ABANDONED'))
                     OR earlier_outbox.message_id IS NOT NULL
                   )
               )
@@ -1311,6 +1290,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                 chatwoot_channel_identity_ready(channel.organization_id,channel.id) AS "identityReady",
                 flow_output_allowed(message.organization_id,message.id) AS "flowAllowed",
                 conversation.mode,
+                NOT EXISTS(SELECT 1 FROM qr_outbound_observations observation WHERE observation.organization_id=message.organization_id
+                  AND observation.conversation_id=message.conversation_id AND observation.blocking) AS "qrObservationsSettled",
                 (channel.provider = 'BAILEYS' OR message.content->>'type' = 'TEMPLATE' OR EXISTS (
                   SELECT 1 FROM messaging_messages inbound
                    WHERE inbound.organization_id = message.organization_id
@@ -1344,7 +1325,9 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       if (!selected) return { eligible: false, reason: "INVALID_OUTBOX_CLAIM" };
       const claim = asClaim(selected);
       let reason: ClaimIneligibilityReason;
-      if (
+      if ((selected as ClaimDatabaseRow & {qrObservationsSettled?:boolean}).qrObservationsSettled===false)
+        reason='QR_OBSERVATION_RECONCILE_REQUIRED';
+      else if (
         (selected as ClaimDatabaseRow & { qrChannelReady?: boolean })
           .qrChannelReady === false
       )
@@ -1382,6 +1365,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
         );
         if (!updated)
           return { eligible: false, reason: "INVALID_OUTBOX_CLAIM" };
+        await beginQrDispatchAttempt(transaction,{organizationId:input.organizationId,channelId:claim.message.channelId,
+          conversationId:claim.message.conversationId,messageId:input.messageId,leaseToken:input.leaseToken});
         return {
           eligible: true,
           claim: { ...claim, message: asMessage(updated) },
@@ -1389,7 +1374,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       }
 
       if (
-        reason === 'IDENTITY_CONFIRMATION_REQUIRED' || reason === "CONVERSATION_PAUSED" ||
+        reason === 'QR_OBSERVATION_RECONCILE_REQUIRED' || reason === 'IDENTITY_CONFIRMATION_REQUIRED' || reason === "CONVERSATION_PAUSED" ||
         reason === "QR_CHANNEL_DISCONNECTED"
       ) {
         await transaction.query(
@@ -1411,6 +1396,13 @@ export function createPostgresMessagingRepository(): MessagingRepository {
     },
 
     async completeSend(transaction, input) {
+      const channel=(await transaction.query<{channel_id:string;provider:string}>(`SELECT m.channel_id,c.provider FROM messaging_messages m
+        JOIN messaging_channels c ON c.organization_id=m.organization_id AND c.id=m.channel_id WHERE m.organization_id=$1 AND m.id=$2`,
+        [input.organizationId,input.messageId])).rows[0];
+      // QR reconciliation takes the channel before the provider-ID lock. Meta
+      // keeps its existing provider-ID serialization; adding an exclusive
+      // channel lock would invert the status-event FK/admission lock order.
+      if(channel?.provider==='BAILEYS')await lockAttendanceChannel(transaction,input.organizationId,channel.channel_id);
       if (input.outcome.state === "SENT") {
         const messageKey = first(
           await transaction.query<
@@ -1509,6 +1501,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
           )!;
         }
       }
+      await completeQrDispatchAttempt(transaction,{organizationId:input.organizationId,channelId:owned.channelId,conversationId:owned.conversationId,
+        messageId:input.messageId,leaseToken:input.leaseToken,state:input.outcome.state,providerId:upstreamMessageId});
       if (retrySafe) {
         await transaction.query(
           `UPDATE messaging_outbox
@@ -1634,6 +1628,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                ON job_message.organization_id = job.organization_id AND job_message.id = job.message_id
             WHERE job.organization_id = $1 AND job.status = 'PENDING'
               AND job_message.created_at <= $3
+              AND NOT EXISTS(SELECT 1 FROM qr_outbound_observations observation WHERE observation.organization_id=job.organization_id
+                AND observation.conversation_id=job.conversation_id AND observation.blocking)
               AND EXISTS (
                 SELECT 1 FROM messaging_conversations automation_conversation
                 WHERE automation_conversation.organization_id=job.organization_id
@@ -1703,9 +1699,12 @@ export function createPostgresMessagingRepository(): MessagingRepository {
             consentStatus: ConsentStatus;
             incomingOccurredAt: Date;
             provider: "META" | "BAILEYS";
+            qrObservationsSettled: boolean;
           }
         >(
-          `SELECT conversation.mode, (SELECT provider FROM messaging_channels channel WHERE channel.organization_id=message.organization_id AND channel.id=message.channel_id) AS provider, contact.suppressed_at AS "suppressedAt",
+          `SELECT conversation.mode, NOT EXISTS(SELECT 1 FROM qr_outbound_observations observation WHERE observation.organization_id=message.organization_id
+            AND observation.conversation_id=message.conversation_id AND observation.blocking) AS "qrObservationsSettled",
+            (SELECT provider FROM messaging_channels channel WHERE channel.organization_id=message.organization_id AND channel.id=message.channel_id) AS provider, contact.suppressed_at AS "suppressedAt",
                 contact.consent_status AS "consentStatus",
                 message.created_at AS "incomingOccurredAt"
            FROM messaging_bot_jobs job
@@ -1723,6 +1722,12 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       );
       if (!owner)
         throw new MessagingRepositoryError("INVALID_OUTBOX_CLAIM", 409);
+      if(owner.qrObservationsSettled===false) {
+        await transaction.query(`UPDATE messaging_bot_jobs SET status='PENDING',lease_token=null,lease_expires_at=null,
+          canonical_error_code='QR_OBSERVATION_RECONCILE_REQUIRED',updated_at=now() WHERE organization_id=$1 AND message_id=$2 AND lease_token=$3`,
+          [input.organizationId,input.messageId,input.leaseToken]);
+        return {kind:'paused',messages:[]};
+      }
       const completionNow = input.now ?? new Date();
       const policyFailure = owner.suppressedAt
         ? "CONTACT_SUPPRESSED"

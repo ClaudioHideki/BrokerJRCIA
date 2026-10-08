@@ -16,6 +16,15 @@ describe('serial conversation input persistence', () => {
     lab = await attendanceDatabase();
   }, 60000);
   afterAll(async () => { await lab?.dispose(); });
+  async function expireSyntheticDelay(org:string){
+    // Move both persisted deadlines together: changing only the wait row would
+    // model corrupt state rather than an elapsed clock after worker replacement.
+    await lab.database.pool.query(`update automation_executions set state=jsonb_set(state,'{waiting,wakeAt}',
+      to_jsonb(floor(extract(epoch from now()-interval '1 second')*1000)::bigint))
+      where organization_id=$1 and status='WAITING'`,[org]);
+    await lab.database.pool.query(`update automation_waits w set wake_at=to_timestamp((e.state->'waiting'->>'wakeAt')::double precision/1000),state=e.state
+      from automation_executions e where w.organization_id=$1 and e.organization_id=w.organization_id and e.id=w.execution_id and w.kind='DELAY' and w.status='WAITING'`,[org]);
+  }
   async function setup(graph = questionGraph) {
     const tenant = await seedAttendanceTenant(lab.database, false);
     await lab.database.pool.query('insert into flow_features(organization_id,enabled) values($1,true)', [tenant.org]);
@@ -101,13 +110,28 @@ describe('serial conversation input persistence', () => {
       edges: [edge('start', 'delay'), edge('delay', 'answer'), edge('answer', 'end')] };
     const t = await setup(graph), first = await t.route('Olá');
     await t.worker().runOnce(t.org);
+    const persisted=(await lab.database.pool.query('select state from automation_executions where organization_id=$1 and id=$2',[t.org,first.execution!.id])).rows[0].state;
+    const deadline=(await lab.database.pool.query("select wake_at from automation_waits where organization_id=$1 and kind='DELAY' and status='WAITING'",[t.org])).rows[0].wake_at;
+    expect(persisted.waiting.wakeAt).toBe(deadline.getTime());
     await t.route('Maria');
     expect(await t.worker().runOnce(t.org)).toEqual({ processed: false });
     expect(await t.worker().releaseDueWaits(t.org)).toBe(0);
-    await lab.database.pool.query("update automation_waits set wake_at=now()-interval '1 second' where organization_id=$1 and kind='DELAY'", [t.org]);
+    await expireSyntheticDelay(t.org);
     expect(await t.worker().releaseDueWaits(t.org)).toBe(1);
+    expect(await t.worker().releaseDueWaits(t.org)).toBe(0);
     await t.worker().runOnce(t.org); await t.worker().runOnce(t.org);
     expect(await t.worker().get(t.org, first.execution!.id)).toMatchObject({ status: 'COMPLETED', state: { variables: { answer: 'Maria' } } });
+  });
+  it('does not execute an expired timer after human takeover and worker replacement',async()=>{
+    const graph={nodes:[node('start','start'),node('delay','delay',{seconds:60}),node('answer','message',{text:'Automatic reply'}),node('end','end')],edges:[edge('start','delay'),edge('delay','answer'),edge('answer','end')]};
+    const t=await setup(graph),first=await t.route('Olá');
+    expect(await t.worker().runOnce(t.org)).toMatchObject({status:'WAITING'});
+    await expireSyntheticDelay(t.org);
+    await lab.database.pool.query("update messaging_conversations set mode='HUMAN' where organization_id=$1 and id=$2",[t.org,t.conversation]);
+    expect(await t.worker().releaseDueWaits(t.org)).toBe(1);
+    expect(await t.worker().runOnce(t.org)).toEqual({processed:false});
+    expect((await lab.database.pool.query('select count(*)::int as n from automation_outbox where organization_id=$1 and execution_id=$2',[t.org,first.execution!.id])).rows[0].n).toBe(0);
+    expect(await t.worker().get(t.org,first.execution!.id)).toMatchObject({status:'QUEUED'});
   });
   it('continues the published version originally selected while a newer version is published', async () => {
     const t = await setup(), first = await t.route('Olá');

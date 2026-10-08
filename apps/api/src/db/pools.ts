@@ -1,4 +1,5 @@
 import { Pool, type PoolConfig } from 'pg';
+import { loadDatabasePoolBudget } from './pool-budget.js';
 
 export interface DatabasePoolsConfig {
   app: Readonly<PoolConfig>;
@@ -12,8 +13,8 @@ export interface DatabasePools {
 }
 
 export function createDatabasePools(config: DatabasePoolsConfig): DatabasePools {
-  const appPool = new Pool({ ...config.app });
-  const authPool = new Pool({ ...config.auth });
+  const appPool = new Pool({ ...loadDatabasePoolBudget({}, 'API_APP'), ...config.app });
+  const authPool = new Pool({ ...loadDatabasePoolBudget({}, 'API_AUTH'), ...config.auth });
   let closing: Promise<void> | undefined;
 
   return {

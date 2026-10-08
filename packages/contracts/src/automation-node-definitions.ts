@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CompatibleAutomationHandoffConfigSchema } from './automation-handoff-v1.js';
+import { ScheduleNodeConfigSchema } from './automation-schedule.js';
 import { menuOptions, type FlowNode } from './flows.js';
 
 export const NodeDiagnosticSchema = z.object({
@@ -52,12 +53,12 @@ export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = 
   ...['ai-generate', 'ai-classify', 'ai-extract', 'ai-summarize', 'ai-agent'].map(type => define(type,
     ({ 'ai-generate': 'IA: gerar', 'ai-classify': 'IA: classificar', 'ai-extract': 'IA: extrair', 'ai-summarize': 'IA: resumir', 'ai-agent': 'Agente de IA' } as Record<string, string>)[type]!, 'AI',
     config({ target: safeKey, credentialId }), io, type === 'ai-agent' ? 'agente genérico fora do escopo de criação Broker' : 'R7 e U3b/U5 (IA delimitada e simulação)')),
-  define('delay', 'Aguardar', 'LOGIC', config({ seconds: z.coerce.number().int().min(1).max(604800) }), next, 'R4/U5 (silêncio e simulação de espera)'),
+  define('delay', 'Aguardar', 'LOGIC', config({ seconds: z.coerce.number().int().min(1).max(604800) }), next),
   define('subflow', 'Subflow versionado', 'LOGIC', config({ automationId: credentialId, version: z.coerce.number().int().positive(), timeoutMs: z.preprocess(input => input ?? 10000, z.coerce.number().int().min(100).max(30000)).optional() }), next, 'R6/U3b/U5 (seletor e simulação de dependências)'),
   define('handoff', 'Atendimento humano', 'HUMAN', CompatibleAutomationHandoffConfigSchema, terminal),
   define('end', 'Encerrar', 'LOGIC', config(), terminal),
   define('media', 'Enviar mídia', 'CONVERSATION', config({ url: z.url(), mediaType: z.enum(['image', 'audio', 'video', 'document']) }), io, 'R6/U3b (mídia por capacidade)', false),
-  define('schedule', 'Horário', 'LOGIC', config({ timezone: z.string().min(1), schedule: z.array(z.unknown()).min(1) }), () => ['open', 'closed'], 'R6/U3b (horários e fuso)', false),
+  define('schedule', 'Horário', 'LOGIC', ScheduleNodeConfigSchema, () => ['open', 'closed']),
   define('tag', 'Adicionar etiqueta', 'HUMAN', config({ tag: z.string().min(1) }), io, 'R3/R6/U3b (catálogo e ação de etiqueta)', false),
   define('attribute', 'Definir atributo', 'HUMAN', config({ name: z.string().min(1), value: z.unknown().refine(input => input !== undefined, 'Informe um valor.') }), io, 'R3/R6/U3b (atributos autorizados)', false),
   define('note', 'Nota interna', 'HUMAN', config({ text }), io, 'R6/U3b (nota na central)', false),

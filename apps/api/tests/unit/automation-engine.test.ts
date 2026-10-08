@@ -5,8 +5,20 @@ import { executeAutomation, validateAutomationGraph } from '../../src/modules/au
 const handoffConfig={handoffVersion:1,destination:{integrationId:'22222222-2222-4222-8222-222222222222',destinationRevision:2,accountId:4,inboxId:8,credentialRevision:3},target:{teamId:7,agentId:null}};
 const node=(id:string,type:string,data:Record<string,unknown>={})=>({id,type,label:id,position:{x:0,y:0},data});
 describe('automation runtime v2 engine',()=>{
+  it('routes business hours by the supplied clock and configured timezone, with date exceptions',async()=>{
+    const graph={nodes:[node('start','start'),node('hours','schedule',{timezone:'America/Sao_Paulo',weekly:[{day:2,start:'09:00',end:'18:00'}],exceptions:[{date:'2030-01-01',intervals:[]}]}),node('open','message',{text:'Aberto'}),node('closed','message',{text:'Fechado'}),node('end','end')],edges:[{id:'s',source:'start',target:'hours',port:'next'},{id:'o',source:'hours',target:'open',port:'open'},{id:'c',source:'hours',target:'closed',port:'closed'},{id:'oe',source:'open',target:'end',port:'next'},{id:'ce',source:'closed',target:'end',port:'next'}]};
+    const root={automationId:'11111111-1111-4111-8111-111111111111',version:1,graph,runtimeStateVersion:2 as const};
+    expect(validateAutomationGraph(graph)).toEqual([]);
+    const resolve=async()=>{throw new Error('unexpected dependency');};
+    for(const [at,text] of [['2030-01-01T15:00:00Z','Fechado'],['2030-01-08T12:00:00Z','Aberto'],['2030-01-08T21:00:00Z','Fechado']]){
+      const result=await executeAutomation(root,{text:'Olá',eventType:'MESSAGE',now:new Date(at!)},resolve);
+      expect(result).toMatchObject({status:'COMPLETED',effects:[{kind:'SEND_TEXT',payload:{text}}]});
+      expect(result.trace.find(entry=>entry.nodeId==='hours')?.output).toMatchObject({open:text==='Aberto',timezone:'America/Sao_Paulo'});
+    }
+  });
   it.each(AUTOMATION_NODE_DEFINITIONS.filter(definition=>definition.availability==='AVAILABLE').map(definition=>definition.type))('executes and simulates available %s without external IO',async type=>{
-    const configs:Record<string,Record<string,unknown>>={handoff:handoffConfig,message:{text:'Olá'},input:{variable:'answer',text:'Nome?'},menu:{text:'Escolha',options:[{value:'1',label:'A'},{value:'2',label:'B'}]},condition:{field:'message',operator:'equals',value:'oi'},variable:{variable:'name',value:'Ana'}};
+    const configs:Record<string,Record<string,unknown>>={handoff:handoffConfig,message:{text:'Olá'},input:{variable:'answer',text:'Nome?'},menu:{text:'Escolha',options:[{value:'1',label:'A'},{value:'2',label:'B'}]},condition:{field:'message',operator:'equals',value:'oi'},variable:{variable:'name',value:'Ana'},delay:{seconds:5}};
+    configs.schedule={timezone:'UTC',weekly:[{day:1,start:'09:00',end:'18:00'}]};
     const current=node('current',type,configs[type]??{});
     const nodes=type==='start'?[current,node('end','end')]:['end','handoff'].includes(type)?[node('start','start'),current]:[node('start','start'),current,node('end','end')];
     const edges=type==='start'?[]:[{id:'s',source:'start',target:'current',port:'next'}];
@@ -36,6 +48,20 @@ describe('automation runtime v2 engine',()=>{
     expect(first).toMatchObject({status:'WAITING',wait:{kind:'DELAY',nodeId:'delay'}});expect(first.wait?.wakeAt?.toISOString()).toBe('2030-01-01T00:00:05.000Z');
     const resumed=await executeAutomation(root,{text:'',eventType:'TIMER',now:new Date('2030-01-01T00:00:05Z')},async()=>{throw new Error('unexpected');},first.state);
     expect(resumed.status).toBe('COMPLETED');expect(resumed.effects).toEqual([expect.objectContaining({kind:'SEND_TEXT',payload:{text:'Pronto, olá'}})]);
+  });
+  it('keeps an early timer waiting after serialization and ignores a message during the delay',async()=>{
+    const graph={nodes:[node('start','start'),node('delay','delay',{seconds:5}),node('message','message',{text:'Pronto, {{message}}'}),node('end','end')],edges:[
+      {id:'a',source:'start',target:'delay',port:'next'},{id:'b',source:'delay',target:'message',port:'next'},{id:'c',source:'message',target:'end',port:'next'}]} as AutomationGraphV1;
+    const root={automationId:'11111111-1111-4111-8111-111111111111',version:3,graph,runtimeStateVersion:2 as const};
+    const resolve=async()=>{throw new Error('unexpected dependency');};
+    const first=await executeAutomation(root,{text:'original',eventType:'MESSAGE',now:new Date('2030-01-01T00:00:00Z')},resolve);
+    const early=await executeAutomation(root,{text:'',eventType:'TIMER',now:new Date('2030-01-01T00:00:04Z')},resolve,JSON.parse(JSON.stringify(first.state)));
+    expect(early).toMatchObject({status:'WAITING',effects:[],wait:{kind:'DELAY'}});
+    expect(early.wait?.wakeAt?.toISOString()).toBe('2030-01-01T00:00:05.000Z');
+    const ignored=await executeAutomation(root,{text:'nova',eventType:'MESSAGE',now:new Date('2030-01-01T00:00:04Z')},resolve,early.state);
+    expect(ignored).toMatchObject({status:'WAITING',effects:[],state:{variables:{message:'original'}}});
+    const due=await executeAutomation(root,{text:'',eventType:'TIMER',now:new Date('2030-01-01T00:00:05Z')},resolve,ignored.state);
+    expect(due).toMatchObject({status:'COMPLETED',effects:[{kind:'SEND_TEXT',payload:{text:'Pronto, original'}}]});
   });
   it('pins subflow versions and rejects runtime recursion',async()=>{
     const child={nodes:[node('child-start','start'),node('child-message','message',{text:'filho'}),node('child-end','end')],edges:[{id:'a',source:'child-start',target:'child-message',port:'next'},{id:'b',source:'child-message',target:'child-end',port:'next'}]} as AutomationGraphV1;

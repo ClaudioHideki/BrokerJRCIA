@@ -20,6 +20,10 @@ async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER'
       ...{async getConversation(organizationId:string,conversationId:string){organizations.push(organizationId);return {id:conversationId,channelId:channel,contactId:channel,mode:'HUMAN' as const,privateField:'must-not-leak'};}},
       async listChannels(organizationId: string) { organizations.push(organizationId); return { data: [{ id: channel, provider: 'META' as const, ownerRevision: 0, botPublicId: null, credentialReference: 'must-not-leak' }] }; },
       async listTemplates() { return { data: [] }; }, async listConversations() { return { data: [] }; }, async listMessages() { return { data: [] }; },
+      async listQrOutboundObservations(organizationId){organizations.push(organizationId);return {data:[]};},
+      async abandonQrOutboundObservation(organizationId,id,input){organizations.push(organizationId);mutations++;return {id,revision:input.expectedRevision+1,blocking:false,disposition:'ABANDONED' as const,reason:'QR_OBSERVATION_ABANDONED' as const,attempts:[]};},
+      async listQrDispatchAttempts(organizationId){organizations.push(organizationId);return {data:[]};},
+      async abandonQrDispatchAttempt(organizationId,id,input){organizations.push(organizationId);mutations++;return {id,messageId:id,revision:input.expectedRevision+1,state:'ABANDONED' as const};},
       async getTemplateStatus(organizationId, channelId, templateId) {
         templateStatusLookups.push({ organizationId, channelId, templateId });
         return { observation: 'NOT_OBSERVED' as const, id: templateId, checkedAt: '2026-09-25T12:00:00.000Z' };
@@ -44,6 +48,24 @@ async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER'
     setCurrentRole(value: typeof role | null) { currentRole = value; } };
 }
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
+it('expõe pendência pelo tenant atual e reserva abandono à membership administrativa atual',async()=>{
+ const h=await harness('OWNER'),url=`/v1/messaging/qr-outbound-observations/${channel}/abandon`,payload={expectedRevision:1,attemptIds:[],reason:'Abandono sintético sem envio'};
+ expect((await h.app.inject({url:`/v1/messaging/conversations/${channel}/qr-outbound-observations`,headers:h.headers})).statusCode).toBe(200);
+ h.setCurrentRole('OPERATOR');expect((await h.app.inject({method:'POST',url,headers:h.headers,payload})).statusCode).toBe(403);
+ h.setCurrentRole('OWNER');expect((await h.app.inject({method:'POST',url,headers:h.headers,payload})).statusCode).toBe(200);
+ expect(h.organizations).toEqual([org,org]);expect(h.mutations()).toBe(1);
+ expect((await h.app.inject({method:'POST',url,headers:{'x-jrc-api-key':'existing-instance-key'},payload})).statusCode).toBe(403);
+ expect((await h.app.inject({method:'POST',url,headers:h.headers,payload:{...payload,organizationId:org}})).statusCode).toBe(400);
+ expect(h.mutations()).toBe(1);
+});
+it('reserva abandono de tentativa sem eco ao administrador atual e não aceita prova de envio forjada',async()=>{
+ const h=await harness('OWNER'),url=`/v1/messaging/qr-dispatch-attempts/${channel}/abandon`,payload={expectedRevision:2,reason:'Sem eco, abandono sem envio'};
+ expect((await h.app.inject({url:`/v1/messaging/conversations/${channel}/qr-dispatch-attempts`,headers:h.headers})).statusCode).toBe(200);
+ h.setCurrentRole('OPERATOR');expect((await h.app.inject({method:'POST',url,headers:h.headers,payload})).statusCode).toBe(403);
+ h.setCurrentRole('OWNER');expect((await h.app.inject({method:'POST',url,headers:h.headers,payload:{...payload,providerMessageId:'forged-id'}})).statusCode).toBe(400);
+ expect((await h.app.inject({method:'POST',url,headers:h.headers,payload})).statusCode).toBe(200);
+ expect(h.mutations()).toBe(1);expect(h.organizations).toEqual([org,org]);
+});
 it('opens a conversation by exact identity with current tenant, no-store and public fields only',async()=>{
  const h=await harness('OPERATOR'),url=`/v1/messaging/conversations/${channel}`;
  const response=await h.app.inject({method:'GET',url,headers:h.headers});

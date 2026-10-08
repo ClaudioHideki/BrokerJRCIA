@@ -5,6 +5,20 @@ import { welcomeFlow } from '../src/flows.js';
 import { readFileSync } from 'node:fs';
 
 describe('canonical automation node definitions', () => {
+  it('offers a validated business-hours node with distinct open and closed paths',()=>{
+    const schedule=getNodeDefinition('schedule',1)!;
+    expect(schedule).toMatchObject({availability:'AVAILABLE',runtimeSupported:true});
+    expect(schedule.schema.safeParse({timezone:'America/Sao_Paulo',weekly:[{day:1,start:'09:00',end:'18:00'}]}).success).toBe(true);
+    expect(schedule.schema.safeParse({timezone:'Unknown/Zone',weekly:[{day:1,start:'18:00',end:'09:00'}]}).success).toBe(false);
+    expect(schedule.ports({id:'hours',type:'schedule',label:'Horário',position:{x:0,y:0},data:{}})).toEqual(['open','closed']);
+  });
+  it('offers waiting with bounded seconds and the same next port used by the engine',()=>{
+    const delay=getNodeDefinition('delay',1)!;
+    expect(delay.availability).toBe('AVAILABLE');
+    expect(delay.schema.safeParse({seconds:5}).success).toBe(true);
+    for(const seconds of [0,-1,1.5,604801])expect(delay.schema.safeParse({seconds}).success).toBe(false);
+    expect(delay.ports({id:'wait',type:'delay',label:'wait',position:{x:0,y:0},data:{seconds:5}})).toEqual(['next']);
+  });
   it('keeps the documented available matrix aligned with tested editor/runtime families', () => {
     const documentation=readFileSync(new URL('../../../docs/automations/node-capabilities.md', import.meta.url),'utf8');
     const documented=[...documentation.matchAll(/^\| (\S+) \| AVAILABLE \|/gm)].map(match=>match[1]);
@@ -12,7 +26,7 @@ describe('canonical automation node definitions', () => {
     for(const type of documented)expect(getNodeDefinition(type!,1)).toMatchObject({runtimeSupported:true,capabilitiesRequired:[],unavailableReason:null});
   });
   it('recognizes versioned legacy nodes independently of creation availability', () => {
-    for (const type of ['sql', 'code', 'ai-agent', 'http', 'delay', 'media', 'schedule', 'tag', 'attribute', 'note', 'resolve']) {
+    for (const type of ['sql', 'code', 'ai-agent', 'http', 'media', 'tag', 'attribute', 'note', 'resolve']) {
       const definition = getNodeDefinition(type, 1);
       expect(definition, type).not.toBeNull();
       expect(definition?.availability).toBe('UNAVAILABLE');

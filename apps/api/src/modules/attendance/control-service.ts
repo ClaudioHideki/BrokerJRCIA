@@ -6,6 +6,9 @@ export type AttendanceGate = {allowed:boolean;revision:number;state:'NONE'|'INIT
 
 /** Caller locks the channel before executions/jobs/conversation. This read never resumes a session. */
 export async function readChatwootAttendanceGate(tx:TenantTransaction,input:AttendanceGateInput):Promise<AttendanceGate> {
+  if((await tx.query(`SELECT 1 FROM qr_outbound_observations WHERE organization_id=$1 AND channel_id=$2
+    AND conversation_id=$3 AND blocking LIMIT 1`,[input.organizationId,input.channelId,input.conversationId])).rowCount)
+    return {allowed:false,revision:0,state:'RECONCILE',cycle:null};
   const row=(await tx.query<{revision:number;state:AttendanceGate['state'];cycle:number;pending:boolean;current_cycle:number|null;local_mode:string;current_scope:boolean}>(`
     SELECT c.revision,c.state,c.cycle,m.mode AS local_mode,
       EXISTS(SELECT 1 FROM chatwoot_connections x JOIN chatwoot_accounts a ON a.organization_id=x.organization_id

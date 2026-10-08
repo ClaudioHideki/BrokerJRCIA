@@ -287,8 +287,8 @@ export function buildApp(options: BuildAppOptions = {}) {
   ) {
     const config = runtimeConfig!;
     const pools = createDatabasePools({
-      app: { connectionString: config.databaseUrl },
-      auth: { connectionString: config.authDatabaseUrl },
+      app: { connectionString: config.databaseUrl, ...config.databasePools.app },
+      auth: { connectionString: config.authDatabaseUrl, ...config.databasePools.auth },
     });
     const redisClient = createRuntimeRedisClient({
       url: config.redisUrl,
@@ -537,8 +537,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         throw new Error("INVALID_PLATFORM_CONFIGURATION");
       const platformPool = new Pool({
         connectionString: messagingEnvironment.PLATFORM_DATABASE_URL,
-        max: 4,
-        connectionTimeoutMillis: 5000,
+        ...config.databasePools.platform,
         statement_timeout: 30000,
       });
       const lifecycle = createLifecycleService({

@@ -3,6 +3,7 @@ import { AUTOMATION_ORIGIN, AutomationGraphV1Schema, AutomationHandoffConfigSche
 import { z } from 'zod';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import { executeAutomation, validateAutomationGraph } from './engine.js';
+import { simulateConversation, type SimulationInput } from './simulation.js';
 import { createPostgresAutomationRepository, type AutomationRepository, type DefinitionPageCursor, type DefinitionRow, type ExecutionRow, type OutboxKind, type OutboxRow, type VersionRow } from './repository.js';
 import type { AutomationSummary, PublishedAutomation, RuntimeState } from './types.js';
 import { createPostgresMessagingRepository, type MessagingRepository } from '../messaging/repository.js';
@@ -116,14 +117,13 @@ export function createAutomationService(options:AutomationServiceOptions){
       const graph=AutomationGraphV1Schema.parse(input.graph);
       const updated=await repository.updateDefinition(tx,{org,id,name:input.name.trim(),graph,revision:input.revision});if(!updated)throw new AutomationError('AUTOMATION_CHANGED',409);return definition(updated);});},
     validate:(org:string,id:string)=>options.transact(org,async tx=>{const row=await getDefinition(tx,org,id);const diagnostics=validateAutomationGraph(row.draftGraph);if(!diagnostics.length)await validateDependencies(tx,org,id,row.draftGraph);return {valid:diagnostics.length===0,diagnostics,errors:nodeDiagnosticsToStrings(diagnostics)};}),
-    simulate:(org:string,id:string,input:{text:string;replies?:string[]})=>options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);
+    simulate:(org:string,id:string,input:SimulationInput)=>options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);
       await validateDependencies(tx,org,id,row.draftGraph,2);
-      const replies=z.array(z.string().max(4096)).max(30).parse(input.replies??[]),root={automationId:id,version:row.activeVersion??1,graph:row.draftGraph,runtimeStateVersion:2 as const},resolve=(child:string,childVersion:number)=>resolveVersion(tx,org,child,childVersion);
-      let result=await executeAutomation(root,{text:input.text,eventType:'MESSAGE',now:new Date()},resolve);
-      const effects=[...result.effects],trace=[...result.trace];
-      for(const text of replies){if(result.status!=='WAITING'||result.wait?.kind!=='EVENT')throw new AutomationError('AUTOMATION_SIMULATION_NOT_WAITING',409);
-        result=await executeAutomation(root,{text,eventType:'MESSAGE',now:new Date()},resolve,result.state);effects.push(...result.effects);trace.push(...result.trace);}
-      return {...result,effects,trace};}),
+      const root={automationId:id,version:row.activeVersion??1,graph:row.draftGraph,runtimeStateVersion:2 as const},resolve=(child:string,childVersion:number)=>resolveVersion(tx,org,child,childVersion);
+      try{return await simulateConversation(root,input,resolve);}catch(error){
+        if(error instanceof Error&&error.message.startsWith('AUTOMATION_SIMULATION_'))throw new AutomationError(error.message,409);
+        throw error;
+      }}),
     publish:async(org:string,id:string,revision:number)=>{await available(org);
       const snapshot=await options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
         const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);await validateDependencies(tx,org,id,row.draftGraph,2);return row;});

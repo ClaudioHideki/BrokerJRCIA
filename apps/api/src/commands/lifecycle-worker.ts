@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as wait } from 'node:timers/promises';
 import { Pool } from 'pg';
+import { loadDatabasePoolBudget } from '../db/pool-budget.js';
 import { z } from 'zod';
 import { EvolutionProviderAdapter } from '@jrc/providers';
 import { createLifecycleService, withLifecycleWorkerTransaction } from '../modules/lifecycle/service.js';
@@ -12,7 +13,7 @@ export async function runLifecycleWorker(environment:NodeJS.ProcessEnv=process.e
   const interval=z.coerce.number().int().min(500).max(60000).default(3000).parse(environment.LIFECYCLE_WORKER_INTERVAL_MS);
   const provider=new EvolutionProviderAdapter({baseUrl:z.string().url().parse(environment.EVOLUTION_BASE_URL),
     apiKey:z.string().min(1).parse(environment.EVOLUTION_API_KEY)});
-  const pool=new Pool({connectionString:url,max:2,connectionTimeoutMillis:5000,statement_timeout:600000});
+  const pool=new Pool({connectionString:url,...loadDatabasePoolBudget(environment,'LIFECYCLE_WORKER'),statement_timeout:600000});
   const service=createLifecycleService({transact:work=>withLifecycleWorkerTransaction(pool,work),
     instanceExists:async(organizationId,upstreamKey)=>{
       const controller=new AbortController();

@@ -37,6 +37,7 @@ export function createMessagingWorker(options: MessagingWorkerOptions) {
   const { repository, transact } = options;
   return {
     async runOnce(organizationId: string): Promise<void> {
+      if(repository.recoverQrOutboundObservations)await transact(organizationId,tx=>repository.recoverQrOutboundObservations!(tx,organizationId));
       await options.flows?.settleHandoffs(organizationId);
       const botClaim = await transact(organizationId, (tx) =>
         repository.claimBotTurn(tx, {

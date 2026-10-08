@@ -11,6 +11,7 @@ export type ImportSource='JRC'|'N8N'|'TYPEBOT';
 export interface ImportNodeReport{sourceId:string;sourceType:string;classification:'EXACT'|'PARTIAL'|'UNSUPPORTED';targetType:string|null;notes:string[]}
 const record=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
 const string=(value:unknown)=>typeof value==='string'?value:'';
+const credentialNodeTypes=new Set(['http','sql','ai-generate','ai-classify','ai-extract','ai-summarize','ai-agent']);
 function typebot(document:Record<string,unknown>):{name:string;graph:AutomationGraphV1;nodes:ImportNodeReport[]}{const groups=Array.isArray(document.groups)?document.groups:[],rawBlocks=groups.flatMap(group=>Array.isArray(record(group).blocks)?record(group).blocks as unknown[]:[]),nodes:FlowNode[]=[{id:'start',type:'start',label:'Início importado',position:{x:40,y:120},data:{}}],report:ImportNodeReport[]=[];let x=300;
  for(const [index,raw] of rawBlocks.entries()){const block=record(raw),sourceId=string(block.id)||`typebot-${index}`,type=string(block.type),content=record(block.content),node:FlowNode={id:sourceId.slice(0,100),type:'unsupported',label:string(content.label||content.text).slice(0,160)||type||`Bloco ${index+1}`,position:{x,y:120},data:{sourceType:type}};x+=260;let classification:ImportNodeReport['classification']='UNSUPPORTED',notes:string[]=[];
   if(['text','textBubble'].includes(type)){node.type='message';node.data={text:string(content.richText||content.text||block.text)};classification='PARTIAL';notes=['Formatação rica foi convertida para texto.'];}
@@ -26,7 +27,7 @@ export function convertAutomationArtifact(requestedSource:ImportSource|'AUTO',ra
  // Compatibility follows the underlying artifact, including legacy JRC workflow wrappers.
  while(['jrc-flows/1','jrc-flows/2','jrc-broker-flows/1'].includes(string(document.format))&&record(document.flow).engine==='workflow'&&document.workflow)document=record(document.workflow);
  const source:ImportSource=Array.isArray(document.groups)?'TYPEBOT':Array.isArray(document.nodes)&&document.connections?'N8N':requestedSource==='AUTO'?'JRC':requestedSource;
- let converted:{name:string;graph:AutomationGraphV1;nodes:ImportNodeReport[]};const importWarnings:string[]=[];
+ let converted:{name:string;graph:AutomationGraphV1;nodes:ImportNodeReport[]};const importWarnings:string[]=[];let credentialsRemoved=false;
  if(isLocalJrcFlow(document))converted=convertLocalJrcFlow(document);
  else if(source==='TYPEBOT')converted=typebot(document);
  else{
@@ -34,21 +35,37 @@ export function convertAutomationArtifact(requestedSource:ImportSource|'AUTO',ra
   importWarnings.push(...imported.warnings.filter(warning=>warning==='Posições do canvas n8n foram ajustadas para caber no editor JRC.'));
   converted={name:imported.name,graph:imported.graph,nodes:sourceNodes.map((item,index)=>{
    const node=record(item),sourceType=string(node.type)||'jrc',target=imported.graph.nodes[index],notes:string[]=[];
-   if(node.credentials)notes.push('Credenciais removidas; selecione uma credencial do cofre.');
+   if(node.credentials){credentialsRemoved=true;notes.push('Credenciais removidas; selecione uma credencial do cofre.');}
    if(node.disabled===true)notes.push('Nó desabilitado na origem; reative somente após revisão.');
    if(source==='N8N')notes.push('Revise expressões, conexões e parâmetros convertidos.');
    return {sourceId:string(node.id)||String(index),sourceType,classification:(target?.type==='unsupported'?'UNSUPPORTED':source==='JRC'?'EXACT':'PARTIAL') as ImportNodeReport['classification'],targetType:target?.type==='unsupported'?null:target?.type??null,notes};
   })};
  }
- const reviewNeeded=converted.nodes.some(node=>node.classification!=='EXACT');
- if(reviewNeeded&&converted.graph.nodes.length>=150&&!converted.graph.nodes.some(node=>node.type==='unsupported')){
+ const conversionReviewNeeded=converted.nodes.some(node=>node.classification!=='EXACT');
+ let credentialRemappingRequired=false;
+ for(const node of converted.graph.nodes){
+  // Opaque IDs are references, not secrets. Only this executable configuration
+  // field requires a local selection; business data and subflow IDs stay intact.
+  if(!credentialNodeTypes.has(node.type)||!Object.hasOwn(node.data,'credentialId'))continue;
+  const data={...node.data};delete data.credentialId;node.data=data;
+  credentialsRemoved=true;credentialRemappingRequired=true;
+  const report=converted.nodes.find(item=>item.sourceId===node.id);
+  if(report){
+   if(report.classification==='EXACT')report.classification='PARTIAL';
+   report.notes.push('Referência removida de data.credentialId; selecione uma credencial local desta empresa antes de publicar.');
+  }
+ }
+ const reviewNeeded=conversionReviewNeeded||credentialRemappingRequired;
+ if(conversionReviewNeeded&&converted.graph.nodes.length>=150&&!converted.graph.nodes.some(node=>node.type==='unsupported')){
   // At capacity, keep the artifact valid while retaining a mandatory review blocker.
   const last=converted.graph.nodes.at(-1)!,report=converted.nodes.at(-1);
   last.type='unsupported';last.data={sourceType:'IMPORT_REVIEW_REQUIRED'};
   if(report){report.classification='UNSUPPORTED';report.targetType=null;report.notes.push('Revisar importação antes de publicar.');}
  }
- const summary={source,total:converted.nodes.length,exact:converted.nodes.filter(node=>node.classification==='EXACT').length,partial:converted.nodes.filter(node=>node.classification==='PARTIAL').length,unsupported:converted.nodes.filter(node=>node.classification==='UNSUPPORTED').length,credentialsRemoved:true,autoPublished:false,manualReviewRequired:reviewNeeded};
- if(summary.manualReviewRequired&&converted.graph.nodes.length<150){
+ const summary={source,total:converted.nodes.length,exact:converted.nodes.filter(node=>node.classification==='EXACT').length,partial:converted.nodes.filter(node=>node.classification==='PARTIAL').length,unsupported:converted.nodes.filter(node=>node.classification==='UNSUPPORTED').length,credentialsRemoved,autoPublished:false,manualReviewRequired:reviewNeeded};
+ // Missing credential configuration already prevents publication. A remapping
+ // alone must not add or replace unrelated nodes, even at the graph size limit.
+ if(conversionReviewNeeded&&converted.graph.nodes.length<150){
   let id='import-review';while(converted.graph.nodes.some(node=>node.id===id))id+='-review';
   converted.graph.nodes.push({id,type:'unsupported',label:'Revisar importação antes de publicar',position:{x:40,y:360},data:{sourceType:'IMPORT_REVIEW_REQUIRED'}});
  }

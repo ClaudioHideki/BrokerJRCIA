@@ -5,7 +5,7 @@ let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();},60000);
 afterAll(async()=>{await db?.dispose();});
 it('requires the directory baseline and reports a complete migration as ready',async()=>{
- expect(RUNTIME_SCHEMA_BASELINE).toBe('0048_central_cutover');
+ expect(RUNTIME_SCHEMA_BASELINE).toBe('0049_qr_outbound_observations');
  expect(await probeRequiredRuntimeSchema(sql=>db.database.pool.query(sql))).toBe(true);
 });
 it.each([
@@ -22,6 +22,8 @@ it.each([
  'ALTER TABLE local_attendance_team_members DROP CONSTRAINT local_attendance_team_members_pkey',
  'REVOKE UPDATE ON local_attendance_teams FROM jrc_app',
  'GRANT SELECT ON local_attendance_teams TO PUBLIC',
+ 'DROP TRIGGER lifecycle_qr_outbound_observations_block ON qr_outbound_observations',
+ 'ALTER TABLE qr_outbound_observations DISABLE TRIGGER lifecycle_qr_outbound_observations_block',
 ])('rejects a weakened local directory boundary: %s',async change=>{
  const client=await db.database.pool.connect();
  try{

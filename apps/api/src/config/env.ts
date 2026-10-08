@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { loadDatabasePoolBudget, type DatabasePoolBudget } from '../db/pool-budget.js';
 
 const SecretSchema = z.string().min(32);
 const BrowserCsrfSecretSchema = z.string().refine(
@@ -144,6 +145,7 @@ export interface AppConfig {
   port: number;
   databaseUrl: string;
   authDatabaseUrl: string;
+  databasePools: { app: DatabasePoolBudget; auth: DatabasePoolBudget; platform: DatabasePoolBudget };
   redisUrl: string;
   authRateLimit: { limit: number; ttlMs: number };
   publicIngressRateLimit: { ipLimit: number; resourceLimit: number };
@@ -199,6 +201,11 @@ export function loadAppConfig(
     port: parsed.PORT,
     databaseUrl: parsed.DATABASE_URL,
     authDatabaseUrl: parsed.AUTH_DATABASE_URL,
+    databasePools: {
+      app: loadDatabasePoolBudget(environment, 'API_APP'),
+      auth: loadDatabasePoolBudget(environment, 'API_AUTH'),
+      platform: loadDatabasePoolBudget(environment, 'API_PLATFORM'),
+    },
     redisUrl: parsed.REDIS_URL,
     authRateLimit: {
       limit: parsed.AUTH_RATE_LIMIT_MAX_ATTEMPTS,

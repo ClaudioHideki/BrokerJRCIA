@@ -378,6 +378,7 @@ describe('migrations PostgreSQL', () => {
       // 0034 (2) + 0039 (3) + 0042 (1) + 0044 (1) + 0045 (2).
       ...Array.from({length:9},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:3},()=>({policyname:'central_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:2},()=>({policyname:'qr_tenant',roles:['jrc_app'],cmd:'ALL'})),
       // 0043 revokes delegated access through the restricted definer function.
       {policyname:'embed_authorizations_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
       {policyname:'embed_sessions_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
@@ -484,7 +485,7 @@ describe('migrations PostgreSQL', () => {
     ].sort((a,b)=>a.policyname.localeCompare(b.policyname)));
   });
 
-  it('checks the reviewed 0034-0045 policy tables, expressions and restricted grants', async () => {
+  it('checks the reviewed 0034-0049 policy tables, expressions and restricted grants', async () => {
     const attendanceTables = [
       'attendance_owners', 'attendance_sessions', 'chatwoot_attendance_controls',
       'chatwoot_mirror_attempts', 'chatwoot_attendance_observations', 'attendance_handoff_operations', 'attendance_resume_operations',
@@ -493,7 +494,8 @@ describe('migrations PostgreSQL', () => {
     const commercialTables = ['commercial_plans', 'commercial_plan_versions', 'organization_commercial_plans'];
     const removalTables = ['group_company_removal_previews', 'group_company_removals', 'group_company_removal_children'];
     const centralTables = ['central_transport_bindings','central_runtime_events','central_cutover_operations'];
-    const tables = [...attendanceTables, ...centralTables, ...commercialTables, ...removalTables];
+    const qrTables = ['qr_dispatch_attempts','qr_outbound_observations'];
+    const tables = [...attendanceTables, ...centralTables, ...qrTables, ...commercialTables, ...removalTables];
     type ReviewedPolicy = { tablename: string; policyname: string; roles: string[]; cmd: string;
       permissive: string; qual: string | null; with_check: string | null };
     const connection = await database.pool.connect();
@@ -518,6 +520,10 @@ describe('migrations PostgreSQL', () => {
         ]),
         ...centralTables.flatMap(table => [
           policy(table, 'central_tenant', 'jrc_app', 'ALL', reference.qual, reference.with_check),
+          policy(table, 'lifecycle_migrator', 'jrc_migrator'),
+        ]),
+        ...qrTables.flatMap(table => [
+          policy(table, 'qr_tenant', 'jrc_app', 'ALL', reference.qual, reference.with_check),
           policy(table, 'lifecycle_migrator', 'jrc_migrator'),
         ]),
         ...commercialTables.flatMap(table => [
@@ -558,7 +564,7 @@ describe('migrations PostgreSQL', () => {
             has_table_privilege('jrc_auth',$1,'INSERT') AS auth_insert,
             has_table_privilege('jrc_auth',$1,'UPDATE') AS auth_update,
             has_table_privilege('jrc_auth',$1,'DELETE') AS auth_delete`, [`public.${table}`])).rows[0];
-        const tenantAccess = attendanceTables.includes(table) || centralTables.includes(table);
+        const tenantAccess = attendanceTables.includes(table) || centralTables.includes(table) || qrTables.includes(table);
         expect(grants, table).toEqual({ app_select: tenantAccess, app_insert: tenantAccess,
           app_update: tenantAccess, app_delete: table === 'local_attendance_team_members', auth_select: false, auth_insert: false,
           auth_update: false, auth_delete: false });

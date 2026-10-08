@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {setTimeout as wait} from 'node:timers/promises';
 import {Pool} from 'pg';
+import {loadDatabasePoolBudget} from '../db/pool-budget.js';
 import {z} from 'zod';
 import {withOrganizationTransaction} from '../db/tenant-transaction.js';
 import {createOutboxDispatcher} from '../modules/automations/service.js';
@@ -19,7 +20,7 @@ const ioKinds=['IO_HTTP','IO_SQL','IO_CODE','IO_AI'] as const;
 const object=(value:unknown)=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
 const text=(value:unknown)=>typeof value==='string'?value:'';
 export function loadAutomationIoWorkerConfig(environment:NodeJS.ProcessEnv){const databaseUrl=z.string().url().parse(environment.DATABASE_URL);if(new URL(databaseUrl).username!=='jrc_app')throw new Error('AUTOMATION_IO_WORKER_REQUIRES_APP_ROLE');return {databaseUrl,keyring:z.string().min(10).parse(environment.CREDENTIAL_VAULT_KEYS_JSON),sandboxUrl:z.string().url().parse(environment.AUTOMATION_SANDBOX_URL??'http://automation-sandbox:8080'),sandboxToken:z.string().min(32).parse(environment.AUTOMATION_SANDBOX_TOKEN),intervalMs:z.coerce.number().int().min(100).max(60000).default(1000).parse(environment.AUTOMATION_IO_WORKER_INTERVAL_MS)};}
-export async function runAutomationIoWorker(environment:NodeJS.ProcessEnv=process.env,watch=false){const config=loadAutomationIoWorkerConfig(environment),pool=new Pool({connectionString:config.databaseUrl,max:4,connectionTimeoutMillis:5000,statement_timeout:35000});
+export async function runAutomationIoWorker(environment:NodeJS.ProcessEnv=process.env,watch=false){const config=loadAutomationIoWorkerConfig(environment),pool=new Pool({connectionString:config.databaseUrl,...loadDatabasePoolBudget(environment,'AUTOMATION_IO_WORKER'),statement_timeout:35000});
  const instanceId=workerInstanceId();
  const enabled=automationRuntimeEnabled(environment),repository=createPostgresAutomationRepository(),transact=<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pool,org,work),credentials=createCredentialService({transact,vault:createCredentialVault(config.keyring)}),safeHttp=createAutomationSafeHttp({});
  const audit=async(item:OutboxRow,outcome:string,started:number,credentialId?:string,detail:Record<string,unknown>={})=>transact(item.organizationId,tx=>tx.query(`insert into automation_io_audit(organization_id,execution_id,node_id,kind,credential_id,outcome,duration_ms,detail) values($1,$2,$3,$4,$5,$6,$7,$8)`,[item.organizationId,item.executionId,item.nodeId,item.kind,credentialId??null,outcome,Date.now()-started,JSON.stringify(detail)]).then(()=>undefined));

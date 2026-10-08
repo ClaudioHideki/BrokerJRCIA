@@ -5,8 +5,9 @@ import { HandoffEditor } from '../automations/node-editors/HandoffEditor.js';
 import type { ApiClient } from '../api/client.js';
 import { InputEditor } from '../automations/node-editors/InputEditor.js';
 import { DataReferencePicker } from '../automations/node-editors/DataReferencePicker.js';
+import { ScheduleEditor } from '../automations/node-editors/ScheduleEditor.js';
 
-const portName=(port:string)=>port==='yes'?'Sim':port==='no'?'Não':port.startsWith('option-')?'Opção '+port.slice(7):'Continuar';
+const portName=(port:string)=>port==='yes'?'Sim':port==='no'?'Não':port==='open'?'Dentro do horário':port==='closed'?'Fora do horário':port.startsWith('option-')?'Opção '+port.slice(7):'Continuar';
 const ioTypes=['http','sql','code','ai-generate','ai-classify','ai-extract','ai-summarize','ai-agent'];
 type CatalogItem={type:string;label:string;description:string;category?:string};
 export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as readonly CatalogItem[],errorNodeIds=[],handoffContext}:{graph:FlowGraph;onChange:(graph:FlowGraph)=>void;editable:boolean;catalog?:readonly CatalogItem[];errorNodeIds?:readonly string[];handoffContext?:{client:ApiClient;organizationId:string}|undefined}){
@@ -68,6 +69,7 @@ export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as
   const definition=catalog.find(n=>n.type===type)!;
   const id=crypto.randomUUID();
   const defaults:Record<string,unknown>=type==='message'?{text:'Nova mensagem'}:type==='input'?{text:'Qual é sua resposta?',variable:'resposta'}:type==='menu'?{text:'Escolha uma opção:',variable:'menu.choice',options:[{value:'1',label:'Comercial'},{value:'2',label:'Suporte'}]}:type==='variable'?{variable:'variavel',value:''}:type==='condition'?{field:'message',operator:'equals',value:''}:type==='handoff'?{handoffVersion:1}:type==='delay'?{seconds:60}:type==='subflow'?{automationId:'',version:1,timeoutMs:10000}:type==='http'?{method:'GET',url:'https://',credentialId:'',target:'http.result',timeoutMs:15000}:type==='sql'?{credentialId:'',query:'SELECT 1',parameters:[],target:'sql.result',timeoutMs:5000,maxRows:100}:type==='code'?{code:'return input;',input:{},target:'code.result'}:type.startsWith('ai-')?{credentialId:'',model:'',content:'{{message}}',target:'ai.result',tools:[],allowedTools:[]}:type.startsWith('data-')||['json-parse','json-stringify','expression'].includes(type)?{target:'resultado'}:{};
+  if(type==='schedule')Object.assign(defaults,{timezone:'America/Sao_Paulo',weekly:[{day:1,start:'09:00',end:'18:00'}],exceptions:[]});
   emitGraph({...graph,nodes:[...graph.nodes,{id,type,label:definition.label,position:position??{x:80+(graph.nodes.length%4)*270,y:80+Math.floor(graph.nodes.length/4)*190},data:defaults}]});
   setSelected(id);
  };
@@ -121,6 +123,7 @@ export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as
    {node.type==='condition'&&<><DataReferencePicker key={node.id} nodes={graph.nodes} value={String(node.data.field??'message')} editable={editable} onChange={value=>data('field',value)}/><label>Comparação<select value={String(node.data.operator??'equals')} onChange={e=>data('operator',e.target.value)}><option value="equals">Igual a</option><option value="not_equals">Diferente de</option><option value="contains">Contém</option><option value="starts_with">Começa com</option><option value="present">Está preenchido</option></select></label></>}
    {(node.type==='variable'||node.type==='condition'&&node.data.operator!=='present')&&<label>Valor<input value={String(node.data.value??'')} maxLength={4096} onChange={e=>data('value',e.target.value)}/></label>}
    {node.type==='delay'&&<label>Segundos<input type="number" min="1" max="604800" value={String(node.data.seconds??60)} onChange={e=>data('seconds',e.target.value)}/></label>}
+   {node.type==='schedule'&&<ScheduleEditor data={node.data} editable={editable} onChange={next=>patch({data:next})}/>}
    {node.type==='subflow'&&<><label>ID da automação<input value={String(node.data.automationId??'')} onChange={e=>data('automationId',e.target.value)}/></label><label>Versão<input type="number" min="1" value={String(node.data.version??1)} onChange={e=>data('version',e.target.value)}/></label></>}
    {(ioTypes.includes(node.type)||node.type.startsWith('data-')||['json-parse','json-stringify','expression'].includes(node.type))&&<label>Variável de destino<input value={String(node.data.target??'')} onChange={e=>data('target',e.target.value)}/></label>}
    {ioTypes.includes(node.type)&&node.type!=='code'&&<label>ID da credencial<input value={String(node.data.credentialId??'')} onChange={e=>data('credentialId',e.target.value)} placeholder="UUID do cofre"/></label>}

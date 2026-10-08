@@ -78,6 +78,12 @@ it('requires migration 0031 for app-role readiness after a valid 0030 upgrade', 
     expect(await probeWithout('alter table automation_bindings drop constraint automation_binding_destination')).toBe(false);
     expect(await probeWithout('drop policy platform_boundary on economic_groups')).toBe(false);
     expect(await probeWithout('alter table economic_group_organizations no force row level security')).toBe(false);
+    expect(await probeWithout('drop policy qr_tenant on qr_outbound_observations')).toBe(false);
+    expect(await probeWithout('alter table qr_dispatch_attempts no force row level security')).toBe(false);
+    expect(await probeWithout('alter table qr_dispatch_attempts drop constraint qr_dispatch_confirmation')).toBe(false);
+    expect(await probeWithout('revoke update on qr_outbound_observations from jrc_app')).toBe(false);
+    expect(await probeWithout('alter table qr_dispatch_attempts drop column revision')).toBe(false);
+    expect(await probeWithout('alter table qr_outbound_observations drop column revision')).toBe(false);
   } finally {
     await database.dispose();
     if (!resolve(folder).startsWith(`${scratch}${sep}`)) {

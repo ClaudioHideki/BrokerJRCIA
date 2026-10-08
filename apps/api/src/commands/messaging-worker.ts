@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { createIntegrationRuntime } from "../modules/integrations/runtime.js";
 import { setTimeout } from "node:timers/promises";
 import { Pool } from "pg";
+import { loadDatabasePoolBudget } from '../db/pool-budget.js';
 import { z } from "zod";
 import { withOrganizationTransaction } from "../db/tenant-transaction.js";
 import { createPostgresMessagingRepository } from "../modules/messaging/repository.js";
@@ -90,8 +91,7 @@ export async function runMessagingWorker(
   const resolveTypebotClient = createTypebotClientResolver(environment);
   const pool = new Pool({
     connectionString: config.databaseUrl,
-    max: 4,
-    connectionTimeoutMillis: 5000,
+    ...loadDatabasePoolBudget(environment, 'MESSAGING_WORKER'),
     statement_timeout: 30_000,
   });
   const metaOnboarding = createMetaOnboardingService({
@@ -103,7 +103,7 @@ export async function runMessagingWorker(
     environment,
     metaOnboarding.resolveCredential,
   );
-  const authPool = controlConfig ? new Pool({ connectionString: controlConfig.authUrl, max: 2, connectionTimeoutMillis: 5000, statement_timeout: 30_000 }) : undefined;
+  const authPool = controlConfig ? new Pool({ connectionString: controlConfig.authUrl, ...loadDatabasePoolBudget(environment, 'MESSAGING_AUTH'), statement_timeout: 30_000 }) : undefined;
   const control = controlConfig && authPool ? (() => {
     const transact = <T>(org: string, work: Parameters<typeof withOrganizationTransaction<T>>[2]) => withOrganizationTransaction(pool, org, work);
     const engine = new EvolutionProviderAdapter({ baseUrl: controlConfig.baseUrl, apiKey: controlConfig.apiKey });

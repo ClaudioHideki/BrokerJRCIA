@@ -3,6 +3,7 @@ import { FlowGraphSchema, AutomationHandoffConfigSchema, hasNativeHandoffConfig,
   type AutomationGraphV1, type FlowNode } from '@jrc/contracts';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
 import { executeDataNode } from '../automation-integrations/data-nodes.js';
+import { isBusinessOpen } from './business-hours.js';
 import { assertRuntimeState, isRuntimeKey as safeKey, renderRuntimeText as renderFlowText,
   renderRuntimeValue, runtimeJson, runtimeStateVersion, runtimeText } from './runtime-state.js';
 
@@ -53,7 +54,9 @@ export async function executeAutomation(
     const waiting=published.graph.nodes.find(node=>node.id===state.waiting!.nodeId);
     if(!waiting)throw new Error('AUTOMATION_WAIT_NODE_MISSING');
     if(state.waiting.kind==='DELAY'){
-      if(input.eventType!=='TIMER')return finish({status:'WAITING',state,effects,trace,wait:{kind:'DELAY',nodeId:waiting.id}});
+      const wakeAt=state.waiting.wakeAt===undefined?undefined:new Date(state.waiting.wakeAt);
+      if(wakeAt&&!Number.isFinite(wakeAt.getTime()))throw new Error('AUTOMATION_DELAY_STATE_INVALID');
+      if(input.eventType!=='TIMER'||(wakeAt&&input.now.getTime()<wakeAt.getTime()))return finish({status:'WAITING',state,effects,trace,wait:{kind:'DELAY',nodeId:waiting.id,...(wakeAt?{wakeAt}:{})}});
       current=next(published.graph,waiting.id)??null;
     }else if(state.waiting.kind==='IO'){
       if(input.eventType!=='RESUME')return finish({status:'WAITING',state,effects,trace,wait:{kind:'IO',nodeId:waiting.id}});
@@ -110,7 +113,7 @@ export async function executeAutomation(
     }
     if(node.type==='delay'){
       const seconds=Number(node.data.seconds);const wakeAt=new Date(input.now.getTime()+seconds*1000);
-      state.nodeId=node.id;state.waiting={kind:'DELAY',nodeId:node.id};return finish({status:'WAITING',state,effects,trace,wait:{kind:'DELAY',nodeId:node.id,wakeAt}});
+      state.nodeId=node.id;state.waiting={kind:'DELAY',nodeId:node.id,...(stateVersion===2?{wakeAt:wakeAt.getTime()}:{})};return finish({status:'WAITING',state,effects,trace,wait:{kind:'DELAY',nodeId:node.id,wakeAt}});
     }
     if(node.type==='subflow'){
       const automationId=string(node.data.automationId),version=Number(node.data.version),returnNodeId=next(published.graph,node.id);
@@ -136,6 +139,11 @@ export async function executeAutomation(
     }
     if(node.type==='variable'){const key=string(node.data.variable);if(safeKey(key))variables[key]=stateVersion===2?renderRuntimeValue(node.data.value,variables):renderFlowText(node.data.value,variables);}
     let port='next';
+    if(node.type==='schedule'){
+      const open=isBusinessOpen(node.data,input.now);
+      record.output={open,timezone:node.data.timezone,at:input.now.toISOString()};
+      port=open?'open':'closed';
+    }
     if(node.type==='condition'){
       const normalize=(value:string)=>node.data.comparisonMode==='JRC_NORMALIZED'?value.toLowerCase().trim():value;
       const actual=normalize(runtimeText(variables[string(node.data.field)])),expected=normalize(renderFlowText(node.data.value,variables)),operator=string(node.data.operator);

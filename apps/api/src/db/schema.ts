@@ -83,6 +83,7 @@ export const messagingMessageSource = pgEnum("messaging_message_source", [
   "CONTACT",
   "OPERATOR",
   "AUTOMATION",
+  "EXTERNAL_OBSERVED",
 ]);
 export const messagingMessageState = pgEnum("messaging_message_state", [
   "ACCEPTED",
@@ -732,7 +733,7 @@ export const messagingMessages = pgTable(
       "messaging_messages_direction_source",
       sql`
     (${table.direction} = 'INCOMING' AND ${table.source} = 'CONTACT')
-    OR (${table.direction} = 'OUTGOING' AND ${table.source} IN ('OPERATOR', 'AUTOMATION'))
+    OR (${table.direction} = 'OUTGOING' AND ${table.source}::text IN ('OPERATOR', 'AUTOMATION', 'EXTERNAL_OBSERVED'))
   `,
     ),
     check(
@@ -936,6 +937,46 @@ export const messagingBotJobs = pgTable(
     ),
   ],
 );
+
+export const qrDispatchAttempts = pgTable('qr_dispatch_attempts', {
+  organizationId:uuid('organization_id').notNull().references(()=>organizations.id),id:uuid('id').notNull().defaultRandom(),
+  channelId:uuid('channel_id').notNull(),conversationId:uuid('conversation_id').notNull(),messageId:uuid('message_id').notNull(),
+  leaseToken:uuid('lease_token').notNull(),leaseExpiresAt:timestamp('lease_expires_at',{withTimezone:true}).notNull(),
+  providerMessageId:text('provider_message_id'),state:text('state').notNull().default('DISPATCHED'),...timestamps,
+  revision:integer('revision').notNull().default(1),abandonedBy:uuid('abandoned_by'),abandonmentReason:text('abandonment_reason'),
+},t=>[
+  primaryKey({columns:[t.organizationId,t.id]}),unique().on(t.organizationId,t.messageId,t.leaseToken),
+  foreignKey({columns:[t.organizationId,t.channelId,t.conversationId],foreignColumns:[messagingConversations.organizationId,messagingConversations.channelId,messagingConversations.id]}),
+  foreignKey({columns:[t.organizationId,t.conversationId,t.messageId],foreignColumns:[messagingMessages.organizationId,messagingMessages.conversationId,messagingMessages.id]}),
+  foreignKey({columns:[t.organizationId,t.abandonedBy],foreignColumns:[memberships.organizationId,memberships.userId]}),
+  check('qr_dispatch_attempts_revision_check',sql`${t.revision}>0`),
+  check('qr_dispatch_attempts_abandonment_check',sql`(${t.state}='ABANDONED')=(${t.abandonedBy} IS NOT NULL AND coalesce(length(btrim(${t.abandonmentReason})) BETWEEN 1 AND 500,false))`),
+  check('qr_dispatch_confirmation',sql`(${t.state}='CONFIRMED')=(${t.providerMessageId} IS NOT NULL)`),
+  check('qr_dispatch_attempts_state_check',sql`${t.state} IN ('DISPATCHED','CONFIRMED','REJECTED','UNKNOWN','ABANDONED')`),
+  check('qr_dispatch_attempts_provider_message_id_check',sql`${t.providerMessageId} IS NULL OR length(btrim(${t.providerMessageId})) BETWEEN 1 AND 256`),
+  index('qr_dispatch_uncertain').on(t.organizationId,t.conversationId,t.state).where(sql`${t.state} IN ('DISPATCHED','UNKNOWN','ABANDONED')`),
+]);
+
+export const qrOutboundObservations = pgTable('qr_outbound_observations', {
+  organizationId:uuid('organization_id').notNull().references(()=>organizations.id),id:uuid('id').notNull().defaultRandom(),
+  channelId:uuid('channel_id').notNull(),conversationId:uuid('conversation_id').notNull(),providerMessageId:text('provider_message_id').notNull(),
+  content:jsonb('content').notNull(),occurredAt:timestamp('occurred_at',{withTimezone:true}).notNull(),
+  disposition:text('disposition').notNull().default('RECONCILE'),blocking:boolean('blocking').notNull().default(true),messageId:uuid('message_id'),
+  revision:integer('revision').notNull().default(1),reason:text('reason').notNull().default('QR_ACK_PENDING'),
+  abandonedBy:uuid('abandoned_by'),abandonmentReason:text('abandonment_reason'),...timestamps,
+},t=>[
+  primaryKey({columns:[t.organizationId,t.id]}),unique().on(t.organizationId,t.channelId,t.providerMessageId),
+  foreignKey({columns:[t.organizationId,t.channelId,t.conversationId],foreignColumns:[messagingConversations.organizationId,messagingConversations.channelId,messagingConversations.id]}),
+  foreignKey({columns:[t.organizationId,t.conversationId,t.messageId],foreignColumns:[messagingMessages.organizationId,messagingMessages.conversationId,messagingMessages.id]}),
+  foreignKey({columns:[t.organizationId,t.abandonedBy],foreignColumns:[memberships.organizationId,memberships.userId]}),
+  check('qr_outbound_observations_provider_message_id_check',sql`length(btrim(${t.providerMessageId})) BETWEEN 1 AND 256`),
+  check('qr_outbound_observations_revision_check',sql`${t.revision}>0`),
+  check('qr_outbound_observations_disposition_check',sql`${t.disposition} IN ('RECONCILE','BROKER_ECHO','EXTERNAL_OBSERVED','ABANDONED')`),
+  check('qr_observation_disposition',sql`(${t.disposition} IN ('BROKER_ECHO','EXTERNAL_OBSERVED') AND ${t.messageId} IS NOT NULL AND NOT ${t.blocking})
+    OR (${t.disposition}='RECONCILE' AND ${t.messageId} IS NULL)
+    OR (${t.disposition}='ABANDONED' AND ${t.messageId} IS NULL AND NOT ${t.blocking} AND ${t.abandonedBy} IS NOT NULL AND coalesce(length(btrim(${t.abandonmentReason})) BETWEEN 1 AND 500,false))`),
+  index('qr_observations_pending').on(t.organizationId,t.conversationId,t.createdAt).where(sql`${t.disposition}='RECONCILE'`),
+]);
 
 export * from "./platform-schema.js";
 export * from "./tenancy-schema.js";

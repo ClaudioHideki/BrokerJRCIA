@@ -319,6 +319,17 @@ const ROUTE_POLICIES = Object.freeze({
     "NONE",
     "RLS_ORGANIZATION_AND_SAFE_OUTBOX_STATE",
   ),
+  ...Object.fromEntries([
+    'GET /v1/messaging/conversations/{id}/qr-outbound-observations',
+    'GET /v1/messaging/conversations/{id}/qr-dispatch-attempts',
+  ].map(route=>[route,policy('apps/api/src/http/routes/messaging.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR_VIEWER',true,
+    'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_CONVERSATION_METADATA_ONLY')])),
+  'POST /v1/messaging/qr-outbound-observations/{id}/abandon': policy('apps/api/src/http/routes/messaging.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'EXPECTED_REVISION_CHANNEL_LOCK_TRANSACTIONAL_AUDIT_NO_REPLAY','NO_STORE_METADATA_ONLY',
+    'RLS_CURRENT_ACTOR_OWNER_ADMIN_OBSERVATION_CONVERSATION_EXACT_UNKNOWN_ATTEMPTS_NO_ACTIVE_DISPATCH'),
+  'POST /v1/messaging/qr-dispatch-attempts/{id}/abandon': policy('apps/api/src/http/routes/messaging.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'EXPECTED_REVISION_CHANNEL_LOCK_TRANSACTIONAL_AUDIT_NO_REPLAY','NO_STORE_METADATA_ONLY',
+    'RLS_CURRENT_ACTOR_OWNER_ADMIN_ATTEMPT_CONVERSATION_MESSAGE_UNKNOWN_NO_PROVIDER_ID_NO_OUTBOX'),
   ...Object.fromEntries(
     [
       "GET /v1/platform/organizations/{id}/channels",

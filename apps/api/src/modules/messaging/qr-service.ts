@@ -11,6 +11,8 @@ import { requireActiveOrganization } from "../tenancy/operational-limits.js";
 import { registerPendingMedia } from "./media-store.js";
 import type { MessageContent } from "./types.js";
 import type { ChatwootHealth } from '../integrations/chatwoot-health.js';
+import { lockAttendanceChannel } from '../attendance/repository.js';
+import { recordQrOutboundObservation } from './qr-outbound-observation.js';
 
 const error = (code: string, status = 422) =>
   Object.assign(new Error(code), { code, status });
@@ -151,10 +153,12 @@ export function createQrMessagingService(options: QrServiceOptions) {
         ).rows[0];
         if (!channel || !row || channel.instanceId !== binding.instanceId)
           throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
-        for (const event of normalizeQrEvent(
-          payload,
-          row.upstream_instance_key,
-        )) {
+        const events=normalizeQrEvent(payload,row.upstream_instance_key);
+        // Acquire the exclusive lock before any per-message read lock in a mixed batch.
+        // Otherwise two incoming/outgoing batches could both try to upgrade a SHARE lock.
+        if(events.some(event=>event.kind==='outbound'||event.kind==='outbound-media'||event.kind==='status'))
+          await lockAttendanceChannel(tx,binding.organizationId,channelId);
+        for (const event of events) {
           if (event.kind === "connection") {
             await options.identity?.observe(tx, binding.organizationId, channelId, { connected: event.state === 'CONNECTED', phone: event.identity ?? null });
             await tx.query(
@@ -172,7 +176,9 @@ export function createQrMessagingService(options: QrServiceOptions) {
             });
             continue;
           }
-          await repository.findChannel(tx,binding.organizationId,channelId,{lock:true});
+          const observed=event.kind==='outbound'||event.kind==='outbound-media';
+          if(observed)await lockAttendanceChannel(tx,binding.organizationId,channelId);
+          else await repository.findChannel(tx,binding.organizationId,channelId,{lock:true});
           const contact = await repository.upsertContact(tx, {
             id: randomUUID(),
             organizationId: binding.organizationId,
@@ -188,7 +194,7 @@ export function createQrMessagingService(options: QrServiceOptions) {
             contactId: contact.id,
           });
           const content: MessageContent =
-            event.kind === "media"
+            'media' in event
               ? {
                   type: "MEDIA",
                   mediaId: await registerPendingMedia(
@@ -202,6 +208,11 @@ export function createQrMessagingService(options: QrServiceOptions) {
                   caption: event.caption,
                 }
               : event.content;
+          if(observed) {
+            await recordQrOutboundObservation(tx,{organizationId:binding.organizationId,channelId,conversationId:conversation.id,
+              upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt});
+            continue;
+          }
           await repository.recordIncoming(tx, {
             id: randomUUID(),
             organizationId: binding.organizationId,

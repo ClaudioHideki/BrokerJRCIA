@@ -26,6 +26,8 @@ import { ApiClientError, type ApiClient } from "../api/client.js";
 import { useApiClient, useSession } from "../auth/SessionProvider.js";
 import { AttendanceResumeDialog } from './AttendanceResumeDialog.js';
 import {LocalAttendancePanel} from '../attendance/LocalAttendancePanel.js';
+import {QrOutboundObservations} from './QrOutboundObservations.js';
+import {QrDispatchAttempts} from './QrDispatchAttempts.js';
 
 function safeError(error: unknown, fallback: string) {
   const apiError = error instanceof ApiClientError ? error : null;
@@ -907,9 +909,9 @@ export function MessagingPage() {
                 {messages.length > 0 ? (
                   <ol>
                     {messages.map((message) => (
-                      <li key={message.id} data-message-id={message.id}>
+                      <li key={message.id} id={`message-${message.id}`} data-message-id={message.id}>
                         <small>
-                          {directionLabel(message.direction)} · {message.state}
+                          {message.source==='EXTERNAL_OBSERVED'?'Saída observada no WhatsApp':directionLabel(message.direction)} · {message.state}
                         </small>
                         <p>{message.text}</p>
                         {message.media ? (
@@ -937,6 +939,12 @@ export function MessagingPage() {
                     ))}
                   </ol>
                 ) : null}
+                {selectedConversation&&selectedChannel?.provider==='BAILEYS'?<QrOutboundObservations
+                  key={`${organizationId}:${tenantRevision}:${selectedConversation.id}`} client={client} conversationId={selectedConversation.id}
+                  canAbandon={canConfigureAutomation} refreshRevision={messageRevision} onChanged={()=>setMessageRevision(v=>v+1)}/>:null}
+                {selectedConversation&&selectedChannel?.provider==='BAILEYS'?<QrDispatchAttempts
+                  key={`attempts:${organizationId}:${tenantRevision}:${selectedConversation.id}`} client={client} conversationId={selectedConversation.id}
+                  canAbandon={canConfigureAutomation} refreshRevision={messageRevision} onChanged={()=>setMessageRevision(v=>v+1)}/>:null}
                 <button
                   className="button button--ghost"
                   type="button"

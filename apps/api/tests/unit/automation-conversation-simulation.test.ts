@@ -11,6 +11,29 @@ function service(graph=nativeBot){
  return createAutomationService({enabled:false,repository:{getDefinition:vi.fn(async()=>row)} as unknown as AutomationRepository,transact:async(_org,work)=>work({query:async()=>({rows:[{status:'ACTIVE',moduleEnabled:true}]})} as unknown as TenantTransaction)});
 }
 describe('native bot conversation preview',()=>{
+ it('processes successive deadlines in their order within one virtual time advance',async()=>{
+  const graph={nodes:[node('start','start'),node('first','delay',{seconds:5}),node('message','message',{text:'Primeira espera'}),node('second','delay',{seconds:5}),node('done','message',{text:'Segunda espera'}),node('end','end')],edges:[edge('start','first'),edge('first','message'),edge('message','second'),edge('second','done'),edge('done','end')]};
+  const partial=await service(graph).simulate('tenant','bot',{text:'Olá',clock:'2030-01-01T00:00:00.000Z',events:[{type:'ELAPSE',seconds:7}]});
+  expect(partial).toMatchObject({status:'WAITING',wait:{kind:'DELAY',nodeId:'second'}});
+  expect(partial.wait?.wakeAt?.toISOString()).toBe('2030-01-01T00:00:10.000Z');
+  const complete=await service(graph).simulate('tenant','bot',{text:'Olá',clock:'2030-01-01T00:00:00.000Z',events:[{type:'ELAPSE',seconds:10}]});
+  expect(complete.status).toBe('COMPLETED');
+  expect(complete.effects.map(effect=>effect.payload.text)).toEqual(['Primeira espera','Segunda espera']);
+ });
+ it('advances virtual time through delay without replacing the captured message or using the network',async()=>{
+  const graph={nodes:[node('start','start'),node('delay','delay',{seconds:5}),node('message','message',{text:'Depois: {{message}}'}),node('input','input',{variable:'answer',text:'Nome?'}),node('thanks','message',{text:'Olá {{answer}}'}),node('end','end')],edges:[edge('start','delay'),edge('delay','message'),edge('message','input'),edge('input','thanks'),edge('thanks','end')]};
+  const fetchSpy=vi.spyOn(globalThis,'fetch');
+  try {
+   const input={text:'inicial',clock:'2030-01-01T00:00:00.000Z',events:[{type:'ELAPSE',seconds:3},{type:'MESSAGE',text:'ignorada'},{type:'ELAPSE',seconds:2},{type:'MESSAGE',text:'Pessoa'}]};
+   const result=await service(graph).simulate('tenant','bot',input);
+   expect(result).toMatchObject({status:'COMPLETED',state:{variables:{answer:'Pessoa'}}});
+   expect(result.effects.filter(item=>item.kind==='SEND_TEXT').map(item=>item.payload.text)).toEqual(['Depois: inicial','Nome?','Olá Pessoa']);
+   expect(fetchSpy).not.toHaveBeenCalled();
+   const partial=await service(graph).simulate('tenant','bot',{...input,events:[{type:'ELAPSE',seconds:4}]});
+   expect(partial).toMatchObject({status:'WAITING',effects:[],wait:{kind:'DELAY'}});
+   expect(partial.wait?.wakeAt?.toISOString()).toBe('2030-01-01T00:00:05.000Z');
+  } finally {fetchSpy.mockRestore();}
+ });
  it('tests menu, capture, condition and handoff without publication or external delivery',async()=>{
   const bot=service();
   expect(await bot.validate('tenant','bot')).toEqual({valid:true,diagnostics:[],errors:[]});

@@ -2,7 +2,7 @@ export type ConversationMode = "BOT" | "HUMAN";
 export type ConsentStatus = "UNKNOWN" | "OPTED_IN" | "OPTED_OUT";
 export type MessageDirection = "INCOMING" | "OUTGOING";
 export type OutgoingMessageSource = "OPERATOR" | "AUTOMATION";
-export type MessageSource = OutgoingMessageSource | "CONTACT";
+export type MessageSource = OutgoingMessageSource | "CONTACT" | "EXTERNAL_OBSERVED";
 export type MessageState =
   | "ACCEPTED"
   | "SENDING"
@@ -121,6 +121,7 @@ export interface OutboxClaim {
 }
 
 export type ClaimIneligibilityReason =
+  | "QR_OBSERVATION_RECONCILE_REQUIRED"
   | "FLOW_REVOKED"
   | "IDENTITY_CONFIRMATION_REQUIRED"
   | "ORGANIZATION_NOT_ACTIVE"

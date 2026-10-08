@@ -38,6 +38,52 @@ function openApiOperations(openapi) {
 }
 
 describe('dados reproduzíveis da auditoria de segurança', () => {
+  it('classifica as leituras QR P4 como metadados da conversa com membership corrente e no-store', async () => {
+    const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
+    const inventory = await buildRouteInventory({ rootDirectory: ROOT, openapi });
+    for (const [resource, metadata] of [
+      ['qr-outbound-observations', ['attempts', 'blocking', 'disposition', 'id', 'reason', 'revision']],
+      ['qr-dispatch-attempts', ['id', 'messageId', 'revision', 'state']],
+    ]) {
+      const path = `/v1/messaging/conversations/{id}/${resource}`;
+      const route = inventory.find(item => item.method === 'GET' && item.path === path);
+      expect(route).toMatchObject({
+        authentication: 'JWT_CURRENT_MEMBERSHIP', permission: 'OWNER_ADMIN_OPERATOR_VIEWER', tenantRls: true,
+        idempotency: 'READ_ONLY', challengeExposure: 'NO_STORE_METADATA_ONLY',
+        ownershipCheck: 'RLS_CURRENT_ORGANIZATION_CONVERSATION_METADATA_ONLY',
+        handlerFile: 'apps/api/src/http/routes/messaging.ts', requestSchemas: ['path:id'],
+      });
+      expect(route.cacheHeaders).toContain('Cache-Control');
+      const response = openapi.paths[path].get.responses['200'].content['application/json'].schema.properties.data.items;
+      expect(response.additionalProperties).toBe(false);
+      expect(Object.keys(response.properties).sort()).toEqual(metadata);
+    }
+  });
+
+  it.each([
+    ['qr-outbound-observations', 'RLS_CURRENT_ACTOR_OWNER_ADMIN_OBSERVATION_CONVERSATION_EXACT_UNKNOWN_ATTEMPTS_NO_ACTIVE_DISPATCH',
+      ['attemptIds', 'expectedRevision', 'reason'], ['attempts', 'blocking', 'disposition', 'id', 'reason', 'revision']],
+    ['qr-dispatch-attempts', 'RLS_CURRENT_ACTOR_OWNER_ADMIN_ATTEMPT_CONVERSATION_MESSAGE_UNKNOWN_NO_PROVIDER_ID_NO_OUTBOX',
+      ['expectedRevision', 'reason'], ['id', 'messageId', 'revision', 'state']],
+  ])('classifica o abandono QR P4 de %s como CAS administrativo auditado sem replay', async (resource, ownershipCheck, required, metadata) => {
+    const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
+    const inventory = await buildRouteInventory({ rootDirectory: ROOT, openapi });
+    const path = `/v1/messaging/${resource}/{id}/abandon`;
+    const route = inventory.find(item => item.method === 'POST' && item.path === path);
+    expect(route).toMatchObject({
+      authentication: 'JWT_CURRENT_MEMBERSHIP', permission: 'OWNER_ADMIN', tenantRls: true,
+      idempotency: 'EXPECTED_REVISION_CHANNEL_LOCK_TRANSACTIONAL_AUDIT_NO_REPLAY',
+      challengeExposure: 'NO_STORE_METADATA_ONLY', ownershipCheck, handlerFile: 'apps/api/src/http/routes/messaging.ts',
+      requestSchemas: ['body:application/json', 'path:id'],
+    });
+    expect(route.cacheHeaders).toContain('Cache-Control');
+    const operation = openapi.paths[path].post;
+    expect(operation.requestBody.content['application/json'].schema.required.slice().sort()).toEqual(required);
+    const response = operation.responses['200'].content['application/json'].schema;
+    expect(response.additionalProperties).toBe(false);
+    expect(Object.keys(response.properties).sort()).toEqual(metadata);
+  });
+
   it('registra o cutover central com autorização atual e reconciliação sem replay', async () => {
     const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
     const inventory = await buildRouteInventory({ rootDirectory: ROOT, openapi });

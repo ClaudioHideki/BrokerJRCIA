@@ -17,6 +17,9 @@ import {
   ConfigureBotRequestSchema,
   MessagingChannelViewSchema,
   MessageViewSchema,
+  QrOutboundObservationViewSchema, QrOutboundObservationsResponseSchema, AbandonQrOutboundObservationRequestSchema,
+  type QrOutboundObservationView, type AbandonQrOutboundObservationRequest,
+  QrDispatchAttemptViewSchema,QrDispatchAttemptsResponseSchema,AbandonQrDispatchAttemptRequestSchema,type QrDispatchAttemptView,type AbandonQrDispatchAttemptRequest,
   ConversationViewSchema,
   PROBLEM_CONTENT_TYPE,
   type ConfigureBotRequest,
@@ -38,6 +41,10 @@ import { SendTextRequestSchema, type SendTextRequest } from "@jrc/contracts";
 import { MediaError, safeMediaName, type BinaryMedia } from "@jrc/providers";
 
 export interface MessagingService {
+  listQrOutboundObservations?(organizationId:string,conversationId:string):Promise<{data:QrOutboundObservationView[]}>;
+  abandonQrOutboundObservation?(organizationId:string,id:string,input:AbandonQrOutboundObservationRequest,actorId:string):Promise<QrOutboundObservationView>;
+  listQrDispatchAttempts?(organizationId:string,conversationId:string):Promise<{data:QrDispatchAttemptView[]}>;
+  abandonQrDispatchAttempt?(organizationId:string,id:string,input:AbandonQrDispatchAttemptRequest,actorId:string):Promise<QrDispatchAttemptView>;
   getConversation?(organizationId: string, conversationId: string): Promise<ConversationView>;
   retryMessage?(
     organizationId: string,
@@ -254,6 +261,30 @@ export async function registerMessagingRoutes(
     currentMembership,
     automationAdministrator,
   ];
+  api.get('/v1/messaging/conversations/:id/qr-outbound-observations',{
+    preHandler:read,schema:{params:idParams,querystring:emptyQuery,response:{200:QrOutboundObservationsResponseSchema}},
+  },request=>{
+    if(!options.service.listQrOutboundObservations)throw Object.assign(new Error('MESSAGING_UNAVAILABLE'),{status:503});
+    return options.service.listQrOutboundObservations(tenant(request),request.params.id);
+  });
+  api.get('/v1/messaging/conversations/:id/qr-dispatch-attempts',{
+    preHandler:read,schema:{params:idParams,querystring:emptyQuery,response:{200:QrDispatchAttemptsResponseSchema}},
+  },request=>{
+    if(!options.service.listQrDispatchAttempts)throw Object.assign(new Error('MESSAGING_UNAVAILABLE'),{status:503});
+    return options.service.listQrDispatchAttempts(tenant(request),request.params.id);
+  });
+  api.post('/v1/messaging/qr-dispatch-attempts/:id/abandon',{
+    preHandler:administerAutomation,schema:{params:idParams,querystring:emptyQuery,body:AbandonQrDispatchAttemptRequestSchema,response:{200:QrDispatchAttemptViewSchema}},
+  },request=>{
+    if(!options.service.abandonQrDispatchAttempt)throw Object.assign(new Error('MESSAGING_UNAVAILABLE'),{status:503});
+    return options.service.abandonQrDispatchAttempt(tenant(request),request.params.id,request.body,request.authentication!.actorId!);
+  });
+  api.post('/v1/messaging/qr-outbound-observations/:id/abandon',{
+    preHandler:administerAutomation,schema:{params:idParams,querystring:emptyQuery,body:AbandonQrOutboundObservationRequestSchema,response:{200:QrOutboundObservationViewSchema}},
+  },request=>{
+    if(!options.service.abandonQrOutboundObservation)throw Object.assign(new Error('MESSAGING_UNAVAILABLE'),{status:503});
+    return options.service.abandonQrOutboundObservation(tenant(request),request.params.id,request.body,request.authentication!.actorId!);
+  });
   api.post(
     "/v1/messaging/messages/:id/retry",
     {

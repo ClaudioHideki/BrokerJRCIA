@@ -6,7 +6,7 @@ import { safeMediaName } from "@jrc/providers";
 export type QrEvent =
   | { kind: "connection"; state: "CONNECTED" | "DISCONNECTED"; identity?: string }
   | {
-      kind: "message";
+      kind: "message" | "outbound";
       upstreamMessageId: string;
       externalId: string;
       displayName: string | null;
@@ -14,7 +14,7 @@ export type QrEvent =
       occurredAt: Date;
     }
   | {
-      kind: "media";
+      kind: "media" | "outbound-media";
       upstreamMessageId: string;
       externalId: string;
       displayName: string | null;
@@ -88,7 +88,6 @@ export function normalizeQrEvent(
           : [];
       }
       if (
-        key.fromMe === true ||
         typeof key.remoteJid !== "string" ||
         /@(g\.us|broadcast|newsletter)$/u.test(key.remoteJid)
       )
@@ -130,11 +129,11 @@ export function normalizeQrEvent(
           const media = object(message[kind + "Message"]);
           return [
             {
-              kind: "media",
+              kind: key.fromMe === true ? "outbound-media" : "media",
               upstreamMessageId: id.parse(key.id),
               externalId,
               displayName:
-                typeof data.pushName === "string"
+                key.fromMe !== true && typeof data.pushName === "string"
                   ? data.pushName.slice(0, 256)
                   : null,
               occurredAt,
@@ -158,11 +157,11 @@ export function normalizeQrEvent(
       if (body === undefined) throw new Error("QR_CONTENT_UNSUPPORTED");
       return [
         {
-          kind: "message",
+          kind: key.fromMe === true ? "outbound" : "message",
           upstreamMessageId: id.parse(key.id),
           externalId,
           displayName:
-            typeof data.pushName === "string"
+            key.fromMe !== true && typeof data.pushName === "string"
               ? data.pushName.slice(0, 256)
               : null,
           content: { type: "TEXT", text: text.parse(body) },

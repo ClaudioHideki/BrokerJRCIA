@@ -574,7 +574,7 @@ export class ChatwootClient {
   async sendMessage(
     accountId: number,
     conversationId: number,
-    input: { text: string; incoming: boolean; brokerMessageId: string; dispatchProof?: string },
+    input: { text: string; incoming: boolean; brokerMessageId: string; dispatchProof?: string; messageOrigin?:'EXTERNAL_OBSERVED' },
   ): Promise<number> {
     const data = record(
       await this.request(
@@ -586,6 +586,7 @@ export class ChatwootClient {
           message_type: input.incoming ? "incoming" : "outgoing",
           private: false,
           content_attributes: { jrc_broker_message_id: input.brokerMessageId,
+            ...(input.messageOrigin==='EXTERNAL_OBSERVED'?{jrc_broker_message_origin:input.messageOrigin}:{}),
             ...(input.dispatchProof ? {jrc_broker_dispatch_proof: z.string().regex(/^[A-Za-z0-9_-]{43}$/).parse(input.dispatchProof)} : {}) },
         },
       ),
@@ -596,7 +597,7 @@ export class ChatwootClient {
     accountId: number,
     conversationId: number,
     file: BinaryMedia,
-    input: { incoming: boolean; brokerMessageId: string },
+    input: { incoming: boolean; brokerMessageId: string; messageOrigin?:'EXTERNAL_OBSERVED' },
   ): Promise<number> {
     validateMedia(file);
     const form = new FormData();
@@ -605,7 +606,8 @@ export class ChatwootClient {
     form.set("private", "false");
     form.set(
       "content_attributes",
-      JSON.stringify({ jrc_broker_message_id: input.brokerMessageId }),
+      JSON.stringify({ jrc_broker_message_id: input.brokerMessageId,
+        ...(input.messageOrigin==='EXTERNAL_OBSERVED'?{jrc_broker_message_origin:input.messageOrigin}:{}) }),
     );
     form.append(
       "attachments[]",

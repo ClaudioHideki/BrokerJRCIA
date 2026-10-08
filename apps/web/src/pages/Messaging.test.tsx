@@ -113,11 +113,41 @@ function loadedRequest(overrides: {
         text: 'Olá, preciso de ajuda',
       }] };
     }
+    if(path===`/v1/messaging/conversations/${CONVERSATION_ID}/qr-outbound-observations`)return {data:[]};
+    if(path===`/v1/messaging/conversations/${CONVERSATION_ID}/qr-dispatch-attempts`)return {data:[]};
     throw new Error(`unexpected request ${path}`);
   }) as ApiClient['request'];
 }
 
 describe('MessagingPage', () => {
+  it('invalida os dois painéis de reconciliação após abandonar uma tentativa',async()=>{
+    const observationId='dddddddd-eeee-4fff-8000-111111111111',attemptId='eeeeeeee-ffff-4000-8111-222222222222';
+    const base=loadedRequest({provider:'BAILEYS'});let abandoned=false;
+    const request=vi.fn(async(path:string,init?:RequestInit)=>{
+      if(path===`/v1/messaging/qr-dispatch-attempts/${attemptId}/abandon`&&init?.method==='POST'){
+        abandoned=true;return {id:attemptId,messageId:MESSAGE_ID,revision:3,state:'ABANDONED'};
+      }
+      if(path===`/v1/messaging/conversations/${CONVERSATION_ID}/qr-dispatch-attempts`)return {data:[{id:attemptId,messageId:MESSAGE_ID,revision:abandoned?3:2,state:abandoned?'ABANDONED':'UNKNOWN'}]};
+      if(path===`/v1/messaging/conversations/${CONVERSATION_ID}/qr-outbound-observations`)return {data:[{id:observationId,revision:1,blocking:!abandoned,disposition:'RECONCILE',reason:abandoned?'QR_ABANDONED_ATTEMPT_UNRESOLVED':'QR_ACK_PENDING',attempts:[{id:attemptId,messageId:MESSAGE_ID,state:abandoned?'ABANDONED':'UNKNOWN'}]}]};
+      return base(path,init);
+    }) as ApiClient['request'];
+    renderPage(clientFor(request));
+    fireEvent.click(await screen.findByRole('button',{name:'Abandonar tentativa sem reenvio'}));
+    fireEvent.change(screen.getByLabelText('Motivo do abandono da tentativa'),{target:{value:'Resultado incerto, abandono sem envio'}});
+    fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(screen.getByRole('button',{name:'Confirmar abandono da tentativa'}));
+    await screen.findByText('A autoria continua indefinida após abandono. A saída não foi reenviada nem atribuída a uma pessoa.');
+    expect(screen.queryByText('Novas ações nesta conversa aguardam a reconciliação.')).toBeNull();
+    await screen.findByText(/Abandonada sem confirmação de entrega/);
+    expect((request as ReturnType<typeof vi.fn>).mock.calls.filter(([path])=>String(path).endsWith('/qr-outbound-observations')).length).toBeGreaterThan(1);
+  });
+  it('identifica saída externa observada sem inventar agente no histórico',async()=>{
+    const base=loadedRequest({provider:'BAILEYS'});
+    const request=vi.fn(async(path:string,init?:RequestInit)=>path===`/v1/messaging/conversations/${CONVERSATION_ID}/messages`?
+      {data:[{id:MESSAGE_ID,direction:'OUTGOING',source:'EXTERNAL_OBSERVED',state:'SENT',text:'Texto do aparelho'}]}:base(path,init)) as ApiClient['request'];
+    renderPage(clientFor(request));
+    await screen.findByText('Texto do aparelho');
+    expect(screen.getByText('Saída observada no WhatsApp · SENT')).toBeTruthy();
+  });
   it.each(['BOT','HUMAN'] as const)('preserves the selected conversation and draft when the current channel is selected again (%s)',async mode=>{
     renderPage(clientFor(loadedRequest({mode})));
     await screen.findByText('Olá, preciso de ajuda');
