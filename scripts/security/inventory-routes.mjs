@@ -4,6 +4,12 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/channels/{id}/whatsapp-groups':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR',true,
+    'READ_ONLY_SNAPSHOT_LOCAL_CURSOR','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_LOCKED_CHANNEL_INSTANCE_ACTIVE_MEMBER'),
+  'POST /v1/channels/{id}/whatsapp-groups/refresh':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'CATALOG_LEASE_CLOCK_TIMESTAMP_IDENTITY_RECHECK_AFTER_IO','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_CHANNEL_NUMBER_SNAPSHOT_NO_SEND_OR_BOT'),
+  'PUT /v1/channels/{id}/whatsapp-groups/selection':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'EXPECTED_IDENTITY_SNAPSHOT_CATALOG_REVISION_FRESH_NUMBER_OBSERVATION','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_LOCKED_CHANNEL_ITEM_AUDITED_NO_SEND_OR_BOT'),
   ...Object.fromEntries([
     'GET /v1/channels/central/inboxes', 'GET /v1/channels/central/inboxes/{inboxId}/preview',
     'GET /v1/channels/central/operations/{operationId}', 'GET /v1/channels/central/operations/by-key/{key}',

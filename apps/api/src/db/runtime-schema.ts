@@ -1,10 +1,37 @@
-export const RUNTIME_SCHEMA_BASELINE = '0049_qr_outbound_observations';
+export const RUNTIME_SCHEMA_BASELINE = '0050_whatsapp_group_catalog';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
 // The app role cannot read drizzle.__drizzle_migrations. This is a structural
 // readiness probe, not a migration journal/hash comparison.
 const requiredObjectsSql = `SELECT
+  NOT EXISTS(SELECT 1 FROM (VALUES ('public.whatsapp_group_catalogs'),('public.whatsapp_group_catalog_items')) AS required(relation_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass(required.relation_name)
+      AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'
+      AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='group_catalog_tenant' AND p.polcmd='*'))
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'INSERT')
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'UPDATE')
+    OR pg_catalog.has_table_privilege('jrc_auth',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR pg_catalog.has_table_privilege('jrc_platform',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR EXISTS(SELECT 1 FROM pg_catalog.pg_class c,
+      LATERAL pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault('r',c.relowner))) a
+      WHERE c.oid=pg_catalog.to_regclass(required.relation_name) AND a.grantee=0))
+  AND NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.whatsapp_group_catalogs'),'DELETE')
+  AND pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.whatsapp_group_catalog_items'),'DELETE')
+  AND NOT EXISTS(SELECT 1 FROM (VALUES
+    ('public.whatsapp_group_catalogs','whatsapp_group_catalog_snapshot'),
+    ('public.whatsapp_group_catalogs','whatsapp_group_catalog_lease'),
+    ('public.whatsapp_group_catalog_items','whatsapp_group_catalog_items_automation_enabled_check')) AS required(relation_name,constraint_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass(required.relation_name)
+      AND c.conname=required.constraint_name AND c.contype='c' AND c.convalidated))
+  AND NOT EXISTS(SELECT 1 FROM (VALUES
+    ('public.whatsapp_group_catalogs','lifecycle_whatsapp_group_catalogs_block'),
+    ('public.whatsapp_group_catalog_items','lifecycle_whatsapp_group_catalog_items_block')) AS required(relation_name,trigger_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid=pg_catalog.to_regclass(required.relation_name)
+      AND t.tgname=required.trigger_name AND t.tgenabled IN ('O','A') AND NOT t.tgisinternal AND t.tgtype=7
+      AND t.tgfoid=pg_catalog.to_regprocedure('public.lifecycle_reject_channel_write()')))
+  AND
   NOT EXISTS(SELECT 1 FROM (VALUES ('public.qr_dispatch_attempts'),('public.qr_outbound_observations')) AS required(relation_name)
     WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass(required.relation_name)
       AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'

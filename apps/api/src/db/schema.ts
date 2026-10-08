@@ -978,6 +978,39 @@ export const qrOutboundObservations = pgTable('qr_outbound_observations', {
   index('qr_observations_pending').on(t.organizationId,t.conversationId,t.createdAt).where(sql`${t.disposition}='RECONCILE'`),
 ]);
 
+export const whatsappGroupCatalogs = pgTable('whatsapp_group_catalogs', {
+  organizationId:uuid('organization_id').notNull().references(()=>organizations.id),channelId:uuid('channel_id').notNull(),
+  identityRevision:bigint('identity_revision',{mode:'number'}).notNull().default(1),identityFingerprint:text('identity_fingerprint'),
+  catalogRevision:bigint('catalog_revision',{mode:'number'}).notNull().default(0),snapshotId:uuid('snapshot_id'),
+  observedAt:timestamp('observed_at',{withTimezone:true}),validUntil:timestamp('valid_until',{withTimezone:true}),
+  lastAttemptAt:timestamp('last_attempt_at',{withTimezone:true}).notNull().defaultNow(),lastErrorCode:text('last_error_code'),
+  leaseToken:uuid('lease_token'),leaseExpiresAt:timestamp('lease_expires_at',{withTimezone:true}),...timestamps,
+},t=>[
+  primaryKey({columns:[t.organizationId,t.channelId]}),
+  foreignKey({columns:[t.organizationId,t.channelId],foreignColumns:[messagingChannels.organizationId,messagingChannels.id]}),
+  check('whatsapp_group_catalogs_identity_revision_check',sql`${t.identityRevision}>0`),
+  check('whatsapp_group_catalogs_identity_fingerprint_check',sql`${t.identityFingerprint} ~ '^[a-f0-9]{64}$'`),
+  check('whatsapp_group_catalogs_catalog_revision_check',sql`${t.catalogRevision}>=0`),
+  check('whatsapp_group_catalogs_last_error_code_check',sql`${t.lastErrorCode} IN ('PROVIDER_ABORTED','PROVIDER_TIMEOUT','PROVIDER_REQUEST_FAILED','PROVIDER_INVALID_RESPONSE','IDENTITY_CHANGED','LEASE_LOST')`),
+  check('whatsapp_group_catalog_snapshot',sql`(${t.snapshotId} IS NULL AND ${t.observedAt} IS NULL AND ${t.validUntil} IS NULL AND ${t.identityFingerprint} IS NULL AND ${t.catalogRevision}=0)
+    OR (${t.snapshotId} IS NOT NULL AND ${t.observedAt} IS NOT NULL AND ${t.validUntil} IS NOT NULL AND ${t.identityFingerprint} IS NOT NULL AND ${t.catalogRevision}>0 AND ${t.validUntil}>${t.observedAt})`),
+  check('whatsapp_group_catalog_lease',sql`(${t.leaseToken} IS NULL)=(${t.leaseExpiresAt} IS NULL)`),
+]);
+export const whatsappGroupCatalogItems = pgTable('whatsapp_group_catalog_items', {
+  organizationId:uuid('organization_id').notNull(),channelId:uuid('channel_id').notNull(),groupJid:text('group_jid').notNull(),
+  subject:text('subject').notNull(),participantCount:integer('participant_count').notNull(),restrict:boolean('restrict'),announce:boolean('announce'),
+  isCommunity:boolean('is_community'),isCommunityAnnounce:boolean('is_community_announce'),linkedParent:text('linked_parent'),
+  selected:boolean('selected').notNull().default(false),automationEnabled:boolean('automation_enabled').notNull().default(false),
+},t=>[
+  primaryKey({columns:[t.organizationId,t.channelId,t.groupJid]}),
+  foreignKey({columns:[t.organizationId,t.channelId],foreignColumns:[whatsappGroupCatalogs.organizationId,whatsappGroupCatalogs.channelId]}),
+  check('whatsapp_group_catalog_items_group_jid_check',sql`length(${t.groupJid})<=128 AND ${t.groupJid} ~ '^[0-9]+(-[0-9]+)?@g[.]us$'`),
+  check('whatsapp_group_catalog_items_subject_check',sql`length(${t.subject}) BETWEEN 1 AND 256 AND length(btrim(${t.subject}))>0`),
+  check('whatsapp_group_catalog_items_participant_count_check',sql`${t.participantCount} BETWEEN 0 AND 100000`),
+  check('whatsapp_group_catalog_items_linked_parent_check',sql`${t.linkedParent} IS NULL OR (length(${t.linkedParent})<=128 AND ${t.linkedParent} ~ '^[0-9]+(-[0-9]+)?@g[.]us$')`),
+  check('whatsapp_group_catalog_items_automation_enabled_check',sql`NOT ${t.automationEnabled}`),
+]);
+
 export * from "./platform-schema.js";
 export * from "./tenancy-schema.js";
 export * from "./meta-onboarding-schema.js";

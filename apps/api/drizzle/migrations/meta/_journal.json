@@ -344,6 +344,13 @@
       "when": 1791758400000,
       "tag": "0049_qr_outbound_observations",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791844800000,
+      "tag": "0050_whatsapp_group_catalog",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,24 @@ function client(request: ApiClient['request']): ApiClient { return { restore: vi
   registerTenantPurge: vi.fn(() => () => undefined), subscribeToSessionExpiration: vi.fn(() => () => undefined) } as unknown as ApiClient; }
 
 describe('canonical channels UI', () => {
+  it('queries groups with the messaging channel scope when the QR instance has a different ID', async () => {
+    const messagingChannelId = '66666666-6666-4666-8666-666666666666';
+    const channel = {schemaVersion:1,id,organizationId:org,provider:'QR',messagingChannelId,
+      identity:{displayName:'Caixa de teste',maskedAddress:null},providerReference:{providerAccountId:account,instanceId:id},
+      transportStatus:'CONNECTED',providerStatus:'READY',automationStatus:'UNBOUND',humanStatus:'UNBOUND',revision:1,createdAt:timestamp,updatedAt:timestamp};
+    const request = vi.fn(async(path:string)=>{
+      if(path==='/v1/flows/status')return {enabled:true};
+      if(path===`/v1/channels/${id}`)return channel;
+      if(path===`/v1/channels/${id}/automation`)return {binding:null,ownerRevision:1};
+      if(path==='/v1/automations')return {data:[]};
+      if(path===`/v1/channels/${messagingChannelId}/whatsapp-groups?limit=50`)throw new ApiClientError('Catálogo não consultado',404,'synthetic-request','GROUP_CATALOG_NOT_READY');
+      throw new Error(`Unexpected ${path}`);
+    }) as ApiClient['request'];
+    render(<App client={client(request)} initialEntries={[`/channels/${id}`]}/>);
+    expect(await screen.findByRole('heading',{name:'Grupos do WhatsApp'})).toBeVisible();
+    await waitFor(()=>expect(request).toHaveBeenCalledWith(`/v1/channels/${messagingChannelId}/whatsapp-groups?limit=50`,expect.objectContaining({signal:expect.any(AbortSignal)})));
+    expect(request).not.toHaveBeenCalledWith(`/v1/channels/${id}/whatsapp-groups?limit=50`,expect.anything());
+  });
   it('preserves the chosen automation when the initial binding response arrives later', async () => {
     const automationId = '11111111-2222-4333-8444-555555555555';
     let release: (value: unknown) => void = () => {};

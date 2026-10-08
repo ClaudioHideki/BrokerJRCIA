@@ -40,6 +40,8 @@ import {
   type InstanceWorkspaceRouteOptions,
 } from "./http/routes/instance-workspace.js";
 import { InstanceWorkspaceService } from "./modules/instances/workspace.js";
+import { registerWhatsAppGroupsRoutes, type WhatsAppGroupsRouteOptions } from './http/routes/whatsapp-groups.js';
+import { createWhatsAppGroupCatalog } from './modules/whatsapp-groups/service.js';
 import swaggerUi from "@fastify/swagger-ui";
 import Fastify, { LogController } from "fastify";
 import { Pool } from "pg";
@@ -79,6 +81,7 @@ import {
 import {
   EvolutionProviderAdapter,
   EvolutionWorkspaceClient,
+  EvolutionGroupsClient,
   ProviderRegistry,
 } from "@jrc/providers";
 
@@ -160,6 +163,7 @@ export interface BuildAppOptions {
   instances?: InstanceRouteOptions;
   channels?: ChannelRouteOptions;
   instanceWorkspace?: InstanceWorkspaceRouteOptions;
+  whatsappGroups?: WhatsAppGroupsRouteOptions;
   messaging?: MessagingRouteOptions;
   flows?: FlowRouteOptions;
   automations?: AutomationRouteOptions;
@@ -231,6 +235,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       options.instances !== undefined ||
       options.channels !== undefined ||
       options.instanceWorkspace !== undefined ||
+      options.whatsappGroups !== undefined ||
       options.messaging !== undefined ||
       options.flows !== undefined ||
       options.automations !== undefined ||
@@ -272,6 +277,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   let automationImports = nodeEnv === "test" ? options.automationImports : undefined;
   let instanceWorkspace =
     nodeEnv === "test" ? options.instanceWorkspace : undefined;
+  let whatsappGroups = nodeEnv === 'test' ? options.whatsappGroups : undefined;
   let metaWebhooks = nodeEnv === "test" ? options.metaWebhooks : undefined;
   let platform = nodeEnv === "test" ? options.platform : undefined;
   let metaOnboarding = nodeEnv === "test" ? options.metaOnboarding : undefined;
@@ -443,6 +449,21 @@ export function buildApp(options: BuildAppOptions = {}) {
       }),
     };
     const messagingEnvironment = options.environment ?? process.env;
+    if (messagingEnvironment.INTEGRATION_ENCRYPTION_KEY) {
+      const identity = new EvolutionWorkspaceClient({baseUrl:config.evolutionBaseUrl,apiKey:config.evolutionApiKey});
+      const groups = new EvolutionGroupsClient({baseUrl:config.evolutionBaseUrl,apiKey:config.evolutionApiKey});
+      whatsappGroups = {
+        jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,
+        resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),
+        service:createWhatsAppGroupCatalog({
+          encryptionKey:messagingEnvironment.INTEGRATION_ENCRYPTION_KEY,
+          transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work),
+          readIdentity:async(context,key)=>{const snapshot=await identity.read(context,key);
+            return {connected:snapshot.profile.state==='open',phone:snapshot.profile.phone};},
+          readGroups:(context,key)=>groups.list(context,key),
+        }),
+      };
+    }
     const metaOnboardingService = createMetaOnboardingService({
       environment: messagingEnvironment,
       transact: (organizationId, operation) =>
@@ -866,6 +887,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     void app.register(async (scope) =>
       registerInstanceWorkspaceRoutes(scope, configured),
     );
+  }
+  if (whatsappGroups) {
+    const configured = whatsappGroups;
+    void app.register(scope => registerWhatsAppGroupsRoutes(scope,configured));
   }
   if (flows) {
     const configuredFlows=flows;

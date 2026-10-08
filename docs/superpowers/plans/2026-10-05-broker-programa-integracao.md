@@ -23,6 +23,14 @@
 
 Decisão do usuário em 06/10/2026: cada incremento concluído e validado deve ser integrado à main, que é a referência do servidor. Reutilizar o checkout atual; não criar branches adicionais para novas etapas nem publicar imagens de entrega a partir de branches de desenvolvimento. Os incrementos P2 já existentes serão integrados após fechar os gates pendentes. Para cada entrega, registrar SHA da main, CI e digests das imagens API/web geradas daquela revisão. O usuário aplica esses digests no Dokploy; código na main, imagem publicada e servidor atualizado são verificações separadas. Um incremento parcial não encerra os critérios pendentes da fase completa.
 
+### Atualização de 08/10/2026
+
+O usuário autorizou acelerar a execução do programa até P10. Frentes independentes são trabalhadas em paralelo, com contratos, locks e migrações compartilhados integrados pelo responsável pelo checkout. A entrega continua diretamente na main e as imagens continuam vinculadas ao SHA testado.
+
+Primeiro corte publicado: main `88215efce00c0c0ccad545add1044ae0773429dd`, [CI aprovado](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37784175688) e [imagens aprovadas](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37787050397), baseline 0049. Ele acrescenta espera persistida, agenda, importação com credenciais locais, observações de saída do aparelho, pools/diagnóstico e registro offline de homologação. Os manifests API/web foram conferidos no GHCR. A instalação efetiva desta revisão não foi observada pelo agente.
+
+G1, catálogo de grupos, está em regressão local; S3 durável, tratamento de incerteza HTTP e autorização/cutover dos módulos centrais são frentes seguintes. Ver [próximos incrementos P3–P10](2026-10-08-broker-proximos-incrementos-p3-p10.md) e [evidências G1](../../validation/2026-10-08-whatsapp-grupos-g1.md). Os checkboxes históricos abaixo não são um certificado de homologação. P10 exige as jornadas reais e os tenants adicionais adiados pelo usuário; disponibilidade HTTP e testes sintéticos não encerram o programa.
+
 ## Foco da revisão
 
 1. Humano responde durante retomada ou I/O: bloquear bot — P1.

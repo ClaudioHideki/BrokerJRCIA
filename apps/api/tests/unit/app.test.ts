@@ -80,4 +80,8 @@ describe('buildApp', () => {
       }),
     })).toThrow('Runtime password verifier dependency injection is forbidden');
   });
+  it('rejeita catálogo de grupos injetado fora de test para preservar autorização e provedor reais', () => {
+    expect(() => buildApp({nodeEnv:'production',environment:VALID_RUNTIME_ENVIRONMENT,
+      whatsappGroups:{} as never})).toThrow('Runtime authentication dependency injection is forbidden');
+  });
 });

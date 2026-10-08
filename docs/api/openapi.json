@@ -17530,6 +17530,840 @@
         ]
       }
     },
+    "/v1/channels/{id}/whatsapp-groups": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "announce": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "automationEnabled": {
+                            "default": false,
+                            "enum": [
+                              false
+                            ],
+                            "type": "boolean"
+                          },
+                          "groupJid": {
+                            "maxLength": 128,
+                            "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                            "type": "string"
+                          },
+                          "isCommunity": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "isCommunityAnnounce": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "linkedParent": {
+                            "maxLength": 128,
+                            "nullable": true,
+                            "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                            "type": "string"
+                          },
+                          "participantCount": {
+                            "maximum": 100000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "restrict": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "selected": {
+                            "default": false,
+                            "type": "boolean"
+                          },
+                          "subject": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "groupJid",
+                          "subject",
+                          "participantCount",
+                          "restrict",
+                          "announce",
+                          "isCommunity",
+                          "isCommunityAnnounce",
+                          "linkedParent",
+                          "selected",
+                          "automationEnabled"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 100,
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "afterGroupJid": {
+                          "maxLength": 128,
+                          "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                          "type": "string"
+                        },
+                        "snapshotId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "snapshotId",
+                        "afterGroupJid"
+                      ],
+                      "type": "object"
+                    },
+                    "snapshot": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "catalogRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "lastAttemptAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "lastErrorCode": {
+                          "enum": [
+                            "PROVIDER_ABORTED",
+                            "PROVIDER_TIMEOUT",
+                            "PROVIDER_REQUEST_FAILED",
+                            "PROVIDER_INVALID_RESPONSE",
+                            "IDENTITY_CHANGED",
+                            "LEASE_LOST"
+                          ],
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "observedAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "schemaVersion": {
+                          "enum": [
+                            1
+                          ],
+                          "type": "number"
+                        },
+                        "scope": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "channelId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "identityFingerprint": {
+                              "pattern": "^[a-f0-9]{64}$",
+                              "type": "string"
+                            },
+                            "identityRevision": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "organizationId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "provider": {
+                              "enum": [
+                                "QR"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "provider",
+                            "organizationId",
+                            "channelId",
+                            "identityRevision",
+                            "identityFingerprint"
+                          ],
+                          "type": "object"
+                        },
+                        "snapshotId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "status": {
+                          "enum": [
+                            "CURRENT",
+                            "STALE"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "scope",
+                        "snapshotId",
+                        "catalogRevision",
+                        "observedAt",
+                        "status",
+                        "lastAttemptAt",
+                        "lastErrorCode"
+                      ],
+                      "type": "object"
+                    },
+                    "total": {
+                      "maximum": 2000,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "snapshot",
+                    "items",
+                    "total",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/channels/{id}/whatsapp-groups/refresh": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {},
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "announce": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "automationEnabled": {
+                            "default": false,
+                            "enum": [
+                              false
+                            ],
+                            "type": "boolean"
+                          },
+                          "groupJid": {
+                            "maxLength": 128,
+                            "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                            "type": "string"
+                          },
+                          "isCommunity": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "isCommunityAnnounce": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "linkedParent": {
+                            "maxLength": 128,
+                            "nullable": true,
+                            "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                            "type": "string"
+                          },
+                          "participantCount": {
+                            "maximum": 100000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "restrict": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "selected": {
+                            "default": false,
+                            "type": "boolean"
+                          },
+                          "subject": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "groupJid",
+                          "subject",
+                          "participantCount",
+                          "restrict",
+                          "announce",
+                          "isCommunity",
+                          "isCommunityAnnounce",
+                          "linkedParent",
+                          "selected",
+                          "automationEnabled"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 100,
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "afterGroupJid": {
+                          "maxLength": 128,
+                          "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                          "type": "string"
+                        },
+                        "snapshotId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "snapshotId",
+                        "afterGroupJid"
+                      ],
+                      "type": "object"
+                    },
+                    "snapshot": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "catalogRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "lastAttemptAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "lastErrorCode": {
+                          "enum": [
+                            "PROVIDER_ABORTED",
+                            "PROVIDER_TIMEOUT",
+                            "PROVIDER_REQUEST_FAILED",
+                            "PROVIDER_INVALID_RESPONSE",
+                            "IDENTITY_CHANGED",
+                            "LEASE_LOST"
+                          ],
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "observedAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "schemaVersion": {
+                          "enum": [
+                            1
+                          ],
+                          "type": "number"
+                        },
+                        "scope": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "channelId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "identityFingerprint": {
+                              "pattern": "^[a-f0-9]{64}$",
+                              "type": "string"
+                            },
+                            "identityRevision": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "organizationId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "provider": {
+                              "enum": [
+                                "QR"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "provider",
+                            "organizationId",
+                            "channelId",
+                            "identityRevision",
+                            "identityFingerprint"
+                          ],
+                          "type": "object"
+                        },
+                        "snapshotId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "status": {
+                          "enum": [
+                            "CURRENT",
+                            "STALE"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "scope",
+                        "snapshotId",
+                        "catalogRevision",
+                        "observedAt",
+                        "status",
+                        "lastAttemptAt",
+                        "lastErrorCode"
+                      ],
+                      "type": "object"
+                    },
+                    "total": {
+                      "maximum": 2000,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "snapshot",
+                    "items",
+                    "total",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/channels/{id}/whatsapp-groups/selection": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "expectedCatalogRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedIdentityFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "expectedIdentityRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedSnapshotId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "groupJid": {
+                    "maxLength": 128,
+                    "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedSnapshotId",
+                  "expectedCatalogRevision",
+                  "expectedIdentityRevision",
+                  "expectedIdentityFingerprint",
+                  "groupJid",
+                  "enabled"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "announce": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "automationEnabled": {
+                            "default": false,
+                            "enum": [
+                              false
+                            ],
+                            "type": "boolean"
+                          },
+                          "groupJid": {
+                            "maxLength": 128,
+                            "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                            "type": "string"
+                          },
+                          "isCommunity": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "isCommunityAnnounce": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "linkedParent": {
+                            "maxLength": 128,
+                            "nullable": true,
+                            "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                            "type": "string"
+                          },
+                          "participantCount": {
+                            "maximum": 100000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "restrict": {
+                            "nullable": true,
+                            "type": "boolean"
+                          },
+                          "selected": {
+                            "default": false,
+                            "type": "boolean"
+                          },
+                          "subject": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "groupJid",
+                          "subject",
+                          "participantCount",
+                          "restrict",
+                          "announce",
+                          "isCommunity",
+                          "isCommunityAnnounce",
+                          "linkedParent",
+                          "selected",
+                          "automationEnabled"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 100,
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "afterGroupJid": {
+                          "maxLength": 128,
+                          "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                          "type": "string"
+                        },
+                        "snapshotId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "snapshotId",
+                        "afterGroupJid"
+                      ],
+                      "type": "object"
+                    },
+                    "snapshot": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "catalogRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "lastAttemptAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "lastErrorCode": {
+                          "enum": [
+                            "PROVIDER_ABORTED",
+                            "PROVIDER_TIMEOUT",
+                            "PROVIDER_REQUEST_FAILED",
+                            "PROVIDER_INVALID_RESPONSE",
+                            "IDENTITY_CHANGED",
+                            "LEASE_LOST"
+                          ],
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "observedAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "schemaVersion": {
+                          "enum": [
+                            1
+                          ],
+                          "type": "number"
+                        },
+                        "scope": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "channelId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "identityFingerprint": {
+                              "pattern": "^[a-f0-9]{64}$",
+                              "type": "string"
+                            },
+                            "identityRevision": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "organizationId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "provider": {
+                              "enum": [
+                                "QR"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "provider",
+                            "organizationId",
+                            "channelId",
+                            "identityRevision",
+                            "identityFingerprint"
+                          ],
+                          "type": "object"
+                        },
+                        "snapshotId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "status": {
+                          "enum": [
+                            "CURRENT",
+                            "STALE"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "scope",
+                        "snapshotId",
+                        "catalogRevision",
+                        "observedAt",
+                        "status",
+                        "lastAttemptAt",
+                        "lastErrorCode"
+                      ],
+                      "type": "object"
+                    },
+                    "total": {
+                      "maximum": 2000,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "snapshot",
+                    "items",
+                    "total",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/channels/central/inboxes": {
       "get": {
         "responses": {
