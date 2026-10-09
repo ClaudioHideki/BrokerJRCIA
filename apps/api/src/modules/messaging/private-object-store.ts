@@ -23,6 +23,8 @@ export type ObjectStoreRead = Readonly<{ outcome: 'CONFIRMED'; bytes: Uint8Array
 export type ObjectStoreInspection = Readonly<{ outcome: 'CONFIRMED'; byteLength: number; sha256: string }>
   | Readonly<{ outcome: 'MISSING' }> | ObjectStoreFailure;
 export interface PrivateObjectStore {
+  /** Derived by this adapter from its physical destination; excludes credentials. */
+  readonly destinationFingerprint: string;
   put(ref: PrivateObjectRef, ciphertext: Uint8Array, expected: ExpectedCiphertext, control: ObjectStoreControl): Promise<ObjectStoreMutation>;
   read(ref: PrivateObjectRef, expected: ExpectedCiphertext, control: ObjectStoreControl): Promise<ObjectStoreRead>;
   inspect(ref: PrivateObjectRef, expected: ExpectedCiphertext, control: ObjectStoreControl): Promise<ObjectStoreInspection>;
@@ -168,6 +170,8 @@ export function createS3PrivateObjectStore(config: S3PrivateObjectStoreConfig): 
     || config.dedicatedBucket !== true || !Number.isInteger(maximum) || maximum < 1 || maximum > MAX_PRIVATE_OBJECT_BYTES
     || !Number.isInteger(timeout) || timeout < 1 || timeout > 60_000) fail('OBJECT_INVALID_CONFIG');
   const bucket = config.bucket, profile = config.profile, region = config.region;
+  const destinationFingerprint = digest(JSON.stringify(['jrc-private-object-destination:v1', endpoint.href,
+    bucket, region, profile, 'path-style/profile/org/channel/media/operation.cipher:v1']));
   const access = config.accessKeyId, secret = config.secretAccessKey;
   const transport = config.fetch ?? fetch, clock = config.clock ?? (() => new Date());
   function utcNow() {
@@ -295,6 +299,7 @@ export function createS3PrivateObjectStore(config: S3PrivateObjectStoreConfig): 
     finally { scope?.close(); }
   }
   return Object.freeze({
+    destinationFingerprint,
     put: (ref: PrivateObjectRef, bytes: Uint8Array, expected: ExpectedCiphertext, control: ObjectStoreControl) => mutate('PUT', ref, control, bytes, expected),
     read,
     async inspect(ref: PrivateObjectRef, expected: ExpectedCiphertext, control: ObjectStoreControl): Promise<ObjectStoreInspection> {

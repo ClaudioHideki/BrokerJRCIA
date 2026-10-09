@@ -14,6 +14,7 @@ import {
 import { createChatwootWorker } from "./chatwoot-worker.js";
 import { createChatwootProvisioner } from "./chatwoot-provisioner.js";
 import { createMediaStore, type MediaStore } from "../messaging/media-store.js";
+import { createPrivateMediaRuntime } from "../messaging/private-media-runtime.js";
 import { createPostgresMessagingRepository } from "../messaging/repository.js";
 import {
   readChatwootAccount,
@@ -174,6 +175,8 @@ export function createIntegrationRuntime(
         },
       }
     : undefined;
+  const privateMedia=createPrivateMediaRuntime(environment,{transact,
+    cleanupTransact:async()=>{throw new Error("PRIVATE_MEDIA_CLEANUP_REQUIRES_LIFECYCLE_ROLE");}});
   const media: MediaStore | undefined = environment.INTEGRATION_ENCRYPTION_KEY
     ? createMediaStore({
         encryptionKey: environment.INTEGRATION_ENCRYPTION_KEY,
@@ -181,6 +184,7 @@ export function createIntegrationRuntime(
           environment.MEDIA_STORAGE_BYTES_PER_ORGANIZATION ?? 1073741824,
         ),
         transact,
+        ...(privateMedia?{privateStore:privateMedia}:{}),
         async download(asset) {
           const channel = await transact(asset.organization_id, (t) =>
             createPostgresMessagingRepository().findChannel(
@@ -295,6 +299,7 @@ export function createIntegrationRuntime(
     chatwootWorker: options ? createChatwootWorker(options) : undefined,
     provisioner: options ? createChatwootProvisioner(options) : undefined,
     media,
+    privateMedia,
     prepareMedia,
   };
 }

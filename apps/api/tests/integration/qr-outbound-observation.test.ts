@@ -53,7 +53,15 @@ describe('P4.1 saída QR observada no PostgreSQL isolado', () => {
     async function sending(text = 'Saída sintética',targetConversation=conversation) {
       const result = await transact(tx => repository.enqueueOutgoing(tx, { id: randomUUID(), organizationId, channelId: channel, conversationId: targetConversation,
         source: 'OPERATOR', content: { type: 'TEXT', text }, idempotencyKey: randomUUID(), bodyHash: text, policy: { requireOptIn: false } }));
-      const claim = (await transact(tx => repository.claimOutgoing(tx, { organizationId, workerId: randomUUID(), now: new Date(), leaseMs: 120000, limit: 1 })))[0]!;
+      const claim = await transact(async tx => {
+        // The synthetic outbox uses PostgreSQL's default timestamp. Keep its
+        // immediate claim on that clock instead of assuming host clocks agree.
+        // Round up by at most 1 ms because pg converts timestamps to JS Dates.
+        const now = (await tx.query<{ now: Date }>("SELECT date_trunc('milliseconds',clock_timestamp()) + interval '1 millisecond' AS now")).rows[0]!.now;
+        return (await repository.claimOutgoing(tx, { organizationId, workerId: randomUUID(), now, leaseMs: 120000, limit: 1 }))[0];
+      });
+      expect(claim, 'the synthetic outbox must be available before the scenario starts').toBeDefined();
+      if (!claim) throw new Error('QR_FIXTURE_CLAIM_MISSING');
       expect(await transact(tx => repository.validateClaim(tx, { organizationId, messageId: result.message.id, leaseToken: claim.leaseToken }))).toMatchObject({ eligible: true });
       return { messageId: result.message.id, leaseToken: claim.leaseToken };
     }

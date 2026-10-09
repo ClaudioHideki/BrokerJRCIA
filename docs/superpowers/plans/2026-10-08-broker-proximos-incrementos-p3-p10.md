@@ -58,3 +58,9 @@ Registrar versão, configuração, correlação e resultado observado. Os tenant
 A configuração por caixa passa a orientar conexão, publicação, vínculo do bot e teste de atendimento. A navegação conserva o retorno à caixa e a retomada explica as três opções existentes sem reativação automática. Uma leitura que falha não permite alterar o vínculo usando o estado anterior. Evidências em `docs/validation/2026-10-09-bot-setup-journey.md`: build, 117 testes focais e 2.405 testes globais aprovados, revisão sem achados críticos ou importantes pendentes.
 
 Este incremento não altera Compose, ENV ou a baseline 0051. Os candidatos de mídia privada, grupos com Flow e módulos delegados continuam separados até integração, CI e imagens correspondentes. O aceite de produção permanece pendente da jornada real controlada.
+
+## Incremento C2 — 09/10/2026
+
+Mídia privada durável foi integrada ao checkout canônico com a migração 0052, preservando o backend PostgreSQL padrão e o histórico inline. Build e 2.534 testes globais passaram; 71 testes dos arquivos de banco reparados passaram. O CI e o workflow de imagens passam a exigir o gate de armazenamento real com MinIO fixado. [Evidências C2](../../validation/2026-10-09-private-media-c2.md) e [guia de operação](../../operations/private-media-minio.md).
+
+Essa entrega não instala MinIO, não migra objetos entre destinos e não conclui C3–C5, subfluxos, G3, P9 ou P10. A release precisa de CI e imagens do mesmo SHA antes da instalação. O ensaio real de atendimento e de mídia permanece pendente.

@@ -6,6 +6,7 @@ import { loadDatabasePoolBudget } from '../db/pool-budget.js';
 import { z } from 'zod';
 import { EvolutionProviderAdapter } from '@jrc/providers';
 import { createLifecycleService, withLifecycleWorkerTransaction } from '../modules/lifecycle/service.js';
+import { createLifecycleMediaRuntime } from '../modules/messaging/private-media-lifecycle-runtime.js';
 
 export async function runLifecycleWorker(environment:NodeJS.ProcessEnv=process.env,watch=false){
   const url=z.string().url().parse(environment.LIFECYCLE_DATABASE_URL);
@@ -14,7 +15,8 @@ export async function runLifecycleWorker(environment:NodeJS.ProcessEnv=process.e
   const provider=new EvolutionProviderAdapter({baseUrl:z.string().url().parse(environment.EVOLUTION_BASE_URL),
     apiKey:z.string().min(1).parse(environment.EVOLUTION_API_KEY)});
   const pool=new Pool({connectionString:url,...loadDatabasePoolBudget(environment,'LIFECYCLE_WORKER'),statement_timeout:600000});
-  const service=createLifecycleService({transact:work=>withLifecycleWorkerTransaction(pool,work),
+  const cleanupPrivateMedia=createLifecycleMediaRuntime(environment,work=>withLifecycleWorkerTransaction(pool,work));
+  const service=createLifecycleService({transact:work=>withLifecycleWorkerTransaction(pool,work),cleanupPrivateMedia,
     instanceExists:async(organizationId,upstreamKey)=>{
       const controller=new AbortController();
       return (await provider.lookupInstance({organizationId,requestId:randomUUID(),deadline:new Date(Date.now()+30000),signal:controller.signal},{id:upstreamKey})).exists;

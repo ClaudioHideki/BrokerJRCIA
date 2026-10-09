@@ -12,6 +12,7 @@ import type {
   OrganizationTransaction,
 } from "../../db/tenant-transaction.js";
 import { createIntegrationSecrets } from "../integrations/secrets.js";
+import type { DurablePrivateMediaStore, PrivateMediaReadControl } from "./durable-private-media.js";
 const descriptor = z.discriminatedUnion("source", [
   z.object({
     source: z.literal("QR"),
@@ -82,15 +83,18 @@ export async function registerPendingMedia(
   ).rows[0];
   return row!.id;
 }
-interface MediaStoreOptions {
+export interface MediaStoreOptions {
   encryptionKey: string;
   maxStorageBytes?: number;
   transact<T>(org: string, op: OrganizationTransaction<T>): Promise<T>;
   download(asset: MediaAsset): Promise<BinaryMedia>;
+  /** Trusted server port; use the same logical quota as this facade. */
+  privateStore?: Pick<DurablePrivateMediaStore, "stage" | "dispatchPut" | "runOnce" | "read">;
 }
 export function createMediaStore(options: MediaStoreOptions) {
   const vault = createIntegrationSecrets(options.encryptionKey),
-    tx = options.transact;
+    tx = options.transact,
+    privateStore = options.privateStore;
   const maximum = z
     .number()
     .int()
@@ -98,24 +102,31 @@ export function createMediaStore(options: MediaStoreOptions) {
     .max(1_099_511_627_776)
     .parse(options.maxStorageBytes ?? 1_073_741_824);
   return {
-    async read(org: string, id: string): Promise<BinaryMedia> {
+    async read(org: string, id: string, control?: PrivateMediaReadControl): Promise<BinaryMedia> {
+      if (privateStore) return privateStore.read(org, id, control);
       const row = await tx(
         org,
-        async (t) =>
-          (
+        async (t) => {
+          await control?.authorize?.(t);
+          return (
             await t.query<
               MediaAsset & {
                 encrypted_data: string;
                 mime_type: string;
                 sha256: string;
+                storage_backend: string;
+                private_object_id: string | null;
               }
             >(
               "SELECT * FROM messaging_media WHERE organization_id=$1 AND id=$2",
               [org, id],
             )
-          ).rows[0],
+          ).rows[0];
+        },
       );
       if (!row) throw new MediaError("MEDIA_NOT_FOUND");
+      if (row.storage_backend === "PRIVATE_OBJECT" || row.private_object_id)
+        throw new MediaError("MEDIA_OBJECT_BACKEND_UNAVAILABLE", true);
       if (row.status !== "READY")
         throw new MediaError(
           row.status === "FAILED"
@@ -131,6 +142,7 @@ export function createMediaStore(options: MediaStoreOptions) {
       );
       if (createHash("sha256").update(bytes).digest("hex") !== row.sha256)
         throw new MediaError("MEDIA_INTEGRITY_FAILED");
+      if (control?.authorize) await tx(org, async t => { await control.authorize!(t); });
       return {
         bytes,
         mimeType: row.mime_type,
@@ -139,14 +151,18 @@ export function createMediaStore(options: MediaStoreOptions) {
       };
     },
     async runOnce(org: string): Promise<void> {
+      // Inspect/dispatch one durable private operation, then independently
+      // service a pending download. UNKNOWN/MISSING does not starve ingress.
+      await privateStore?.runOnce(org);
       const asset = await tx(org, async (t) => {
+        if (privateStore && !(await t.query<{ active: boolean }>("SELECT tenant_is_active($1) AS active", [org])).rows[0]!.active) return;
         await t.query(
-          "UPDATE messaging_media SET status='PENDING',lease_token=NULL,lease_expires_at=NULL WHERE organization_id=$1 AND status='DOWNLOADING' AND lease_expires_at<now()",
+          "UPDATE messaging_media SET status='PENDING',lease_token=NULL,lease_expires_at=NULL WHERE organization_id=$1 AND storage_backend='INLINE_V1' AND private_object_id IS NULL AND status='DOWNLOADING' AND lease_expires_at<now()",
           [org],
         );
         const candidate = (
           await t.query<{ id: string }>(
-            "SELECT id FROM messaging_media WHERE organization_id=$1 AND status='PENDING' AND available_at<=now() ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1",
+            "SELECT id FROM messaging_media WHERE organization_id=$1 AND storage_backend='INLINE_V1' AND private_object_id IS NULL AND status='PENDING' AND available_at<=now() ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1",
             [org],
           )
         ).rows[0];
@@ -163,6 +179,11 @@ export function createMediaStore(options: MediaStoreOptions) {
         descriptor.parse(asset);
         const file = await options.download(asset);
         validateMedia(file);
+        if (privateStore) {
+          const staged = await privateStore.stage(org, asset.id, file, { downloadLeaseToken: asset.lease_token });
+          await privateStore.dispatchPut(org, staged.objectId);
+          return;
+        }
         const encrypted = vault.encrypt(
           `${org}:media:${asset.id}`,
           Buffer.from(file.bytes).toString("base64"),
@@ -175,7 +196,8 @@ export function createMediaStore(options: MediaStoreOptions) {
           const used = Number(
             (
               await t.query<{ bytes: string }>(
-                "SELECT coalesce(sum(byte_size),0)::text AS bytes FROM messaging_media WHERE organization_id=$1",
+                `SELECT coalesce((SELECT sum(byte_size) FROM messaging_media WHERE organization_id=$1 AND storage_backend='INLINE_V1'),0)
+                 +coalesce((SELECT sum(reserved_bytes) FROM media_private_objects WHERE organization_id=$1),0) AS bytes`,
                 [org],
               )
             ).rows[0]!.bytes,
@@ -207,7 +229,7 @@ export function createMediaStore(options: MediaStoreOptions) {
         await tx(org, (t) =>
           t.query(
             `UPDATE messaging_media SET status=$4,last_error=$5,lease_token=NULL,lease_expires_at=NULL,available_at=now()+($6*interval '1 second'),updated_at=now()
-     WHERE organization_id=$1 AND id=$2 AND lease_token=$3`,
+     WHERE organization_id=$1 AND id=$2 AND lease_token=$3 AND status='DOWNLOADING' AND storage_backend='INLINE_V1' AND private_object_id IS NULL`,
             [
               org,
               asset.id,
@@ -223,7 +245,7 @@ export function createMediaStore(options: MediaStoreOptions) {
     async retry(org: string, id: string) {
       await tx(org, (t) =>
         t.query(
-          "UPDATE messaging_media SET status='PENDING',attempts=0,last_error=NULL,available_at=now(),updated_at=now() WHERE organization_id=$1 AND id=$2 AND status='FAILED'",
+          "UPDATE messaging_media SET status='PENDING',attempts=0,last_error=NULL,available_at=now(),updated_at=now() WHERE organization_id=$1 AND id=$2 AND status='FAILED' AND storage_backend='INLINE_V1' AND private_object_id IS NULL",
           [org, id],
         ),
       );

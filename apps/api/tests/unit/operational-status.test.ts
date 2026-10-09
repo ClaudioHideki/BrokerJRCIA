@@ -55,7 +55,7 @@ it.each(['https://user:private-password@engine.test', 'https://engine.test?token
   const fixture = deps(); fixture.environment.EVOLUTION_BASE_URL = value;
   const report = await collectOperationalStatus(fixture);
   expect(report.evolution).toEqual({ configured: false }); expect(report.status).toBe('PARTIAL');
-  expect(JSON.stringify(report)).not.toContain('private');
+  expect(JSON.stringify(report)).not.toContain('private-');
 });
 
 it('discards Evolution paths and all readiness response fields except the known status', async () => {
@@ -64,7 +64,7 @@ it('discards Evolution paths and all readiness response fields except the known 
   fixture.fetchReady = async () => Response.json({ status: 'ready', token: 'private-token', error: 'private-error' });
   const report = await collectOperationalStatus(fixture);
   expect(report.evolution).toEqual({ configured: true, protocol: 'https', host: 'engine.test' });
-  expect(report.status).toBe('READY'); expect(JSON.stringify(report)).not.toContain('private');
+  expect(report.status).toBe('READY'); expect(JSON.stringify(report)).not.toContain('private-');
 });
 
 it('fetches only the fixed loopback readiness URL with redirect rejection and an abort signal', async () => {
@@ -88,7 +88,7 @@ it.each([
   const fixture = deps(); fixture.fetchReady = async () => response.clone();
   const report = await collectOperationalStatus(fixture);
   expect(report.status).toBe('PARTIAL'); expect(report.readiness.status).not.toBe('READY');
-  expect(report.errors).toContain(code); expect(JSON.stringify(report)).not.toContain('private');
+  expect(report.errors).toContain(code); expect(JSON.stringify(report)).not.toContain('private-');
 });
 
 it('bounds streamed readiness bodies even without a Content-Length header', async () => {
@@ -140,7 +140,7 @@ it('emits only permitted PostgreSQL error codes and never their diagnostics', as
     const report = await collectOperationalStatus(fixture);
     expect(report.status).toBe('PARTIAL'); expect(report.db.reachable).toBe(false); expect(report.schema.compatible).toBeNull();
     expect(report.errors).toContain(code === 'private-invalid-code' ? 'DATABASE_UNAVAILABLE' : code);
-    expect(JSON.stringify(report)).not.toContain('private');
+    expect(JSON.stringify(report)).not.toContain('private-');
   }
 });
 
@@ -160,7 +160,7 @@ it('uses read-only startup options and fixed metadata queries without letting UR
   expect(queries).toHaveLength(2); expect(queries[0]).toBe('SHOW server_version');
   expect(queries[1]?.trimStart().startsWith('SELECT')).toBe(true);
   expect(result).toEqual({ reachable: true, compatible: true, version: '16.4' }); expect(closed).toBe(true);
-  expect(JSON.stringify(result)).not.toContain('private');
+  expect(JSON.stringify(result)).not.toContain('private-');
 });
 
 it('returns a sanitized partial DB probe on denied metadata access and closes the client', async () => {
@@ -170,7 +170,7 @@ it('returns a sanitized partial DB probe on denied metadata access and closes th
     end: async () => { closed = true; },
   }));
   expect(result).toEqual({ reachable: true, compatible: null, code: '42501' }); expect(closed).toBe(true);
-  expect(JSON.stringify(result)).not.toContain('private');
+  expect(JSON.stringify(result)).not.toContain('private-');
 });
 
 it('does not create a database connection when DATABASE_URL is absent', async () => {
@@ -209,7 +209,7 @@ it.each(['connect', 'version-query', 'schema-query', 'end'] as const)('captures 
   expect(await runOperationalStatusCommand(fixture, value => output.push(value), value => stderr.push(value))).toBe(1);
   const serialized = output.join(''); const report = JSON.parse(serialized);
   expect(report.status).toBe('PARTIAL'); expect(report.schema.compatible).toBeNull();
-  expect(report.errors).toContain('08006'); expect(serialized).not.toContain('private'); expect(stderr).toEqual([]);
+  expect(report.errors).toContain('08006'); expect(serialized).not.toContain('private-'); expect(stderr).toEqual([]);
 });
 
 it('sanitizes an unknown Client error emitted during closing even after both queries succeed', async () => {
@@ -228,7 +228,7 @@ it('sanitizes an unknown Client error emitted during closing even after both que
   const result = await probeOperationalDatabase(environment.DATABASE_URL, () => client);
   expect(escaped).toBe(false);
   expect(result).toEqual({ reachable: true, compatible: null, version: '16.4', code: 'DATABASE_UNAVAILABLE' });
-  expect(JSON.stringify(result)).not.toContain('private');
+  expect(JSON.stringify(result)).not.toContain('private-');
 });
 
 it('returns exit one for partial JSON and static stderr for unexpected collector failures', async () => {

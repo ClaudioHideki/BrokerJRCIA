@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { createFlowService } from '../modules/flows/service.js';
 import { createHash } from "node:crypto";
 import { createIntegrationRuntime } from "../modules/integrations/runtime.js";
+import { recoverPrivateMedia } from "../modules/messaging/private-media-worker.js";
 import { setTimeout } from "node:timers/promises";
 import { Pool } from "pg";
 import { loadDatabasePoolBudget } from '../db/pool-budget.js';
@@ -145,6 +146,14 @@ export async function runMessagingWorker(
         await writeFile(environment.WORKER_HEARTBEAT_FILE, String(Date.now()), {
           mode: 0o600,
         });
+      if(integrations.privateMedia) await recoverPrivateMedia({
+        mode:config.mode,organizations:config.organizations,signal:shutdown.signal,
+        belongsToShard:org=>belongsToWorkerShard(org,config.shard,config.shards),
+        discover:async(after,limit)=>(await pool.query<{organization_id:string}>(
+          'SELECT * FROM media_private_worker_organizations($1,$2)',[after,limit])).rows.map(row=>row.organization_id),
+        runOnce:async org=>{await integrations.privateMedia!.runOnce(org);},
+        ...(watch?{onError:()=>{process.stderr.write('PRIVATE_MEDIA_RECOVERY_FAILED\n');}}:{}),
+      });
       let cursor: string | null = null;
       let more = true;
       while (more && !shutdown.signal.aborted) {

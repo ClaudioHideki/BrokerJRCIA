@@ -97,6 +97,8 @@ jobs:
       - name: Run PostgreSQL and Redis integration tests
         run: npm run test:integration
 
+      - name: Verify private storage against the pinned real MinIO server
+        run: npm run test:storage:ci
       - name: Run browser journeys against the real JRC API composition
         run: npm run test:e2e
 

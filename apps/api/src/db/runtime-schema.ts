@@ -1,10 +1,54 @@
-export const RUNTIME_SCHEMA_BASELINE = '0051_whatsapp_group_events';
+export const RUNTIME_SCHEMA_BASELINE = '0052_durable_private_media';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
 // The app role cannot read drizzle.__drizzle_migrations. This is a structural
 // readiness probe, not a migration journal/hash comparison.
 const requiredObjectsSql = `SELECT
+  NOT EXISTS(SELECT 1 FROM (VALUES ('public.media_private_objects'),('public.media_private_operations')) AS required(relation_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass(required.relation_name)
+      AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'
+      AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='media_private_tenant'
+        AND p.polcmd='*' AND p.polroles=ARRAY[(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='jrc_app')])
+      AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='media_private_lifecycle'
+        AND p.polcmd='*' AND p.polroles=ARRAY[(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='jrc_lifecycle')]))
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'INSERT')
+    OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'UPDATE')
+    OR pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass(required.relation_name),'DELETE')
+    OR NOT pg_catalog.has_table_privilege('jrc_lifecycle',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR NOT pg_catalog.has_table_privilege('jrc_lifecycle',pg_catalog.to_regclass(required.relation_name),'UPDATE')
+    OR pg_catalog.has_table_privilege('jrc_lifecycle',pg_catalog.to_regclass(required.relation_name),'DELETE')
+    OR pg_catalog.has_table_privilege('jrc_auth',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR pg_catalog.has_table_privilege('jrc_platform',pg_catalog.to_regclass(required.relation_name),'SELECT')
+    OR EXISTS(SELECT 1 FROM pg_catalog.pg_class c,LATERAL pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault('r',c.relowner))) a
+      WHERE c.oid=pg_catalog.to_regclass(required.relation_name) AND a.grantee=0))
+  AND pg_catalog.has_table_privilege('jrc_lifecycle',pg_catalog.to_regclass('public.media_private_operations'),'INSERT')
+  AND NOT pg_catalog.has_table_privilege('jrc_lifecycle',pg_catalog.to_regclass('public.media_private_objects'),'INSERT')
+  AND NOT EXISTS(SELECT 1 FROM (VALUES
+    ('public.media_private_objects','lifecycle_private_media_objects_block','public.lifecycle_reject_channel_write()',7),
+    ('public.media_private_operations','lifecycle_private_media_put_block','public.lifecycle_reject_channel_write()',7),
+    ('public.media_private_objects','media_private_objects_immutable','public.media_private_immutable()',19),
+    ('public.media_private_operations','media_private_operations_immutable','public.media_private_immutable()',19),
+    ('public.media_private_operations','media_private_delete_guard','public.media_private_delete_authorized()',7))
+      AS required(relation_name,trigger_name,function_name,trigger_type)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid=pg_catalog.to_regclass(required.relation_name)
+      AND t.tgname=required.trigger_name AND t.tgenabled IN ('O','A') AND NOT t.tgisinternal
+      AND t.tgtype=required.trigger_type AND t.tgfoid=pg_catalog.to_regprocedure(required.function_name)))
+  AND NOT EXISTS(SELECT 1 FROM (VALUES ('public.media_private_worker_organizations(uuid,integer)'),
+    ('public.media_private_channel_open(uuid,uuid)'),('public.media_private_delete_authorized()')) AS required(function_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.oid=pg_catalog.to_regprocedure(required.function_name)
+      AND p.prosecdef AND pg_catalog.pg_get_userbyid(p.proowner)='jrc_migrator'
+      AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE a.grantee=0)))
+  AND pg_catalog.has_function_privilege('jrc_app',pg_catalog.to_regprocedure('public.media_private_worker_organizations(uuid,integer)'),'EXECUTE')
+  AND pg_catalog.has_function_privilege('jrc_app',pg_catalog.to_regprocedure('public.media_private_channel_open(uuid,uuid)'),'EXECUTE')
+  AND NOT EXISTS(SELECT 1 FROM (VALUES ('messaging_media_status_check','c'),('messaging_media_storage_shape','c'),
+    ('messaging_media_private_object_fk','f')) AS required(constraint_name,constraint_type)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass('public.messaging_media')
+      AND c.conname=required.constraint_name AND c.contype::text=required.constraint_type AND c.convalidated))
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.messaging_media')
+    AND attname='storage_backend' AND attnotnull AND attnum>0 AND NOT attisdropped)
+  AND
   NOT EXISTS(SELECT 1 FROM (VALUES ('public.whatsapp_group_events'),('public.whatsapp_group_participation'),
     ('public.whatsapp_group_participants'),('public.whatsapp_group_webhook_operations')) AS required(relation_name)
     WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass(required.relation_name)

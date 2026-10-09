@@ -19,7 +19,6 @@ describe('repository baseline', () => {
 
     expect(migrations.slice(-10)).toEqual([
 
-      '0042_native_handoff_operations.sql',
       '0043_user_password_reset.sql',
       '0044_attendance_resume_operations.sql',
       '0045_local_attendance_directory.sql',
@@ -29,6 +28,7 @@ describe('repository baseline', () => {
       '0049_qr_outbound_observations.sql',
       '0050_whatsapp_group_catalog.sql',
       '0051_whatsapp_group_events.sql',
+      '0052_durable_private_media.sql',
     ]);
     expect(rootManifests).toEqual(['MANIFESTO_ARQUIVOS_SHA256.txt']);
   });

@@ -238,6 +238,8 @@ describe('migrations PostgreSQL', () => {
 
   it('aplica a matriz completa de grants das roles de runtime', async () => {
     const tables = [
+      'media_private_objects',
+      'media_private_operations',
       'api_keys',
       'audit_logs',
       'connection_challenges',
@@ -270,6 +272,8 @@ describe('migrations PostgreSQL', () => {
       ['jrc_auth:login_sessions', []],
       ['jrc_auth:refresh_tokens', ['SELECT', 'INSERT', 'UPDATE']],
       ['jrc_auth:security_audit_logs', ['INSERT']],
+      ['jrc_app:media_private_objects', ['SELECT','INSERT','UPDATE']],
+      ['jrc_app:media_private_operations', ['SELECT','INSERT','UPDATE']],
       ['jrc_app:organizations', ['SELECT']],
       ['jrc_app:memberships', allBusinessPrivileges],
       ['jrc_app:api_keys', allBusinessPrivileges],
@@ -308,6 +312,8 @@ describe('migrations PostgreSQL', () => {
 
   it('habilita e força RLS em todas as tabelas multicliente', async () => {
     const expectedTables = [
+      'media_private_objects',
+      'media_private_operations',
       'api_keys',
       'audit_logs',
       'chatwoot_embed_apps',
@@ -343,7 +349,7 @@ describe('migrations PostgreSQL', () => {
       [expectedTables],
     );
 
-    expect(result.rows).toEqual(expectedTables.map((relname) => ({
+    expect(result.rows).toEqual(expectedTables.sort().map((relname) => ({
       relname,
       relrowsecurity: true,
       relforcerowsecurity: true,
@@ -389,6 +395,8 @@ describe('migrations PostgreSQL', () => {
       ...Array.from({length:3},()=>({policyname:'group_removal_migrator',roles:['jrc_migrator'],cmd:'ALL'})),
       ...Array.from({length:3},()=>({policyname:'group_removal_platform',roles:['jrc_platform'],cmd:'SELECT'})),
       // 0036: private legacy plans/global catalogue stay outside the tenant role.
+      ...Array.from({length:2},()=>({policyname:'media_private_lifecycle',roles:['jrc_lifecycle'],cmd:'ALL'})),
+      ...Array.from({length:2},()=>({policyname:'media_private_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'lifecycle_boundary',roles:['jrc_lifecycle'],cmd:'ALL'},
       ...Array.from({length:3},()=>({policyname:'maintenance_boundary',roles:['jrc_migrator'],cmd:'ALL'})),
       ...Array.from({length:3},()=>({policyname:'platform_boundary',roles:['jrc_platform'],cmd:'ALL'})),

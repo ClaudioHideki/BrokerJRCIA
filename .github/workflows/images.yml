@@ -59,6 +59,10 @@ jobs:
           TEST_DATABASE_ADMIN_URL: postgresql://postgres@127.0.0.1:5432/postgres
           TEST_REDIS_URL: redis://127.0.0.1:6379/15
         run: npm run test:integration -- --maxWorkers=1
+      - name: Verify private storage against the pinned real MinIO server
+        env:
+          TEST_DATABASE_ADMIN_URL: postgresql://postgres@127.0.0.1:5432/postgres
+        run: npm run test:storage:ci
       - name: Prepare BuildKit
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Authenticate to GHCR only for an approved publication

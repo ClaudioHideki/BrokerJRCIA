@@ -358,6 +358,13 @@
       "when": 1791931200000,
       "tag": "0051_whatsapp_group_events",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1792017600000,
+      "tag": "0052_durable_private_media",
+      "breakpoints": true
     }
   ]
 }
