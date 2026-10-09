@@ -37,6 +37,35 @@ describe('resume coordination across the database and central',()=>{
     expect(result).toMatchObject(bot===19?{state:'APPLIED'}:{state:'ACTION_REQUIRED',errorCode:'ATTENDANCE_REMOVE_COMPETING_AGENT_BOT'});
     expect(t.writes).toHaveLength(bot===19?3:0);
   });
+  it('resumes through the stock empty bot and omitted assignment serializers with real persisted authority',async()=>{
+    const t=await resumeFixture(db);t.canonical.meta.team=null;
+    t.setReadSerializer((path,result)=>{
+      if(path.endsWith('/agent_bot'))return {};
+      if(!path.endsWith('/conversations/51'))return result;
+      return {...t.canonical,meta:{sender:{id:41},
+        ...(t.canonical.meta.assignee?{assignee:t.canonical.meta.assignee,assignee_type:t.canonical.meta.assignee_type}:{}),
+        ...(t.canonical.meta.team?{team:t.canonical.meta.team}:{})}};
+    });
+    const op=await t.reserve();
+    expect(await createAttendanceResumeWorker({transact:db.transact,client:t.client}).processAttendanceResume(op.id,t.org)).toMatchObject({state:'APPLIED'});
+    expect(t.writes).toEqual([{assignee_id:null},{team_id:null},{status:'pending'}]);
+    expect(await db.transact(t.org,tx=>readChatwootAttendanceGate(tx,{organizationId:t.org,channelId:t.channel,conversationId:t.conversation})))
+      .toMatchObject({allowed:true,state:'READY',cycle:2});
+    expect((await db.database.pool.query('select observed_remote_updated_at from chatwoot_attendance_controls where organization_id=$1',[t.org])).rows[0].observed_remote_updated_at).toBe(103);
+  });
+  it('does not dispatch when the stock conversation lacks its factual control timestamp',async()=>{
+    const t=await resumeFixture(db);
+    t.setReadSerializer((path,result)=>{
+      if(!path.endsWith('/conversations/51'))return result;
+      const {updated_at:_,...withoutClock}=t.canonical;
+      return {...withoutClock,last_activity_at:104};
+    });
+    const op=await t.reserve();
+    expect(await createAttendanceResumeWorker({transact:db.transact,client:t.client}).processAttendanceResume(op.id,t.org))
+      .toMatchObject({state:'ACTION_REQUIRED',errorCode:'ATTENDANCE_RESUME_REMOTE_CONTROL_UNVERIFIED'});
+    expect(t.writes).toHaveLength(0);
+    expect((await db.database.pool.query('select mode from messaging_conversations where id=$1',[t.conversation])).rows[0].mode).toBe('HUMAN');
+  });
   it('never resumes when a human intervenes during HTTP',async()=>{
     const t=await resumeFixture(db),op=await t.reserve();t.setAfterWrite(t.human);
     const w=createAttendanceResumeWorker({transact:db.transact,client:t.client});

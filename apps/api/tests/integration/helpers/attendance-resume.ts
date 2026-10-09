@@ -30,6 +30,7 @@ export async function resumeFixture(db:Awaited<ReturnType<typeof attendanceDatab
   }else await db.database.pool.query("update messaging_conversations set mode='HUMAN' where id=$1",[t.conversation]);
   const writes:Record<string,unknown>[]=[];
   let callbacks=true;
+  let serializeRead:((path:string,result:unknown)=>unknown)|null=null;
   let afterWrite:(()=>Promise<void>)|null=null,timeout=false,autoAssignment=false,botId=19;
   const fetch=vi.fn(async(input:URL|string|Request,init?:RequestInit)=>{
     const path=new URL(String(input)).pathname,body=typeof init?.body==='string'?JSON.parse(init.body):{};
@@ -43,12 +44,13 @@ export async function resumeFixture(db:Awaited<ReturnType<typeof attendanceDatab
     }
     const result=path.endsWith('/inboxes/9')?{id:9,name:'Synthetic',channel_type:central?'Channel::Whatsapp':'Channel::Api',greeting_enabled:false,enable_auto_assignment:autoAssignment}
       :path.endsWith('/agent_bot')?{agent_bot:central?{id:botId,name:'Broker',outgoing_url:'https://broker.example.test/events',secret:'synthetic'}:null}:canonical;
-    return new Response(JSON.stringify(result),{status:200,headers:{'content-type':'application/json'}});
+    return new Response(JSON.stringify(init?.method==='GET'&&serializeRead?serializeRead(path,result):result),{status:200,headers:{'content-type':'application/json'}});
   });
   const client=()=>new ChatwootClient({baseUrl:`https://${t.org}.example.test`,token:'synthetic-token',fetch});
   const service=createAttendanceResumeService({transact:db.transact});
   const gate=await db.transact(t.org,tx=>readChatwootAttendanceGate(tx,{organizationId:t.org,channelId:t.channel,conversationId:t.conversation}));
   const reserve=()=>service.requestAttendanceResume(t.org,actor,randomUUID(),{conversationId:t.conversation,expectedControlRevision:gate.revision,expectedOwnerRevision:1,target:{kind:'NEW_SESSION'}});
   return {...t,actor,client,service,reserve,writes,human,record,scope,canonical,
+    setReadSerializer:(serializer:typeof serializeRead)=>{serializeRead=serializer;},
     setBot:(id:number)=>{botId=id;},setCallbacks:(v:boolean)=>{callbacks=v;},setAfterWrite:(f:typeof afterWrite)=>{afterWrite=f;},setTimeout:(v:boolean)=>{timeout=v;},setAutoAssignment:(v:boolean)=>{autoAssignment=v;}};
 }

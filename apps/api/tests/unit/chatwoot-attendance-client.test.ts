@@ -28,7 +28,13 @@ it('rejects unsafe IDs and malformed metadata with a sanitized error',async()=>{
   await expect(client([{id:Number.MAX_SAFE_INTEGER+1,name:'Unsafe',account_id:7}]).api.teams(7)).rejects.toMatchObject({code:'CHATWOOT_INVALID_RESPONSE'});
   await expect(client({id:9,name:'Canal',channel_type:'Channel::Api',working_hours:[{day_of_week:19}]}).api.attendanceInbox(7,9)).rejects.toMatchObject({code:'CHATWOOT_INVALID_RESPONSE'});
 });
-it('requires explicit null to conclude that an inbox has no agent bot',async()=>{
-  await expect(client({}).api.inboxFlowBot(7,9)).rejects.toMatchObject({code:'CHATWOOT_INVALID_RESPONSE'});
+it('reads both empty and explicit-null stock agent bot responses as no bot',async()=>{
+  expect(await client({}).api.inboxFlowBot(7,9)).toBeNull();
   expect(await client({agent_bot:null}).api.inboxFlowBot(7,9)).toBeNull();
+});
+it.each([{error:'unknown'},{agent_bot:{}},{agent_bot:[]},[],null])('does not mistake malformed bot data for an empty stock response: %j',async payload=>{
+  await expect(client(payload).api.inboxFlowBot(7,9)).rejects.toMatchObject({code:'CHATWOOT_INVALID_RESPONSE'});
+});
+it('preserves a configured competing bot rather than normalizing it to absence',async()=>{
+  expect(await client({agent_bot:{id:23,name:'Other bot'}}).api.inboxFlowBot(7,9)).toMatchObject({id:23,name:'Other bot'});
 });

@@ -186,9 +186,13 @@ export class ChatwootClient {
       { name, description: 'Automação JRC Broker', outgoing_url: outgoingUrl, bot_type: 'webhook' }));
   }
   async inboxFlowBot(accountId: number, inboxId: number) {
-    const data = parseCatalog(z.object({agent_bot:flowBot.nullable()}),
+    // Stock agent_bot.json.jbuilder returns {} when the inbox has no bot.
+    // Only that exact empty envelope means absence; malformed bot data stays invalid.
+    return parseCatalog(z.union([
+      z.object({}).strict().transform(()=>null),
+      z.object({agent_bot:flowBot.nullable()}).transform(data=>data.agent_bot),
+    ]),
       await this.request('GET', this.account(accountId) + `/inboxes/${integer.parse(inboxId)}/agent_bot`));
-    return data.agent_bot;
   }
   async setInboxFlowBot(accountId: number, inboxId: number, botId: number | null) {
     await this.request('POST', this.account(accountId) + `/inboxes/${integer.parse(inboxId)}/set_agent_bot`,
@@ -479,8 +483,10 @@ export class ChatwootClient {
   async attendanceConversation(accountId:number,conversationId:number) {
     const result=parseCatalog(z.object({id:integer,account_id:integer,inbox_id:integer,status:z.enum(['pending','open','resolved','snoozed']),
       updated_at:z.number().finite().nonnegative().optional(),
-      meta:z.object({sender:z.object({id:integer}),assignee:z.object({id:integer,type:z.string().optional()}).nullable(),
-        assignee_type:z.enum(['User','AgentBot']).nullable().optional(),team:z.object({id:integer}).nullable()})}),
+      // GET show omits assignee/team when no assignment exists. Normalize only
+      // those documented omissions; retain the remote control clock unchanged.
+      meta:z.object({sender:z.object({id:integer}),assignee:z.object({id:integer,type:z.string().optional()}).nullable().default(null),
+        assignee_type:z.enum(['User','AgentBot']).nullable().optional(),team:z.object({id:integer}).nullable().default(null)})}),
     await this.request('GET',this.account(accountId)+`/conversations/${integer.parse(conversationId)}`));
     if(result.id!==conversationId||result.account_id!==accountId)throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
     return result;
