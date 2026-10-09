@@ -54,14 +54,14 @@ export function AttendanceResumeDialog({conversationId,client,onConfirmed,onClos
   return <section className="flows-alert" role="dialog" aria-modal="true" aria-labelledby="resume-title" tabIndex={-1} ref={panel} onKeyDown={event=>{
     if(event.key==='Escape')onClose();
     if(event.key==='Tab'){const controls=panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled)');if(controls?.length){const first=controls[0]!,last=controls[controls.length-1]!;if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}}}}>
-    <h2 id="resume-title">Retomar bot</h2>{context?<><AttendanceDiagnosticNotice diagnostic={context.diagnostic}/>
+    <h2 id="resume-title">Retomar bot</h2><p>Somente a conversa selecionada será retomada após a confirmação. Conclua o atendimento humano e escolha como o bot deve voltar.</p><p>Vincular ou publicar um fluxo não retoma uma conversa em atendimento humano.</p>{context?<><AttendanceDiagnosticNotice diagnostic={context.diagnostic}/>
       {!context.hasActiveSession?<p>Esta conversa não possui uma sessão do bot. Inicie uma nova sessão com a automação publicada.</p>:null}
       {!context.hasCompatibleCursor?<p>A continuação não está disponível porque não há uma espera compatível pela próxima mensagem.</p>:null}
       {!operation?<><fieldset disabled={busy||Boolean(unavailable)}><legend>Como o bot deve voltar?</legend>
-        <label><input type="radio" name="resume-target" disabled={!context.hasCompatibleCursor} checked={choice==='CONTINUE'} onChange={()=>setChoice('CONTINUE')}/>Continuar de onde parou</label>
-        <label><input type="radio" name="resume-target" disabled={!context.hasActiveSession||!context.menuNodes.length} checked={choice==='MENU'} onChange={()=>setChoice('MENU')}/>Voltar ao menu</label>
+        <label><input type="radio" name="resume-target" aria-describedby="resume-continue-help" disabled={!context.hasCompatibleCursor} checked={choice==='CONTINUE'} onChange={()=>setChoice('CONTINUE')}/>Continuar de onde parou</label><p id="resume-continue-help">Continua a espera compatível pela próxima mensagem.</p>
+        <label><input type="radio" name="resume-target" aria-describedby="resume-menu-help" disabled={!context.hasActiveSession||!context.menuNodes.length} checked={choice==='MENU'} onChange={()=>setChoice('MENU')}/>Voltar ao menu</label><p id="resume-menu-help">Volta ao menu escolhido da sessão atual.</p>
         {choice==='MENU'?<label>Menu<select value={menu} onChange={event=>setMenu(event.target.value)}><option value="">Selecione</option>{context.menuNodes.map(node=><option key={node.id} value={node.id}>{node.label}</option>)}</select></label>:null}
-        <label><input type="radio" name="resume-target" checked={choice==='NEW_SESSION'} onChange={()=>setChoice('NEW_SESSION')}/>Nova sessão</label>
+        <label><input type="radio" name="resume-target" aria-describedby="resume-new-help" checked={choice==='NEW_SESSION'} onChange={()=>setChoice('NEW_SESSION')}/>Nova sessão</label><p id="resume-new-help">Começa pela versão publicada, sem reproduzir mensagens antigas.</p>
       </fieldset><p>A retomada encerra o ciclo anterior. Mensagens antigas não serão reproduzidas.</p>
       <button type="button" disabled={busy||Boolean(unavailable)||!choice||choice==='MENU'&&!menu} onClick={()=>void submit()}>Confirmar retomada</button></>:null}
     </>:<p>Verificando a conversa…</p>}

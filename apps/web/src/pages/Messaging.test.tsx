@@ -120,6 +120,12 @@ function loadedRequest(overrides: {
 }
 
 describe('MessagingPage', () => {
+  it('explains the separate explicit resume for the selected human conversation without writing on load',async()=>{
+    const request=loadedRequest({mode:'HUMAN'});renderPage(clientFor(request));
+    expect(await screen.findByText(/A retomada vale somente para a conversa selecionada/)).toBeVisible();
+    expect(await screen.findByRole('button',{name:'Retomar bot'})).toBeEnabled();
+    expect((request as ReturnType<typeof vi.fn>).mock.calls.some(call=>call[1]?.method&&call[1].method!=='GET')).toBe(false);
+  });
   it('invalida os dois painéis de reconciliação após abandonar uma tentativa',async()=>{
     const observationId='dddddddd-eeee-4fff-8000-111111111111',attemptId='eeeeeeee-ffff-4000-8111-222222222222';
     const base=loadedRequest({provider:'BAILEYS'});let abandoned=false;

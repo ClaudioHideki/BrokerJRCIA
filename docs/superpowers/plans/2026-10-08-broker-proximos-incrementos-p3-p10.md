@@ -52,3 +52,9 @@ Validar A1–A8 com uma matriz por papel, organização e caixa: cadastro, membe
 Depois do CI e das imagens do mesmo SHA, fornecer guia Dokploy e aplicar a cadeia de migrações correspondente. Verificar imagens efetivas, schema, workers, configuração e transporte. Executar H01–H24 conforme perfil em standalone, JRC tenants A/B e Chatwoot externo, após P9. A primeira jornada real é conexão → mensagem recebida → menu/captura → transferência humana → resposta → retomada coordenada.
 
 Registrar versão, configuração, correlação e resultado observado. Os tenants adicionais foram adiados pelo usuário até esta etapa. O registro offline ajuda a organizar evidências, mas não aprova homologação automaticamente. Fechar o piloto somente após os incidentes serem resolvidos e repetidos os cenários afetados.
+
+## Incremento de usabilidade — 09/10/2026
+
+A configuração por caixa passa a orientar conexão, publicação, vínculo do bot e teste de atendimento. A navegação conserva o retorno à caixa e a retomada explica as três opções existentes sem reativação automática. Uma leitura que falha não permite alterar o vínculo usando o estado anterior. Evidências em `docs/validation/2026-10-09-bot-setup-journey.md`: build, 117 testes focais e 2.405 testes globais aprovados, revisão sem achados críticos ou importantes pendentes.
+
+Este incremento não altera Compose, ENV ou a baseline 0051. Os candidatos de mídia privada, grupos com Flow e módulos delegados continuam separados até integração, CI e imagens correspondentes. O aceite de produção permanece pendente da jornada real controlada.

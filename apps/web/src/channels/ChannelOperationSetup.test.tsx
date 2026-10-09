@@ -22,6 +22,13 @@ it('keeps a failed external central blocked and directs to existing onboarding',
  expect(screen.getByRole('link',{name:'Configurar central e caixa'})).toHaveAttribute('href','/integracoes');
  expect(screen.queryByRole('link',{name:'Abrir atendimento no Broker'})).toBeNull();
 });
+it('offers an existing repair action for each connection or central blocker without claiming delivery',async()=>{
+ const request=vi.fn().mockResolvedValue({...profile,readiness:'BLOCKED',blockers:['TRANSPORT_NOT_CONNECTED','ACCOUNT_NOT_READY','CALLBACK_UNVERIFIED']});mount(request);
+ fireEvent.click(screen.getByRole('button',{name:'Conferir modo e configuração'}));
+ expect(await screen.findByRole('link',{name:'Conectar ou atualizar WhatsApp'})).toHaveAttribute('href','#channel-connect');
+ expect(screen.getAllByRole('link',{name:'Conferir configuração na central'})).toHaveLength(2);
+ expect(screen.queryByText(/entrega confirmada/i)).toBeNull();
+});
 it('rejects a profile from another tenant or box',async()=>{
  const request=vi.fn().mockResolvedValue({...profile,organizationId:other});mount(request);
  fireEvent.click(screen.getByRole('button',{name:'Conferir modo e configuração'}));

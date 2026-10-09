@@ -750,7 +750,7 @@ export function MessagingPage() {
           </div>
           <section className="panel" aria-labelledby="automation-title">
             <h2 id="automation-title">Automação JRC</h2>
-            <p>Crie ou importe seu chatbot em Automações. Publique uma versão e ative-a na caixa WhatsApp desejada.</p>
+            <p>Conecte o WhatsApp, publique o fluxo e vincule-o à caixa em Caixas de entrada. O vínculo recebe novas entradas.</p><p>Uma conversa assumida por uma pessoa mantém o bot pausado. Ao concluir o atendimento, selecione essa conversa no Histórico e use Retomar bot. A retomada vale somente para a conversa selecionada.</p>
             <a className="button button--secondary" href="/automations">Gerenciar automações</a>{' '}
             <a href="/channels">Gerenciar caixas de entrada</a>
           </section>

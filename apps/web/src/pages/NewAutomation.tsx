@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
+import {channelSetupNavigation} from '../channels/setup-navigation.js';
 import { welcomeFlow, type AutomationGraphV1 } from '@jrc/contracts';
 import { useApiClient, useSession } from '../auth/SessionProvider.js';
 import { createAutomation } from '../automations/api.js';
@@ -14,6 +15,7 @@ type PendingImport={content:string;idempotencyKey:string;persisted:Preview|null}
 type PendingCreation={signature:string;idempotencyKey:string};
 export function NewAutomationPage(){
   const client=useApiClient(),navigate=useNavigate(),{session,tenantRevision}=useSession();
+  const setup=channelSetupNavigation(useLocation().search);
   const [name,setName]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[preview,setPreview]=useState<Preview|null>(null),[availability,setAvailability]=useState<AutomationAvailability|null>(null);
   const generation=useRef(0),pending=useRef(false),pendingImport=useRef<PendingImport|null>(null),pendingCreation=useRef<PendingCreation|null>(null);
   useEffect(()=>{generation.current++;const current=generation.current;setName('');setPreview(null);setError('');setBusy(false);setAvailability(null);pending.current=false;pendingImport.current=null;pendingCreation.current=null;
@@ -46,11 +48,11 @@ export function NewAutomationPage(){
       const signature=JSON.stringify({name:creationName,graph});
       if(pendingCreation.current?.signature!==signature)pendingCreation.current={signature,idempotencyKey:crypto.randomUUID()};
       const item=await createAutomation(client,creationName,graph,pendingCreation.current.idempotencyKey);
-      if(current===generation.current){pendingImport.current=null;navigate(`/automations/${item.id}/edit`,{replace:true,state:confirmed?{importReport:confirmed.report}:null});}
+      if(current===generation.current){pendingImport.current=null;navigate(`/automations/${item.id}/edit${setup.suffix}`,{replace:true,state:confirmed?{importReport:confirmed.report}:null});}
     }catch(reason){if(current===generation.current)fail(reason);}
     finally{if(current===generation.current){pending.current=false;setBusy(false);}}
   }
-  return <section className="automation-page automation-narrow"><Link to="/automations">← Voltar para automações</Link><h1>Nova automação</h1>
+  return <section className="automation-page automation-narrow"><Link to={`/automations${setup.suffix}`}>← Voltar para automações</Link>{setup.channelPath&&<p><Link to={setup.channelPath}>Voltar à caixa para vincular e testar</Link></p>}<h1>Nova automação</h1>
     <p>Crie um chatbot JRC ou importe um arquivo JSON para continuar a edição.</p>
     {error&&<p role="alert" className="flows-alert flows-alert--error">{error}</p>}
     <AutomationAvailabilityNotice status={availability}/>
@@ -61,7 +63,7 @@ export function NewAutomationPage(){
       {preview&&<ImportReview report={preview.report}/>}
       <form onSubmit={event=>void submit(event)}><label>Nome da automação<input required maxLength={120} value={name} onChange={event=>setName(event.target.value)}/></label>
         <div className="flows-actions"><button className="flows-primary" disabled={busy||!canCreate||!name.trim()}>{busy?'Processando…':preview?'Importar rascunho e abrir editor':'Criar e abrir editor'}</button>
-          {preview?<button type="button" disabled={busy} onClick={()=>{pendingImport.current=null;pendingCreation.current=null;setPreview(null);setName('');setError('');}}>Cancelar importação</button>:<Link to="/automations">Cancelar</Link>}</div>
+          {preview?<button type="button" disabled={busy} onClick={()=>{pendingImport.current=null;pendingCreation.current=null;setPreview(null);setName('');setError('');}}>Cancelar importação</button>:<Link to={`/automations${setup.suffix}`}>Cancelar</Link>}</div>
       </form>
     </>}
   </section>;

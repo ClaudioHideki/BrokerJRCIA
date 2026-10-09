@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { welcomeFlow } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
@@ -24,6 +24,20 @@ function client(request: ApiClient['request']): ApiClient {
 beforeEach(() => sessionStorage.clear());
 
 describe('NewAutomation retry', () => {
+  it('keeps the box context after creating a draft without binding it',async()=>{
+    const box='22222222-2222-4222-8222-222222222222';
+    const request=vi.fn(async(path:string)=>path==='/v1/automations/status'?{enabled:true}:definition) as ApiClient['request'];
+    function EditorLocation(){const location=useLocation();return <p>{location.pathname+location.search}</p>;}
+    render(<SessionProvider client={client(request)}><MemoryRouter initialEntries={[`/automations/new?channel=${box}`]}><Routes>
+      <Route path="/automations/new" element={<NewAutomationPage/>}/><Route path="/automations/:id/edit" element={<EditorLocation/>}/>
+    </Routes></MemoryRouter></SessionProvider>);
+    expect(await screen.findByRole('link',{name:'Voltar à caixa para vincular e testar'})).toHaveAttribute('href',`/channels/${box}`);
+    await waitFor(()=>expect(screen.getByRole('button',{name:'Criar e abrir editor'})).toBeDisabled());
+    fireEvent.change(screen.getByLabelText('Nome da automação'),{target:{value:'Fluxo sintético'}});
+    await waitFor(()=>expect(screen.getByRole('button',{name:'Criar e abrir editor'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'Criar e abrir editor'}));
+    expect(await screen.findByText(`/automations/${definition.id}/edit?channel=${box}`)).toBeVisible();
+    expect((request as ReturnType<typeof vi.fn>).mock.calls.some(call=>call[0].startsWith('/v1/channels/'))).toBe(false);
+  });
   it('reuses the draft creation key after an uncertain response', async () => {
     const creationKeys: string[] = [];
     const request = vi.fn(async (path: string, init?: RequestInit) => {

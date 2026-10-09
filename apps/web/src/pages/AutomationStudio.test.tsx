@@ -24,9 +24,9 @@ function client(request:ApiClient['request']):ApiClient {
   return {request,restore:async()=>({user:{id:organization.id,email:'owner@example.test'},activeOrganization:organization,organizations:[organization]}),registerTenantPurge:()=>()=>{},subscribeToSessionExpiration:()=>()=>{},login:vi.fn(),logout:vi.fn(),selectOrganization:vi.fn(),switchOrganization:vi.fn()} as unknown as ApiClient;
 }
 
-function mountEditor(request:ApiClient['request']) {
+function mountEditor(request:ApiClient['request'],search='') {
   const withStatus=((path:string,init?:RequestInit)=>path==='/v1/automations/status'?Promise.resolve({enabled:true,canEdit:true,canSimulate:true,canPublish:true,reasons:[]}):request(path,init)) as ApiClient['request'];
-  return render(<SessionProvider client={client(withStatus)}><MemoryRouter initialEntries={[`/automations/${automationId}/edit`]}><Routes><Route path="/automations/:id/edit" element={<AutomationEditorPage/>}/></Routes></MemoryRouter></SessionProvider>);
+  return render(<SessionProvider client={client(withStatus)}><MemoryRouter initialEntries={[`/automations/${automationId}/edit${search}`]}><Routes><Route path="/automations/:id/edit" element={<AutomationEditorPage/>}/></Routes></MemoryRouter></SessionProvider>);
 }
 
 beforeEach(()=>sessionStorage.clear());
@@ -40,6 +40,18 @@ it('explains queued attendance blocked by a human instead of claiming a send fai
 });
 
 describe('Automation Studio',()=>{
+  it('keeps publication separate from binding and offers the original box after publishing',async()=>{
+    const box='22222222-2222-4222-8222-222222222222';let published=false;
+    const request=vi.fn(async(path:string)=>{
+      if(path===`/v1/automations/${automationId}`)return {...definition,activeVersion:published?1:null,lifecycleStatus:published?'PUBLISHED':'DRAFT'};
+      if(path==='/v1/automation-nodes')return {data:AUTOMATION_NODE_CATALOG_V1};
+      if(path.endsWith('/publish')){published=true;return {version:1};}throw new Error(path);
+    }) as ApiClient['request'];
+    mountEditor(request,`?channel=${box}`);fireEvent.click(await screen.findByRole('button',{name:'Publicar'}));
+    expect(await screen.findByText('Versão 1 publicada.')).toBeVisible();
+    expect(screen.getByRole('link',{name:'Voltar à caixa para vincular e testar'})).toHaveAttribute('href',`/channels/${box}`);
+    expect((request as ReturnType<typeof vi.fn>).mock.calls.some(call=>call[0].startsWith('/v1/channels/'))).toBe(false);
+  });
   it('discards a pending simulation when its clock is changed and preserves the new input',async()=>{
     let resolve!: (value:unknown)=>void;
     const pending=new Promise(done=>{resolve=done;});

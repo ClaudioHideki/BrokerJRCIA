@@ -19,6 +19,11 @@ const reasons:Record<ChannelOperationBlocker,string>={
  IDENTITY_UNVERIFIED:'Confirme a identidade atual do número e o acesso no controle da conexão.',
  CALLBACK_UNVERIFIED:'O webhook desta caixa ainda não foi confirmado na credencial e revisão atuais.',
 };
+function RepairAction({reason}:{reason:ChannelOperationBlocker}){
+ if(reason==='TRANSPORT_NOT_CONNECTED')return <a href="#channel-connect">Conectar ou atualizar WhatsApp</a>;
+ if(reason==='CHANNEL_NOT_ACTIVATED'||reason==='CHANNEL_INACTIVE')return <Link to="/channels">Conferir cadastro da caixa</Link>;
+ return <Link to="/integracoes">Conferir configuração na central</Link>;
+}
 export function ChannelOperationSetup(props:Props){
  return <Setup key={`${props.organizationId}:${props.tenantRevision}:${props.channelId}`} {...props}/>;
 }
@@ -42,7 +47,7 @@ function Setup({client,organizationId,channelId}:Props){
  <p>{profile.transport==='BROKER_TRANSPORT'?'O número está cadastrado para conexão pelo Broker.':profile.transport==='CENTRAL_TRANSPORT'?'O envio está configurado pela central.':'O transporte desta caixa ainda não foi confirmado.'}</p>
  {profile.central&&<p>Central: {profile.central.origin} · conta {profile.central.accountId} · caixa {profile.central.inboxId}</p>}
  <p role="status">{profile.readiness==='READY'?'A configuração está pronta para o teste.':'Conclua as pendências antes de testar a automação.'}</p>
- {profile.blockers.length>0&&<ul>{profile.blockers.map(reason=><li key={reason}>{reasons[reason]}</li>)}</ul>}
+ {profile.blockers.length>0&&<ul>{profile.blockers.map(reason=><li key={reason}>{reasons[reason]}{' '}<RepairAction reason={reason}/></li>)}</ul>}
  <ol><li>Confirme a conexão do WhatsApp e a identidade do número.</li>
  {profile.mode==='STANDALONE'?<li>Organize times e agentes e consulte a fila em <Link to="/mensagens">Abrir atendimento no Broker</Link>.</li>:<li>Confira destino aprovado, conta, credencial, caixa e webhook em <Link to="/integracoes">Configurar central e caixa</Link>. A configuração existente exige escolha explícita antes de substituir um webhook.</li>}
  <li><Link to="/automations">Publicar e conferir a automação</Link>, depois vinculá-la nesta caixa.</li>

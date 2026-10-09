@@ -5,6 +5,21 @@ import type { ApiClient } from '../api/client.js';
 import { AttendanceResumeDialog } from './AttendanceResumeDialog.js';
 const id='81555d45-b1a2-4a3f-ab95-c1459b0df0d0';
 const context={diagnostic:{allowed:false,reason:'HUMAN_CONTROL',controlRevision:8,cycle:1},ownerRevision:3,hasActiveSession:false,hasCompatibleCursor:false,menuNodes:[],operation:null};
+it('explains the scope of resuming and keeps keyboard dismissal free from a resume mutation',async()=>{
+ const request=vi.fn().mockResolvedValue(context),closed=vi.fn();
+ render(<AttendanceResumeDialog conversationId={id} client={{request} as unknown as ApiClient} onConfirmed={vi.fn()} onClose={closed}/>);
+ const dialog=screen.getByRole('dialog',{name:'Retomar bot'});expect(dialog).toHaveFocus();
+ expect(await screen.findByText(/Somente a conversa selecionada/)).toBeVisible();
+ expect(screen.getByText(/Vincular ou publicar um fluxo não retoma/)).toBeVisible();
+ expect(screen.getByText('Continua a espera compatível pela próxima mensagem.')).toBeVisible();
+ expect(screen.getByText('Volta ao menu escolhido da sessão atual.')).toBeVisible();
+ expect(screen.getByText('Começa pela versão publicada, sem reproduzir mensagens antigas.')).toBeVisible();
+ const newSession=screen.getByRole('radio',{name:'Nova sessão'}),close=screen.getByRole('button',{name:'Fechar'});
+ newSession.focus();fireEvent.keyDown(newSession,{key:'Tab',shiftKey:true});expect(close).toHaveFocus();
+ fireEvent.keyDown(close,{key:'Tab'});expect(newSession).toHaveFocus();
+ fireEvent.keyDown(dialog,{key:'Escape'});expect(closed).toHaveBeenCalledOnce();
+ expect(request).toHaveBeenCalledOnce();expect(screen.getByRole('button',{name:'Confirmar retomada'})).toBeDisabled();
+});
 it('requires an explicit new session for a legacy conversation and only confirms after APPLIED',async()=>{
   let applied=false;
   const request=vi.fn(async(path:string,init?:RequestInit)=>path.endsWith('/resume-context')?context:
