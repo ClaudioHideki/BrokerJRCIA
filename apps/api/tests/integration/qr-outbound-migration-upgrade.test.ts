@@ -98,7 +98,7 @@ it('upgrades populated 0048 to 0049 without inventing provider IDs, preserving h
     const ended = (await db.pool.query('SELECT clock_timestamp() AS now')).rows[0]!.now as Date;
     expect(await snapshot()).toEqual(before);
     const newJournal = (await db.pool.query('SELECT id,hash,created_at FROM drizzle.__drizzle_migrations ORDER BY id')).rows;
-    expect(newJournal).toHaveLength(50); expect(newJournal.slice(0, 48)).toEqual(oldJournal);
+    expect(newJournal).toHaveLength(51); expect(newJournal.slice(0, 48)).toEqual(oldJournal);
     expect(newJournal[48]).toMatchObject({ hash: createHash('sha256').update(await readFile(join(source, `${latest.tag}.sql`), 'utf8')).digest('hex'), created_at: String(latest.when) });
 
     const attempts = (await db.pool.query('SELECT * FROM qr_dispatch_attempts')).rows;

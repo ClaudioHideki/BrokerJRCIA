@@ -2,8 +2,10 @@ import { z } from "zod";
 import type { MessageContent } from "./types.js";
 import type { MediaRegistration } from "./media-store.js";
 import { safeMediaName } from "@jrc/providers";
+import { normalizeQrGroupEvents, type QrGroupEvent } from './qr-group-events.js';
 
 export type QrEvent =
+  | QrGroupEvent
   | { kind: "connection"; state: "CONNECTED" | "DISCONNECTED"; identity?: string }
   | {
       kind: "message" | "outbound";
@@ -46,6 +48,8 @@ export function normalizeQrEvent(
   if (envelope.instance !== expectedInstance)
     throw new Error("QR_INSTANCE_MISMATCH");
   const event = String(envelope.event).toLowerCase().replace(/_/gu, ".");
+  if (['groups.upsert', 'groups.update', 'group.participants.update', 'group-participants.update'].includes(event))
+    return normalizeQrGroupEvents(payload, expectedInstance);
   if (event === "connection.update") {
     const data = object(envelope.data), state = data.state, identity = phone(data.wuid);
     return state === "open"

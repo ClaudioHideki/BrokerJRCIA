@@ -38,6 +38,23 @@ function openApiOperations(openapi) {
 }
 
 describe('dados reproduzíveis da auditoria de segurança', () => {
+  it('classifica a leitura G2 como configuração opaca de caixa QR com autorização atual', async () => {
+    const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
+    const inventory = await buildRouteInventory({ rootDirectory: ROOT, openapi });
+    const path = '/v1/channels/{id}/whatsapp-group-events-configuration';
+    expect(inventory.find(route => route.method === 'GET' && route.path === path)).toMatchObject({
+      authentication: 'JWT_CURRENT_MEMBERSHIP', permission: 'OWNER_ADMIN_OPERATOR', tenantRls: true,
+      idempotency: 'READ_ONLY', challengeExposure: 'NO_STORE_METADATA_ONLY',
+      ownershipCheck: 'RLS_CURRENT_ACTOR_CHANNEL_INSTANCE_BINDING_IDENTITY_CONFIGURATION_REVISIONS',
+      handlerFile: 'apps/api/src/http/routes/whatsapp-groups.ts', requestSchemas: ['path:id'],
+    });
+    const response = openapi.paths[path].get.responses['200'].content['application/json'].schema;
+    expect(response.additionalProperties).toBe(false);
+    expect(Object.keys(response.properties).sort()).toEqual([
+      'channelId', 'configurationRevision', 'nextAction', 'observedAt', 'observedCatalogRevision',
+      'observedIdentityRevision', 'operationId', 'organizationId', 'safeError', 'schemaVersion', 'status', 'updatedAt',
+    ]);
+  });
   it('classifica as leituras QR P4 como metadados da conversa com membership corrente e no-store', async () => {
     const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
     const inventory = await buildRouteInventory({ rootDirectory: ROOT, openapi });

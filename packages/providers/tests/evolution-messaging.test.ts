@@ -21,7 +21,8 @@ it('configura autenticação do webhook sem usar o segredo global no callback', 
   await client.configureWebhook('https://broker.test/v1/webhooks/whatsapp/channel', 'channel-secret');
   const body = JSON.parse(request.mock.calls[0]![1].body);
   expect(body.webhook.headers).toEqual({ Authorization: 'Bearer channel-secret' });
-  expect(body.webhook.events).toEqual(['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE']);
+  expect(body.webhook.events).toEqual(['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'GROUPS_UPSERT', 'GROUPS_UPDATE', 'GROUP_PARTICIPANTS_UPDATE']);
+  expect(body.webhook).toMatchObject({ byEvents: false, base64: false });
   expect(JSON.stringify(body)).not.toContain('global-private');
 });
 it('rejeita destinatário inválido antes de chamar o motor', async () => {

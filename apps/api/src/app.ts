@@ -1,6 +1,6 @@
 import swagger from "@fastify/swagger";
 import { createHandoffReadiness } from './modules/attendance/handoff-readiness.js';
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHmac } from 'node:crypto';
 import { registerSupportRoutes, type SupportRouteOptions } from './http/routes/support.js';
 import { createSupportService, withSupportPlatformTransaction } from './modules/support/service.js';
 import { createLifecycleService, withLifecyclePlatformTransaction } from './modules/lifecycle/service.js';
@@ -25,7 +25,7 @@ import { registerAutomationWebhookRoutes, type AutomationWebhookRouteOptions } f
 import { createWebhookService } from './modules/automation-integrations/webhooks.js';
 import { registerAutomationImportRoutes, type AutomationImportRouteOptions } from './http/routes/automation-imports.js';
 import { createAutomationImporter } from './modules/automation-integrations/importer.js';
-import { createIntegrationRuntime } from "./modules/integrations/runtime.js";
+import { createIntegrationRuntime,loadIntegrationConfig } from "./modules/integrations/runtime.js";
 import { z } from 'zod';
 import { createChatwootControlAuth } from './modules/integrations/chatwoot-control-auth.js';
 import { createEmbedService } from './modules/integrations/embed/authorization.js';
@@ -42,6 +42,7 @@ import {
 import { InstanceWorkspaceService } from "./modules/instances/workspace.js";
 import { registerWhatsAppGroupsRoutes, type WhatsAppGroupsRouteOptions } from './http/routes/whatsapp-groups.js';
 import { createWhatsAppGroupCatalog } from './modules/whatsapp-groups/service.js';
+import { createWhatsAppGroupWebhookConfiguration } from './modules/whatsapp-groups/webhook-configuration.js';
 import swaggerUi from "@fastify/swagger-ui";
 import Fastify, { LogController } from "fastify";
 import { Pool } from "pg";
@@ -82,6 +83,7 @@ import {
   EvolutionProviderAdapter,
   EvolutionWorkspaceClient,
   EvolutionGroupsClient,
+  EvolutionMessagingClient,
   ProviderRegistry,
 } from "@jrc/providers";
 
@@ -452,14 +454,29 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (messagingEnvironment.INTEGRATION_ENCRYPTION_KEY) {
       const identity = new EvolutionWorkspaceClient({baseUrl:config.evolutionBaseUrl,apiKey:config.evolutionApiKey});
       const groups = new EvolutionGroupsClient({baseUrl:config.evolutionBaseUrl,apiKey:config.evolutionApiKey});
+      const qrConfig=loadIntegrationConfig(messagingEnvironment).qr;
+      const readIdentity=async(context:import('@jrc/providers').ProviderContext,key:string)=>{
+        const snapshot=await identity.read(context,key);return {connected:snapshot.profile.state==='open',phone:snapshot.profile.phone};};
+      const configuration=qrConfig?createWhatsAppGroupWebhookConfiguration({
+        encryptionKey:messagingEnvironment.INTEGRATION_ENCRYPTION_KEY,
+        configurationScope:JSON.stringify([qrConfig.baseUrl,qrConfig.webhookOrigin,qrConfig.signingKey]),
+        transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work),readIdentity,
+        readConfiguration:async(context,key,org,channel)=>new EvolutionMessagingClient({baseUrl:qrConfig.baseUrl,apiKey:qrConfig.apiKey,instanceKey:key})
+          .readWebhookConfiguration(new URL(`/v1/webhooks/whatsapp/${channel}`,qrConfig.webhookOrigin).toString(),
+            createHmac('sha256',qrConfig.signingKey).update(`qr-webhook\0${org}\0${channel}`).digest('base64url'),context),
+        setConfiguration:async(context,key,org,channel)=>new EvolutionMessagingClient({baseUrl:qrConfig.baseUrl,apiKey:qrConfig.apiKey,instanceKey:key})
+          .configureWebhook(new URL(`/v1/webhooks/whatsapp/${channel}`,qrConfig.webhookOrigin).toString(),
+            createHmac('sha256',qrConfig.signingKey).update(`qr-webhook\0${org}\0${channel}`).digest('base64url'),context),
+      }):undefined;
       whatsappGroups = {
         jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,
         resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),
+        ...(configuration?{configuration}:{}),
         service:createWhatsAppGroupCatalog({
           encryptionKey:messagingEnvironment.INTEGRATION_ENCRYPTION_KEY,
           transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work),
-          readIdentity:async(context,key)=>{const snapshot=await identity.read(context,key);
-            return {connected:snapshot.profile.state==='open',phone:snapshot.profile.phone};},
+          readIdentity,
+          ...(configuration?{ensureEventsConfiguration:configuration.ensure}:{}),
           readGroups:(context,key)=>groups.list(context,key),
         }),
       };

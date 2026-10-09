@@ -7,6 +7,7 @@ import { WhatsAppGroupCatalogItemSchema, WhatsAppGroupCatalogPageQuerySchema, Wh
   type UpdateWhatsAppGroupSelection } from '@jrc/contracts';
 import { requireActiveOrganization, TenantOperationalError } from '../tenancy/operational-limits.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
+import { reconcileWhatsAppGroupParticipation } from './events.js';
 
 export interface GroupCatalogPrincipal { organizationId: string; actorId: string }
 export interface GroupCatalogOptions {
@@ -14,6 +15,7 @@ export interface GroupCatalogOptions {
   transact<T>(org: string, work: OrganizationTransaction<T>): Promise<T>;
   readIdentity(context: ProviderContext, instanceKey: string): Promise<{ connected: boolean; phone: string | null }>;
   readGroups(context: ProviderContext, instanceKey: string): Promise<EvolutionGroupCatalogItem[]>;
+  ensureEventsConfiguration?(principal:GroupCatalogPrincipal,channel:string):Promise<void>;
 }
 export class GroupCatalogError extends Error {
   constructor(readonly code: string, readonly status = 409) { super(code); }
@@ -81,6 +83,9 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
   }
   return {
     async refresh(principal: GroupCatalogPrincipal, channel: string): Promise<WhatsAppGroupCatalogPage> {
+      // Existing explicit OWNER/ADMIN action also upgrades boxes connected
+      // before G2. Configuration confirmation is independent of catalog facts.
+      await options.ensureEventsConfiguration?.(principal,channel);
       const lease = randomUUID(), org = principal.organizationId;
       const captured = await options.transact(org, async tx => {
         const current = await access(tx, principal, channel, true);
@@ -120,6 +125,7 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
             SELECT $1,$2,x."groupJid",x.subject,x."participantCount",x.restrict,x.announce,x."isCommunity",x."isCommunityAnnounce",x."linkedParent",x.selected
             FROM jsonb_to_recordset($3::jsonb) AS x("groupJid" text,subject text,"participantCount" integer,restrict boolean,announce boolean,"isCommunity" boolean,"isCommunityAnnounce" boolean,"linkedParent" text,selected boolean)`,
             [org, channel, JSON.stringify(parsed.data.map(item => ({ ...item, selected: selected.has(item.groupJid) })))]);
+          await reconcileWhatsAppGroupParticipation(tx, org, channel);
           return pageIn(tx, principal, channel, { limit: 50 }, true);
         });
       } catch (error) {

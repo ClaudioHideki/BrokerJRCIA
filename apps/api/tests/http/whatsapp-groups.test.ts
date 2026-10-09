@@ -46,20 +46,40 @@ async function harness() {
     select: vi.fn().mockResolvedValue(page),
   };
   const resolveCurrentRole = vi.fn(async () => role);
+  const configuration={ensure:vi.fn(),status:vi.fn().mockResolvedValue({schemaVersion:1,organizationId:org,channelId:channel,
+    status:'UNKNOWN',operationId:snapshotId,configurationRevision:2,observedAt:null,updatedAt:'2026-10-08T11:00:00.000Z',
+    observedIdentityRevision:1,observedCatalogRevision:1,safeError:'CONFIGURATION_UNKNOWN',nextAction:'RECONCILE_READ_ONLY'})};
   const app = Fastify();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   apps.push(app);
   await app.register(async scope => registerWhatsAppGroupsRoutes(scope, {
-    jwtSecret: secret, service, resolveCurrentRole,
+    jwtSecret: secret, service, resolveCurrentRole,configuration,
     authenticateApiKey: async (raw: string) => raw === 'synthetic-current-key'
       ? { organizationId: org, apiKeyId: channel, scopes: ['*'] } : null,
   }));
-  return { app, service, page, resolveCurrentRole, setRole: (value: Role | null) => { role = value; },
+  return { app, service, page, configuration,resolveCurrentRole, setRole: (value: Role | null) => { role = value; },
     headers: { authorization: `Bearer ${await issueAccessToken({ userId: actor, organizationId: org, role: 'OWNER' }, secret)}` } };
 }
 
 describe('WhatsApp group catalog HTTP boundary (G1)', () => {
+  it('reports configuration separately with the same current operator grant and never allows scope in the request',async()=>{
+    const h=await harness(),statusUrl=`/v1/channels/${channel}/whatsapp-group-events-configuration`;
+    h.setRole('OPERATOR');const response=await h.app.inject({url:statusUrl,headers:h.headers});
+    expect(response.statusCode).toBe(200);expect(response.json()).toMatchObject({status:'UNKNOWN',nextAction:'RECONCILE_READ_ONLY'});
+    expect(response.headers['cache-control']).toBe('no-store');expect(h.configuration.ensure).not.toHaveBeenCalled();
+    expect((await h.app.inject({url:`${statusUrl}?organizationId=${org}`,headers:h.headers})).statusCode).toBe(400);
+    h.setRole(null);expect((await h.app.inject({url:statusUrl,headers:h.headers})).statusCode).toBe(403);
+    expect(h.configuration.status).toHaveBeenCalledTimes(1);
+  });
+  it('rejects provider credentials in configuration responses and exposes the safe rollout error',async()=>{
+    const h=await harness(),statusUrl=`/v1/channels/${channel}/whatsapp-group-events-configuration`;
+    h.configuration.status.mockResolvedValueOnce({...await h.configuration.status(),engineKey:'private-canary'});
+    const response=await h.app.inject({url:statusUrl,headers:h.headers});expect(response.statusCode).toBe(500);expect(response.body).not.toContain('private-canary');
+    h.service.refresh.mockRejectedValueOnce(new GroupCatalogError('GROUP_WEBHOOK_UNKNOWN'));
+    const unknown=await h.app.inject({method:'POST',url:`${url}/refresh`,headers:h.headers,payload:{}});
+    expect(unknown.statusCode).toBe(409);expect(unknown.json()).toMatchObject({code:'GROUP_WEBHOOK_UNKNOWN'});
+  });
   it('reads only the JWT principal with local default pagination and no-store', async () => {
     const h = await harness(), response = await h.app.inject({ url, headers: h.headers });
     expect(response.statusCode).toBe(200);

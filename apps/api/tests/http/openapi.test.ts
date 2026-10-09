@@ -18,6 +18,7 @@ const EXPECTED_OPERATIONS = [
   'GET /v1/messaging/conversations/{id}',
   'GET /v1/messaging/conversations/{id}/qr-outbound-observations',
   'GET /v1/channels/{id}/whatsapp-groups',
+  'GET /v1/channels/{id}/whatsapp-group-events-configuration',
   'POST /v1/channels/{id}/whatsapp-groups/refresh',
   'PUT /v1/channels/{id}/whatsapp-groups/selection',
   'GET /v1/messaging/conversations/{id}/qr-dispatch-attempts',

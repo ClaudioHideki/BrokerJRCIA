@@ -34,6 +34,7 @@ import { createChatwootRuntimeIngress } from './chatwoot-runtime-ingress.js';
 import { readCentralTransportContext } from '../messaging/central-transport.js';
 import { createEventRouter } from '../automations/service.js';
 import { automationRuntimeEnabled } from '../automations/availability.js';
+import { createWhatsAppGroupEvents } from '../whatsapp-groups/events.js';
 
 type QrConfig = Pick<
   QrServiceOptions,
@@ -130,6 +131,7 @@ export function createIntegrationRuntime(
         ...config.qr,
         transact,
         identity,
+        groups:environment.INTEGRATION_ENCRYPTION_KEY?createWhatsAppGroupEvents({encryptionKey:environment.INTEGRATION_ENCRYPTION_KEY}):undefined,
         async resolveChannel(id) {
           const row = (
             await pool.query<{ organization_id: string; instance_id: string }>(

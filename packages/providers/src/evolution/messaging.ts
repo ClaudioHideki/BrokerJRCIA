@@ -1,4 +1,5 @@
 import type { EvolutionFetch } from "./client.js";
+import type { ProviderContext } from '../contracts/types.js';
 import {
   MAX_MEDIA_BYTES,
   MediaError,
@@ -21,8 +22,38 @@ type Options = {
   timeoutMs?: number;
 };
 const failure = (code: string) => Object.assign(new Error(code), { code });
+const webhookEvents = ['MESSAGES_UPSERT','MESSAGES_UPDATE','CONNECTION_UPDATE','GROUPS_UPSERT','GROUPS_UPDATE','GROUP_PARTICIPANTS_UPDATE'];
+function webhookDestination(url:string,secret:string) {
+  const target=new URL(url);
+  if(!['http:','https:'].includes(target.protocol)||target.username||target.password||target.search||target.hash||!secret)
+    throw failure('INVALID_QR_INPUT');
+}
 /** Private engine contract, verified against the preserved v2 upstream source. No public engine credentials. */
 export class EvolutionMessagingClient {
+  async readWebhookConfiguration(url: string, secret: string, context?:ProviderContext): Promise<'MATCHING'|'MISMATCHED'|'MISSING'> {
+    webhookDestination(url,secret);
+    try {
+      const response=await this.request(new URL(`webhook/find/${encodeURIComponent(this.options.instanceKey)}`,this.origin),{
+        method:'GET',headers:{apikey:this.options.apiKey},redirect:'error',signal:this.signal(context),
+      });
+      if(!response.ok){await response.body?.cancel();throw new Error();}
+      const reader=response.body?.getReader();if(!reader)throw new Error();
+      let size=0;const chunks:Uint8Array[]=[];
+      for(;;){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;
+        if(size>65536){await reader.cancel();throw new Error();}chunks.push(part.value);}
+      const value:unknown=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      if(value===null)return 'MISSING';
+      if(!value||typeof value!=='object'||Array.isArray(value))throw new Error();
+      const record=value as Record<string,unknown>,headers=record.headers;
+      const events=record.events;
+      // Request DTO uses byEvents/base64. GET returns the stored Prisma names.
+      return record.enabled===true&&record.url===url&&record.webhookByEvents===false&&record.webhookBase64===false
+        &&headers!==null&&typeof headers==='object'&&!Array.isArray(headers)
+        &&(headers as Record<string,unknown>).Authorization===`Bearer ${secret}`
+        &&Array.isArray(events)&&events.length===webhookEvents.length&&new Set(events).size===events.length
+        &&webhookEvents.every(event=>events.includes(event))?'MATCHING':'MISMATCHED';
+    }catch{throw failure('QR_CONFIGURATION_UNAVAILABLE');}
+  }
   private readonly origin: URL;
   private readonly request: EvolutionFetch;
   constructor(private readonly options: Options) {
@@ -40,11 +71,18 @@ export class EvolutionMessagingClient {
       throw failure("INVALID_QR_CONFIGURATION");
     this.request = options.fetch ?? globalThis.fetch;
   }
+  private signal(context?:ProviderContext) {
+    const remaining=context?context.deadline.getTime()-Date.now():this.options.timeoutMs??15000;
+    if(remaining<=0)throw failure('QR_CONFIGURATION_UNAVAILABLE');
+    const timeout=AbortSignal.timeout(Math.min(remaining,this.options.timeoutMs??15000));
+    return context?AbortSignal.any([timeout,context.signal]):timeout;
+  }
   private async post(
     path: string,
     body: unknown,
     sending: boolean,
     maximumBytes = 1_048_576,
+    context?:ProviderContext,
   ): Promise<Record<string, unknown>> {
     let response: Response;
     try {
@@ -60,7 +98,7 @@ export class EvolutionMessagingClient {
             apikey: this.options.apiKey,
           },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(this.options.timeoutMs ?? 15_000),
+          signal: this.signal(context),
           redirect: "error",
         },
       );
@@ -179,7 +217,7 @@ export class EvolutionMessagingClient {
   ): Promise<MetaAcceptedMessage> {
     throw failure("INVALID_QR_INPUT");
   }
-  async configureWebhook(url: string, secret: string): Promise<void> {
+  async configureWebhook(url: string, secret: string, context?:ProviderContext): Promise<void> {
     const destination = new URL(url);
     if (
       !["https:", "http:"].includes(destination.protocol) ||
@@ -196,13 +234,15 @@ export class EvolutionMessagingClient {
         webhook: {
           enabled: true,
           url,
-          webhookByEvents: false,
-          webhookBase64: false,
+          byEvents: false,
+          base64: false,
           headers: { Authorization: `Bearer ${secret}` },
-          events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE"],
+          events: webhookEvents,
         },
       },
       false,
+      65536,
+      context,
     );
   }
 }

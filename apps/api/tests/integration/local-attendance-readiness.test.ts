@@ -5,7 +5,7 @@ let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();},60000);
 afterAll(async()=>{await db?.dispose();});
 it('requires the directory baseline and reports a complete migration as ready',async()=>{
- expect(RUNTIME_SCHEMA_BASELINE).toBe('0050_whatsapp_group_catalog');
+ expect(RUNTIME_SCHEMA_BASELINE).toBe('0051_whatsapp_group_events');
  expect(await probeRequiredRuntimeSchema(sql=>db.database.pool.query(sql))).toBe(true);
 });
 it.each([

@@ -1,6 +1,6 @@
 # Broker independente, Flow e centrais — plano de desenvolvimento
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans para executar os incrementos nesta sessão, tarefa por tarefa. Não delegar automaticamente. Usar checkboxes e evidências por entrega.
+> **For agentic workers:** Executar os incrementos aprovados com testes e evidências por entrega. A autorização do usuário em 08/10 permite frentes independentes em paralelo; o responsável pelo checkout integra contratos, migrations e releases compartilhados.
 
 **Goal:** Entregar atendimento e automação no Broker independente, JRC Conversas multitenant e Chatwoot externo compatível, incluindo sincronização do aparelho, grupos e trilha de voz.
 **Architecture:** Um runtime Broker com adaptadores de transporte e central. Interfaces Flow/QR consomem seus contratos. Propriedade de atendimento e efeitos externos têm operações persistentes e reconciliáveis.
@@ -29,7 +29,11 @@ O usuário autorizou acelerar a execução do programa até P10. Frentes indepen
 
 Primeiro corte publicado: main `88215efce00c0c0ccad545add1044ae0773429dd`, [CI aprovado](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37784175688) e [imagens aprovadas](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37787050397), baseline 0049. Ele acrescenta espera persistida, agenda, importação com credenciais locais, observações de saída do aparelho, pools/diagnóstico e registro offline de homologação. Os manifests API/web foram conferidos no GHCR. A instalação efetiva desta revisão não foi observada pelo agente.
 
-G1, catálogo de grupos, foi publicado na main `386103cd94982680a3a0e08e93231387b3897945`: [CI aprovado](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37815849855), [imagens aprovadas](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37817442029) e manifests conferidos no GHCR, baseline 0050. A instalação desta revisão não foi observada. S3 durável, eventos de grupos, tratamento de incerteza HTTP e autorização/cutover dos módulos centrais são frentes seguintes. Ver [próximos incrementos P3–P10](2026-10-08-broker-proximos-incrementos-p3-p10.md) e [evidências G1](../../validation/2026-10-08-whatsapp-grupos-g1.md). Os checkboxes históricos abaixo não são um certificado de homologação. P10 exige as jornadas reais e os tenants adicionais adiados pelo usuário; disponibilidade HTTP e testes sintéticos não encerram o programa.
+G1, catálogo de grupos, foi publicado na main `386103cd94982680a3a0e08e93231387b3897945`: [CI aprovado](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37815849855), [imagens aprovadas](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37817442029) e manifests conferidos no GHCR, baseline 0050. A instalação desta revisão não foi observada. Ver [próximos incrementos P3–P10](2026-10-08-broker-proximos-incrementos-p3-p10.md) e [evidências G1](../../validation/2026-10-08-whatsapp-grupos-g1.md). Os checkboxes históricos abaixo não são um certificado de homologação. P10 exige as jornadas reais e os tenants adicionais adiados pelo usuário; disponibilidade HTTP e testes sintéticos não encerram o programa.
+
+O corte HTTP foi publicado na main `003aab1afd91ff80e01050c14a9781aae25a3681`: [CI aprovado](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37831296242), [imagens aprovadas](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/37833925328) e manifests conferidos no GHCR, baseline 0050 preservado. Conserva UNKNOWN depois de uma chamada mutante incerta sem repetir o efeito. [Evidências HTTP](../../validation/2026-10-08-automation-http-uncertainty.md) e [instalação no Dokploy](../../validation/2026-10-08-http-release-dokploy.md). Ainda não instalado pelo agente; não encerra P3.
+
+Frentes atuais: G2 eventos/configuração de webhook; C2b persistência privada e cleanup; P9 autorização/cutover/interface. A reserva de migrations passa a G2 `0051_whatsapp_group_events`, C2b `0052_durable_private_media`, P9 `0053` após revisar seu contrato. Essa reserva não é evidência de migration aplicada. G2 não depende do backend privado e pode ser publicado primeiro.
 
 ## Foco da revisão
 

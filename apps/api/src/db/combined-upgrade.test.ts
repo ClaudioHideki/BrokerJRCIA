@@ -7,7 +7,7 @@ describe('combined URA and password reset upgrade', () => {
     const baseline = expected.slice(0, 41);
     expect(compareMigrationStatus(expected, baseline)).toMatchObject({
       state: 'PENDING', compatible: false,
-      pending: ['0042_native_handoff_operations', '0043_user_password_reset', '0044_attendance_resume_operations', '0045_local_attendance_directory','0046_central_transport','0047_central_dispatch','0048_central_cutover','0049_qr_outbound_observations','0050_whatsapp_group_catalog'],
+      pending: ['0042_native_handoff_operations', '0043_user_password_reset', '0044_attendance_resume_operations', '0045_local_attendance_directory','0046_central_transport','0047_central_dispatch','0048_central_cutover','0049_qr_outbound_observations','0050_whatsapp_group_catalog','0051_whatsapp_group_events'],
     });
   });
 

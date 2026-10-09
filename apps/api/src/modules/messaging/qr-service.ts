@@ -13,6 +13,7 @@ import type { MessageContent } from "./types.js";
 import type { ChatwootHealth } from '../integrations/chatwoot-health.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
 import { recordQrOutboundObservation } from './qr-outbound-observation.js';
+import type { createWhatsAppGroupEvents } from '../whatsapp-groups/events.js';
 
 const error = (code: string, status = 422) =>
   Object.assign(new Error(code), { code, status });
@@ -22,6 +23,7 @@ export interface QrServiceOptions {
   webhookOrigin: string;
   signingKey: string;
   identity?: ChatwootHealth | undefined;
+  groups?: ReturnType<typeof createWhatsAppGroupEvents> | undefined;
   transact<T>(org: string, operation: OrganizationTransaction<T>): Promise<T>;
   resolveChannel(
     id: string,
@@ -156,10 +158,21 @@ export function createQrMessagingService(options: QrServiceOptions) {
         const events=normalizeQrEvent(payload,row.upstream_instance_key);
         // Acquire the exclusive lock before any per-message read lock in a mixed batch.
         // Otherwise two incoming/outgoing batches could both try to upgrade a SHARE lock.
-        if(events.some(event=>event.kind==='outbound'||event.kind==='outbound-media'||event.kind==='status'))
+        if(events.some(event=>['connection','group','outbound','outbound-media','status'].includes(event.kind))) {
           await lockAttendanceChannel(tx,binding.organizationId,channelId);
+          const current = (await tx.query<{ upstream_instance_key: string }>(`SELECT i.upstream_instance_key FROM messaging_channels c
+            JOIN instances i ON i.organization_id=c.organization_id AND i.id=c.instance_id
+            WHERE c.organization_id=$1 AND c.id=$2 AND c.instance_id=$3 AND i.archived_at IS NULL`,
+            [binding.organizationId,channelId,binding.instanceId])).rows[0];
+          if (!current || current.upstream_instance_key !== row.upstream_instance_key)
+            throw error('QR_WEBHOOK_UNAUTHORIZED',401);
+        }
+        const groupEvents=events.filter(event=>event.kind==='group');
+        if(groupEvents.length)await options.groups?.ingest(tx,binding.organizationId,channelId,groupEvents);
         for (const event of events) {
+          if(event.kind==='group')continue;
           if (event.kind === "connection") {
+            await options.groups?.observeConnection(tx,binding.organizationId,channelId,{connected:event.state==='CONNECTED',phone:event.identity??null});
             await options.identity?.observe(tx, binding.organizationId, channelId, { connected: event.state === 'CONNECTED', phone: event.identity ?? null });
             await tx.query(
               "UPDATE instances SET status=$3,updated_at=now() WHERE organization_id=$1 AND id=$2 AND status NOT IN ('PROVISIONING','PROVISIONING_FAILED')",

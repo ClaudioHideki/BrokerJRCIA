@@ -161,6 +161,7 @@ function documentationOptions() {
     whatsappGroups: {
       jwtSecret:`${DOCUMENTATION_SECRET}-jwt`,authenticateApiKey:unavailable,resolveCurrentRole:unavailable,
       service:new Proxy({}, {get(){return unavailable;}}) as ReturnType<typeof import('../modules/whatsapp-groups/service.js').createWhatsAppGroupCatalog>,
+      configuration:new Proxy({}, {get(){return unavailable;}}) as ReturnType<typeof import('../modules/whatsapp-groups/webhook-configuration.js').createWhatsAppGroupWebhookConfiguration>,
     },
     tenantOperations: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`,

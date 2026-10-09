@@ -6,7 +6,7 @@ const org = '4f2491a2-6853-4ac2-a7ef-c997813a9182';
 const channel = '81555d45-b1a2-4a3f-ab95-c1459b0df0d0';
 const secret = 'messaging-test-secret-at-least-32-bytes';
 const apps: ReturnType<typeof buildApp>[] = [];
-async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER') {
+async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER', onMediaRead?: () => void) {
   const organizations: string[] = [];
   const botConfigurations: unknown[] = [];
   const templateSubmissions: unknown[] = [];
@@ -34,7 +34,7 @@ async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER'
       },
       async sendTemplate() { mutations++; return { id: channel, direction: 'OUTGOING' as const, state: 'ACCEPTED' as const, text: 'boas_vindas' }; },
       async sendText(organizationId,channelId,input){organizations.push(organizationId);mutations++;return {id:channelId,direction:'OUTGOING' as const,state:'ACCEPTED' as const,text:input.text};},
-      async readMedia(organizationId){organizations.push(organizationId);return {bytes:new Uint8Array([1,2]),mimeType:'image/png',kind:'image' as const,fileName:'foto.png'};},
+      async readMedia(organizationId){organizations.push(organizationId);onMediaRead?.();return {bytes:new Uint8Array([1,2]),mimeType:'image/png',kind:'image' as const,fileName:'foto.png'};},
       async configureBot(organizationId, channelId, input) {
         mutations++; botConfigurations.push({ organizationId, channelId, input });
         return { id: channelId, provider: 'META' as const, ownerRevision: 0, botPublicId: input.publicId };
@@ -85,6 +85,27 @@ it('entrega anexo somente após autenticação, sem cache ou execução no naveg
  expect((await h.app.inject({url})).statusCode).toBe(401);
  const response=await h.app.inject({url,headers:h.headers});expect(response.statusCode).toBe(200);expect(response.rawPayload).toEqual(Buffer.from([1,2]));
  expect(response.headers['cache-control']).toBe('no-store');expect(response.headers['content-disposition']).toContain('attachment');expect(h.organizations).toEqual([org]);
+});
+
+it('não entrega bytes se a membership for removida durante a leitura de mídia',async()=>{
+ let h: Awaited<ReturnType<typeof harness>>;
+ h=await harness('OWNER',()=>h.setCurrentRole(null));
+ const response=await h.app.inject({url:`/v1/messaging/media/${channel}`,headers:h.headers});
+ expect(response.statusCode).toBe(403);
+ expect(response.headers['content-disposition']).toBeUndefined();
+ expect(response.rawPayload).not.toEqual(Buffer.from([1,2]));
+ expect(h.organizations).toEqual([org]);
+});
+
+it('não entrega bytes se a autenticação for revogada durante a leitura de mídia',async()=>{
+ let current=true;
+ const h=await harness('OWNER',()=>{current=false;});
+ h.app.isUserAuthenticationCurrent=async()=>current;
+ const response=await h.app.inject({url:`/v1/messaging/media/${channel}`,headers:h.headers});
+ expect(response.statusCode).toBe(401);
+ expect(response.headers['content-disposition']).toBeUndefined();
+ expect(response.rawPayload).not.toEqual(Buffer.from([1,2]));
+ expect(h.organizations).toEqual([org]);
 });
 
 it('revoga privilégios de automação de JWT antigo após mudança de membership', async () => {

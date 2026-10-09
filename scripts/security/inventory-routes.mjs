@@ -4,6 +4,8 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/channels/{id}/whatsapp-group-events-configuration':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR',true,
+    'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_CHANNEL_INSTANCE_BINDING_IDENTITY_CONFIGURATION_REVISIONS'),
   'GET /v1/channels/{id}/whatsapp-groups':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR',true,
     'READ_ONLY_SNAPSHOT_LOCAL_CURSOR','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_LOCKED_CHANNEL_INSTANCE_ACTIVE_MEMBER'),
   'POST /v1/channels/{id}/whatsapp-groups/refresh':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,

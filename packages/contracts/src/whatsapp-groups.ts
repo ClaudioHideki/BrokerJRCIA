@@ -30,6 +30,7 @@ export const WhatsAppGroupCatalogSnapshotSchema = z.strictObject({
   lastErrorCode: z.enum([
     'PROVIDER_ABORTED', 'PROVIDER_TIMEOUT', 'PROVIDER_REQUEST_FAILED',
     'PROVIDER_INVALID_RESPONSE', 'IDENTITY_CHANGED', 'LEASE_LOST',
+    'GROUP_MEMBERSHIP_CHANGED', 'GROUP_METADATA_CHANGED',
   ]).nullable(),
 }).superRefine((value, ctx) => {
   if (value.status === 'CURRENT' && value.lastErrorCode !== null) {
@@ -73,3 +74,20 @@ export type WhatsAppGroupCatalogSnapshot = z.infer<typeof WhatsAppGroupCatalogSn
 export type WhatsAppGroupCatalogPageQuery = z.infer<typeof WhatsAppGroupCatalogPageQuerySchema>;
 export type WhatsAppGroupCatalogPage = z.infer<typeof WhatsAppGroupCatalogPageSchema>;
 export type UpdateWhatsAppGroupSelection = z.infer<typeof UpdateWhatsAppGroupSelectionSchema>;
+
+// This reports only configuration evidence. It never asserts a current factual
+// group catalog, present membership, sending permission or automation readiness.
+export const WhatsAppGroupEventsConfigurationSchema = z.strictObject({
+  schemaVersion:z.literal(1),organizationId:z.uuid(),channelId:z.uuid(),
+  status:z.enum(['UNCONFIGURED','CONFIRMED','UNKNOWN','STALE']),operationId:z.uuid().nullable(),
+  configurationRevision:z.literal(2),observedAt:z.iso.datetime().nullable(),updatedAt:z.iso.datetime().nullable(),
+  observedIdentityRevision:revision.nullable(),observedCatalogRevision:revision.nullable(),
+  safeError:z.enum(['CONFIGURATION_UNAVAILABLE','CONFIGURATION_UNKNOWN','IDENTITY_CHANGED','LEASE_LOST','ACCESS_DENIED']).nullable(),
+  nextAction:z.enum(['UPDATE_GROUPS','RECONCILE_READ_ONLY']),
+}).superRefine((value,ctx)=>{
+  if(value.status==='CONFIRMED'&&(!value.operationId||!value.observedAt||value.safeError))
+    ctx.addIssue({code:'custom',message:'Confirmed configuration requires current observation evidence'});
+  if(value.status==='UNKNOWN'&&value.nextAction!=='RECONCILE_READ_ONLY')
+    ctx.addIssue({code:'custom',message:'Uncertain mutation permits read-only reconciliation'});
+});
+export type WhatsAppGroupEventsConfiguration=z.infer<typeof WhatsAppGroupEventsConfigurationSchema>;

@@ -17530,6 +17530,148 @@
         ]
       }
     },
+    "/v1/channels/{id}/whatsapp-group-events-configuration": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "configurationRevision": {
+                      "enum": [
+                        2
+                      ],
+                      "type": "number"
+                    },
+                    "nextAction": {
+                      "enum": [
+                        "UPDATE_GROUPS",
+                        "RECONCILE_READ_ONLY"
+                      ],
+                      "type": "string"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "nullable": true,
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                      "type": "string"
+                    },
+                    "observedCatalogRevision": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "nullable": true,
+                      "type": "integer"
+                    },
+                    "observedIdentityRevision": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "nullable": true,
+                      "type": "integer"
+                    },
+                    "operationId": {
+                      "format": "uuid",
+                      "nullable": true,
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "safeError": {
+                      "enum": [
+                        "CONFIGURATION_UNAVAILABLE",
+                        "CONFIGURATION_UNKNOWN",
+                        "IDENTITY_CHANGED",
+                        "LEASE_LOST",
+                        "ACCESS_DENIED"
+                      ],
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "enum": [
+                        1
+                      ],
+                      "type": "number"
+                    },
+                    "status": {
+                      "enum": [
+                        "UNCONFIGURED",
+                        "CONFIRMED",
+                        "UNKNOWN",
+                        "STALE"
+                      ],
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "nullable": true,
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "organizationId",
+                    "channelId",
+                    "status",
+                    "operationId",
+                    "configurationRevision",
+                    "observedAt",
+                    "updatedAt",
+                    "observedIdentityRevision",
+                    "observedCatalogRevision",
+                    "safeError",
+                    "nextAction"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/channels/{id}/whatsapp-groups": {
       "get": {
         "parameters": [
@@ -17685,7 +17827,9 @@
                             "PROVIDER_REQUEST_FAILED",
                             "PROVIDER_INVALID_RESPONSE",
                             "IDENTITY_CHANGED",
-                            "LEASE_LOST"
+                            "LEASE_LOST",
+                            "GROUP_MEMBERSHIP_CHANGED",
+                            "GROUP_METADATA_CHANGED"
                           ],
                           "nullable": true,
                           "type": "string"
@@ -17947,7 +18091,9 @@
                             "PROVIDER_REQUEST_FAILED",
                             "PROVIDER_INVALID_RESPONSE",
                             "IDENTITY_CHANGED",
-                            "LEASE_LOST"
+                            "LEASE_LOST",
+                            "GROUP_MEMBERSHIP_CHANGED",
+                            "GROUP_METADATA_CHANGED"
                           ],
                           "nullable": true,
                           "type": "string"
@@ -18247,7 +18393,9 @@
                             "PROVIDER_REQUEST_FAILED",
                             "PROVIDER_INVALID_RESPONSE",
                             "IDENTITY_CHANGED",
-                            "LEASE_LOST"
+                            "LEASE_LOST",
+                            "GROUP_MEMBERSHIP_CHANGED",
+                            "GROUP_METADATA_CHANGED"
                           ],
                           "nullable": true,
                           "type": "string"

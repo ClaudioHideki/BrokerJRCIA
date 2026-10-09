@@ -351,6 +351,13 @@
       "when": 1791844800000,
       "tag": "0050_whatsapp_group_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791931200000,
+      "tag": "0051_whatsapp_group_events",
+      "breakpoints": true
     }
   ]
 }

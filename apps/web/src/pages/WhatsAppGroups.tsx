@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { UpdateWhatsAppGroupSelectionSchema, WhatsAppGroupCatalogPageSchema,
   type WhatsAppGroupCatalogItem, type WhatsAppGroupCatalogPage, type WhatsAppGroupCatalogSnapshot } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
+import { WhatsAppGroupEventsConfiguration } from './WhatsAppGroupEventsConfiguration.js';
 
 type Cursor = NonNullable<WhatsAppGroupCatalogPage['nextCursor']>;
 interface View {
@@ -21,7 +22,8 @@ function encodeCursor(cursor: Cursor) {
     .replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/u, '');
 }
 
-export function WhatsAppGroups({ client, channelId, canManage }: { client: ApiClient; channelId: string; canManage: boolean }) {
+export function WhatsAppGroups({ client, channelId, canManage,eventsConfigurationOrganizationId }: { client: ApiClient; channelId: string; canManage: boolean;eventsConfigurationOrganizationId?:string }) {
+  const [configurationRevision,setConfigurationRevision]=useState(0);
   const [view, setView] = useState<View>(() => emptyView(client, channelId, true));
   const generation = useRef(0), controllers = useRef(new Set<AbortController>());
   const readController = useRef<AbortController | null>(null), lock = useRef(false);
@@ -126,7 +128,8 @@ export function WhatsAppGroups({ client, channelId, canManage }: { client: ApiCl
       }
     } finally {
       controllers.current.delete(controller);
-      if (live(current, controller)) { lock.current = false; setView(previous => ({ ...previous, busy: false })); }
+      if (live(current, controller)) { lock.current = false; setView(previous => ({ ...previous, busy: false }));
+        if(!item)setConfigurationRevision(previous=>previous+1); }
     }
   }
   function navigate(direction: 'previous' | 'next') {
@@ -138,6 +141,8 @@ export function WhatsAppGroups({ client, channelId, canManage }: { client: ApiCl
   return <section className="panel" aria-label="Grupos do WhatsApp">
     <div className="panel-heading"><h2>Grupos do WhatsApp</h2></div>
     <p>Selecionar grupos registra sua escolha. Bot e envio em grupos ainda não estão disponíveis.</p>
+    {eventsConfigurationOrganizationId?<WhatsAppGroupEventsConfiguration client={client} channelId={channelId}
+      organizationId={eventsConfigurationOrganizationId} revision={configurationRevision}/>:null}
     {visible.error ? <p className="notice notice--error" role="alert">{visible.error}</p> : null}
     {visible.loading ? <p role="status">Consultando catálogo…</p> : null}
     {page ? <>

@@ -319,6 +319,12 @@ export async function registerMessagingRoutes(
         tenant(request),
         request.params.id,
       );
+      // Authentication can change while the private object is being read.
+      // Recheck immediately before releasing bytes or attachment headers.
+      for (const guard of read) {
+        await guard(request, reply);
+        if (reply.sent) return reply;
+      }
       return reply
         .type(file.mimeType)
         .header("X-Content-Type-Options", "nosniff")

@@ -4,15 +4,18 @@ import { z } from 'zod';
 import {
   UpdateWhatsAppGroupSelectionSchema, WhatsAppGroupCatalogPageQuerySchema,
   WhatsAppGroupCatalogPageSchema,
+  WhatsAppGroupEventsConfigurationSchema,
 } from '@jrc/contracts';
 import { GroupCatalogError, type createWhatsAppGroupCatalog } from '../../modules/whatsapp-groups/service.js';
 import { tenantOperationalProblem } from '../../modules/tenancy/operational-limits.js';
 import { authenticateRequest, type AuthenticationOptions } from '../plugins/authentication.js';
 import type { Role } from '../plugins/authorization.js';
+import type { createWhatsAppGroupWebhookConfiguration } from '../../modules/whatsapp-groups/webhook-configuration.js';
 
 export interface WhatsAppGroupsRouteOptions extends AuthenticationOptions {
   service: ReturnType<typeof createWhatsAppGroupCatalog>;
   resolveCurrentRole(userId: string, organizationId: string): Promise<Role | null>;
+  configuration?:ReturnType<typeof createWhatsAppGroupWebhookConfiguration>;
 }
 
 const publicErrorCodes = new Set([
@@ -20,6 +23,7 @@ const publicErrorCodes = new Set([
   'GROUP_CATALOG_NOT_READY', 'GROUP_CATALOG_CHANGED', 'GROUP_CATALOG_REFRESHING', 'GROUP_CATALOG_STALE',
   'GROUP_IDENTITY_CHANGED', 'GROUP_REFRESH_LEASE_LOST', 'GROUP_NOT_IN_CATALOG',
   'PROVIDER_ABORTED', 'PROVIDER_TIMEOUT', 'PROVIDER_REQUEST_FAILED', 'PROVIDER_INVALID_RESPONSE',
+  'GROUP_WEBHOOK_UNKNOWN','GROUP_WEBHOOK_UNAVAILABLE','GROUP_WEBHOOK_REFRESHING',
 ]);
 
 function decodeCursor(value: string) {
@@ -69,6 +73,9 @@ export async function registerWhatsAppGroupsRoutes(app: FastifyInstance, options
     cursor: z.string().min(1).max(1024).regex(/^[A-Za-z0-9_-]+$/u).optional(),
   });
   const response = { 200: WhatsAppGroupCatalogPageSchema };
+  if(options.configuration)api.get('/v1/channels/:id/whatsapp-group-events-configuration',{
+    preHandler:[memberGuard(false)],schema:{params,querystring:empty,response:{200:WhatsAppGroupEventsConfigurationSchema}},
+  },request=>options.configuration!.status(principal(request),request.params.id));
   api.get('/v1/channels/:id/whatsapp-groups', {
     preHandler: [memberGuard(false)], schema: { params, querystring: pageQuery, response },
   }, request => options.service.page(principal(request), request.params.id, {
