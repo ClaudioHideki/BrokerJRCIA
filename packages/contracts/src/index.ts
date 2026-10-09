@@ -28,3 +28,4 @@ export * from './attendance-destination-v2.js';
 export * from './channel-operation-profile.js';
 export * from './automation-schedule.js';
 export * from './whatsapp-groups.js';
+export * from './automation-data-v2.js';

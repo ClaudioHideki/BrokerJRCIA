@@ -35,6 +35,8 @@ O corte HTTP foi publicado na main `003aab1afd91ff80e01050c14a9781aae25a3681`: [
 
 Frentes atuais: G2 eventos/configuração de webhook; C2b persistência privada e cleanup; P9 autorização/cutover/interface. A reserva de migrations passa a G2 `0051_whatsapp_group_events`, C2b `0052_durable_private_media`, P9 `0053` após revisar seu contrato. Essa reserva não é evidência de migration aplicada. G2 não depende do backend privado e pode ser publicado primeiro.
 
+Atualização de 09/10: G2 e compatibilidade dos serializers da central foram publicados na main `7e95e31846a44a73ff36631742170536343779cf`, com CI e imagens do mesmo SHA aprovados. O operador confirmou API ready, flag ativa e probe estrutural `0051_whatsapp_group_events`/true; esse probe não substitui o journal ou a jornada de atendimento. P3 D1, nove blocos de dados tipados, recebeu revisão independente e gates locais na composição canônica: [evidências D1](../../validation/2026-10-09-automation-data-d1.md). A publicação D1 é um incremento, não conclusão de P3. C2b, P9, G3, subfluxos e homologação final continuam com pendências próprias.
+
 ## Foco da revisão
 
 1. Humano responde durante retomada ou I/O: bloquear bot — P1.

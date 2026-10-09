@@ -18,13 +18,15 @@ describe('automation runtime v2 engine',()=>{
   });
   it.each(AUTOMATION_NODE_DEFINITIONS.filter(definition=>definition.availability==='AVAILABLE').map(definition=>definition.type))('executes and simulates available %s without external IO',async type=>{
     const configs:Record<string,Record<string,unknown>>={handoff:handoffConfig,message:{text:'Olá'},input:{variable:'answer',text:'Nome?'},menu:{text:'Escolha',options:[{value:'1',label:'A'},{value:'2',label:'B'}]},condition:{field:'message',operator:'equals',value:'oi'},variable:{variable:'name',value:'Ana'},delay:{seconds:5}};
+    const common={configVersion:2,target:'result',errorVariable:'failure'};
+    Object.assign(configs,{'data-set':{...common,valueSource:{kind:'LITERAL',value:{active:false}}},'data-rename':{...common,source:'message'},'data-pick':{...common,source:'message',keys:['name']},'data-merge':{...common,sources:['message','second']},'data-map':{...common,source:'message',field:'name'},'data-filter':{...common,source:'message',field:'name',operator:'equals',valueSource:{kind:'LITERAL',value:'A'}},'json-parse':{...common,source:'message'},'json-stringify':{...common,source:'message'},expression:{...common,source:'message',operation:'UPPER'}});
     configs.schedule={timezone:'UTC',weekly:[{day:1,start:'09:00',end:'18:00'}]};
     const current=node('current',type,configs[type]??{});
     const nodes=type==='start'?[current,node('end','end')]:['end','handoff'].includes(type)?[node('start','start'),current]:[node('start','start'),current,node('end','end')];
     const edges=type==='start'?[]:[{id:'s',source:'start',target:'current',port:'next'}];
     edges.push(...automationNodePorts(current).map(port=>({id:port,source:'current',target:'end',port})));
     const graph={nodes,edges};expect(validateAutomationGraph(graph)).toEqual([]);
-    const result=await executeAutomation({automationId:'11111111-1111-4111-8111-111111111111',version:1,graph},{text:'oi',eventType:'MESSAGE',now:new Date()},async()=>{throw new Error('Unexpected external dependency');});
+    const result=await executeAutomation({automationId:'11111111-1111-4111-8111-111111111111',version:1,graph,runtimeStateVersion:2},{text:'oi',eventType:'MESSAGE',now:new Date()},async()=>{throw new Error('Unexpected external dependency');});
     expect(result.effects.every(effect=>effect.kind==='SEND_TEXT'||effect.kind==='HANDOFF')).toBe(true);
     expect(['WAITING','COMPLETED','HANDOFF']).toContain(result.status);
     if(type==='handoff')expect(result.effects).toEqual([{nodeId:'current',ordinal:0,kind:'HANDOFF',payload:handoffConfig}]);

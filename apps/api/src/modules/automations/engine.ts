@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { FlowGraphSchema, AutomationHandoffConfigSchema, hasNativeHandoffConfig, automationNodePorts, menuOptions,
   type AutomationGraphV1, type FlowNode } from '@jrc/contracts';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
-import { executeDataNode } from '../automation-integrations/data-nodes.js';
+import { executeDataNode } from './data-nodes.js';
+import {getDataNodeV2Schema,isDataNodeType} from '@jrc/contracts';
 import { isBusinessOpen } from './business-hours.js';
 import { assertRuntimeState, isRuntimeKey as safeKey, renderRuntimeText as renderFlowText,
   renderRuntimeValue, runtimeJson, runtimeStateVersion, runtimeText } from './runtime-state.js';
@@ -131,7 +132,21 @@ export async function executeAutomation(
         ...(node.data.outputSchema&&typeof node.data.outputSchema==='object'?{outputSchema:node.data.outputSchema as Record<string,unknown>}:{ }),child:{nodeId:node.id,automationId,version,correlationId,input:childInput}});published=child;
       state.automationId=automationId;state.version=version;current=published.graph.nodes.find(candidate=>candidate.type==='start')!.id;continue;
     }
-    if(dataTypes.has(node.type))record.output=executeDataNode(node.type,node.data,variables,stateVersion===2?'json':'legacy');
+    if(dataTypes.has(node.type)){
+      if(node.data.configVersion===2){
+        if(!isDataNodeType(node.type)||!getDataNodeV2Schema(node.type).safeParse(node.data).success)throw new Error('AUTOMATION_DATA_CONFIG_INVALID');
+        try{record.output=executeDataNode(node.type,node.data,variables,stateVersion===2?'json':'legacy');
+          current=next(published.graph,node.id,'success')??null;
+        }catch(error){
+          const code=error instanceof Error?error.message:'';
+          if(!/^(?:AUTOMATION_DATA_|AUTOMATION_JSON_|AUTOMATION_EXPRESSION_|AUTOMATION_STATE_VALUE_)[A-Z_]+$/u.test(code)||code==='AUTOMATION_DATA_RUNTIME_VERSION_MISMATCH')throw error;
+          variables[node.data.errorVariable as string]=runtimeJson({code});record.output={outcome:'ERROR',code};
+          current=next(published.graph,node.id,'error')??null;
+        }
+        if(!current)throw new Error('AUTOMATION_DATA_RETURN_MISSING');continue;
+      }
+      record.output=executeDataNode(node.type,node.data,variables,stateVersion===2?'json':'legacy');
+    }
     if(ioTypes.has(node.type)){
       const kind=node.type==='http'?'IO_HTTP':node.type==='sql'?'IO_SQL':node.type==='code'?'IO_CODE':'IO_AI';
       const payload={...node.data,nodeType:node.type,runtimeStateVersion:stateVersion,variables};record.output={queued:true,kind};effects.push({nodeId:node.id,ordinal:effects.length,kind,payload});

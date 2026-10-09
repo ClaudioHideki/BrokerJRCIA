@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { CompatibleAutomationHandoffConfigSchema } from './automation-handoff-v1.js';
 import { ScheduleNodeConfigSchema } from './automation-schedule.js';
 import { menuOptions, type FlowNode } from './flows.js';
+import {DATA_NODE_TYPES,compatibleDataNodeSchema,dataNodePorts} from './automation-data-v2.js';
 
 export const NodeDiagnosticSchema = z.object({
   nodeId: z.string().nullable(), field: z.string(), code: z.string(), message: z.string(),
@@ -44,9 +45,9 @@ export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = 
   }, 'Configure de 2 a 10 opções numeradas e únicas.') }), node => menuOptions(node).map(option => `option-${option.value}`)),
   define('condition', 'Condição', 'LOGIC', config({ field: safeKey, operator: z.enum(['equals', 'not_equals', 'contains', 'starts_with', 'present']) }), () => ['yes', 'no']),
   define('variable', 'Definir variável', 'DATA', config({ variable: safeKey })),
-  ...['data-set', 'data-rename', 'data-pick', 'data-merge', 'data-map', 'data-filter', 'json-parse', 'json-stringify', 'expression'].map(type =>
+  ...DATA_NODE_TYPES.map(type =>
     define(type, ({ 'data-set': 'Definir dado', 'data-rename': 'Renomear dado', 'data-pick': 'Selecionar campos', 'data-merge': 'Mesclar objetos', 'data-map': 'Mapear lista', 'data-filter': 'Filtrar lista', 'json-parse': 'Ler JSON', 'json-stringify': 'Gerar JSON', expression: 'Expressão segura' } as Record<string, string>)[type]!, 'DATA',
-      config({ target: z.string(), ...(type === 'expression' ? { expression: z.string() } : {}) }), next, 'R6 e U3b (dados e formulário completo)')),
+      compatibleDataNodeSchema(type,config({ target: z.string(), ...(type === 'expression' ? { expression: z.string() } : {}) })), node=>dataNodePorts(node.data), null)),
   define('http', 'HTTP seguro', 'INTEGRATIONS', config({ target: safeKey, credentialId, url: z.string().startsWith('https://') }), () => ['success', 'client_error', 'server_error', 'timeout', 'unknown'], 'R7 e U3b/U5 (consulta delimitada e simulação)'),
   define('sql', 'Consulta SQL', 'INTEGRATIONS', config({ target: safeKey, credentialId, query: z.string() }), io, 'capacidade fora do escopo de criação Broker'),
   define('code', 'JavaScript isolado', 'LOGIC', config({ target: safeKey, code: z.string() }), io, 'capacidade fora do escopo de criação Broker'),
