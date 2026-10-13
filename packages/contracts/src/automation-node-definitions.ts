@@ -3,6 +3,7 @@ import { CompatibleAutomationHandoffConfigSchema } from './automation-handoff-v1
 import { ScheduleNodeConfigSchema } from './automation-schedule.js';
 import { menuOptions, type FlowNode } from './flows.js';
 import {DATA_NODE_TYPES,compatibleDataNodeSchema,dataNodePorts} from './automation-data-v2.js';
+import {compatibleHttpQuerySchema} from './automation-http-query.js';
 
 export const NodeDiagnosticSchema = z.object({
   nodeId: z.string().nullable(), field: z.string(), code: z.string(), message: z.string(),
@@ -48,7 +49,7 @@ export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = 
   ...DATA_NODE_TYPES.map(type =>
     define(type, ({ 'data-set': 'Definir dado', 'data-rename': 'Renomear dado', 'data-pick': 'Selecionar campos', 'data-merge': 'Mesclar objetos', 'data-map': 'Mapear lista', 'data-filter': 'Filtrar lista', 'json-parse': 'Ler JSON', 'json-stringify': 'Gerar JSON', expression: 'Expressão segura' } as Record<string, string>)[type]!, 'DATA',
       compatibleDataNodeSchema(type,config({ target: z.string(), ...(type === 'expression' ? { expression: z.string() } : {}) })), node=>dataNodePorts(node.data), null)),
-  define('http', 'HTTP seguro', 'INTEGRATIONS', config({ target: safeKey, credentialId, url: z.string().startsWith('https://') }), () => ['success', 'client_error', 'server_error', 'timeout', 'unknown'], 'R7 e U3b/U5 (consulta delimitada e simulação)'),
+  define('http', 'Consulta HTTPS', 'INTEGRATIONS', compatibleHttpQuerySchema(config({ target: safeKey, credentialId, url: z.string().startsWith('https://') })), () => ['success', 'client_error', 'server_error', 'timeout', 'unknown']),
   define('sql', 'Consulta SQL', 'INTEGRATIONS', config({ target: safeKey, credentialId, query: z.string() }), io, 'capacidade fora do escopo de criação Broker'),
   define('code', 'JavaScript isolado', 'LOGIC', config({ target: safeKey, code: z.string() }), io, 'capacidade fora do escopo de criação Broker'),
   ...['ai-generate', 'ai-classify', 'ai-extract', 'ai-summarize', 'ai-agent'].map(type => define(type,

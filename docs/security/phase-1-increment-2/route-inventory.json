@@ -111,6 +111,260 @@
   },
   {
     "method": "POST",
+    "path": "/v1/attendance/conversations/{id}/resume",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "TENANT_IDEMPOTENCY_KEY_REQUEST_HASH_SINGLE_CONVERSATION_OPERATION",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/attendance-resume.ts",
+    "handlerLine": 28,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_OWNER_CONTROL_BINDING_DESTINATION_CREDENTIAL_REVISIONS_REMOTE_CONFIRMATION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/attendance/conversations/{id}/resume-context",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/attendance-resume.ts",
+    "handlerLine": 31,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CONVERSATION_OPERATION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/attendance/local-channels",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/attendance-local.ts",
+    "handlerLine": 38,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CHANNEL_ACTIVE_NO_CENTRAL_AUTHORITY"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/attendance/local-channels/{channelId}/catalog",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:channelId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/attendance-local.ts",
+    "handlerLine": 52,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_ACTIVE_LOCAL_IDENTITIES"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/attendance/local-channels/{channelId}/queue",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:channelId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/attendance-local.ts",
+    "handlerLine": 54,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_LOCAL_CHANNEL_NO_CENTRAL_AUTHORITY"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/attendance/local-conversations/{conversationId}/assignment",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_SELF_CLAIM",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_SESSION_REVISION_CHANNEL_LOCK_TRANSACTIONAL_AUDIT",
+    "requestSchemas": [
+      "body:application/json",
+      "path:conversationId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/attendance-local.ts",
+    "handlerLine": 56,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_LOCAL_SESSION_CURRENT_TARGET_NO_RESUME"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/attendance/local-teams",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/attendance-local.ts",
+    "handlerLine": 44,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_ACTIVE_LOCAL_IDENTITIES"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/attendance/local-teams",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "CURRENT_TEAM_REVISION_TRANSACTIONAL_AUDIT",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "201:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/attendance-local.ts",
+    "handlerLine": 46,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_ACTIVE_LOCAL_MEMBER_IDENTITIES"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/attendance/local-teams/{teamId}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "CURRENT_TEAM_REVISION_TRANSACTIONAL_AUDIT",
+    "requestSchemas": [
+      "body:application/json",
+      "path:teamId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/attendance-local.ts",
+    "handlerLine": 48,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_ACTIVE_LOCAL_MEMBER_IDENTITIES"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/attendance/local-teams/{teamId}/members",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "CURRENT_TEAM_REVISION_TRANSACTIONAL_AUDIT",
+    "requestSchemas": [
+      "body:application/json",
+      "path:teamId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/attendance-local.ts",
+    "handlerLine": 50,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_ACTIVE_LOCAL_MEMBER_IDENTITIES"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/attendance/resume-operations/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/attendance-resume.ts",
+    "handlerLine": 30,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CONVERSATION_OPERATION"
+  },
+  {
+    "method": "POST",
     "path": "/v1/auth/login",
     "authentication": "NONE",
     "permission": "NOT_APPLICABLE_PRE_AUTH",
@@ -233,8 +487,31 @@
     ],
     "challengeExposure": "ENCRYPTED_ORIGINAL_CREDENTIALS_STRIPPED",
     "handlerFile": "apps/api/src/http/routes/automation-imports.ts",
-    "handlerLine": 12,
+    "handlerLine": 22,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMPORT_ARTIFACT"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/automation-imports/preview",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_EXTERNAL_EFFECT",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "CREDENTIALS_STRIPPED_NO_PERSISTENCE",
+    "handlerFile": "apps/api/src/http/routes/automation-imports.ts",
+    "handlerLine": 21,
+    "ownershipCheck": "CURRENT_ORGANIZATION_IMPORT_PREVIEW_ONLY"
   },
   {
     "method": "GET",
@@ -254,7 +531,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 27,
+    "handlerLine": 32,
     "ownershipCheck": "STATIC_EXECUTABLE_NODE_CATALOG"
   },
   {
@@ -264,7 +541,10 @@
     "permission": "CURRENT_MEMBER",
     "tenantRls": true,
     "idempotency": "READ_ONLY",
-    "requestSchemas": [],
+    "requestSchemas": [
+      "query:cursor",
+      "query:pageSize"
+    ],
     "responseSchemas": [
       "200:NO_BODY"
     ],
@@ -275,7 +555,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 28,
+    "handlerLine": 33,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
   },
   {
@@ -299,7 +579,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 35,
+    "handlerLine": 43,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
   },
   {
@@ -322,7 +602,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 36,
+    "handlerLine": 44,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
   },
   {
@@ -346,8 +626,32 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 37,
+    "handlerLine": 51,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/automations/{id}/archive",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENT_LIFECYCLE_TRANSITION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 55,
+    "ownershipCheck": "RLS_ORGANIZATION_LOCKED_DEFINITION_BINDINGS_EXECUTIONS_AUDIT"
   },
   {
     "method": "GET",
@@ -369,7 +673,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 42,
+    "handlerLine": 57,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
   },
   {
@@ -394,7 +698,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 43,
+    "handlerLine": 58,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
   },
   {
@@ -419,8 +723,33 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 44,
+    "handlerLine": 59,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/automations/{id}/http-credentials",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY_ROOT_BOUND_CURSOR",
+    "requestSchemas": [
+      "path:id",
+      "query:cursor",
+      "query:pageSize"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 45,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTHORIZED_ROOT_ACTIVE_HTTP_METADATA"
   },
   {
     "method": "POST",
@@ -444,7 +773,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 40,
+    "handlerLine": 54,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
   },
   {
@@ -468,8 +797,33 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 39,
+    "handlerLine": 53,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/automations/{id}/subflow-catalog",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY_ID_VERSION_CURSOR",
+    "requestSchemas": [
+      "path:id",
+      "query:cursor",
+      "query:pageSize"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/automations.ts",
+    "handlerLine": 48,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTHORIZED_ROOT_PUBLISHED_VERSION_METADATA"
   },
   {
     "method": "POST",
@@ -492,7 +846,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 38,
+    "handlerLine": 52,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
   },
   {
@@ -515,7 +869,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 41,
+    "handlerLine": 56,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
   },
   {
@@ -538,7 +892,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 30,
+    "handlerLine": 38,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
   },
   {
@@ -565,7 +919,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 31,
+    "handlerLine": 39,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
   },
   {
@@ -593,7 +947,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 32,
+    "handlerLine": 40,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
   },
   {
@@ -621,7 +975,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 33,
+    "handlerLine": 41,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
   },
   {
@@ -642,7 +996,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 26,
+    "handlerLine": 31,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
   },
   {
@@ -652,7 +1006,11 @@
     "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
     "tenantRls": true,
     "idempotency": "READ_ONLY",
-    "requestSchemas": [],
+    "requestSchemas": [
+      "query:cursor",
+      "query:includeArchived",
+      "query:pageSize"
+    ],
     "responseSchemas": [
       "200:application/json",
       "400:application/problem+json",
@@ -666,7 +1024,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 53,
+    "handlerLine": 87,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID"
   },
   {
@@ -696,7 +1054,7 @@
     ],
     "challengeExposure": "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 66,
+    "handlerLine": 110,
     "ownershipCheck": "RLS_ORGANIZATION_PROVIDER_ACCOUNT_AND_CHANNEL"
   },
   {
@@ -723,7 +1081,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 55,
+    "handlerLine": 96,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID"
   },
   {
@@ -752,8 +1110,32 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 58,
+    "handlerLine": 102,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/{id}/archive",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "IDEMPOTENT_LIFECYCLE_TRANSITION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 95,
+    "ownershipCheck": "RLS_ORGANIZATION_DISCONNECTED_INSTANCE_PENDING_WORK_GUARD_AUDIT"
   },
   {
     "method": "GET",
@@ -779,14 +1161,14 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 96,
+    "handlerLine": 140,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID"
   },
   {
     "method": "PUT",
     "path": "/v1/channels/{id}/automation",
     "authentication": "JWT_CURRENT_MEMBERSHIP",
-    "permission": "OWNER_ADMIN_OPERATOR",
+    "permission": "OWNER_ADMIN",
     "tenantRls": true,
     "idempotency": "ATOMIC_REPLACE_PUBLISHED_AUTOMATION_BINDING",
     "requestSchemas": [
@@ -808,14 +1190,159 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 100,
+    "handlerLine": 144,
     "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_AUTOMATION_AND_VERSION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/{id}/central-operation",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 67,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_APPROVED_ACCOUNT_DESTINATION_OPERATION_NO_SECRET_RESPONSE"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/{id}/deletion",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "UNIQUE_KIND_RESOURCE_DURABLE_OPERATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 78,
+    "ownershipCheck": "EXACT_NAME_CURRENT_ACTOR_DATABASE_AUTHORIZATION_AND_WORK_FENCE"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/{id}/deletion-preview",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 75,
+    "ownershipCheck": "ORGANIZATION_RESOURCE_OPERATION_SCOPE"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/{id}/deletion/{operationId}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id",
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 82,
+    "ownershipCheck": "ORGANIZATION_RESOURCE_OPERATION_SCOPE"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/{id}/deletion/{operationId}/reconcile",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "DURABLE_RECONCILIATION_REQUEST",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id",
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 71,
+    "ownershipCheck": "CURRENT_ACTOR_ORGANIZATION_RESOURCE_OPERATION_EXTERNAL_STATE_RECHECK"
   },
   {
     "method": "PUT",
     "path": "/v1/channels/{id}/destination",
     "authentication": "JWT_CURRENT_MEMBERSHIP",
-    "permission": "OWNER_ADMIN_OPERATOR",
+    "permission": "OWNER_ADMIN",
     "tenantRls": true,
     "idempotency": "DESTINATION_RECONCILIATION",
     "requestSchemas": [
@@ -838,7 +1365,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 104,
+    "handlerLine": 148,
     "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_ACCOUNT_AND_INBOX"
   },
   {
@@ -870,8 +1397,35 @@
     ],
     "challengeExposure": "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 89,
+    "handlerLine": 133,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/{id}/operation-profile",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 99,
+    "ownershipCheck": "RLS_ORGANIZATION_CANONICAL_CHANNEL_ORIGIN_ACCOUNT_INBOX_CREDENTIAL_REVISION_OBSERVATION_NOT_AUTHORIZATION"
   },
   {
     "method": "POST",
@@ -902,7 +1456,7 @@
     ],
     "challengeExposure": "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 73,
+    "handlerLine": 117,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER"
   },
   {
@@ -934,7 +1488,7 @@
     ],
     "challengeExposure": "PAIRING_RESPONSE_EPHEMERAL_NO_STORE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 81,
+    "handlerLine": 125,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER"
   },
   {
@@ -962,8 +1516,308 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/channels.ts",
-    "handlerLine": 62,
+    "handlerLine": 106,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/{id}/whatsapp-group-events-configuration",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
+    "handlerLine": 76,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_CHANNEL_INSTANCE_BINDING_IDENTITY_CONFIGURATION_REVISIONS"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/{id}/whatsapp-groups",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY_SNAPSHOT_LOCAL_CURSOR",
+    "requestSchemas": [
+      "path:id",
+      "query:cursor",
+      "query:limit"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
+    "handlerLine": 79,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_LOCKED_CHANNEL_INSTANCE_ACTIVE_MEMBER"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/{id}/whatsapp-groups/refresh",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "CATALOG_LEASE_CLOCK_TIMESTAMP_IDENTITY_RECHECK_AFTER_IO",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
+    "handlerLine": 84,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CHANNEL_NUMBER_SNAPSHOT_NO_SEND_OR_BOT"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/channels/{id}/whatsapp-groups/selection",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_IDENTITY_SNAPSHOT_CATALOG_REVISION_FRESH_NUMBER_OBSERVATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
+    "handlerLine": 87,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_LOCKED_CHANNEL_ITEM_AUDITED_NO_SEND_OR_BOT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/central/inboxes",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 60,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_APPROVED_ACCOUNT_DESTINATION_OPERATION_NO_SECRET_RESPONSE"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/central/inboxes/{inboxId}/preview",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:inboxId"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 61,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_APPROVED_ACCOUNT_DESTINATION_OPERATION_NO_SECRET_RESPONSE"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/central/operations/{operationId}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 62,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_APPROVED_ACCOUNT_DESTINATION_OPERATION_NO_SECRET_RESPONSE"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/central/operations/{operationId}/advance",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_REVISION_DURABLE_LEASE_UNKNOWN_READBACK_NO_BLIND_POST_REPLAY",
+    "requestSchemas": [
+      "body:application/json",
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 65,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_OPERATION_ACCOUNT_DESTINATION_CREDENTIAL_REVISIONS_EXACT_REMOTE_IDENTITY"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/central/operations/{operationId}/cancel",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_REVISION_DURABLE_LEASE_UNKNOWN_READBACK_NO_BLIND_POST_REPLAY",
+    "requestSchemas": [
+      "body:application/json",
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 64,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_OPERATION_ACCOUNT_DESTINATION_CREDENTIAL_REVISIONS_EXACT_REMOTE_IDENTITY"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/central/operations/{operationId}/rollback",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_REVISION_DURABLE_LEASE_UNKNOWN_READBACK_NO_BLIND_POST_REPLAY",
+    "requestSchemas": [
+      "body:application/json",
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 66,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_OPERATION_ACCOUNT_DESTINATION_CREDENTIAL_REVISIONS_EXACT_REMOTE_IDENTITY"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/channels/central/operations/by-key/{key}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:key"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "503:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/channels.ts",
+    "handlerLine": 63,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_APPROVED_ACCOUNT_DESTINATION_OPERATION_NO_SECRET_RESPONSE"
   },
   {
     "method": "POST",
@@ -987,7 +1841,7 @@
     ],
     "challengeExposure": "NOT_APPLICABLE",
     "handlerFile": "apps/api/src/http/routes/console-auth.ts",
-    "handlerLine": 380,
+    "handlerLine": 386,
     "ownershipCheck": "REFRESH_TOKEN_FAMILY_WHEN_PRESENT"
   },
   {
@@ -1012,7 +1866,7 @@
     ],
     "challengeExposure": "NOT_APPLICABLE",
     "handlerFile": "apps/api/src/http/routes/console-auth.ts",
-    "handlerLine": 336,
+    "handlerLine": 342,
     "ownershipCheck": "REFRESH_TOKEN_TENANT_BOUND"
   },
   {
@@ -1041,7 +1895,7 @@
     ],
     "challengeExposure": "NOT_APPLICABLE",
     "handlerFile": "apps/api/src/http/routes/console-auth.ts",
-    "handlerLine": 313,
+    "handlerLine": 319,
     "ownershipCheck": "SELECTION_TOKEN_MEMBERSHIP_REVALIDATED"
   },
   {
@@ -1069,7 +1923,7 @@
     ],
     "challengeExposure": "NOT_APPLICABLE",
     "handlerFile": "apps/api/src/http/routes/console-auth.ts",
-    "handlerLine": 353,
+    "handlerLine": 359,
     "ownershipCheck": "SOURCE_AND_TARGET_MEMBERSHIPS_REVALIDATED"
   },
   {
@@ -1138,7 +1992,7 @@
     ],
     "challengeExposure": "ENVELOPE_ENCRYPTED_NO_SECRET_RESPONSE",
     "handlerFile": "apps/api/src/http/routes/credentials.ts",
-    "handlerLine": 21,
+    "handlerLine": 22,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CREDENTIAL"
   },
   {
@@ -1189,6 +2043,30 @@
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CREDENTIAL"
   },
   {
+    "method": "PUT",
+    "path": "/v1/credentials/{id}/http-policy",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "ROW_LOCK_EXPECTED_REVISION_CAS",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY_NO_SECRET_ROTATION",
+    "handlerFile": "apps/api/src/http/routes/credentials.ts",
+    "handlerLine": 21,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_ACTIVE_HTTP_CREDENTIAL_POLICY_REVISION"
+  },
+  {
     "method": "POST",
     "path": "/v1/credentials/{id}/test",
     "authentication": "JWT_CURRENT_MEMBERSHIP",
@@ -1209,7 +2087,7 @@
     ],
     "challengeExposure": "ENVELOPE_ENCRYPTED_NO_SECRET_RESPONSE",
     "handlerFile": "apps/api/src/http/routes/credentials.ts",
-    "handlerLine": 22,
+    "handlerLine": 23,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CREDENTIAL"
   },
   {
@@ -1422,7 +2300,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 45,
+    "handlerLine": 60,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
   },
   {
@@ -1445,7 +2323,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 46,
+    "handlerLine": 61,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_AUTOMATION_VERSION_BINDING_EXECUTION"
   },
   {
@@ -1469,7 +2347,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 47,
+    "handlerLine": 62,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
   },
   {
@@ -1494,7 +2372,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 49,
+    "handlerLine": 64,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
   },
   {
@@ -1519,7 +2397,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 50,
+    "handlerLine": 65,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
   },
   {
@@ -1544,7 +2422,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/automations.ts",
-    "handlerLine": 48,
+    "handlerLine": 63,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_IMMUTABLE_VERSION_DURABLE_EXECUTION_OUTBOX"
   },
   {
@@ -1565,7 +2443,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 54,
+    "handlerLine": 57,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
   },
   {
@@ -1588,7 +2466,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 62,
+    "handlerLine": 65,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
   },
   {
@@ -1611,7 +2489,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 65,
+    "handlerLine": 68,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
   },
   {
@@ -1635,7 +2513,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 66,
+    "handlerLine": 69,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
   },
   {
@@ -1659,7 +2537,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 74,
+    "handlerLine": 77,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
   },
   {
@@ -1683,7 +2561,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 38,
+    "handlerLine": 39,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
   },
   {
@@ -1706,7 +2584,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 40,
+    "handlerLine": 43,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
   },
   {
@@ -1729,7 +2607,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 67,
+    "handlerLine": 70,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
   },
   {
@@ -1753,7 +2631,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 73,
+    "handlerLine": 76,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
   },
   {
@@ -1776,7 +2654,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 76,
+    "handlerLine": 79,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
   },
   {
@@ -1800,7 +2678,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 77,
+    "handlerLine": 80,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
   },
   {
@@ -1824,7 +2702,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 75,
+    "handlerLine": 78,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
   },
   {
@@ -1848,7 +2726,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 70,
+    "handlerLine": 73,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
   },
   {
@@ -1869,7 +2747,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 55,
+    "handlerLine": 58,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
   },
   {
@@ -1893,7 +2771,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 39,
+    "handlerLine": 41,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
   },
   {
@@ -1916,8 +2794,32 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 44,
+    "handlerLine": 47,
     "ownershipCheck": "RLS_ACCOUNT_INBOX_DESTINATION_CREDENTIAL_FEATURE_REVISION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/flows/chatwoot/{id}/reconcile",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "NO_BLIND_MUTATION_REPLAY_REVISION_OR_BINDING_RECONCILIATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/flows.ts",
+    "handlerLine": 42,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
   },
   {
     "method": "GET",
@@ -1937,7 +2839,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 37,
+    "handlerLine": 38,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
   },
   {
@@ -1960,7 +2862,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 59,
+    "handlerLine": 62,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_BINDING"
   },
   {
@@ -1981,7 +2883,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 56,
+    "handlerLine": 59,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
   },
   {
@@ -2002,7 +2904,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/flows.ts",
-    "handlerLine": 53,
+    "handlerLine": 56,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_FEATURE_AND_APPROVED_REMOTE_DESTINATION"
   },
   {
@@ -2254,7 +3156,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 166,
+    "handlerLine": 173,
     "ownershipCheck": "RLS_ORGANIZATION_ONLY"
   },
   {
@@ -2277,7 +3179,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 352,
+    "handlerLine": 360,
     "ownershipCheck": "STORED_BINDING_SIGNATURE_ACCOUNT_INBOX_AND_RLS"
   },
   {
@@ -2300,7 +3202,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 184,
+    "handlerLine": 191,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
   },
   {
@@ -2323,7 +3225,30 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 218,
+    "handlerLine": 225,
+    "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/integrations/chatwoot/connections/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 275,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
   },
   {
@@ -2347,7 +3272,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 268,
+    "handlerLine": 276,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
   },
   {
@@ -2370,7 +3295,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 230,
+    "handlerLine": 237,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
   },
   {
@@ -2394,8 +3319,31 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 235,
+    "handlerLine": 242,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/connections/{id}/attendance-catalog",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/integrations.ts",
+    "handlerLine": 115,
+    "ownershipCheck": "RLS_CURRENT_CHANNEL_ACCOUNT_INBOX_APPROVED_DESTINATION_CREDENTIAL_REVISION_RECHECK"
   },
   {
     "method": "GET",
@@ -2417,7 +3365,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
-    "handlerLine": 91,
+    "handlerLine": 99,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CONNECTION_MEMBERS_PROJECTION"
   },
   {
@@ -2442,7 +3390,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
-    "handlerLine": 94,
+    "handlerLine": 102,
     "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_CURRENT_MEMBERSHIP_AND_CONNECTION"
   },
   {
@@ -2466,7 +3414,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 255,
+    "handlerLine": 262,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
   },
   {
@@ -2490,7 +3438,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 120,
+    "handlerLine": 127,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
   },
   {
@@ -2514,7 +3462,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
-    "handlerLine": 88,
+    "handlerLine": 96,
     "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_APPROVED_ACCOUNT"
   },
   {
@@ -2539,7 +3487,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
-    "handlerLine": 70,
+    "handlerLine": 78,
     "ownershipCheck": "RLS_VALIDATED_ACCOUNT_AGENTS"
   },
   {
@@ -2564,7 +3512,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
-    "handlerLine": 67,
+    "handlerLine": 75,
     "ownershipCheck": "RLS_ADMIN_PROVIDER_OBSERVED_IDENTITY"
   },
   {
@@ -2590,7 +3538,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
-    "handlerLine": 60,
+    "handlerLine": 68,
     "ownershipCheck": "RLS_CURRENT_CONNECTION_ADMIN_OR_SERVICE"
   },
   {
@@ -2616,8 +3564,33 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
-    "handlerLine": 53,
+    "handlerLine": 61,
     "ownershipCheck": "RLS_CURRENT_CONNECTION_GRANT_AND_PROVIDER_IDENTITY"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/integrations/chatwoot/control/connections/{integrationId}/pair-operations/{operationId}",
+    "authentication": "JWT_OR_BOUND_CONTROL_KEY",
+    "permission": "CURRENT_MEMBERSHIP_OR_CHATWOOT_PAIR",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY_ONE_TIME_QR",
+    "requestSchemas": [
+      "path:integrationId",
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "200:application/json",
+      "409:application/problem+json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "TEMPORARY_QR_REDIS_GETDEL",
+    "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
+    "handlerLine": 53,
+    "ownershipCheck": "RLS_CURRENT_CONNECTION_GRANT_OPERATION_AND_PROVIDER_IDENTITY"
   },
   {
     "method": "GET",
@@ -2705,7 +3678,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
-    "handlerLine": 73,
+    "handlerLine": 81,
     "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION"
   },
   {
@@ -2728,7 +3701,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
-    "handlerLine": 79,
+    "handlerLine": 87,
     "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_OPERATION_AND_INTEGRATION_GRANT"
   },
   {
@@ -2753,7 +3726,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/chatwoot-control.ts",
-    "handlerLine": 82,
+    "handlerLine": 90,
     "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION"
   },
   {
@@ -2795,7 +3768,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 114,
+    "handlerLine": 121,
     "ownershipCheck": "RLS_ORGANIZATION_ONLY"
   },
   {
@@ -2818,7 +3791,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 117,
+    "handlerLine": 124,
     "ownershipCheck": "RLS_ORGANIZATION_AND_DESTINATION_NOT_IN_USE"
   },
   {
@@ -2909,7 +3882,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 197,
+    "handlerLine": 204,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
   },
   {
@@ -2930,7 +3903,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 287,
+    "handlerLine": 295,
     "ownershipCheck": "RLS_ORGANIZATION_ONLY"
   },
   {
@@ -2954,7 +3927,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 141,
+    "handlerLine": 148,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
   },
   {
@@ -2978,7 +3951,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 295,
+    "handlerLine": 303,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
   },
   {
@@ -2999,7 +3972,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 161,
+    "handlerLine": 168,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
   },
   {
@@ -3020,7 +3993,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/messaging.ts",
-    "handlerLine": 312,
+    "handlerLine": 374,
     "ownershipCheck": "RLS_ORGANIZATION_FILTER"
   },
   {
@@ -3044,7 +4017,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/messaging.ts",
-    "handlerLine": 392,
+    "handlerLine": 491,
     "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_AND_SERVER_ORIGIN_ALLOWLIST"
   },
   {
@@ -3067,7 +4040,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/messaging.ts",
-    "handlerLine": 336,
+    "handlerLine": 426,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CHANNEL_ID"
   },
   {
@@ -3092,7 +4065,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/messaging.ts",
-    "handlerLine": 362,
+    "handlerLine": 461,
     "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_CONVERSATION_AND_CONTACT_POLICY_BEFORE_OUTBOX"
   },
   {
@@ -3115,8 +4088,57 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/messaging.ts",
-    "handlerLine": 323,
+    "handlerLine": 385,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CHANNEL_ID_BEFORE_META"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/messaging/channels/{id}/templates",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "META_SUBMISSION_UNKNOWN_RECONCILE",
+    "requestSchemas": [
+      "body:application/json",
+      "header:idempotency-key",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 410,
+    "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_AND_WABA_BEFORE_META"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/messaging/channels/{id}/templates/{templateId}/status",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY_META_STATUS",
+    "requestSchemas": [
+      "path:id",
+      "path:templateId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 398,
+    "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_AND_WABA_BEFORE_META"
   },
   {
     "method": "POST",
@@ -3140,8 +4162,31 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/messaging.ts",
-    "handlerLine": 277,
+    "handlerLine": 339,
     "ownershipCheck": "RLS_ORGANIZATION_CHANNEL_CONVERSATION_AND_CONTACT_POLICY_BEFORE_OUTBOX"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/messaging/conversations/{id}",
+    "authentication": "JWT_WITH_ACTIVE_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 452,
+    "ownershipCheck": "RLS_ACTIVE_ORGANIZATION_CONVERSATION_AND_CHANNEL"
   },
   {
     "method": "GET",
@@ -3163,7 +4208,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/messaging.ts",
-    "handlerLine": 349,
+    "handlerLine": 439,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CONVERSATION_ID"
   },
   {
@@ -3187,8 +4232,54 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/messaging.ts",
-    "handlerLine": 410,
+    "handlerLine": 509,
     "ownershipCheck": "RLS_ORGANIZATION_AND_CONVERSATION_ID"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/messaging/conversations/{id}/qr-dispatch-attempts",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 270,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CONVERSATION_METADATA_ONLY"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/messaging/conversations/{id}/qr-outbound-observations",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR_VIEWER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 264,
+    "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CONVERSATION_METADATA_ONLY"
   },
   {
     "method": "POST",
@@ -3211,7 +4302,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/integrations.ts",
-    "handlerLine": 314,
+    "handlerLine": 322,
     "ownershipCheck": "RLS_ORGANIZATION_ACCOUNT_INBOX_AND_CHANNEL_VERIFIED"
   },
   {
@@ -3234,7 +4325,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/messaging.ts",
-    "handlerLine": 256,
+    "handlerLine": 312,
     "ownershipCheck": "RLS_ORGANIZATION_ENCRYPTED_MEDIA_ATTACHMENT_ONLY"
   },
   {
@@ -3258,8 +4349,56 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/messaging.ts",
-    "handlerLine": 232,
+    "handlerLine": 288,
     "ownershipCheck": "RLS_ORGANIZATION_AND_SAFE_OUTBOX_STATE"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/messaging/qr-dispatch-attempts/{id}/abandon",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_REVISION_CHANNEL_LOCK_TRANSACTIONAL_AUDIT_NO_REPLAY",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 276,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_OWNER_ADMIN_ATTEMPT_CONVERSATION_MESSAGE_UNKNOWN_NO_PROVIDER_ID_NO_OUTBOX"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/messaging/qr-outbound-observations/{id}/abandon",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_REVISION_CHANNEL_LOCK_TRANSACTIONAL_AUDIT_NO_REPLAY",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/messaging.ts",
+    "handlerLine": 282,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_OWNER_ADMIN_OBSERVATION_CONVERSATION_EXACT_UNKNOWN_ATTEMPTS_NO_ACTIVE_DISPATCH"
   },
   {
     "method": "GET",
@@ -3484,7 +4623,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 176,
+    "handlerLine": 189,
     "ownershipCheck": "PUBLIC_MFA_POLICY_ONLY"
   },
   {
@@ -3507,7 +4646,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 183,
+    "handlerLine": 196,
     "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
   },
   {
@@ -3528,7 +4667,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 210,
+    "handlerLine": 223,
     "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
   },
   {
@@ -3549,12 +4688,12 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 198,
+    "handlerLine": 211,
     "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
   },
   {
     "method": "GET",
-    "path": "/v1/platform/organizations",
+    "path": "/v1/platform/commercial-plans",
     "authentication": "PLATFORM_SESSION_COOKIE",
     "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
     "tenantRls": true,
@@ -3570,7 +4709,313 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 243,
+    "handlerLine": 315,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/commercial-plans",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "201:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 317,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/commercial-plans/{id}/versions",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "201:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 319,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/group-company-removals/{operationId}",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/group-removal.ts",
+    "handlerLine": 18,
+    "ownershipCheck": "CURRENT_PLATFORM_ACTOR_PERSISTED_GROUP_OPERATION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/groups",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_OR_SUPPORT",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "query:cursor"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 313,
+    "ownershipCheck": "PLATFORM_ONLY_RLS_NO_TENANT_ACCESS_AUDITED"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/groups",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "CREATE_NEW_GROUP",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "201:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 325,
+    "ownershipCheck": "PLATFORM_ONLY_RLS_NO_MEMBERSHIP_PROPAGATION_AUDITED"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/platform/groups/{id}",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "ROW_LOCK_AND_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 333,
+    "ownershipCheck": "CURRENT_PLATFORM_ACTOR_EXPLICIT_DETACH_PRESERVED_COMPANIES_ATOMIC_AUDIT"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/platform/groups/{id}",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "ROW_LOCK_AND_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 329,
+    "ownershipCheck": "CURRENT_PLATFORM_ACTOR_GROUP_REVISION_AND_ATOMIC_AUDIT"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/groups/{id}/company-removal-preview",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PREVIEW_REVISION_AND_REQUEST_HASH",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/group-removal.ts",
+    "handlerLine": 10,
+    "ownershipCheck": "EXPLICIT_COMPANY_SELECTION_EXACT_NAMES_PERSISTED_CHILD_OPERATIONS"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/groups/{id}/company-removals",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id",
+      "query:cursor"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/group-removal.ts",
+    "handlerLine": 20,
+    "ownershipCheck": "CURRENT_PLATFORM_ACTOR_PERSISTED_GROUP_OPERATION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/groups/{id}/company-removals",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "PREVIEW_REVISION_AND_REQUEST_HASH",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/group-removal.ts",
+    "handlerLine": 12,
+    "ownershipCheck": "EXPLICIT_COMPANY_SELECTION_EXACT_NAMES_PERSISTED_CHILD_OPERATIONS"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/platform/groups/{id}/organizations",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "ROW_LOCK_AND_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 327,
+    "ownershipCheck": "PLATFORM_ONLY_RLS_UNIQUE_ORGANIZATION_GROUP_NO_MEMBERSHIP_PROPAGATION_AUDITED"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/groups/{id}/removal-preview",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 331,
+    "ownershipCheck": "CURRENT_PLATFORM_ACTOR_GROUP_SCOPE_PRESERVED_COMPANIES"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "query:cursor"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 335,
     "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
   },
   {
@@ -3593,7 +5038,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 254,
+    "handlerLine": 347,
     "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
   },
   {
@@ -3617,8 +5062,158 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 264,
+    "handlerLine": 357,
     "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/channels",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "path:id",
+      "query:cursor",
+      "query:pageSize"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 424,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/channels/{channelId}/archive",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:channelId",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 432,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/channels/{channelId}/deletion",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "UNIQUE_KIND_RESOURCE_DURABLE_OPERATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:channelId",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 289,
+    "ownershipCheck": "EXACT_NAME_CURRENT_ACTOR_DATABASE_AUTHORIZATION_AND_WORK_FENCE"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/channels/{channelId}/deletion-preview",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:channelId",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 286,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_RESOURCE_OPERATION_SCOPE"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/channels/{channelId}/deletion/{operationId}",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:channelId",
+      "path:id",
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 292,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_RESOURCE_OPERATION_SCOPE"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/channels/{channelId}/deletion/{operationId}/reconcile",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "DURABLE_RECONCILIATION_REQUEST",
+    "requestSchemas": [
+      "body:application/json",
+      "path:channelId",
+      "path:id",
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 272,
+    "ownershipCheck": "CURRENT_ACTOR_RESOURCE_OPERATION_EXTERNAL_STATE_RECHECK"
   },
   {
     "method": "GET",
@@ -3640,7 +5235,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 363,
+    "handlerLine": 470,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3664,7 +5259,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 392,
+    "handlerLine": 499,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3688,7 +5283,31 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 426,
+    "handlerLine": 533,
+    "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/platform/organizations/{id}/chatwoot/connections/{resourceId}",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "PERSISTED_BINDING_AND_JOB_STATE",
+    "requestSchemas": [
+      "path:id",
+      "path:resourceId"
+    ],
+    "responseSchemas": [
+      "200:NO_BODY"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 651,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3713,7 +5332,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 544,
+    "handlerLine": 652,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3737,7 +5356,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 448,
+    "handlerLine": 555,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3762,7 +5381,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 459,
+    "handlerLine": 566,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3787,7 +5406,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 527,
+    "handlerLine": 634,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3812,7 +5431,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 483,
+    "handlerLine": 590,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3836,7 +5455,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 353,
+    "handlerLine": 460,
     "ownershipCheck": "DEDICATED_PLATFORM_ROLE_AND_DESTINATION_REVISION"
   },
   {
@@ -3859,7 +5478,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 414,
+    "handlerLine": 521,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3882,7 +5501,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 418,
+    "handlerLine": 525,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3907,7 +5526,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 506,
+    "handlerLine": 613,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3932,7 +5551,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 563,
+    "handlerLine": 671,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3956,7 +5575,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 582,
+    "handlerLine": 690,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -3980,7 +5599,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 623,
+    "handlerLine": 731,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -4004,7 +5623,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 603,
+    "handlerLine": 711,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
   },
   {
@@ -4027,8 +5646,151 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 410,
+    "handlerLine": 517,
     "ownershipCheck": "DEDICATED_PLATFORM_AUTHORIZATION_THEN_TENANT_RLS"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/commercial-plan",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_SUPPORT_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 321,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/platform/organizations/{id}/commercial-plan",
+    "authentication": "PLATFORM_COOKIE_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_AUDITED",
+    "tenantRls": true,
+    "idempotency": "NOT_APPLICABLE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NONE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 323,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/deletion",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "UNIQUE_KIND_RESOURCE_DURABLE_OPERATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 277,
+    "ownershipCheck": "EXACT_NAME_CURRENT_ACTOR_DATABASE_AUTHORIZATION_AND_WORK_FENCE"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/deletion-preview",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 275,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_RESOURCE_OPERATION_SCOPE"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/organizations/{id}/deletion/{operationId}",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id",
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 283,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_RESOURCE_OPERATION_SCOPE"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/organizations/{id}/deletion/{operationId}/reconcile",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "DURABLE_RECONCILIATION_REQUEST",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id",
+      "path:operationId"
+    ],
+    "responseSchemas": [
+      "202:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 269,
+    "ownershipCheck": "CURRENT_ACTOR_RESOURCE_OPERATION_EXTERNAL_STATE_RECHECK"
   },
   {
     "method": "GET",
@@ -4050,7 +5812,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 271,
+    "handlerLine": 364,
     "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
   },
   {
@@ -4074,7 +5836,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 292,
+    "handlerLine": 385,
     "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
   },
   {
@@ -4097,7 +5859,7 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 303,
+    "handlerLine": 396,
     "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
   },
   {
@@ -4121,8 +5883,153 @@
     ],
     "challengeExposure": "NONE",
     "handlerFile": "apps/api/src/http/routes/platform.ts",
-    "handlerLine": 320,
+    "handlerLine": 413,
     "ownershipCheck": "DEDICATED_PLATFORM_ROLE_EXPLICIT_RLS_NO_CONTENT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/support/tickets",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_OR_SUPPORT",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "query:assignee",
+      "query:company",
+      "query:cursor",
+      "query:status"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_TEXT_ONLY",
+    "handlerFile": "apps/api/src/http/routes/support.ts",
+    "handlerLine": 49,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_FORCED_RLS"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/support/tickets/{id}",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN_OR_SUPPORT",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id",
+      "query:before"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_TEXT_ONLY",
+    "handlerFile": "apps/api/src/http/routes/support.ts",
+    "handlerLine": 50,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_FORCED_RLS"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/platform/support/tickets/{id}",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_OR_SUPPORT",
+    "tenantRls": true,
+    "idempotency": "REQUEST_UUID_HASH_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_TEXT_ONLY",
+    "handlerFile": "apps/api/src/http/routes/support.ts",
+    "handlerLine": 52,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_TICKET_LOCK_REVISION_AND_STATUS_ADMISSION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/support/tickets/{id}/replies",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN_OR_SUPPORT",
+    "tenantRls": true,
+    "idempotency": "REQUEST_UUID_HASH_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_TEXT_ONLY",
+    "handlerFile": "apps/api/src/http/routes/support.ts",
+    "handlerLine": 51,
+    "ownershipCheck": "DEDICATED_PLATFORM_ROLE_TICKET_LOCK_REVISION_AND_STATUS_ADMISSION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/platform/users/{id}/password-reset",
+    "authentication": "PLATFORM_SESSION_CSRF_EXACT_ORIGIN",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "ROW_LOCK_AND_AUTHENTICATION_GENERATION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 311,
+    "ownershipCheck": "CURRENT_PLATFORM_ACTOR_SIGNED_GLOBAL_USER_CONFIRMATION_ATOMIC_PASSWORD_AUTH_REVOCATION_AND_SAFE_AUDIT"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/platform/users/{id}/password-reset-preview",
+    "authentication": "PLATFORM_SESSION_COOKIE",
+    "permission": "SUPER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE",
+    "handlerFile": "apps/api/src/http/routes/platform.ts",
+    "handlerLine": 309,
+    "ownershipCheck": "CURRENT_PLATFORM_ACTOR_GLOBAL_USER_ALL_MEMBERSHIPS_SIGNED_EXPIRING_CONFIRMATION_AUDITED"
   },
   {
     "method": "GET",
@@ -4152,6 +6059,125 @@
     "handlerFile": "apps/api/src/http/routes/provider-accounts.ts",
     "handlerLine": 74,
     "ownershipCheck": "RLS_ORGANIZATION_FILTER_AND_TENANT_CURSOR"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/support/tickets",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "query:cursor",
+      "query:status"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_TEXT_ONLY",
+    "handlerFile": "apps/api/src/http/routes/support.ts",
+    "handlerLine": 36,
+    "ownershipCheck": "RLS_ORGANIZATION_TICKET_AND_MESSAGES"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/support/tickets",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "REQUEST_UUID_HASH_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json"
+    ],
+    "responseSchemas": [
+      "201:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_TEXT_ONLY",
+    "handlerFile": "apps/api/src/http/routes/support.ts",
+    "handlerLine": 37,
+    "ownershipCheck": "RLS_ORGANIZATION_TICKET_AND_MESSAGES_STATUS_ADMISSION"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/support/tickets/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "CURRENT_MEMBER",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id",
+      "query:before"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_TEXT_ONLY",
+    "handlerFile": "apps/api/src/http/routes/support.ts",
+    "handlerLine": 38,
+    "ownershipCheck": "RLS_ORGANIZATION_TICKET_AND_MESSAGES"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/support/tickets/{id}",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "REQUEST_UUID_HASH_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_TEXT_ONLY",
+    "handlerFile": "apps/api/src/http/routes/support.ts",
+    "handlerLine": 40,
+    "ownershipCheck": "RLS_ORGANIZATION_TICKET_AND_MESSAGES_STATUS_ADMISSION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/support/tickets/{id}/replies",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "REQUEST_UUID_HASH_OR_OPTIMISTIC_REVISION",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_TEXT_ONLY",
+    "handlerFile": "apps/api/src/http/routes/support.ts",
+    "handlerLine": 39,
+    "ownershipCheck": "RLS_ORGANIZATION_TICKET_AND_MESSAGES_STATUS_ADMISSION"
   },
   {
     "method": "GET",

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import { createIntegrationSecrets } from '../integrations/secrets.js';
 import type { RateLimitStore } from '../auth/rate-limit/store.js';
+import {HttpCredentialPolicySchema} from '@jrc/contracts';
 
 export const CredentialTypeSchema=z.enum(['HTTP_HEADER','BEARER','BASIC','POSTGRES','MYSQL','AI_PROVIDER','GENERIC_JSON']);
 export type CredentialType=z.infer<typeof CredentialTypeSchema>;
@@ -12,6 +13,7 @@ export interface CredentialRepository {
  insert(tx:TenantTransaction,row:{org:string;id:string;name:string;type:CredentialType;encrypted:string;keyVersion:number;fingerprint:string;metadata:Record<string,unknown>}):Promise<CredentialRow>;
  rotate(tx:TenantTransaction,row:{org:string;id:string;revision:number;encrypted:string;keyVersion:number;fingerprint:string}):Promise<CredentialRow|null>;
  revoke(tx:TenantTransaction,org:string,id:string,revision:number):Promise<CredentialRow|null>;tested(tx:TenantTransaction,org:string,id:string):Promise<CredentialRow>;
+ policy?(tx:TenantTransaction,input:{org:string;id:string;revision:number;allowedOrigins:string[]}):Promise<CredentialRow|null>;
 }
 const columns=`id,organization_id AS "organizationId",name,type,encrypted_secret AS "encryptedSecret",key_version AS "keyVersion",fingerprint,metadata,status,revision,last_tested_at AS "lastTestedAt",created_at AS "createdAt",updated_at AS "updatedAt"`;
 export function createPostgresCredentialRepository():CredentialRepository{return {
@@ -21,6 +23,7 @@ export function createPostgresCredentialRepository():CredentialRepository{return
  async rotate(tx,row){return (await tx.query<CredentialRow>(`update automation_credentials set encrypted_secret=$4,key_version=$5,fingerprint=$6,revision=revision+1,status='ACTIVE',updated_at=now() where organization_id=$1 and id=$2 and revision=$3 and status='ACTIVE' returning ${columns}`,[row.org,row.id,row.revision,row.encrypted,row.keyVersion,row.fingerprint])).rows[0]??null;},
  async revoke(tx,org,id,revision){return (await tx.query<CredentialRow>(`update automation_credentials set encrypted_secret=null,status='REVOKED',revision=revision+1,updated_at=now() where organization_id=$1 and id=$2 and revision=$3 and status='ACTIVE' returning ${columns}`,[org,id,revision])).rows[0]??null;},
  async tested(tx,org,id){return (await tx.query<CredentialRow>(`update automation_credentials set last_tested_at=now(),updated_at=now() where organization_id=$1 and id=$2 returning ${columns}`,[org,id])).rows[0]!;},
+ async policy(tx,input){return (await tx.query<CredentialRow>(`update automation_credentials set metadata=metadata||jsonb_build_object('allowedOrigins',$4::jsonb),revision=revision+1,updated_at=now() where organization_id=$1 and id=$2 and revision=$3 and status='ACTIVE' and type in ('HTTP_HEADER','BEARER','BASIC') returning ${columns}`,[input.org,input.id,input.revision,JSON.stringify(input.allowedOrigins)])).rows[0]??null;},
 };}
 
 export interface CredentialVault {activeVersion:number;seal(org:string,type:CredentialType,id:string,secret:Record<string,unknown>):{encrypted:string;fingerprint:string;keyVersion:number};open(row:CredentialRow):Record<string,unknown>}
@@ -42,6 +45,15 @@ export function createCredentialService(options:{transact<T>(org:string,work:Org
   create:(org:string,input:{name:string;type:CredentialType;secret:Record<string,unknown>;metadata:Record<string,unknown>})=>options.transact(org,async tx=>{const id=randomUUID(),sealed=options.vault.seal(org,input.type,id,input.secret);return view(await repository.insert(tx,{org,id,name:input.name.trim(),type:input.type,...sealed,metadata:input.metadata}));}),
   rotate:(org:string,id:string,input:{revision:number;secret:Record<string,unknown>})=>options.transact(org,async tx=>{const current=await get(tx,org,id,true),sealed=options.vault.seal(org,current.type,id,input.secret),row=await repository.rotate(tx,{org,id,revision:input.revision,...sealed});if(!row)throw new CredentialError('CREDENTIAL_CHANGED',409);return view(row);}),
   revoke:(org:string,id:string,revision:number)=>options.transact(org,async tx=>{await get(tx,org,id,true);const row=await repository.revoke(tx,org,id,revision);if(!row)throw new CredentialError('CREDENTIAL_CHANGED',409);return view(row);}),
+  updateHttpPolicy:async(org:string,id:string,input:{revision:number;allowedOrigins:string[]})=>{
+   const policy=HttpCredentialPolicySchema.parse({allowedOrigins:input.allowedOrigins});
+   return options.transact(org,async tx=>{const current=await get(tx,org,id,true);
+    if(current.status!=='ACTIVE'||current.revision!==input.revision)throw new CredentialError('CREDENTIAL_CHANGED',409);
+    if(!['HTTP_HEADER','BEARER','BASIC'].includes(current.type))throw new CredentialError('CREDENTIAL_HTTP_TYPE_REQUIRED',422);
+    if(!repository.policy)throw new CredentialError('CREDENTIAL_POLICY_UNAVAILABLE',503);
+    const row=await repository.policy(tx,{org,id,revision:input.revision,allowedOrigins:policy.allowedOrigins});if(!row)throw new CredentialError('CREDENTIAL_CHANGED',409);return view(row);
+   });
+  },
   test:async(org:string,id:string)=>{
    if(!options.tester)throw new CredentialError('CREDENTIAL_TEST_UNAVAILABLE',503);
    if(activeTests.has(org)||activeTests.size>=8)throw new CredentialError('CREDENTIAL_TEST_BUSY',429);
@@ -57,6 +69,6 @@ export function createCredentialService(options:{transact<T>(org:string,work:Org
     return await options.transact(org,async tx=>{const current=await get(tx,org,id,true);if(current.status!=='ACTIVE'||current.revision!==snapshot.revision)throw new CredentialError('CREDENTIAL_CHANGED',409);return view(await repository.tested(tx,org,id));});
    }finally{activeTests.delete(org);}
   },
-  resolve:(org:string,id:string)=>options.transact(org,async tx=>{const row=await get(tx,org,id);return {type:row.type,secret:options.vault.open(row),metadata:row.metadata};}),_repository:repository};
+  resolve:(org:string,id:string)=>options.transact(org,async tx=>{const row=await get(tx,org,id);return {type:row.type,secret:options.vault.open(row),metadata:row.metadata,revision:row.revision};}),_repository:repository};
 }
 export type CredentialService=ReturnType<typeof createCredentialService>;

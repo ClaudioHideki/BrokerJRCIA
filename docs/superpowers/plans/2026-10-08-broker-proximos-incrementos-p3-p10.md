@@ -76,3 +76,9 @@ Não há nova migration, Compose ou ENV nesse incremento; a baseline permanece 0
 O CLI portátil de capture/verify/restore foi integrado à fonte, com autenticação integral antes de efeitos, journal de restauração e conservação de UNKNOWN. O corte passou revisão independente, o novo teste de orçamento agregado, três contratos afetados do CLI e cinco testes físicos/relógio com PostgreSQL, Redis e MinIO. [Evidências e limites](../../validation/2026-10-13-recovery-portable-release.md).
 
 Não há nova migration, alteração do Compose ou variável da aplicação. Scripts e configuração de teste acompanham a fonte; sua presença não afirma instalação no container. A recuperação integral do servidor e de sessões QR, capacidade e RPO/RTO permanecem pendentes. A instalação e as jornadas reais foram adiadas pelo usuário até a conclusão das entregas de código e imagens.
+
+## Incremento HTTP — 13/10/2026
+
+Consulta GET delimitada foi integrada e habilitada no editor comum após revisão independente, 56 casos únicos do candidato e 15 casos focais da composição/matrizes/rotas. Credenciais são escolhidas por nome; destinos e revisão são revalidados na publicação e no despacho. A simulação oferece as cinco respostas sem I/O. [Evidências HTTP](../../validation/2026-10-13-http-query-release.md).
+
+Não há migration, Compose ou ENV novos; a baseline permanece 0052. A release depende do CI e imagens do mesmo SHA na main. Os demais incrementos e o aceite real permanecem no programa.

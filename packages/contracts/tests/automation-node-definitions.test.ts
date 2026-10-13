@@ -5,6 +5,15 @@ import { welcomeFlow } from '../src/flows.js';
 import { readFileSync } from 'node:fs';
 
 describe('canonical automation node definitions', () => {
+  it('offers the reviewed HTTPS query while rejecting mutations in its new configuration',()=>{
+    const http=getNodeDefinition('http',1)!;
+    expect(http).toMatchObject({availability:'AVAILABLE',runtimeSupported:true,capabilitiesRequired:[],unavailableReason:null});
+    const config={httpConfigVersion:1,method:'GET',url:'https://api.example.test/customers',credentialId:'11111111-1111-4111-8111-111111111111',credentialRevision:2,queryParameters:{name:'{{name}}'},target:'result',timeoutMs:15000,maxResponseBytes:32768,retryAttempts:0};
+    expect(http.schema.safeParse(config).success).toBe(true);
+    expect(http.schema.safeParse({...config,method:'POST'}).success).toBe(false);
+    expect(http.schema.safeParse({...config,credentialRevision:0}).success).toBe(false);
+    expect(http.ports({id:'query',type:'http',label:'Consulta',position:{x:0,y:0},data:config})).toEqual(['success','client_error','server_error','timeout','unknown']);
+  });
   it('offers version-pinned subflows after the selector, shared snapshot and persisted execution cut',()=>{
     expect(getNodeDefinition('subflow',1)).toMatchObject({availability:'AVAILABLE',runtimeSupported:true,capabilitiesRequired:[],unavailableReason:null});
   });
@@ -29,7 +38,7 @@ describe('canonical automation node definitions', () => {
     for(const type of documented)expect(getNodeDefinition(type!,1)).toMatchObject({runtimeSupported:true,capabilitiesRequired:[],unavailableReason:null});
   });
   it('recognizes versioned legacy nodes independently of creation availability', () => {
-    for (const type of ['sql', 'code', 'ai-agent', 'http', 'media', 'tag', 'attribute', 'note', 'resolve']) {
+    for (const type of ['sql', 'code', 'ai-agent', 'media', 'tag', 'attribute', 'note', 'resolve']) {
       const definition = getNodeDefinition(type, 1);
       expect(definition, type).not.toBeNull();
       expect(definition?.availability).toBe('UNAVAILABLE');

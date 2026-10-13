@@ -1,7 +1,7 @@
 import { LocalAttendanceChannelsSchema, attendanceCatalogSchema, ChatwootStatusSchema, AutomationDefinitionV1Schema, AutomationPublishedVersionV1Schema, NodeDiagnosticSchema, legacyStringsToNodeDiagnostics, type AttendanceDiagnostic, type AutomationDefinitionV1, type AutomationGraphV1, type AutomationPublishedVersionV1 } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
 import {LocalAttendanceDirectorySchema} from '@jrc/contracts';
-import {AutomationSubflowCatalogPageSchema} from '@jrc/contracts';
+import {AutomationSubflowCatalogPageSchema,HttpCredentialCatalogPageSchema} from '@jrc/contracts';
 
 export interface AutomationNodeCatalogItem {type:string;category:string;label:string;description:string;version?:number;availability?:'AVAILABLE'|'UNAVAILABLE';unavailableReason?:string|null}
 export async function validateAutomation(client: ApiClient, id: string) {
@@ -32,6 +32,12 @@ export async function listVersions(client:ApiClient,id:string){const value=await
 export async function getSubflowCatalogPage(client:ApiClient,organizationId:string,rootAutomationId:string,cursor?:string,signal?:AbortSignal){
  const query=new URLSearchParams({pageSize:'200'});if(cursor)query.set('cursor',cursor);
  const page=parsed(AutomationSubflowCatalogPageSchema,await client.request(`/v1/automations/${encodeURIComponent(rootAutomationId)}/subflow-catalog?${query}`,{signal:signal??null}),'Catálogo de subfluxos inválido retornado pelo serviço.');
+ if(page.scope.organizationId!==organizationId||page.scope.rootAutomationId!==rootAutomationId)throw new ApiClientError('O catálogo não corresponde à empresa e ao fluxo em edição.',409);
+ return page;
+}
+export async function getHttpCredentialCatalogPage(client:ApiClient,organizationId:string,rootAutomationId:string,cursor?:string,signal?:AbortSignal){
+ const query=new URLSearchParams({pageSize:'200'});if(cursor)query.set('cursor',cursor);
+ const page=parsed(HttpCredentialCatalogPageSchema,await client.request(`/v1/automations/${encodeURIComponent(rootAutomationId)}/http-credentials?${query}`,{signal:signal??null}),'Catálogo de credenciais inválido retornado pelo serviço.');
  if(page.scope.organizationId!==organizationId||page.scope.rootAutomationId!==rootAutomationId)throw new ApiClientError('O catálogo não corresponde à empresa e ao fluxo em edição.',409);
  return page;
 }

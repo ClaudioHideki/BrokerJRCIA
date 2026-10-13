@@ -39,9 +39,9 @@ describe('native handoff version 1', () => {
   });
   it('keeps complete handoff and implemented time nodes creatable without exposing unfinished actions', () => {
     expect(getNodeDefinition('handoff',1)?.availability).toBe('AVAILABLE');
-    for(const type of ['delay','schedule','subflow'])
+    for(const type of ['delay','schedule','subflow','http'])
       expect(getNodeDefinition(type,1)?.availability).toBe('AVAILABLE');
-    for(const type of ['http','sql','code','ai-agent','media','tag','attribute','note','resolve'])
+    for(const type of ['sql','code','ai-agent','media','tag','attribute','note','resolve'])
       expect(getNodeDefinition(type,1)?.availability).toBe('UNAVAILABLE');
   });
 });

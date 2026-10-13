@@ -16,6 +16,7 @@ import { readAttendanceDiagnostic } from '../attendance/diagnostics.js';
 import { unknownOutboxDiagnostic } from './outbox-diagnostics.js';
 import {AutomationError} from './errors.js';
 import {prepareSubflowSnapshot,type SubflowSnapshot} from './subflow-dependencies.js';
+import {assertHttpQueryPolicies,readHttpCredentialCatalog} from './http-query-policy.js';
 
 export {AutomationError} from './errors.js';
 export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean;runtimeReady?(org:string):Promise<boolean>;handoffReadiness?:HandoffReadiness}
@@ -60,7 +61,9 @@ export function createAutomationService(options:AutomationServiceOptions){
     const row=await repository.getDefinition(tx,org,id,lock);if(!row)throw new AutomationError('AUTOMATION_NOT_FOUND',404);return row;};
   const resolveVersion=async(tx:TenantTransaction,org:string,id:string,number:number):Promise<PublishedAutomation>=>{
     const row=await repository.getVersion(tx,org,id,number);if(!row)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return {automationId:id,version:number,graph:row.graph,runtimeStateVersion:row.runtimeStateVersion??1};};
-  const validateDependencies=(tx:TenantTransaction,org:string,rootId:string,graph:AutomationGraphV1)=>prepareSubflowSnapshot(tx,org,{automationId:rootId,version:1,graph,runtimeStateVersion:2},repository,'NEW');
+  const validateDependencies=async(tx:TenantTransaction,org:string,rootId:string,graph:AutomationGraphV1)=>{
+    const snapshot=await prepareSubflowSnapshot(tx,org,{automationId:rootId,version:1,graph,runtimeStateVersion:2},repository,'NEW');await assertHttpQueryPolicies(tx,org,snapshot);return snapshot;
+  };
   // Remote checks run before the committing transaction. Published dependencies
   // are immutable; draft revision and local destination snapshots are checked again.
   const prepareHandoffs=async(org:string,graph:AutomationGraphV1,channelId?:string,dependencies?:SubflowSnapshot):Promise<PreparedHandoffReadiness>=>{
@@ -89,6 +92,9 @@ export function createAutomationService(options:AutomationServiceOptions){
   };
   return {
     status:async(org:string,role='OWNER')=>{const access=await options.transact(org,tx=>readAutomationAccess(tx,org));let ready=true;if(enabled&&options.runtimeReady)try{ready=await options.runtimeReady(org);}catch{ready=false;}return automationAvailability(access,enabled,role,ready);},
+    httpCredentialCatalog:(org:string,id:string,input:{pageSize?:number;cursor?:string}={})=>options.transact(org,async tx=>{
+      await requireAutomationDraftAccess(tx,org);const root=await getDefinition(tx,org,id);if(root.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);return readHttpCredentialCatalog(tx,org,id,input);
+    }),
     subflowCatalog:async(org:string,id:string,input:{pageSize?:number;cursor?:string}={})=>{
       const pageSize=input.pageSize??200;if(!Number.isInteger(pageSize)||pageSize<1||pageSize>200)throw new AutomationError('AUTOMATION_SUBFLOW_PAGE_SIZE_INVALID',400);
       const cursor=input.cursor?readSubflowCursor(input.cursor):undefined;
@@ -123,6 +129,7 @@ export function createAutomationService(options:AutomationServiceOptions){
     validate:(org:string,id:string)=>options.transact(org,async tx=>{const row=await getDefinition(tx,org,id);const diagnostics=validateAutomationGraph(row.draftGraph);if(!diagnostics.length)await validateDependencies(tx,org,id,row.draftGraph);return {valid:diagnostics.length===0,diagnostics,errors:nodeDiagnosticsToStrings(diagnostics)};}),
     simulate:(org:string,id:string,input:SimulationInput)=>options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);
       const dependencies=await prepareSubflowSnapshot(tx,org,{automationId:id,version:row.activeVersion??1,graph:row.draftGraph,runtimeStateVersion:2},repository,'NEW');
+      await assertHttpQueryPolicies(tx,org,dependencies);
       try{return await simulateConversation(dependencies.root,input,dependencies.resolve);}catch(error){
         if(error instanceof Error&&error.message.startsWith('AUTOMATION_SIMULATION_'))throw new AutomationError(error.message,409);
         throw error;

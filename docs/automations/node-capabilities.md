@@ -19,6 +19,7 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 | json-parse | AVAILABLE | DataNodeEditor: fonte, destino, erro e campos tipados | engine/simulação: transformação local tipada; success/error |
 | json-stringify | AVAILABLE | DataNodeEditor: fonte, destino, erro e campos tipados | engine/simulação: transformação local tipada; success/error |
 | expression | AVAILABLE | DataNodeEditor: fonte, destino, erro e campos tipados | engine/simulação: transformação local tipada; success/error |
+| http | AVAILABLE | HttpQueryEditor: credencial por nome, destino HTTPS e parâmetros | IO_HTTP canônico; política atual; cinco saídas e resposta fictícia limitada |
 | delay | AVAILABLE | FlowCanvas: segundos | engine: prazo persistido; scheduler; simulação por tempo virtual |
 | subflow | AVAILABLE | SubflowEditor: nome e versão publicada, com paginação | snapshot imutável comum a validação, simulação, publicação e worker; retorno next |
 | handoff | AVAILABLE | HandoffEditor: catálogo da caixa e time ou agente | engine: HANDOFF_PENDING simulado; worker: confirmação remota |
@@ -29,7 +30,6 @@ Os formulários simples acima são os existentes; o menu visual com adicionar/re
 
 | Tipos | Criação | Pendência |
 | --- | --- | --- |
-| http | UNAVAILABLE | R7/U3b/U5: consulta delimitada, credenciais e simulação |
 | ai-generate, ai-classify, ai-extract, ai-summarize | UNAVAILABLE | R7/U3b/U5: IA delimitada e simulação |
 | sql, code, ai-agent | UNAVAILABLE | Fora do escopo de criação Broker; compatibilidade histórica mantida |
 | media, tag, attribute, note, resolve | UNAVAILABLE | R3–R7/U3b: catálogo, executor, formulário e simulação pendentes |
@@ -45,3 +45,5 @@ Os novos blocos de dados gravam `configVersion: 2`, com literal JSON ou variáve
 O corte P3 de subfluxos usa catálogo paginado de metadados por empresa e automação raiz, versões JSON publicadas e referências exatas, sem assumir versão 1. Validação, simulação e execução de raízes com política 1 usam o mesmo snapshot de dependências no motor canônico; o snapshot não consulta rede e reusa grafos imutáveis. Novas publicações recebem pelo servidor `dependencyPolicyVersion: 1` no bloco start, dentro do checksum, com até oito chamadas simultâneas, 32 versões únicas incluindo a raiz e 2 MiB agregados em UTF-8. O campo é interno e não aparece no formulário comum. A publicação revalida dependências dentro da transação final; filhas arquivadas não podem entrar em publicação nova.
 
 Raízes históricas sem esse marcador conservam seu grafo, checksum e referências fixadas, inclusive filhas arquivadas. A política da raiz permanece para toda a pilha e após espera/reinício, independentemente da política de uma filha. Entradas seguem a semântica atual do runtime JSON; pai e filha compartilham variáveis, e o retorno usa a porta next existente. A criação de subflow foi habilitada após revisão independente e testes do corte, inclusive persistência PostgreSQL. A release deve passar no CI da main antes da instalação; a integração delegada por caixa na central tem seu próprio escopo de autorização.
+
+O bloco HTTP usa `httpConfigVersion: 1` para consulta GET HTTPS fixa, parâmetros codificados, credencial por nome/tipo/revisão e origins permitidos por empresa. Validação, publicação e despacho revalidam a política; a transação final de publicação bloqueia compartilhada a linha da credencial, enquanto alterações/revogação usam bloqueio exclusivo e revisão. A simulação aceita somente resposta fictícia limitada para o bloco HTTP exato em espera e não chama transporte. Métodos e UNKNOWN históricos sem marker são preservados. Consulte [configuração e limites de HTTP](http-query-v1.md). A criação foi habilitada após revisão independente e testes focais; a instalação depende da imagem aprovada no CI da main.

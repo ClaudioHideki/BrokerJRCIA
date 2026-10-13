@@ -102,6 +102,8 @@ const ROUTE_POLICIES = Object.freeze({
     'NO_EXTERNAL_EFFECT','CREDENTIALS_STRIPPED_NO_PERSISTENCE','CURRENT_ORGANIZATION_IMPORT_PREVIEW_ONLY'),
   'GET /v1/automation-nodes': policy('apps/api/src/http/routes/automations.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_MEMBER',
     true, 'READ_ONLY', 'NONE', 'STATIC_EXECUTABLE_NODE_CATALOG'),
+  'GET /v1/automations/{id}/http-credentials': policy('apps/api/src/http/routes/automations.ts','JWT_CURRENT_MEMBERSHIP','CURRENT_MEMBER',true,'READ_ONLY_ROOT_BOUND_CURSOR','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_AUTHORIZED_ROOT_ACTIVE_HTTP_METADATA'),
+  'PUT /v1/credentials/{id}/http-policy': policy('apps/api/src/http/routes/credentials.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'ROW_LOCK_EXPECTED_REVISION_CAS','NO_STORE_METADATA_ONLY_NO_SECRET_ROTATION','RLS_CURRENT_ACTOR_ACTIVE_HTTP_CREDENTIAL_POLICY_REVISION'),
   'GET /v1/automations/{id}/subflow-catalog': policy('apps/api/src/http/routes/automations.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_MEMBER',
     true, 'READ_ONLY_ID_VERSION_CURSOR', 'NO_STORE_METADATA_ONLY', 'RLS_CURRENT_ORGANIZATION_AUTHORIZED_ROOT_PUBLISHED_VERSION_METADATA'),
   'GET /v1/integrations/chatwoot/connections/{id}/attendance-catalog': policy('apps/api/src/http/routes/integrations.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_CHANNEL_ACCOUNT_INBOX_APPROVED_DESTINATION_CREDENTIAL_REVISION_RECHECK'),

@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import {HttpSimulationResponseSchema} from '@jrc/contracts';
 import { executeAutomation } from './engine.js';
 import type { PublishedAutomation, RuntimeResult } from './types.js';
 
-export const SimulationEventSchema=z.discriminatedUnion('type',[
+export const SimulationEventSchema=z.union([
   z.strictObject({type:z.literal('MESSAGE'),text:z.string().max(4096)}),
   z.strictObject({type:z.literal('ELAPSE'),seconds:z.number().int().min(1).max(604800)}),
+  HttpSimulationResponseSchema,
 ]);
 export const SimulationInputSchema=z.strictObject({
   text:z.string().max(4096),
@@ -18,7 +20,7 @@ export type SimulationInput=z.infer<typeof SimulationInputSchema>;
 
 /** Pure conversation reconstruction: no transport, scheduler or credential adapter is injected. */
 export async function simulateConversation(root:PublishedAutomation,input:SimulationInput,
-  resolve:(automationId:string,version:number)=>Promise<PublishedAutomation>):Promise<RuntimeResult>{
+  resolve:(automationId:string,version:number)=>Promise<PublishedAutomation>):Promise<RuntimeResult&{httpWaitNodeId?:string}>{
   const parsed=SimulationInputSchema.parse(input);
   let now=new Date(parsed.clock??Date.now());
   let result=await executeAutomation(root,{text:parsed.text,eventType:'MESSAGE',now},resolve);
@@ -30,6 +32,16 @@ export async function simulateConversation(root:PublishedAutomation,input:Simula
       // Retain the legacy replies contract; explicit events may observe messages during DELAY.
       if(result.wait?.kind==='IO'||(parsed.replies&&result.wait?.kind!=='EVENT'))throw new Error('AUTOMATION_SIMULATION_NOT_WAITING');
       result=await executeAutomation(root,{text:event.text,eventType:'MESSAGE',now},resolve,result.state);
+    }else if(event.type==='HTTP_RESPONSE'){
+      // Only the current turn proves this exact wait is HTTP, including a child subflow.
+      // Historical aggregated effects cannot authorize a response to a later SQL/event wait.
+      if(result.wait?.kind!=='IO'||result.wait.nodeId!==event.nodeId||
+        !result.effects.some(effect=>effect.kind==='IO_HTTP'&&effect.nodeId===event.nodeId))
+        throw new Error('AUTOMATION_SIMULATION_HTTP_WAIT_MISMATCH');
+      const output=event.outcome==='timeout'||event.outcome==='unknown'
+        ?{error:event.outcome==='timeout'?'AUTOMATION_HTTP_TIMEOUT':'AUTOMATION_HTTP_TRANSPORT_FAILED'}
+        :{status:event.status,headers:{},body:event.body};
+      result=await executeAutomation(root,{text:'',eventType:'RESUME',now,payload:{outcome:event.outcome,output}},resolve,result.state);
     }else{
       const until=new Date(now.getTime()+event.seconds*1000);
       if(!Number.isFinite(until.getTime()))throw new Error('AUTOMATION_SIMULATION_CLOCK_INVALID');
@@ -48,5 +60,6 @@ export async function simulateConversation(root:PublishedAutomation,input:Simula
     }
     effects.push(...result.effects);trace.push(...result.trace);
   }
-  return {...result,effects,trace};
+  const httpWaitNodeId=result.wait?.kind==='IO'&&result.effects.some(effect=>effect.kind==='IO_HTTP'&&effect.nodeId===result.wait?.nodeId)?result.wait.nodeId:undefined;
+  return {...result,effects,trace,...(httpWaitNodeId?{httpWaitNodeId}:{})};
 }
