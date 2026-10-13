@@ -38,14 +38,15 @@ function decode(path: string): Cursor | null {
   return value ? JSON.parse(atob(value.replace(/-/gu, '+').replace(/_/gu, '/'))) as Cursor : null;
 }
 
-it('consulta pelo UUID canônico e apresenta seleção sem prometer bot ou envio', async () => {
+it('consulta pelo UUID canônico e oferece configuração explícita do bot', async () => {
   const { client } = api(async () => page());
   render(<WhatsAppGroups client={client} channelId={channelId} canManage />);
   expect(await screen.findByRole('checkbox', { name: 'Selecionar Equipe de teste' })).not.toBeChecked();
   expect(client.request).toHaveBeenCalledWith(`${base}?limit=50`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   expect(screen.getByText('12 participantes')).toBeVisible();
   expect(screen.getByText('Atual')).toBeVisible();
-  expect(screen.getByText('Selecionar grupos registra sua escolha. Bot e envio em grupos ainda não estão disponíveis.')).toBeVisible();
+  expect(screen.getByRole('button',{name:'Configurar bot de Equipe de teste'})).toBeVisible();
+  expect(screen.getByText('Selecione o grupo e configure o bot. A ativação exige um menu publicado e uma mensagem para iniciar o atendimento.')).toBeVisible();
   expect(screen.getByText('Observado em', { exact: false })).toBeVisible();
 });
 
@@ -308,7 +309,7 @@ it('aborta GET ao desmontar o painel', async () => {
 describe('validação estrita e privacidade da resposta', () => {
   it.each([
     ['campo adicional', () => ({ ...page(), providerSecret: 'credencial privada' })],
-    ['automação indevida', () => ({ ...page(), items: [{ ...group(), automationEnabled: true }] })],
+    ['flag de automação inválida', () => ({ ...page(), items: [{ ...group(), automationEnabled: 'true' }] })],
     ['canal divergente', () => { const data = page(); data.snapshot.scope.channelId = otherChannel; return data; }],
     ['cursor divergente', () => ({ ...page(), nextCursor: { snapshotId: newSnapshotId, afterGroupJid: '100-200@g.us' } })],
     ['página maior que limite pedido', () => page({ total: 51, items: Array.from({ length: 51 }, (_, i) => group(`Grupo ${i}`, `${1000 + i}@g.us`)) })],

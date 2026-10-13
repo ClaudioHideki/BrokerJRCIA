@@ -10,5 +10,5 @@ it.each(['HANDOFF','SEND_TEXT'] as const)('claim %s preserves local authority an
     return {rows:[],rowCount:1};
   });
   await createPostgresAutomationRepository().claimOutbox({query} as never,'tenant','lease',120000,[kind]);
-  expect(runtimeAuthorityAllows).toHaveBeenLastCalledWith(expect.anything(),expect.objectContaining({id:'execution'}),kind!=='HANDOFF');
+  expect(runtimeAuthorityAllows).toHaveBeenLastCalledWith(expect.anything(),expect.objectContaining({id:'execution'}),kind!=='HANDOFF',undefined);
 });

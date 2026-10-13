@@ -49,7 +49,7 @@ describe('PostgreSQL automation repository', () => {
         expect(returning).toContain('organization_id AS "organizationId"');
         expect(returning).toContain('lease_token AS "leaseToken"');
         expect(params).toEqual([org, id, token, 30_000]);
-        expect(authorize).toHaveBeenCalledWith(transaction, execution);
+        expect(authorize).toHaveBeenCalledWith(transaction, {...execution,executionId:execution.id},true,undefined);
         return { rows: options.emptyUpdate ? [] : [admitted], rowCount: options.emptyUpdate ? 0 : 1 };
       }
       throw new Error(`Unexpected claim query: ${sql}`);

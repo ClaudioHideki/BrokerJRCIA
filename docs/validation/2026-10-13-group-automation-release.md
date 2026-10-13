@@ -15,6 +15,10 @@ O grupo conserva seu JID e o participante iniciador; não é convertido em telef
 - Revisão independente identificou seleção repetida de caixa sem autoridade e ausência de prazo na gravação final. Ambos os pontos receberam correção; a segunda revisão aprovou o delta e conferiu a preservação das guardas na composição com o roteamento Evolution.
 - Bundle web gerado; auditoria de segurança aprovada sem achados CRITICAL/HIGH abertos e varredura dos 11 arquivos do bundle sem achados.
 
-## Limites
+## Correção dos contratos de regressão no CI
+
+O CI do commit 3251463 (execução 38430911475) encontrou dez falhas em sete arquivos: expectativas anteriores de disponibilidade de grupos, quantidade de migrations e assinatura das guardas de autoridade. Foram atualizadas as expectativas para o contrato implementado, mantendo rejeição de flags inválidas e acrescentando normalização de grupo/participante válido. Os sete arquivos afetados passaram localmente: 75 testes aprovados. Este resultado é focal; não substitui o próximo CI consolidado.
+
+## Limites de entrega
 
 G3b (grupos na central), mídia e demais famílias de nós de grupos continuam fora deste corte. A renovação não altera a configuração do provedor, nem comprova capacidade física para 10 mil conexões. As migrações, a imagem e o WhatsApp real ainda precisam da instalação/homologação combinada. A aprovação do CI de a27d2e0 refere-se ao predecessor; não é evidência antecipada deste novo commit.

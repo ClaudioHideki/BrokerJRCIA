@@ -9,9 +9,9 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('carrega o manifesto real até a migration 0052', async () => {
+  it('carrega o manifesto real até a migration 0054', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(52);
+    expect(migrations).toHaveLength(54);
     expect(migrations.at(-1)?.name).toBe('0054_whatsapp_group_automation');
   });
 

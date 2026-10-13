@@ -31,9 +31,15 @@ describe('eventos QR canônicos', () => {
     const raw = { ...message, key: { ...message.key, fromMe: true, remoteJid: '123@lid', remoteJidAlt: '15550000002@s.whatsapp.net' }, message: { imageMessage: { caption: 'Imagem sintética' } } };
     expect(normalizeQrEvent(envelope(raw), 'jrc-private-instance')[0]).toMatchObject({ kind: 'outbound-media', externalId: '15550000002', displayName: null, caption: 'Imagem sintética', media: { source: 'QR', sourceKey: 'qr-message-1', kind: 'image', descriptor: { messageId: 'qr-message-1' } } });
   });
-  it('ignora grupos e históricos sem disparar atendimento', () => {
-    expect(normalizeQrEvent(envelope({ ...message, key: { ...message.key, remoteJid: 'group@g.us' } }), 'jrc-private-instance')).toEqual([]);
+  it('recusa identidade de grupo inválida e mantém históricos sem disparar atendimento', () => {
+    expect(()=>normalizeQrEvent(envelope({ ...message, key: { ...message.key, remoteJid: 'group@g.us' } }), 'jrc-private-instance')).toThrow('QR_EVENT_INVALID');
     expect(normalizeQrEvent(envelope(message, 'messages.set'), 'jrc-private-instance')).toEqual([]);
+  });
+  it('preserva grupo e participante sem criar número de contato individual', () => {
+    const events=normalizeQrEvent(envelope({...message,key:{...message.key,remoteJid:'100-200@g.us',participant:'15550000001@s.whatsapp.net'}}),'jrc-private-instance');
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({kind:'group-text',groupJid:'100-200@g.us',participantJid:'15550000001@s.whatsapp.net',fromMe:false,content:{type:'TEXT',text:'Olá JRC'}});
+    expect(events[0]).not.toHaveProperty('externalId');
   });
   it('usa número alternativo validado quando o evento usa LID', () => {
     const value = { ...message, key: { ...message.key, remoteJid: '123@lid', remoteJidAlt: '15550000002@s.whatsapp.net' } };

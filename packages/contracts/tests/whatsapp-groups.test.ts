@@ -40,7 +40,8 @@ describe('WhatsApp QR group catalog and opt-in (G1)', () => {
 
   it('defaults selection and automation off, preserving absent provider flags as unknown', () => {
     expect(WhatsAppGroupCatalogItemSchema.parse(item)).toEqual({ ...item, selected: false, automationEnabled: false });
-    expect(WhatsAppGroupCatalogItemSchema.safeParse({ ...item, automationEnabled: true }).success).toBe(false);
+    expect(WhatsAppGroupCatalogItemSchema.parse({ ...item, automationEnabled: true }).automationEnabled).toBe(true);
+    expect(WhatsAppGroupCatalogItemSchema.safeParse({ ...item, automationEnabled: 'true' }).success).toBe(false);
     expect(WhatsAppGroupCatalogItemSchema.safeParse({ ...item, announce: 'false' }).success).toBe(false);
     expect(WhatsAppGroupCatalogItemSchema.safeParse({ ...item, voiceSupported: true }).success).toBe(false);
   });

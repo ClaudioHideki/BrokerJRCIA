@@ -2,7 +2,7 @@
 
 - Fase: 1
 - Incremento: 2 — Console web operacional JRC
-- Referência da fonte: `sha256:d5ca3339f2c9e8b9bfebff79394cb6520c51ae3f2c6e43b00f1a4fbbe14da700`
+- Referência da fonte: `sha256:70a1bf931ab45a00843dab39cd6c57c5971f9360e391156c0cfdc2fd89bc0f17`
 - Data de referência: 2026-09-06
 
 ## Resumo executivo
