@@ -70,3 +70,9 @@ Essa entrega não instala MinIO, não migra objetos entre destinos e não conclu
 O corte de seleção por nome/versão e snapshot imutável foi integrado ao Studio comum do Broker. A paleta libera subflow após revisão independente e os testes do corte: 85 core, 11 editor/canvas e dois cenários PostgreSQL reais. A política de dependências é atribuída pelo servidor e permanece fixa após espera/reinício; publicações históricas conservam grafo/checksum. [Evidências de subfluxos](../../validation/2026-10-13-subflow-release.md).
 
 Não há nova migration, Compose ou ENV nesse incremento; a baseline permanece 0052. A publicação usa a main e exige CI/imagens do mesmo SHA. HTTP/IA, ações/mídia de Flow, distribuição entre motores, recuperação produtiva, integração completa dos grupos e módulos delegados continuam com critérios próprios; esta entrega não encerra o programa.
+
+## Incremento C5 de laboratório — 13/10/2026
+
+O CLI portátil de capture/verify/restore foi integrado à fonte, com autenticação integral antes de efeitos, journal de restauração e conservação de UNKNOWN. O corte passou revisão independente, o novo teste de orçamento agregado, três contratos afetados do CLI e cinco testes físicos/relógio com PostgreSQL, Redis e MinIO. [Evidências e limites](../../validation/2026-10-13-recovery-portable-release.md).
+
+Não há nova migration, alteração do Compose ou variável da aplicação. Scripts e configuração de teste acompanham a fonte; sua presença não afirma instalação no container. A recuperação integral do servidor e de sessões QR, capacidade e RPO/RTO permanecem pendentes. A instalação e as jornadas reais foram adiadas pelo usuário até a conclusão das entregas de código e imagens.
