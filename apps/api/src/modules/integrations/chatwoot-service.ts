@@ -28,6 +28,7 @@ import { readChatwootAccount, resolveChatwootContext, requireApprovedDestination
 export { IntegrationError } from './integration-error.js';
 export { readChatwootAccount, type AccountRow } from './chatwoot-context.js';
 export interface ChatwootOptions {
+  groupPolicy?:import('../whatsapp-groups/automation-authority.js').GroupPhysicalPolicy;
   baseUrl?: string;
   publicOrigin: string;
   encryptionKey: string;

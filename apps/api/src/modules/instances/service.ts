@@ -100,6 +100,7 @@ export interface InstanceServiceDependencies {
     operation: (transaction: TenantTransaction) => Promise<T>,
   ): Promise<T>;
   writeAudit(transaction: TenantTransaction, event: TenantAuditEvent): Promise<void>;
+  guardOperation?:(tx:TenantTransaction,org:string,id:string,mutation:boolean)=>Promise<void>;
   now?: () => Date;
   randomUuid?: () => string;
   idempotencyTtlMs?: number;
@@ -141,12 +142,13 @@ function asInstance(row: InstanceRow): Instance {
   };
 }
 
-function providerContext(context: InstanceActorContext): ProviderContext {
+function providerContext(context: InstanceActorContext, engineOperationId?:string): ProviderContext {
   return {
     organizationId: context.organizationId,
     requestId: context.requestId,
     deadline: context.deadline,
     signal: context.signal,
+    ...(engineOperationId?{engineOperationId}:{}),
   };
 }
 
@@ -167,7 +169,7 @@ function errorCode(error: unknown): string {
 
 function isUncertain(error: unknown): boolean {
   const code = errorCode(error);
-  return code === 'PROVIDER_TIMEOUT' || code === 'PROVIDER_ABORTED';
+  return (error as {uncertain?:boolean})?.uncertain===true || code === 'PROVIDER_TIMEOUT' || code === 'PROVIDER_ABORTED';
 }
 
 function hasUncertainConnectOutcome(operation: ProviderOperationRow): boolean {
@@ -395,7 +397,7 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
       let reconciliationRequired = false;
       try {
         const provisioned = await dependencies.providers.getProvider(command.provider).provisionInstance(
-          providerContext(context),
+          providerContext(context,initial.operation.id),
           {
             upstreamInstanceKey: initial.instance.upstreamInstanceKey,
             providerAccountId: command.providerAccountId,
@@ -412,6 +414,7 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
       const completed = await dependencies.runInOrganizationTransaction(
         context.organizationId,
         async (transaction) => {
+          if(operationStatus==='SUCCEEDED')await dependencies.guardOperation?.(transaction,context.organizationId,initial.operation.id,true);
           const updated = await dependencies.repository.updateInstanceState(transaction, {
             organizationId: context.organizationId,
             instanceId: initial.instance.id,
@@ -657,7 +660,7 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
       let action: ConnectionAction;
       try {
         action = await dependencies.providers.getProvider(initial.instance.provider).beginConnection(
-          providerContext(context),
+          providerContext(context,initial.operation.id),
           {
             reference: { id: initial.instance.externalReference ?? initial.instance.upstreamInstanceKey },
             ...(command.pairingHint === undefined ? {} : { pairingHint: command.pairingHint }),
@@ -725,6 +728,7 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
             initial.instance.id,
           );
           if (!locked) return null;
+          await dependencies.guardOperation?.(transaction,context.organizationId,initial.operation.id,true);
           const connectionPending = action.type === 'NONE' && action.reason === 'CONNECTION_PENDING';
           const fenced = await dependencies.repository.updatePendingConnectOperation(transaction, {
             organizationId: context.organizationId,
@@ -1036,7 +1040,7 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
 
       try {
         await dependencies.providers.getProvider(initial.instance.provider).disconnect(
-          providerContext(context),
+          providerContext(context,initial.operation.id),
           { id: initial.instance.externalReference ?? initial.instance.upstreamInstanceKey },
         );
       } catch (error) {
@@ -1097,6 +1101,7 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
             initial.instance.id,
           );
           if (!locked) return null;
+          await dependencies.guardOperation?.(transaction,context.organizationId,initial.operation.id,true);
           const fenced = await dependencies.repository.updatePendingDisconnectOperation(transaction, {
             organizationId: context.organizationId,
             instanceId: initial.instance.id,

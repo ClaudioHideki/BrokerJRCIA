@@ -47,7 +47,7 @@ export function convertAutomationArtifact(requestedSource:ImportSource|'AUTO',ra
   // Opaque IDs are references, not secrets. Only this executable configuration
   // field requires a local selection; business data and subflow IDs stay intact.
   if(!credentialNodeTypes.has(node.type)||!Object.hasOwn(node.data,'credentialId'))continue;
-  const data={...node.data};delete data.credentialId;node.data=data;
+  const data={...node.data};delete data.credentialId;delete data.credentialRevision;node.data=data;
   credentialsRemoved=true;credentialRemappingRequired=true;
   const report=converted.nodes.find(item=>item.sourceId===node.id);
   if(report){

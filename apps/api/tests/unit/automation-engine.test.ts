@@ -24,6 +24,14 @@ describe('automation runtime v2 engine',()=>{
     const childId='33333333-3333-4333-8333-333333333333';
     configs.subflow={automationId:childId,version:7};
     configs.http={httpConfigVersion:1,method:'GET',url:'https://api.example.test/query',credentialId:'22222222-2222-4222-8222-222222222222',credentialRevision:1,queryParameters:{},target:'result',timeoutMs:15000,maxResponseBytes:32768,retryAttempts:0};
+    const aiTypes=['ai-generate','ai-classify','ai-extract','ai-summarize'];
+    const aiCommon={aiConfigVersion:1,credentialId:'11111111-1111-4111-8111-111111111111',credentialRevision:1,model:'approved',content:'{{message}}',target:'resultado',timeoutMs:1000,maxOutputTokens:100,maxResponseBytes:4096,maxCostMicros:1000};
+    Object.assign(configs,{
+      'ai-generate':{...aiCommon,operation:'generate'},
+      'ai-classify':{...aiCommon,operation:'classify',categories:['A','B']},
+      'ai-extract':{...aiCommon,operation:'extract',fields:[{name:'name',type:'string'}]},
+      'ai-summarize':{...aiCommon,operation:'summarize'},
+    });
     const current=node('current',type,configs[type]??{});
     const nodes=type==='start'?[current,node('end','end')]:['end','handoff'].includes(type)?[node('start','start'),current]:[node('start','start'),current,node('end','end')];
     const edges=type==='start'?[]:[{id:'s',source:'start',target:'current',port:'next'}];
@@ -35,7 +43,7 @@ describe('automation runtime v2 engine',()=>{
       return {automationId,version,runtimeStateVersion:2,graph:{nodes:[node('child-start','start'),node('child-message','message',{text:'Filho publicado'}),node('child-end','end')],edges:[{id:'child-next',source:'child-start',target:'child-message',port:'next'},{id:'child-finish',source:'child-message',target:'child-end',port:'next'}]}};
     });
     expect(resolved).toBe(type==='subflow'?1:0);
-    expect(result.effects.every(effect=>effect.kind==='SEND_TEXT'||effect.kind==='HANDOFF'||(type==='http'&&effect.kind==='IO_HTTP'))).toBe(true);
+    expect(result.effects.every(effect=>effect.kind==='SEND_TEXT'||effect.kind==='HANDOFF'||(type==='http'&&effect.kind==='IO_HTTP')||(aiTypes.includes(type)&&effect.kind==='IO_AI'))).toBe(true);
     expect(['WAITING','COMPLETED','HANDOFF']).toContain(result.status);
     if(type==='handoff')expect(result.effects).toEqual([{nodeId:'current',ordinal:0,kind:'HANDOFF',payload:handoffConfig}]);
     if(type==='message')expect(result.effects[0]?.payload.text).toBe('Olá');
@@ -43,6 +51,11 @@ describe('automation runtime v2 engine',()=>{
     if(type==='variable')expect(result.state.variables.name).toBe('Ana');
     if(type==='input'||type==='menu')expect(result.wait?.kind).toBe('EVENT');
     if(type==='http')expect(result).toMatchObject({status:'WAITING',wait:{kind:'IO',nodeId:'current'},effects:[{kind:'IO_HTTP',payload:expect.objectContaining(configs.http)}]});
+    if(aiTypes.includes(type)){
+      expect(result.status).toBe('WAITING');
+      expect(result.wait).toEqual({kind:'IO',nodeId:'current'});
+      expect(result.effects).toEqual([{nodeId:'current',ordinal:0,kind:'IO_AI',payload:{...configs[type],nodeType:type,runtimeStateVersion:2,variables:{message:'oi'}}}]);
+    }
   });
   it('keeps a valid historical SQL graph executable although new creation is unavailable', async()=>{
     const sql=node('sql','sql',{target:'result',credentialId:'22222222-2222-4222-8222-222222222222',query:'SELECT 1'});

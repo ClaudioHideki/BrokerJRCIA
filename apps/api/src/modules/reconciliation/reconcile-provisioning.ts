@@ -85,6 +85,7 @@ export function createProvisioningReconciler(dependencies: ProvisioningReconcile
       requestId: command.requestId,
       deadline: command.deadline,
       signal: command.signal,
+      engineOperationId:pending.operation.id,
     };
     const admin = dependencies.providers.getAdminProvider(pending.instance.provider);
 
@@ -92,12 +93,10 @@ export function createProvisioningReconciler(dependencies: ProvisioningReconcile
       const lookup = await admin.lookupInstance(context, {
         id: pending.instance.upstreamInstanceKey,
       });
-      const resolved = lookup.exists
-        ? { reference: lookup.reference, status: lookup.status }
-        : (await admin.reconcileProvisioning(context, {
-            upstreamInstanceKey: pending.instance.upstreamInstanceKey,
-            providerAccountId: pending.instance.providerAccountId,
-          })).instance;
+      // A nominated reconciliation observes the historical instance only.
+      // Absence after UNKNOWN never authorizes another create POST.
+      if(!lookup.exists)throw new ReconciliationError('RECONCILIATION_FAILED');
+      const resolved={reference:lookup.reference,status:lookup.status};
       if (!resolved) throw new ReconciliationError('RECONCILIATION_FAILED');
 
       const completed = await dependencies.runInOrganizationTransaction(

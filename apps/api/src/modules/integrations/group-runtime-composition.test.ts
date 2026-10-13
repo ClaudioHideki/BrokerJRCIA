@@ -3,6 +3,7 @@ const ports=vi.hoisted(()=>({group:vi.fn(),qr:vi.fn(),read:vi.fn(),send:vi.fn()}
 vi.mock('../whatsapp-groups/automation-runtime.js',()=>({createGroupAutomationRuntime:ports.group}));
 vi.mock('../messaging/qr-service.js',()=>({createQrMessagingService:ports.qr}));
 vi.mock('@jrc/providers',async importOriginal=>({...await importOriginal<any>(),EvolutionWorkspaceClient:class{read=ports.read;},createEvolutionGroupTextSender:()=>({sendText:ports.send})}));
+vi.mock('../evolution-fleet/runtime.js',()=>({createEvolutionFleetRuntime:(env:any)=>({workspace:{read:ports.read},groups:{list:vi.fn()},groupText:(context:any,_key:any,recipient:any,text:any)=>ports.send(context,recipient,text),capture:vi.fn(),assert:vi.fn(),configurationScope:(origin:string)=>JSON.stringify([env.EVOLUTION_BASE_URL,origin,env.QR_WEBHOOK_SIGNING_KEY])})}));
 import {createIntegrationRuntime} from './runtime.js';
 const encryptionKey=Buffer.alloc(32,3).toString('base64');
 const environment={NODE_ENV:'test',PUBLIC_ORIGIN:'https://broker.invalid',EVOLUTION_BASE_URL:'https://engine.invalid',EVOLUTION_API_KEY:'e'.repeat(32),QR_WEBHOOK_SIGNING_KEY:'s'.repeat(32),INTEGRATION_ENCRYPTION_KEY:encryptionKey,AUTOMATION_RUNTIME_V2_ENABLED:'true'};

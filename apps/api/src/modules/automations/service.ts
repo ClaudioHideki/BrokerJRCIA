@@ -16,6 +16,7 @@ import { readAttendanceDiagnostic } from '../attendance/diagnostics.js';
 import { unknownOutboxDiagnostic } from './outbox-diagnostics.js';
 import {AutomationError} from './errors.js';
 import {prepareSubflowSnapshot,type SubflowSnapshot} from './subflow-dependencies.js';
+import {assertAiPolicies,readAiCredentialCatalog} from './ai-policy.js';
 import {assertHttpQueryPolicies,readHttpCredentialCatalog} from './http-query-policy.js';
 
 export {AutomationError} from './errors.js';
@@ -62,7 +63,7 @@ export function createAutomationService(options:AutomationServiceOptions){
   const resolveVersion=async(tx:TenantTransaction,org:string,id:string,number:number):Promise<PublishedAutomation>=>{
     const row=await repository.getVersion(tx,org,id,number);if(!row)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return {automationId:id,version:number,graph:row.graph,runtimeStateVersion:row.runtimeStateVersion??1};};
   const validateDependencies=async(tx:TenantTransaction,org:string,rootId:string,graph:AutomationGraphV1)=>{
-    const snapshot=await prepareSubflowSnapshot(tx,org,{automationId:rootId,version:1,graph,runtimeStateVersion:2},repository,'NEW');await assertHttpQueryPolicies(tx,org,snapshot);return snapshot;
+    const snapshot=await prepareSubflowSnapshot(tx,org,{automationId:rootId,version:1,graph,runtimeStateVersion:2},repository,'NEW');await assertHttpQueryPolicies(tx,org,snapshot);await assertAiPolicies(tx,org,snapshot);return snapshot;
   };
   // Remote checks run before the committing transaction. Published dependencies
   // are immutable; draft revision and local destination snapshots are checked again.
@@ -92,6 +93,7 @@ export function createAutomationService(options:AutomationServiceOptions){
   };
   return {
     status:async(org:string,role='OWNER')=>{const access=await options.transact(org,tx=>readAutomationAccess(tx,org));let ready=true;if(enabled&&options.runtimeReady)try{ready=await options.runtimeReady(org);}catch{ready=false;}return automationAvailability(access,enabled,role,ready);},
+    aiCredentialCatalog:(org:string,id:string,input:{pageSize?:number;cursor?:string}={})=>options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const root=await getDefinition(tx,org,id);if(root.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);return readAiCredentialCatalog(tx,org,id,input);}),
     httpCredentialCatalog:(org:string,id:string,input:{pageSize?:number;cursor?:string}={})=>options.transact(org,async tx=>{
       await requireAutomationDraftAccess(tx,org);const root=await getDefinition(tx,org,id);if(root.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);return readHttpCredentialCatalog(tx,org,id,input);
     }),
@@ -129,7 +131,7 @@ export function createAutomationService(options:AutomationServiceOptions){
     validate:(org:string,id:string)=>options.transact(org,async tx=>{const row=await getDefinition(tx,org,id);const diagnostics=validateAutomationGraph(row.draftGraph);if(!diagnostics.length)await validateDependencies(tx,org,id,row.draftGraph);return {valid:diagnostics.length===0,diagnostics,errors:nodeDiagnosticsToStrings(diagnostics)};}),
     simulate:(org:string,id:string,input:SimulationInput)=>options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);
       const dependencies=await prepareSubflowSnapshot(tx,org,{automationId:id,version:row.activeVersion??1,graph:row.draftGraph,runtimeStateVersion:2},repository,'NEW');
-      await assertHttpQueryPolicies(tx,org,dependencies);
+      await assertHttpQueryPolicies(tx,org,dependencies);await assertAiPolicies(tx,org,dependencies);
       try{return await simulateConversation(dependencies.root,input,dependencies.resolve);}catch(error){
         if(error instanceof Error&&error.message.startsWith('AUTOMATION_SIMULATION_'))throw new AutomationError(error.message,409);
         throw error;
@@ -239,7 +241,7 @@ export function createExecutionService(options:AutomationServiceOptions){
   };
 }
 
-export type OutboxDispatchResult={kind:'SENT';remoteReference?:string;resumePayload?:Record<string,unknown>}|{kind:'NOT_SENT';retryAt:Date;error:string}|{kind:'FAILED';error:string;resumePayload?:Record<string,unknown>}|{kind:'UNKNOWN';error:string};
+export type OutboxDispatchResult={kind:'SENT';remoteReference?:string;resumePayload?:Record<string,unknown>;commit?:(tx:TenantTransaction)=>Promise<void>}|{kind:'NOT_SENT';retryAt:Date;error:string}|{kind:'FAILED';error:string;resumePayload?:Record<string,unknown>;commit?:(tx:TenantTransaction)=>Promise<void>}|{kind:'UNKNOWN';error:string};
 export interface ExternalEffectDispatcher {dispatch(item:OutboxRow):Promise<OutboxDispatchResult>}
 export function createOutboxDispatcher(options:AutomationServiceOptions,external:ExternalEffectDispatcher,kinds:OutboxKind[]=['SEND_TEXT','HANDOFF','RESUME_EVENT']){const repository=options.repository??createPostgresAutomationRepository();return {runOnce:async(org:string)=>{
   if(options.enabled===false)return {processed:false};
@@ -247,8 +249,8 @@ export function createOutboxDispatcher(options:AutomationServiceOptions,external
   // The row is already UNKNOWN before the external call. A process crash can therefore never cause a blind replay.
   let result:OutboxDispatchResult;try{result=await external.dispatch(item);}catch{result={kind:'UNKNOWN',error:'AUTOMATION_EFFECT_UNKNOWN'};}
   if(result.kind==='UNKNOWN'){const diagnostic=unknownOutboxDiagnostic(result.error);await options.transact(org,tx=>repository.recordUnknownOutbox(tx,org,item.id,leaseToken,diagnostic));return {processed:true,id:item.id,status:'UNKNOWN' as const};}
-  if(result.kind==='SENT')await options.transact(org,async tx=>{if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});await repository.settleOutbox(tx,org,item.id,leaseToken,{status:'SENT',...(result.remoteReference?{remoteReference:result.remoteReference}:{})});});
+  if(result.kind==='SENT')await options.transact(org,async tx=>{if(result.commit)await result.commit(tx);if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});if(!await repository.settleOutbox(tx,org,item.id,leaseToken,{status:'SENT',...(result.remoteReference?{remoteReference:result.remoteReference}:{})}))throw new AutomationError('AUTOMATION_EFFECT_SETTLEMENT_LOST',409);});
   else if(result.kind==='NOT_SENT')await options.transact(org,tx=>repository.settleOutbox(tx,org,item.id,leaseToken,{status:'PENDING',error:result.error,availableAt:result.retryAt}));
-  else await options.transact(org,async tx=>{if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});await repository.settleOutbox(tx,org,item.id,leaseToken,{status:'FAILED',error:result.error});});
+  else await options.transact(org,async tx=>{if(result.commit)await result.commit(tx);if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});if(!await repository.settleOutbox(tx,org,item.id,leaseToken,{status:'FAILED',error:result.error}))throw new AutomationError('AUTOMATION_EFFECT_SETTLEMENT_LOST',409);});
   return {processed:true,id:item.id,status:result.kind};
 }};}

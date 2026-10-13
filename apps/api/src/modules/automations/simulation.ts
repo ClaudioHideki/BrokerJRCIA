@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import {HttpSimulationResponseSchema} from '@jrc/contracts';
+import {AiSimulationResponseSchema,AiNodeConfigSchema,validateAiOutput,type AiSimulationWait,HttpSimulationResponseSchema} from '@jrc/contracts';
 import { executeAutomation } from './engine.js';
 import type { PublishedAutomation, RuntimeResult } from './types.js';
 
 export const SimulationEventSchema=z.union([
   z.strictObject({type:z.literal('MESSAGE'),text:z.string().max(4096)}),
   z.strictObject({type:z.literal('ELAPSE'),seconds:z.number().int().min(1).max(604800)}),
-  HttpSimulationResponseSchema,
+  HttpSimulationResponseSchema,AiSimulationResponseSchema,
 ]);
 export const SimulationInputSchema=z.strictObject({
   text:z.string().max(4096),
@@ -20,7 +20,7 @@ export type SimulationInput=z.infer<typeof SimulationInputSchema>;
 
 /** Pure conversation reconstruction: no transport, scheduler or credential adapter is injected. */
 export async function simulateConversation(root:PublishedAutomation,input:SimulationInput,
-  resolve:(automationId:string,version:number)=>Promise<PublishedAutomation>):Promise<RuntimeResult&{httpWaitNodeId?:string}>{
+  resolve:(automationId:string,version:number)=>Promise<PublishedAutomation>):Promise<RuntimeResult&{httpWaitNodeId?:string;aiWait?:AiSimulationWait}>{
   const parsed=SimulationInputSchema.parse(input);
   let now=new Date(parsed.clock??Date.now());
   let result=await executeAutomation(root,{text:parsed.text,eventType:'MESSAGE',now},resolve);
@@ -32,7 +32,15 @@ export async function simulateConversation(root:PublishedAutomation,input:Simula
       // Retain the legacy replies contract; explicit events may observe messages during DELAY.
       if(result.wait?.kind==='IO'||(parsed.replies&&result.wait?.kind!=='EVENT'))throw new Error('AUTOMATION_SIMULATION_NOT_WAITING');
       result=await executeAutomation(root,{text:event.text,eventType:'MESSAGE',now},resolve,result.state);
+    }else if(event.type==='AI_RESPONSE'){
+      const effect=result.wait?.kind==='IO'&&result.wait.nodeId===event.nodeId?result.effects.find(effect=>effect.kind==='IO_AI'&&effect.nodeId===event.nodeId&&effect.payload.aiConfigVersion===1):undefined;
+      if(!effect)throw new Error('AUTOMATION_SIMULATION_AI_WAIT_MISMATCH');
+      const config=AiNodeConfigSchema.parse(Object.fromEntries(Object.entries(effect.payload).filter(([key])=>!['nodeType','variables','runtimeStateVersion'].includes(key))));
+      let output:unknown={error:event.outcome==='timeout'?'AUTOMATION_AI_TIMEOUT':event.outcome==='unknown'?'AUTOMATION_AI_UNKNOWN':'AUTOMATION_AI_SYNTHETIC_ERROR'};
+      if(event.outcome==='success')try{output=validateAiOutput(config,event.output);}catch{throw Error('AUTOMATION_SIMULATION_AI_OUTPUT_INVALID');}
+      result=await executeAutomation(root,{text:'',eventType:'RESUME',now,payload:{outcome:event.outcome,output}},resolve,result.state);
     }else if(event.type==='HTTP_RESPONSE'){
+
       // Only the current turn proves this exact wait is HTTP, including a child subflow.
       // Historical aggregated effects cannot authorize a response to a later SQL/event wait.
       if(result.wait?.kind!=='IO'||result.wait.nodeId!==event.nodeId||
@@ -61,5 +69,8 @@ export async function simulateConversation(root:PublishedAutomation,input:Simula
     effects.push(...result.effects);trace.push(...result.trace);
   }
   const httpWaitNodeId=result.wait?.kind==='IO'&&result.effects.some(effect=>effect.kind==='IO_HTTP'&&effect.nodeId===result.wait?.nodeId)?result.wait.nodeId:undefined;
-  return {...result,effects,trace,...(httpWaitNodeId?{httpWaitNodeId}:{})};
+  const aiEffect=result.wait?.kind==='IO'?result.effects.find(effect=>effect.kind==='IO_AI'&&effect.nodeId===result.wait?.nodeId&&effect.payload.aiConfigVersion===1):undefined;
+  const aiConfig=aiEffect?AiNodeConfigSchema.parse(Object.fromEntries(Object.entries(aiEffect.payload).filter(([key])=>!['nodeType','variables','runtimeStateVersion'].includes(key)))):undefined;
+  const aiWait:AiSimulationWait|undefined=aiConfig&&aiEffect?{nodeId:aiEffect.nodeId,operation:aiConfig.operation,maxResponseBytes:aiConfig.maxResponseBytes,...(aiConfig.operation==='classify'?{categories:aiConfig.categories}:aiConfig.operation==='extract'?{fields:aiConfig.fields}:{})}:undefined;
+  return {...result,effects,trace,...(httpWaitNodeId?{httpWaitNodeId}:{}),...(aiWait?{aiWait}:{})};
 }

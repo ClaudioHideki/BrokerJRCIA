@@ -1,3 +1,4 @@
+import type {EvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
 import type {OrganizationTransaction,TenantTransaction} from '../../db/tenant-transaction.js';
 import type {QrEvent} from '../messaging/qr-events.js';
 import type {ProviderContext} from '@jrc/providers';
@@ -8,6 +9,8 @@ import {createPostgresAutomationRepository} from '../automations/repository.js';
 import {createPostgresMessagingRepository} from '../messaging/repository.js';
 import {beginQrDispatchAttempt,recordQrOutboundObservation,recoverQrOutboundObservations,listQrDispatchAttempts,listQrOutboundObservations,abandonQrDispatchAttempt,abandonQrOutboundObservation} from '../messaging/qr-outbound-observation.js';
 import {groupAuthorityAllows,currentGroupWebhookBinding} from './automation-authority.js';
+import {readGroupHumanDispatch} from './central-group-dispatch.js';
+import {readChatwootAttendanceGate} from '../attendance/control-service.js';
 import {hasAmbiguousGroupProviderId} from './provider-scope.js';
 import {canAdvanceMessageState,lockMessageStatusKey} from '../messaging/message-state.js';
 import {AUTOMATION_ORIGIN,type AbandonQrDispatchAttemptRequest,type AbandonQrOutboundObservationRequest} from '@jrc/contracts';
@@ -16,6 +19,7 @@ export interface GroupPrincipal {organizationId:string;actorId:string}
 export interface GroupControlInput {groupJid:string;triggerText:string;expectedOwnerRevision:number;expectedBindingId:string;
   expectedBindingRevision:number;expectedIdentityRevision:number;expectedIdentityFingerprint:string;expectedRevision?:number|undefined}
 export interface GroupRuntimeOptions {
+  captureBinding?:EvolutionFleetRuntime['capture'];assertBinding?:EvolutionFleetRuntime['assert'];
   encryptionKey:string;configurationScope:string;requestTimeoutMs?:number;enabled?:boolean;runtimeReady?(organizationId:string):Promise<boolean>;
   refreshCatalogs?(organizationId:string):Promise<unknown>;
   transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;
@@ -181,13 +185,14 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
       if(!input.triggerText.trim()||input.triggerText.length>64)throw new GroupRuntimeError('GROUP_TRIGGER_INVALID');
       if(!await ready(org))throw new GroupRuntimeError('GROUP_RUNTIME_UNAVAILABLE');
       await options.transact(org,tx=>member(tx,principal));
-      const ctx=context(org),instance=await workspace(org,channel),observed=await options.readIdentity(ctx,instance.instance_key);
+      const ctx=context(org),instance=await workspace(org,channel),engine=await options.captureBinding?.(org,instance.instance_key),observed=await options.readIdentity(ctx,instance.instance_key);
       if(observed.groupsIgnore!==false)throw new GroupRuntimeError('GROUP_TRANSPORT_IGNORED');
       if(!identityCurrent(org,channel,{identity_fingerprint:input.expectedIdentityFingerprint},observed))throw new GroupRuntimeError('GROUP_IDENTITY_CHANGED');
       if(!await ready(org)||ctx.signal.aborted||ctx.deadline.getTime()<=Date.now())throw new GroupRuntimeError('GROUP_RUNTIME_UNAVAILABLE');
       return options.transact(org,async tx=>{
         await member(tx,principal);await lockAttendanceChannel(tx,org,channel);
         await sameWorkspace(tx,org,channel,instance);
+        if(engine)await options.assertBinding!(engine,tx,true);
         await currentDeadline(tx,ctx);
         const webhookBinding=await currentGroupWebhookBinding(tx,org,channel,options);
         const webhook=(await tx.query<{phase:string;binding_fingerprint:string}>(`SELECT phase,binding_fingerprint FROM whatsapp_group_webhook_operations WHERE organization_id=$1 AND channel_id=$2
@@ -238,10 +243,11 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
     });},
     async resume(principal:GroupPrincipal,channel:string,group:string,revision:number){
       const org=principal.organizationId;if(!await ready(org))throw new GroupRuntimeError('GROUP_RUNTIME_UNAVAILABLE');
-      await options.transact(org,tx=>member(tx,principal));const ctx=context(org),instance=await workspace(org,channel),observed=await options.readIdentity(ctx,instance.instance_key);
+      await options.transact(org,tx=>member(tx,principal));const ctx=context(org),instance=await workspace(org,channel),engine=await options.captureBinding?.(org,instance.instance_key),observed=await options.readIdentity(ctx,instance.instance_key);
       if(!await ready(org)||ctx.signal.aborted)throw new GroupRuntimeError('GROUP_RUNTIME_UNAVAILABLE');
       return options.transact(org,async tx=>{await member(tx,principal);await lockAttendanceChannel(tx,org,channel);const g=await control(tx,org,channel,jid(group));
         await sameWorkspace(tx,org,channel,instance);
+        if(engine)await options.assertBinding!(engine,tx,true);
         await currentDeadline(tx,ctx);
         if(!g||g.revision!==revision)throw new GroupRuntimeError('GROUP_CONTROL_CHANGED');
         if(!identityCurrent(org,channel,g,observed))throw new GroupRuntimeError('GROUP_IDENTITY_CHANGED');
@@ -333,37 +339,47 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
       return{processed:true,messageId:message.id};
     });},
     async dispatchOnce(org:string){
-      if(!await ready(org))return{processed:false};
+      if(options.runtimeReady&&!await options.runtimeReady(org))return{processed:false};
       await options.transact(org,tx=>recoverQrOutboundObservations(tx,org));
-      const candidates=await options.transact(org,async tx=>(await tx.query<{id:string;channel_id:string;conversation_id:string;group_jid:string;instance_id:string;instance_key:string}>(`SELECT m.id,m.channel_id,m.conversation_id,c.group_jid,i.id AS instance_id,i.upstream_instance_key AS instance_key
+      const candidates=await options.transact(org,async tx=>(await tx.query<{id:string;source:string;channel_id:string;conversation_id:string;group_jid:string;instance_id:string;instance_key:string}>(`SELECT m.id,m.source,m.channel_id,m.conversation_id,c.group_jid,i.id AS instance_id,i.upstream_instance_key AS instance_key
         FROM messaging_outbox o JOIN messaging_messages m ON m.organization_id=o.organization_id AND m.id=o.message_id
         JOIN messaging_conversations c ON c.organization_id=m.organization_id AND c.id=m.conversation_id
         JOIN messaging_channels ch ON ch.organization_id=m.organization_id AND ch.id=m.channel_id
         JOIN instances i ON i.organization_id=ch.organization_id AND i.id=ch.instance_id
         WHERE o.organization_id=$1 AND c.recipient_kind='GROUP' AND m.state='ACCEPTED' AND o.available_at<=clock_timestamp()
+          AND (m.source='OPERATOR' OR $2::boolean)
           AND (o.lease_token IS NULL OR o.lease_expires_at<=clock_timestamp())
           AND NOT EXISTS(SELECT 1 FROM messaging_messages p WHERE p.organization_id=m.organization_id AND p.conversation_id=m.conversation_id
             AND p.direction='OUTGOING' AND p.sequence_number<m.sequence_number AND (p.state IN ('ACCEPTED','SENDING') OR
               p.state='UNKNOWN' AND NOT EXISTS(SELECT 1 FROM qr_dispatch_attempts a WHERE a.organization_id=p.organization_id AND a.message_id=p.id AND a.state='ABANDONED')))
-        ORDER BY o.available_at,m.sequence_number,m.id LIMIT 50`,[org])).rows);
+        ORDER BY o.available_at,m.sequence_number,m.id LIMIT 50`,[org,options.enabled!==false])).rows);
       const ctx=context(org);
       for(const candidate of candidates){
+      const human=(tx:TenantTransaction)=>readGroupHumanDispatch(tx,{organizationId:org,channelId:candidate.channel_id,conversationId:candidate.conversation_id,messageId:candidate.id},options);
+      const centralAllows=(tx:TenantTransaction)=>readChatwootAttendanceGate(tx,{organizationId:org,channelId:candidate.channel_id,conversationId:candidate.conversation_id});
       const defer=()=>options.transact(org,async tx=>{await lockAttendanceChannel(tx,org,candidate.channel_id);await tx.query(`UPDATE messaging_outbox SET available_at=clock_timestamp()+interval '5 seconds'
         WHERE organization_id=$1 AND message_id=$2 AND lease_token IS NULL`,[org,candidate.id]);});
       const local=await options.transact(org,async tx=>{await lockAttendanceChannel(tx,org,candidate.channel_id);const g=await control(tx,org,candidate.channel_id,candidate.group_jid);
+        // A stale catalog or temporarily unavailable central identity must not
+        // destroy an authenticated reply that has not been dispatched.
+        if(candidate.source==='OPERATOR')return await human(tx)?'CURRENT':'BLOCKED';
         if(!g)return 'BLOCKED';
         if(!await effectOriginCurrent(tx,org,candidate.id,g))return await retireUndispatchedEffect(tx,org,candidate.id)?'RETIRED':'BLOCKED';
-        return await authoritative(tx,org,candidate.channel_id,g)?'CURRENT':'BLOCKED';
+        return await authoritative(tx,org,candidate.channel_id,g)&&(await centralAllows(tx)).allowed?'CURRENT':'BLOCKED';
       });
       if(local==='RETIRED')return{processed:true,status:'FAILED',messageId:candidate.id};
       if(local!=='CURRENT'){await defer();continue;}
+      let engine:Awaited<ReturnType<EvolutionFleetRuntime['capture']>>|undefined;
       let observed:Awaited<ReturnType<GroupRuntimeOptions['readIdentity']>>;
-      try{observed=await options.readIdentity(ctx,candidate.instance_key);}catch{await defer();if(ctx.signal.aborted)break;continue;}
-      if(!await ready(org)||ctx.signal.aborted||ctx.deadline.getTime()<=Date.now())break;
+      try{engine=await options.captureBinding?.(org,candidate.instance_key);observed=await options.readIdentity(ctx,candidate.instance_key);}catch{await defer();if(ctx.signal.aborted)break;continue;}
+      if((candidate.source!=='OPERATOR'&&!await ready(org))||ctx.signal.aborted||ctx.deadline.getTime()<=Date.now())break;
       const token=randomUUID();
       const dispatched=await options.transact(org,async tx=>{
+        if(engine)await options.assertBinding!(engine,tx,true);
         await lockAttendanceChannel(tx,org,candidate.channel_id);const g=await control(tx,org,candidate.channel_id,candidate.group_jid);
-        if(!g||!identityCurrent(org,candidate.channel_id,g,observed)||!await effectOriginCurrent(tx,org,candidate.id,g)||!await authoritative(tx,org,candidate.channel_id,g))return null;
+        if(candidate.source==='OPERATOR'){
+          const h=await human(tx);if(!h||!identityCurrent(org,candidate.channel_id,h,observed))return null;
+        } else if(!g||!identityCurrent(org,candidate.channel_id,g,observed)||!await effectOriginCurrent(tx,org,candidate.id,g)||!await authoritative(tx,org,candidate.channel_id,g)||!(await centralAllows(tx)).allowed)return null;
         if(!(await tx.query(`SELECT 1 FROM messaging_channels c JOIN instances i ON i.organization_id=c.organization_id AND i.id=c.instance_id
           WHERE c.organization_id=$1 AND c.id=$2 AND i.id=$3 AND i.upstream_instance_key=$4`,[org,candidate.channel_id,candidate.instance_id,candidate.instance_key])).rowCount)return null;
         const reserved=(await tx.query(`SELECT o.message_id FROM messaging_outbox o JOIN messaging_messages m ON m.organization_id=o.organization_id AND m.id=o.message_id
@@ -381,10 +397,12 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
       });
       if(!dispatched){await defer();continue;}
       let outcome:Parameters<typeof messaging.completeSend>[1]['outcome'];
-      try{ctx.signal.throwIfAborted();const receipt=await options.sendText(ctx,candidate.instance_key,{kind:'GROUP',groupJid:candidate.group_jid},dispatched.content.text);
+      try{ctx.signal.throwIfAborted();const receipt=await options.sendText({...ctx,engineIntent:{kind:'QR_DISPATCH',messageId:candidate.id,leaseToken:token}},candidate.instance_key,{kind:'GROUP',groupJid:candidate.group_jid},dispatched.content.text);
         if(!receipt.upstreamMessageId||receipt.upstreamMessageId.length>256)throw new Error('QR_SEND_UNKNOWN');outcome={state:'SENT',upstreamMessageId:receipt.upstreamMessageId};}
-      catch{outcome={state:'UNKNOWN',canonicalErrorCode:'QR_SEND_UNKNOWN'};}
-      try{await options.transact(org,tx=>messaging.completeSend(tx,{organizationId:org,messageId:candidate.id,leaseToken:token,outcome}));}
+      catch(error){const code=(error as {code?:string;uncertain?:boolean})?.code;
+        outcome=(error as {uncertain?:boolean})?.uncertain===false&&typeof code==='string'&&code.startsWith('EVOLUTION_ENGINE_')
+          ?{state:'FAILED',canonicalErrorCode:code,retrySafe:code==='EVOLUTION_ENGINE_RETRY_LATER'}:{state:'UNKNOWN',canonicalErrorCode:'QR_SEND_UNKNOWN'};}
+      try{await options.transact(org,async tx=>{if(outcome.state==='SENT'&&engine)await options.assertBinding!(engine,tx,true);await messaging.completeSend(tx,{organizationId:org,messageId:candidate.id,leaseToken:token,outcome});});}
       catch{return{processed:true,status:'UNKNOWN',messageId:candidate.id};} // Lost commit receipt is never replay permission.
       return{processed:true,status:outcome.state,messageId:candidate.id};
       }

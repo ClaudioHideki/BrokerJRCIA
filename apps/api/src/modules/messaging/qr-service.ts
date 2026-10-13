@@ -1,3 +1,4 @@
+import type {EvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { EvolutionMessagingClient } from "@jrc/providers";
 import type {
@@ -6,7 +7,7 @@ import type {
 } from "../../db/tenant-transaction.js";
 import { createPostgresMessagingRepository } from "./repository.js";
 import { normalizeQrEvent } from "./qr-events.js";
-import type { MessagingChannel } from "./types.js";
+import type { MessagingChannel,OutboxClaim } from "./types.js";
 import { requireActiveOrganization } from "../tenancy/operational-limits.js";
 import { registerPendingMedia } from "./media-store.js";
 import type { MessageContent } from "./types.js";
@@ -19,6 +20,7 @@ import type { createGroupAutomationRuntime } from '../whatsapp-groups/automation
 const error = (code: string, status = 422) =>
   Object.assign(new Error(code), { code, status });
 export interface QrServiceOptions {
+  fleet?: EvolutionFleetRuntime;
   baseUrl: string;
   apiKey: string;
   webhookOrigin: string;
@@ -87,12 +89,17 @@ export function createQrMessagingService(options: QrServiceOptions) {
     });
   }
   return {
+    async captureBinding(channel:MessagingChannel){
+      if(!options.fleet)return undefined;
+      const info=await instance(channel),snapshot=await options.fleet.capture(channel.organizationId,info.upstream_instance_key);
+      return{assert:(tx:TenantTransaction)=>options.fleet!.assert(snapshot,tx,true)};
+    },
     async activate(org: string, instanceId: string) {
       const channel = await options.transact(org, (tx) =>
         ensureQrChannel(tx, org, instanceId),
       );
       const info = await instance(channel);
-      const client = new EvolutionMessagingClient({
+      const client = options.fleet ? await options.fleet.messaging(org,info.upstream_instance_key) : new EvolutionMessagingClient({
         baseUrl: options.baseUrl,
         apiKey: options.apiKey,
         instanceKey: info.upstream_instance_key,
@@ -101,7 +108,9 @@ export function createQrMessagingService(options: QrServiceOptions) {
         `/v1/webhooks/whatsapp/${channel.id}`,
         options.webhookOrigin,
       ).toString();
-      await client.configureWebhook(webhookUrl, secret(org, channel.id));
+      const authority=options.fleet?await options.fleet.webhook(org,info.upstream_instance_key,channel.id):undefined;
+      await client.configureWebhook(webhookUrl, authority?.token??secret(org, channel.id));
+      if(authority)await options.transact(org,tx=>authority.assert(tx));
       return {
         id: channel.id,
         provider: "BAILEYS" as const,
@@ -109,11 +118,11 @@ export function createQrMessagingService(options: QrServiceOptions) {
         botPublicId: channel.botPublicId,
       };
     },
-    async resolveClient(channel: MessagingChannel) {
+    async resolveClient(channel: MessagingChannel,claim?:OutboxClaim) {
       await options.identity?.refreshForDispatch(channel.organizationId, channel.id);
       const info = await instance(channel);
       if (info.status !== "CONNECTED") throw error("QR_CHANNEL_DISCONNECTED");
-      return new EvolutionMessagingClient({
+      return options.fleet ? options.fleet.messaging(channel.organizationId,info.upstream_instance_key,claim?{kind:'QR_DISPATCH',messageId:claim.message.id,leaseToken:claim.leaseToken}:undefined) : new EvolutionMessagingClient({
         baseUrl: options.baseUrl,
         apiKey: options.apiKey,
         instanceKey: info.upstream_instance_key,
@@ -121,11 +130,11 @@ export function createQrMessagingService(options: QrServiceOptions) {
     },
     async downloadMedia(channel: MessagingChannel, messageId: string) {
       const info = await instance(channel);
-      return new EvolutionMessagingClient({
+      return (options.fleet ? await options.fleet.messaging(channel.organizationId,info.upstream_instance_key) : new EvolutionMessagingClient({
         baseUrl: options.baseUrl,
         apiKey: options.apiKey,
         instanceKey: info.upstream_instance_key,
-      }).downloadMedia(messageId);
+      })).downloadMedia(messageId);
     },
     async ingest(
       channelId: string,
@@ -134,8 +143,12 @@ export function createQrMessagingService(options: QrServiceOptions) {
     ) {
       const binding = await options.resolveChannel(channelId);
       if (!binding) throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
+      const authority=options.fleet?await options.transact(binding.organizationId,async tx=>{
+        const row=(await tx.query<{upstream_instance_key:string}>('SELECT upstream_instance_key FROM instances WHERE organization_id=$1 AND id=$2',[binding.organizationId,binding.instanceId])).rows[0];
+        if(!row)throw error('QR_WEBHOOK_UNAUTHORIZED',401);return row;
+      }).then(row=>options.fleet!.webhook(binding.organizationId,row.upstream_instance_key,channelId)):undefined;
       const expected = Buffer.from(
-        `Bearer ${secret(binding.organizationId, channelId)}`,
+        `Bearer ${authority?.token??secret(binding.organizationId, channelId)}`,
       );
       const received = Buffer.from(authorization ?? "");
       if (
@@ -144,6 +157,7 @@ export function createQrMessagingService(options: QrServiceOptions) {
       )
         throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
       await options.transact(binding.organizationId, async (tx) => {
+        await authority?.assert(tx);
         const channel = await repository.findChannel(
           tx,
           binding.organizationId,
@@ -158,6 +172,7 @@ export function createQrMessagingService(options: QrServiceOptions) {
         if (!channel || !row || channel.instanceId !== binding.instanceId)
           throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
         const events=normalizeQrEvent(payload,row.upstream_instance_key);
+        if(authority?.reconciliationOnly&&events.some(event=>!['status','group-status'].includes(event.kind)))throw error('EVOLUTION_ENGINE_DISABLED',409);
         // Acquire the exclusive lock before any per-message read lock in a mixed batch.
         // Otherwise two incoming/outgoing batches could both try to upgrade a SHARE lock.
         if(events.some(event=>['connection','group','group-text','group-status','outbound','outbound-media','status'].includes(event.kind))) {

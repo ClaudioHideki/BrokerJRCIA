@@ -1,3 +1,5 @@
+import type {ChatwootStatus} from '@jrc/contracts';
+import type {createFlowOriginApproval,FlowDestinationApproval} from '../flows/delegation/origin-approval.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { hashPassword, initializePasswordVerifier } from '@jrc/security';
@@ -39,7 +41,7 @@ function writePageCursor(kind:'groups'|'organizations',sort:string,id:string) {
 export class PlatformService {
  private verifier=initializePasswordVerifier();
  readonly mfaRequired:boolean;
- constructor(private pool:Pool,private key:Buffer,policy:PlatformLoginPolicy={}) {if(key.length!==32) throw new Error('PLATFORM_MFA_KEY must decode to 32 bytes');this.mfaRequired=platformMfaRequired(policy);}
+ constructor(private pool:Pool,private key:Buffer,policy:PlatformLoginPolicy={},private flowOriginApproval?:ReturnType<typeof createFlowOriginApproval>) {if(key.length!==32) throw new Error('PLATFORM_MFA_KEY must decode to 32 bytes');this.mfaRequired=platformMfaRequired(policy);}
  private async transaction<T>(work:(c:PoolClient)=>Promise<T>):Promise<T> {
   const c=await this.pool.connect();try {
    const identity=await c.query('select current_user,rolsuper,rolbypassrls from pg_roles where rolname=current_user');
@@ -213,7 +215,21 @@ export class PlatformService {
    return {removed:true as const,preservedOrganizationIds:members.rows.map(row=>row.organization_id)};
   });
  }
- async approveChatwootDestination(token:string,csrf:string,reason:string,org:string,input:{revision:number;mediaOrigins:string[]}) {
+ async flowDestinationStatus(token:string,org:string,status:ChatwootStatus):Promise<ChatwootStatus>{
+  if(!this.flowOriginApproval||!status.destination)return status;
+  return this.transaction(async c=>{
+   const session=await this.readSession(c,token);
+   await c.query('SELECT id FROM platform_users WHERE id=$1 FOR SHARE',[session.user.id]);
+   if(!(await c.query('SELECT id FROM organizations WHERE id=$1 FOR SHARE',[org])).rowCount)throw new PlatformError(404,'ORGANIZATION_NOT_FOUND');
+   const row=(await c.query('SELECT base_url,revision,approval_status FROM chatwoot_destinations WHERE organization_id=$1 FOR SHARE',[org])).rows[0];
+   if(!row||row.base_url!==status.destination!.baseUrl||row.revision!==status.destination!.revision||row.approval_status!==status.destination!.approvalStatus)throw new PlatformError(409,'DESTINATION_REVISION_CHANGED');
+   const flowExecutor=await this.flowOriginApproval!.status(c,row.base_url);
+   const live=(await c.query('SELECT 1 FROM platform_sessions s JOIN platform_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>clock_timestamp() AND u.active',[digest(token)])).rowCount;
+   if(!live)throw new PlatformError(401,'PLATFORM_INVALID_SESSION');
+   return {...status,destination:{...status.destination!,flowExecutor}};
+  });
+ }
+ async approveChatwootDestination(token:string,csrf:string,reason:string,org:string,input:{revision:number;mediaOrigins:string[];flowExecutor?:FlowDestinationApproval|undefined}) {
   if(reason.trim().length<5||reason.length>500) throw new PlatformError(400,'PLATFORM_REASON_REQUIRED');
   const origins=[...new Set(input.mediaOrigins.map(normalizeChatwootOrigin))];
   return this.transaction(async c=>{
@@ -226,10 +242,12 @@ export class PlatformService {
    normalizeChatwootOrigin(row.base_url);
    const audit=(await c.query(`INSERT INTO platform_audit_logs(actor_id,organization_id,action,reason)
     VALUES($1,$2,'chatwoot-destination-approve',$3) RETURNING id`,[session.user.id,org,reason])).rows[0];
-   return (await c.query(`UPDATE chatwoot_destinations SET approval_status='APPROVED',approval_audit_id=$2,
+   const flowExecutor=this.flowOriginApproval?await this.flowOriginApproval(c,{organizationId:org,origin:row.base_url,actorId:session.user.id,reason,...(input.flowExecutor?{declaration:input.flowExecutor}:{})}):undefined;
+   const approved=(await c.query(`UPDATE chatwoot_destinations SET approval_status='APPROVED',approval_audit_id=$2,
     approved_at=now(),media_origins=$3,updated_at=now() WHERE organization_id=$1
     RETURNING organization_id AS "organizationId",base_url AS "baseUrl",mode,approval_status AS "approvalStatus",media_origins AS "mediaOrigins",revision`,
    [org,audit.id,JSON.stringify(origins)])).rows[0];
+   return {...approved,...(flowExecutor?{flowExecutor}:{})};
   });
  }
  async authorizeIntegration(token:string,reason:string,org:string,write:boolean) {

@@ -2,14 +2,15 @@ import { randomUUID } from "node:crypto";
 import { AUTOMATION_ORIGIN, FLOW_ORIGIN } from '@jrc/contracts';
 import type { createFlowService } from '../flows/service.js';
 import type { MetaCloudClient, TypebotClient } from "@jrc/providers";
-import type { OrganizationTransaction } from "../../db/tenant-transaction.js";
+import type { OrganizationTransaction,TenantTransaction } from "../../db/tenant-transaction.js";
 import type { MessagingRepository } from "./repository.js";
-import type { MessagingChannel } from "./types.js";
+import type { MessagingChannel,OutboxClaim } from "./types.js";
 import { dispatchClaim, type DispatchPorts } from "./dispatcher.js";
 import { runBotTurn } from "./bot-runner.js";
 import type { createGroupAutomationRuntime } from '../whatsapp-groups/automation-runtime.js';
 
 export interface MessagingWorkerOptions {
+  captureQrBinding?:(channel:MessagingChannel)=>Promise<{assert(tx:TenantTransaction):Promise<void>}|undefined>;
   groupAutomation?: Pick<ReturnType<typeof createGroupAutomationRuntime>, 'dispatchOnce'>;
   automationRuntimeEnabled?:boolean;
   automations?:{route(organizationId:string,event:{channelId:string;conversationId:string;eventKey:string;text:string;payload?:Record<string,unknown>}):Promise<unknown>};
@@ -26,7 +27,7 @@ export interface MessagingWorkerOptions {
     Pick<MetaCloudClient, "sendText" | "sendTemplate" | "listTemplates">
   >;
   resolveQrClient?(
-    channel: MessagingChannel,
+    channel: MessagingChannel,claim?:OutboxClaim,
   ): Promise<
     Pick<MetaCloudClient, "sendText" | "sendTemplate" | "listTemplates">
   >;
@@ -143,13 +144,14 @@ export function createMessagingWorker(options: MessagingWorkerOptions) {
         }),
       );
       for (const claim of claims) {
+        const engine=claim.channel.provider==='BAILEYS'?await options.captureQrBinding?.(claim.channel):undefined;
         await dispatchClaim(claim, {
           ...(options.prepareMedia
             ? { prepareMedia: options.prepareMedia }
             : {}),
           resolveClient: (current) =>
             current.channel.provider === "BAILEYS"
-              ? (options.resolveQrClient?.(current.channel) ??
+              ? (options.resolveQrClient?.(current.channel,current) ??
                 Promise.reject(new Error("QR_CHANNEL_UNAVAILABLE")))
               : options.resolveMetaClient(current.channel),
           async validate(current) {
@@ -163,13 +165,14 @@ export function createMessagingWorker(options: MessagingWorkerOptions) {
             return result.eligible;
           },
           async complete(current, outcome) {
-            await transact(organizationId, (tx) =>
-              repository.completeSend(tx, {
+            await transact(organizationId, async (tx) => {
+              if(outcome.state==='SENT')await engine?.assert(tx);
+              return repository.completeSend(tx, {
                 organizationId,
                 messageId: current.message.id,
                 leaseToken: current.leaseToken,
                 outcome,
-              }),
+              });},
             );
           },
         });

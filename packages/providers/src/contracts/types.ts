@@ -35,6 +35,9 @@ export interface ProviderContext {
   requestId: string;
   deadline: Date;
   signal: AbortSignal;
+  /** Internal durable provider operation only; never accepted from HTTP input. */
+  engineOperationId?: string;
+  engineIntent?:{kind:'QR_DISPATCH';messageId:string;leaseToken:string}|{kind:'GROUP_WEBHOOK';operationId:string};
 }
 
 export interface ProvisionInstanceInput {

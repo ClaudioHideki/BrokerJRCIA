@@ -1,7 +1,7 @@
 import type { FastifyInstance,FastifyReply,FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { IdempotencyHeadersSchema,HttpCredentialPolicySchema } from '@jrc/contracts';
+import { IdempotencyHeadersSchema,AiCredentialPolicySchema,HttpCredentialPolicySchema } from '@jrc/contracts';
 import type { Role } from '../plugins/authorization.js';
 import { authenticateRequest,type AuthenticationOptions } from '../plugins/authentication.js';
 import { CredentialError,CredentialTypeSchema,type CredentialService } from '../../modules/automation-integrations/credentials.js';
@@ -18,6 +18,7 @@ export async function registerCredentialRoutes(app:FastifyInstance,options:Crede
  api.post('/v1/credentials',{preHandler:write,schema:{headers:IdempotencyHeadersSchema,querystring:empty,body:z.strictObject({name:z.string().trim().min(1).max(120),type:CredentialTypeSchema,secret,metadata})}},async(request,reply)=>reply.code(201).send(await options.service.create(org(request),request.body)));
  api.get('/v1/credentials/:id',{preHandler:read,schema:{params,querystring:empty}},request=>options.service.get(org(request),request.params.id));
  api.put('/v1/credentials/:id',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({revision:z.number().int().positive(),secret})}},request=>options.service.rotate(org(request),request.params.id,request.body));
+ api.put('/v1/credentials/:id/ai-policy',{preHandler:write,schema:{params,querystring:empty,body:AiCredentialPolicySchema.extend({revision:z.number().int().positive()})}},request=>options.service.updateAiPolicy(org(request),request.params.id,request.body));
  api.put('/v1/credentials/:id/http-policy',{preHandler:write,schema:{params,querystring:empty,body:HttpCredentialPolicySchema.extend({revision:z.number().int().positive()})}},request=>options.service.updateHttpPolicy(org(request),request.params.id,request.body));
  api.delete('/v1/credentials/:id',{preHandler:write,schema:{params,querystring:empty,body:z.strictObject({revision:z.number().int().positive()})}},request=>options.service.revoke(org(request),request.params.id,request.body.revision));
  api.post('/v1/credentials/:id/test',{preHandler:write,schema:{params,querystring:empty,body:empty}},request=>options.service.test(org(request),request.params.id));

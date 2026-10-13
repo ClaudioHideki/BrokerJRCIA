@@ -1,3 +1,4 @@
+import {createEvolutionCleanupRuntime} from '../modules/evolution-fleet/cleanup.js';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -12,20 +13,11 @@ export async function runLifecycleWorker(environment:NodeJS.ProcessEnv=process.e
   const url=z.string().url().parse(environment.LIFECYCLE_DATABASE_URL);
   if(new URL(url).username!=='jrc_lifecycle')throw new Error('LIFECYCLE_WORKER_REQUIRES_DEDICATED_ROLE');
   const interval=z.coerce.number().int().min(500).max(60000).default(3000).parse(environment.LIFECYCLE_WORKER_INTERVAL_MS);
-  const provider=new EvolutionProviderAdapter({baseUrl:z.string().url().parse(environment.EVOLUTION_BASE_URL),
-    apiKey:z.string().min(1).parse(environment.EVOLUTION_API_KEY)});
   const pool=new Pool({connectionString:url,...loadDatabasePoolBudget(environment,'LIFECYCLE_WORKER'),statement_timeout:600000});
   const cleanupPrivateMedia=createLifecycleMediaRuntime(environment,work=>withLifecycleWorkerTransaction(pool,work));
+  const cleanup=createEvolutionCleanupRuntime(environment,work=>withLifecycleWorkerTransaction(pool,work));
   const service=createLifecycleService({transact:work=>withLifecycleWorkerTransaction(pool,work),cleanupPrivateMedia,
-    instanceExists:async(organizationId,upstreamKey)=>{
-      const controller=new AbortController();
-      return (await provider.lookupInstance({organizationId,requestId:randomUUID(),deadline:new Date(Date.now()+30000),signal:controller.signal},{id:upstreamKey})).exists;
-    },
-    deprovision:async(organizationId,upstreamKey)=>{
-      const controller=new AbortController();
-      await provider.deprovisionInstance({organizationId,requestId:randomUUID(),deadline:new Date(Date.now()+30000),
-        signal:controller.signal},{id:upstreamKey});
-    }});
+    deprovision:cleanup.deprovision,instanceExists:cleanup.instanceExists,assertCleanup:cleanup.assertCleanup});
   const stop=new AbortController(),abort=()=>stop.abort();
   process.once('SIGINT',abort);process.once('SIGTERM',abort);
   try{

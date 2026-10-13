@@ -1,3 +1,11 @@
+import {registerFlowDelegationRoutes,type FlowDelegationRouteOptions} from './http/routes/flow-delegation.js';
+import {registerNativeFlowRoutes,type NativeFlowRouteOptions} from './http/routes/flow-native.js';
+import {createFlowDelegationService} from './modules/flows/delegation/service.js';
+import {createFlowOriginApproval} from './modules/flows/delegation/origin-approval.js';
+import {createFlowSessionResolver,loadFlowOriginRuntimeOptions,projectFlowDestinationStatus} from './modules/flows/delegation/runtime.js';
+import {createNativeFlowRuntime} from './modules/flows/delegation/native-runtime.js';
+import {createEvolutionFleetRuntime} from './modules/evolution-fleet/runtime.js';
+import {createEvolutionCleanupRuntime} from './modules/evolution-fleet/cleanup.js';
 import swagger from "@fastify/swagger";
 import { createHandoffReadiness } from './modules/attendance/handoff-readiness.js';
 import { randomUUID,createHmac } from 'node:crypto';
@@ -169,6 +177,8 @@ export interface BuildAppOptions {
   messaging?: MessagingRouteOptions;
   flows?: FlowRouteOptions;
   automations?: AutomationRouteOptions;
+  flowDelegation?:FlowDelegationRouteOptions;
+  nativeFlow?:NativeFlowRouteOptions;
   attendanceResume?: AttendanceResumeRouteOptions;
   attendanceLocal?: AttendanceLocalRouteOptions;
   observability?: ObservabilityRouteOptions;
@@ -241,6 +251,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       options.messaging !== undefined ||
       options.flows !== undefined ||
       options.automations !== undefined ||
+      options.flowDelegation !== undefined || options.nativeFlow !== undefined ||
       options.attendanceResume !== undefined ||
       options.attendanceLocal !== undefined ||
       options.observability !== undefined ||
@@ -271,6 +282,8 @@ export function buildApp(options: BuildAppOptions = {}) {
   let messaging = nodeEnv === "test" ? options.messaging : undefined;
   let flows = nodeEnv === "test" ? options.flows : undefined;
   let automations = nodeEnv === "test" ? options.automations : undefined;
+  let flowDelegation=nodeEnv==="test"?options.flowDelegation:undefined;
+  let nativeFlow=nodeEnv==="test"?options.nativeFlow:undefined;
   let attendanceResume = nodeEnv === "test" ? options.attendanceResume : undefined;
   let attendanceLocal = nodeEnv === "test" ? options.attendanceLocal : undefined;
   let observability = nodeEnv === "test" ? options.observability : undefined;
@@ -416,11 +429,10 @@ export function buildApp(options: BuildAppOptions = {}) {
         }),
       };
     }
+    const evolutionFleet=createEvolutionFleetRuntime({...options.environment??process.env,EVOLUTION_BASE_URL:config.evolutionBaseUrl,EVOLUTION_API_KEY:config.evolutionApiKey},
+      (org,work)=>withOrganizationTransaction(pools.appPool,org,work));
     if (!instances) {
-      const evolution = new EvolutionProviderAdapter({
-        baseUrl: config.evolutionBaseUrl,
-        apiKey: config.evolutionApiKey,
-      });
+      const evolution = evolutionFleet.provider;
       const providers = new ProviderRegistry(
         [evolution],
         [["BAILEYS", evolution]],
@@ -428,6 +440,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       const service = createInstanceService({
         repository: createPostgresInstanceRepository(),
         providers,
+        guardOperation:evolutionFleet.guardOperation,
         runInOrganizationTransaction: (organizationId, operation) =>
           withOrganizationTransaction(pools.appPool, organizationId, operation),
         writeAudit: writeTenantAudit,
@@ -444,29 +457,28 @@ export function buildApp(options: BuildAppOptions = {}) {
       service: new InstanceWorkspaceService({
         transact: (org, operation) =>
           withOrganizationTransaction(pools.appPool, org, operation),
-        provider: new EvolutionWorkspaceClient({
-          baseUrl: config.evolutionBaseUrl,
-          apiKey: config.evolutionApiKey,
-        }),
+        provider: evolutionFleet.workspace,
+        captureBinding:evolutionFleet.capture,assertBinding:evolutionFleet.assert,
       }),
     };
     const messagingEnvironment = options.environment ?? process.env;
     if (messagingEnvironment.INTEGRATION_ENCRYPTION_KEY) {
-      const identity = new EvolutionWorkspaceClient({baseUrl:config.evolutionBaseUrl,apiKey:config.evolutionApiKey});
-      const groups = new EvolutionGroupsClient({baseUrl:config.evolutionBaseUrl,apiKey:config.evolutionApiKey});
+      const identity = evolutionFleet.workspace;
+      const groups = evolutionFleet.groups;
       const qrConfig=loadIntegrationConfig(messagingEnvironment).qr;
       const readIdentity=async(context:import('@jrc/providers').ProviderContext,key:string)=>{
         const snapshot=await identity.read(context,key);return {connected:snapshot.profile.state==='open',phone:snapshot.profile.phone};};
       const configuration=qrConfig?createWhatsAppGroupWebhookConfiguration({
         encryptionKey:messagingEnvironment.INTEGRATION_ENCRYPTION_KEY,
-        configurationScope:JSON.stringify([qrConfig.baseUrl,qrConfig.webhookOrigin,qrConfig.signingKey]),
+        configurationScope:evolutionFleet.configurationScope(qrConfig.webhookOrigin),
         transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work),readIdentity,
-        readConfiguration:async(context,key,org,channel)=>new EvolutionMessagingClient({baseUrl:qrConfig.baseUrl,apiKey:qrConfig.apiKey,instanceKey:key})
+        captureBinding:evolutionFleet.capture,assertBinding:evolutionFleet.assert,
+        readConfiguration:async(context,key,org,channel)=>(await evolutionFleet.messaging(org,key))
           .readWebhookConfiguration(new URL(`/v1/webhooks/whatsapp/${channel}`,qrConfig.webhookOrigin).toString(),
-            createHmac('sha256',qrConfig.signingKey).update(`qr-webhook\0${org}\0${channel}`).digest('base64url'),context),
-        setConfiguration:async(context,key,org,channel)=>new EvolutionMessagingClient({baseUrl:qrConfig.baseUrl,apiKey:qrConfig.apiKey,instanceKey:key})
+            (await evolutionFleet.webhook(org,key,channel)).token,context),
+        setConfiguration:async(context,key,org,channel)=>(await evolutionFleet.messaging(org,key))
           .configureWebhook(new URL(`/v1/webhooks/whatsapp/${channel}`,qrConfig.webhookOrigin).toString(),
-            createHmac('sha256',qrConfig.signingKey).update(`qr-webhook\0${org}\0${channel}`).digest('base64url'),context),
+            (await evolutionFleet.webhook(org,key,channel)).token,context),
       }):undefined;
       whatsappGroups = {
         jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,
@@ -476,6 +488,7 @@ export function buildApp(options: BuildAppOptions = {}) {
           encryptionKey:messagingEnvironment.INTEGRATION_ENCRYPTION_KEY,
           transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work),
           readIdentity,
+          captureBinding:evolutionFleet.capture,assertBinding:evolutionFleet.assert,
           ...(configuration?{ensureEventsConfiguration:configuration.ensure}:{}),
           readGroups:(context,key)=>groups.list(context,key),
         }),
@@ -491,6 +504,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       managedOrigin: messagingEnvironment.CHATWOOT_BASE_URL ? new URL(messagingEnvironment.CHATWOOT_BASE_URL).origin : undefined,
       transact: (org, work) => withOrganizationTransaction(pools.appPool, org, work),
       resolveCurrentRole: createMessagingMembershipResolver(pools.authPool) });
+    const flowOriginOptions=loadFlowOriginRuntimeOptions(messagingEnvironment);
     const integrationRuntime = createIntegrationRuntime(
       { ...messagingEnvironment, NODE_ENV: nodeEnv },
       pools.appPool,
@@ -501,6 +515,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       { auth: controlAuth, instances: instances.service, pairActionRedis: redisClient },
     );
     if(whatsappGroups&&integrationRuntime.groupAutomation)whatsappGroups.automation=integrationRuntime.groupAutomation;
+    if(integrationRuntime.chatwoot){const originalStatus=integrationRuntime.chatwoot.status;const projection=projectFlowDestinationStatus({transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work),knownNativeOrigins:flowOriginOptions.knownNativeOrigins});integrationRuntime.chatwoot.status=async org=>projection(org,await originalStatus(org));}
     channels = {
       jwtSecret: config.jwtSecret,
       authenticateApiKey: apiKeys.authenticateApiKey,
@@ -579,14 +594,10 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...config.databasePools.platform,
         statement_timeout: 30000,
       });
+      const cleanup=createEvolutionCleanupRuntime(messagingEnvironment,work=>withLifecyclePlatformTransaction(platformPool,work));
       const lifecycle = createLifecycleService({
         transact: work => withLifecyclePlatformTransaction(platformPool,work),
-        deprovision: async (organizationId,upstreamKey) => {
-          const evolution = new EvolutionProviderAdapter({baseUrl:config.evolutionBaseUrl,apiKey:config.evolutionApiKey});
-          const controller = new AbortController();
-          await evolution.deprovisionInstance({organizationId,requestId:randomUUID(),
-            deadline:new Date(Date.now()+30000),signal:controller.signal},{id:upstreamKey});
-        },
+        deprovision:cleanup.deprovision,instanceExists:cleanup.instanceExists,assertCleanup:cleanup.assertCleanup,
       });
       if(channels)channels.lifecycle=lifecycle;
       platform = {
@@ -602,6 +613,7 @@ export function buildApp(options: BuildAppOptions = {}) {
             nodeEnv: config.nodeEnv,
             origin: messagingEnvironment.PLATFORM_ORIGIN,
           },
+          createFlowOriginApproval(flowOriginOptions),
         ),
         origin: messagingEnvironment.PLATFORM_ORIGIN,
         secureCookies: config.consoleCookieSecure,
@@ -631,8 +643,12 @@ export function buildApp(options: BuildAppOptions = {}) {
       executions:createExecutionService(automationOptions),
       migration:createLegacyFlowMigrationService({...automationOptions,runtimeReady:automationRuntimeReady}),
     };
-    observability={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createObservabilityService({transact:automationOptions.transact,probeRedis:async()=>redisClient.isReady&&(await redisClient.ping())==='PONG',schemaCurrent:schemaObjectsReady})};
     const vaultKeys=messagingEnvironment.CREDENTIAL_VAULT_KEYS_JSON??(messagingEnvironment.INTEGRATION_ENCRYPTION_KEY?JSON.stringify({1:messagingEnvironment.INTEGRATION_ENCRYPTION_KEY}):undefined);
+    const nativeRuntime=createNativeFlowRuntime({authPool:pools.authPool,authentication:{jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool)},rateLimit:{store:rateLimitStore,secret:config.identityRateLimitHmacSecret,nodeEnv,trustedProxyCidrs:config.trustedProxyCidrs,ipLimit:config.authRateLimit.limit,identityLimit:config.authRateLimit.limit,windowMs:config.authRateLimit.ttlMs},...(vaultKeys?{registration:{keyring:vaultKeys,transact:automationOptions.transact}}:{})});
+    flowDelegation={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),resolveFlowSession:createFlowSessionResolver(pools.authPool),service:createFlowDelegationService({nativeAdapter:nativeRuntime.adapter,transact:automationOptions.transact,knownNativeOrigins:flowOriginOptions.knownNativeOrigins,automation:{enabled:config.automationRuntimeV2Enabled,runtimeReady:automationRuntimeReady,handoffReadiness:createHandoffReadiness({transact:automationOptions.transact,...(integrationRuntime.chatwoot?{catalog:integrationRuntime.chatwoot.attendanceCatalog,validateTarget:integrationRuntime.chatwoot.validateHumanDestination}:{})})},...(integrationRuntime.chatwoot?{chatwootStatus:integrationRuntime.chatwoot.status}:{}),...(integrationRuntime.dashboardClient?{client:integrationRuntime.dashboardClient}:{}),...(integrationRuntime.identity?{identity:integrationRuntime.identity}:{})})};
+    nativeFlow=nativeRuntime.routesFor(flowDelegation.service);
+    observability={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createObservabilityService({transact:automationOptions.transact,probeRedis:async()=>redisClient.isReady&&(await redisClient.ping())==='PONG',schemaCurrent:schemaObjectsReady})};
+
     if(config.automationRuntimeV2Enabled&&!vaultKeys)throw new Error('CREDENTIAL_VAULT_KEYS_REQUIRED');
     if(vaultKeys){const credentialService=createCredentialService({transact:automationOptions.transact,vault:createCredentialVault(vaultKeys),tester:createCredentialTester(),testBudget:{store:rateLimitStore,secret:config.identityRateLimitHmacSecret}}),membership=createMessagingMembershipResolver(pools.authPool),authentication={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:membership};
       credentials={...authentication,service:credentialService};
@@ -914,6 +930,8 @@ export function buildApp(options: BuildAppOptions = {}) {
     const configuredFlows=flows;
     app.register(scope=>registerFlowRoutes(scope,configuredFlows));
   }
+  if(flowDelegation){const configured=flowDelegation;app.register(scope=>registerFlowDelegationRoutes(scope,configured));}
+  if(nativeFlow){const configured=nativeFlow;app.register(scope=>registerNativeFlowRoutes(scope,configured));}
   if (automations) {
     const configured=automations;
     app.register(scope=>registerAutomationRoutes(scope,configured));

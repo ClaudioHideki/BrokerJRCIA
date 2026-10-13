@@ -1,3 +1,4 @@
+import type {EvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
@@ -15,6 +16,7 @@ type WorkerPrincipal={organizationId:string;[workerAuthority]:true};
 type CatalogPrincipal=GroupCatalogPrincipal|WorkerPrincipal;
 const isWorker=(principal:CatalogPrincipal):principal is WorkerPrincipal=>workerAuthority in principal;
 export interface GroupCatalogOptions {
+  captureBinding?:EvolutionFleetRuntime['capture'];assertBinding?:EvolutionFleetRuntime['assert'];
   encryptionKey: string;
   transact<T>(org: string, work: OrganizationTransaction<T>): Promise<T>;
   readIdentity(context: ProviderContext, instanceKey: string): Promise<{ connected: boolean; phone: string | null }>;
@@ -128,6 +130,7 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
         // Before/after observations bind the catalog to an actually observed
         // number even for standalone channels with no Chatwoot health record.
         const context: ProviderContext = { organizationId: org, requestId: lease, deadline: new Date(Date.now() + 45000), signal: AbortSignal.timeout(45000) };
+        const engine=await options.captureBinding?.(org,captured.upstream_instance_key);
         const before = await options.readIdentity(context, captured.upstream_instance_key);
         if (!before.connected || !before.phone || !/^[1-9]\d{6,14}$/.test(before.phone)) throw new GroupCatalogError('GROUP_IDENTITY_CHANGED');
         const raw = await options.readGroups(context, captured.upstream_instance_key);
@@ -138,6 +141,7 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
         const fingerprint = createHmac('sha256', key).update(`whatsapp-group-identity:v1:${org}:${channel}:${before.phone}`).digest('hex');
         return await options.transact(org, async tx => {
           const current = await access(tx, principal, channel, true), previous = await catalog(tx, org, channel);
+          if(engine)await options.assertBinding!(engine,tx,true);
           if (!current.connected || current.instance_id !== captured.instance_id || current.upstream_instance_key !== captured.upstream_instance_key) throw new GroupCatalogError('GROUP_IDENTITY_CHANGED');
           const completed = await tx.query(`UPDATE whatsapp_group_catalogs SET snapshot_id=$4,observed_at=clock_timestamp(),valid_until=clock_timestamp()+interval '5 minutes',
             identity_revision=identity_revision+CASE WHEN identity_fingerprint IS NOT NULL AND identity_fingerprint<>$5 THEN 1 ELSE 0 END,
@@ -182,6 +186,7 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
         check(await catalog(tx, principal.organizationId, channel), current.connected);
         return current;
       });
+      const engine=await options.captureBinding?.(principal.organizationId,captured.upstream_instance_key);
       try {
         const context: ProviderContext = { organizationId: principal.organizationId, requestId: randomUUID(), deadline: new Date(Date.now() + 10000), signal: AbortSignal.timeout(10000) };
         const identity = await options.readIdentity(context, captured.upstream_instance_key);
@@ -196,6 +201,7 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
       }
       return options.transact(principal.organizationId, async tx => {
       const current = await access(tx, principal, channel, true);
+      if(engine)await options.assertBinding!(engine,tx,true);
       const row = check(await catalog(tx, principal.organizationId, channel), current.connected);
       if (current.instance_id !== captured.instance_id || current.upstream_instance_key !== captured.upstream_instance_key) throw new GroupCatalogError('GROUP_IDENTITY_CHANGED');
       const updated = await tx.query('UPDATE whatsapp_group_catalog_items SET selected=$4 WHERE organization_id=$1 AND channel_id=$2 AND group_jid=$3', [principal.organizationId, channel, parsed.groupJid, parsed.enabled]);

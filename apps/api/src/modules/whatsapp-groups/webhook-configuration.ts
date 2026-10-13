@@ -1,3 +1,4 @@
+import type {EvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
 import { GroupCatalogError, type GroupCatalogPrincipal } from './service.js';
 import type { OrganizationTransaction,TenantTransaction } from '../../db/tenant-transaction.js';
 import type { ProviderContext } from '@jrc/providers';
@@ -7,6 +8,7 @@ import { WhatsAppGroupEventsConfigurationSchema,type WhatsAppGroupEventsConfigur
 import { requireActiveOrganization,TenantOperationalError } from '../tenancy/operational-limits.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
 export interface GroupWebhookOptions {
+  captureBinding?:EvolutionFleetRuntime['capture'];assertBinding?:EvolutionFleetRuntime['assert'];
   encryptionKey: string; configurationScope: string;
   transact<T>(org: string, work: OrganizationTransaction<T>): Promise<T>;
   readIdentity(context: ProviderContext, instanceKey: string): Promise<{ connected:boolean;phone:string|null }>;
@@ -100,10 +102,12 @@ export function createWhatsAppGroupWebhookConfiguration(options: GroupWebhookOpt
           [org,channel,current.instance_id,p.actorId,binding(org,channel,current),c.identity_revision,c.catalog_revision,lease])).rows[0]!;
         return {current,c,op,uncertain:Boolean(uncertain)};
       });
+      const engine=await options.captureBinding?.(org,captured.current.upstream_instance_key);
       let dispatched=captured.uncertain;
-      const context:ProviderContext={organizationId:org,requestId:lease,deadline:new Date(Date.now()+45000),signal:AbortSignal.timeout(45000)};
+      const context:ProviderContext={engineIntent:{kind:'GROUP_WEBHOOK',operationId:captured.op.id},organizationId:org,requestId:lease,deadline:new Date(Date.now()+45000),signal:AbortSignal.timeout(45000)};
       const checkpoint=async(phase:'DISPATCHED'|'CONFIRMED',fingerprint:string,revision:number)=>options.transact(org,async tx=>{
         const current=await access(tx,p,channel,true),c=await catalog(tx,org,channel);
+        if(engine)await options.assertBinding!(engine,tx);
         if(!current.connected||binding(org,channel,current)!==captured.op.binding_fingerprint)throw new GroupCatalogError('GROUP_IDENTITY_CHANGED');
         if(!c||c.identity_revision!==captured.c.identity_revision||c.catalog_revision!==captured.c.catalog_revision)throw new GroupCatalogError('GROUP_REFRESH_LEASE_LOST');
         const updated=await tx.query(`UPDATE whatsapp_group_webhook_operations SET phase=$5,identity_fingerprint=$6,identity_revision=$7,

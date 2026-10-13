@@ -30,7 +30,9 @@ it('upgrades 0045 without changing physical channels, conversations, credentials
   await withGlobalRoleLock(admin,()=>runMigrations(db.connectionString));
   expect(await probeRequiredRuntimeSchema(sql=>db.pool.query(sql))).toBe(true);
   expect((await db.pool.query('SELECT * FROM messaging_channels WHERE id=$1',[t.channel])).rows).toEqual([{...channel,transport:'BROKER_TRANSPORT'}]);
-  expect((await db.pool.query('SELECT * FROM messaging_conversations WHERE id=$1',[t.conversation])).rows).toEqual([{...conversation,remote_conversation_key:null}]);
+  const upgradedConversations=(await db.pool.query('SELECT * FROM messaging_conversations WHERE id=$1',[t.conversation])).rows;
+  expect(upgradedConversations).toHaveLength(1);
+  expect(upgradedConversations).toMatchObject([{...conversation,remote_conversation_key:null,recipient_kind:'INDIVIDUAL',group_jid:null}]);
   expect((await db.pool.query('SELECT * FROM central_transport_bindings')).rows).toEqual([]);
   expect((await db.pool.query('SELECT * FROM central_runtime_events')).rows).toEqual([]);
   expect((await db.pool.query("SELECT table_name FROM lifecycle_purge_catalogue WHERE table_name IN ('central_runtime_events','central_transport_bindings') ORDER BY table_name")).rows)

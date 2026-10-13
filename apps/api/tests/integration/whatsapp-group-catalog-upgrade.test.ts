@@ -105,7 +105,11 @@ it('upgrades populated 0049 to 0050 without manufacturing catalogs, preserving Q
     expect(await probeAsApp()).toBe(false);
     await withGlobalRoleLock(admin, () => runMigrations(db.connectionString));
     expect(await probeAsApp()).toBe(true);
-    expect(await preserved()).toEqual(before);
+    const after=await preserved();
+    for(const table of preservedTables)expect(after[table]).toHaveLength(before[table].length);
+    expect(after).toMatchObject(before);
+    expect(after.messaging_conversations.every(row=>row.recipient_kind==='INDIVIDUAL'&&row.group_jid===null)).toBe(true);
+    expect(after.messaging_messages.every(row=>row.provider_scope==='')).toBe(true);
     const newJournal = (await db.pool.query('SELECT id,hash,created_at FROM drizzle.__drizzle_migrations ORDER BY id')).rows;
     expect(newJournal.slice(0, 49)).toEqual(oldJournal);
     expect(newJournal.find(row => row.created_at === String(latest.when))).toMatchObject({

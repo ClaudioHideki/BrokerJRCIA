@@ -388,6 +388,25 @@ export class ChatwootClient {
       { user_id: integer.parse(userId), role },
     );
   }
+  async findGroupContact(accountId:number,identifier:string,scopeKey:string):Promise<number|undefined>{
+    if(!/^[a-f0-9]{64}$/u.test(scopeKey)||identifier!==`jrc-group-${scopeKey}`)throw new ChatwootError('CHATWOOT_GROUP_CONTACT_MISMATCH');
+    const data=record(await this.request('GET',this.account(accountId)+'/contacts/search?q='+encodeURIComponent(identifier)));
+    const matches=z.array(z.object({id:integer,identifier:z.string().nullable().optional(),phone_number:z.string().nullable().optional(),email:z.string().nullable().optional(),additional_attributes:z.record(z.string(),z.unknown()).optional()})).max(200).parse(data.payload);
+    const exact=matches.filter(contact=>contact.identifier===identifier);
+    if(exact.length>1)throw new ChatwootError('CHATWOOT_CONTACT_AMBIGUOUS');
+    const contact=exact[0];if(!contact)return;
+    if(contact.phone_number||contact.email||contact.additional_attributes?.jrc_broker_recipient_kind!=='GROUP'||contact.additional_attributes?.jrc_broker_group_scope!==scopeKey)throw new ChatwootError('CHATWOOT_GROUP_CONTACT_MISMATCH');
+    return contact.id;
+  }
+  async createGroupContact(accountId:number,input:{name:string;identifier:string;additional_attributes:{jrc_broker_recipient_kind:'GROUP';jrc_broker_group_scope:string}}):Promise<number>{
+    const group=z.strictObject({name:z.string().min(1).max(264),identifier:z.string().regex(/^jrc-group-[a-f0-9]{64}$/u),additional_attributes:z.strictObject({jrc_broker_recipient_kind:z.literal('GROUP'),jrc_broker_group_scope:z.string().regex(/^[a-f0-9]{64}$/u)})}).parse(input);
+    if(group.identifier!==`jrc-group-${group.additional_attributes.jrc_broker_group_scope}`)throw new ChatwootError('CHATWOOT_GROUP_CONTACT_MISMATCH');
+    // No inbox_id here: the next durable stage creates the explicit source ID.
+    const data=record(await this.request('POST',this.account(accountId)+'/contacts',group));
+    const id=integer.safeParse(record(record(data.payload).contact).id);
+    if(!id.success)throw new ChatwootError('CHATWOOT_INVALID_RESPONSE',false,true);
+    return id.data;
+  }
   async findContact(
     accountId: number,
     phone: string,

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import {createChatwootGroupWorker} from './chatwoot-group-worker.js';
 import { z } from "zod";
 import { createPostgresMessagingRepository } from "../messaging/repository.js";
 import { isOrganizationActive } from "../tenancy/operational-limits.js";
@@ -156,6 +157,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
     });
   }
   async function receiveReply(job: Job): Promise<void> {
+    if(await groups.receiveReply(job))return;
     const data = replySchema.parse(job.payload);
     const binding = await tx(job.organization_id, async (t) => ({
       account: await readChatwootAccount(t, job.organization_id),
@@ -357,6 +359,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
     });
   }
   async function mirror(job: Job): Promise<void> {
+    if(await groups.mirror(job))return;
     const org = job.organization_id;
     const context = await tx(org, async (t) => {
       const a = await readChatwootAccount(t, org),
@@ -615,6 +618,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
     }
     await finish(job);
   }
+  const groups=createChatwootGroupWorker(options,{before:beforeExternal,progress,finish});
   return {
     async runOnce(org: string): Promise<void> {
       const job = await claim(org);

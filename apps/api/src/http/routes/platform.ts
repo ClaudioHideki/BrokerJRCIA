@@ -493,7 +493,7 @@ export async function registerPlatformRoutes(
             };
           }
           const { org, service } = await integration(req);
-          return service.status(org);
+          return options.service.flowDestinationStatus(cookie(req),org,await service.status(org));
         },
       );
       scoped.put(

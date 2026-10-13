@@ -169,6 +169,8 @@ function providerOutcome(error: unknown, qr: boolean): CompleteSendOutcome {
     typeof error === "object" && error !== null && "code" in error
       ? error.code
       : null;
+  if(qr&&(error as {uncertain?:boolean})?.uncertain===false&&typeof code==='string'&&code.startsWith('EVOLUTION_ENGINE_'))
+    return{state:'FAILED',canonicalErrorCode:code,retrySafe:code==='EVOLUTION_ENGINE_RETRY_LATER'};
   if (code === "QR_RATE_LIMITED")
     return { state: "FAILED", canonicalErrorCode: code, retrySafe: true };
   return code === "META_REQUEST_REJECTED" ||

@@ -59,7 +59,10 @@ function harness(provider: FakeProviderAdapter) {
       state.instance = { ...state.instance, ...update, updatedAt: NOW };
       return state.instance;
     },
-    async completeOperation(_tx, update) { state.operation = { ...state.operation, ...update }; },
+    async completeOperation(_tx, update) {
+      const { incrementAttempt = true, ...values } = update;
+      state.operation = { ...state.operation, ...values, attemptCount: state.operation.attemptCount + (incrementAttempt ? 1 : 0) };
+    },
     async claimProvisioningOperation() {
       if (state.operation.status === 'PENDING') return null;
       state.operation = {
@@ -98,6 +101,21 @@ function harness(provider: FakeProviderAdapter) {
   return { reconcile, state, timeline };
 }
 
+function expectReadOnlyLookup(provider: FakeProviderAdapter) {
+  expect(provider.calls.lookupInstance).toHaveLength(1);
+  expect(provider.calls.lookupInstance[0]?.context).toMatchObject({
+    organizationId: ORGANIZATION_ID,
+    engineOperationId: OPERATION_ID,
+  });
+  expect(provider.calls.lookupInstance[0]?.reference).toEqual({
+    id: 'jrc_519b77a6a4e5409a85c8d78fc155c525',
+  });
+  for (const calls of [
+    provider.calls.provisionInstance, provider.calls.reconcileProvisioning,
+    provider.calls.beginConnection, provider.calls.disconnect, provider.calls.deprovisionInstance,
+  ]) expect(calls).toHaveLength(0);
+}
+
 describe('reconciliação de provisionamento', () => {
   it('usa lookup estritamente read-only e conclui sem comando mutável quando encontra a instância', async () => {
     const provider = new FakeProviderAdapter({
@@ -117,59 +135,55 @@ describe('reconciliação de provisionamento', () => {
     })).resolves.toMatchObject({ status: 'CREATED' });
 
     expect(test.timeline).toEqual(['begin', 'commit', 'provider.lookup', 'begin', 'commit']);
-    expect(provider.calls.reconcileProvisioning).toHaveLength(0);
-    expect(provider.calls.lookupInstance[0]?.reference.id).toBe('jrc_519b77a6a4e5409a85c8d78fc155c525');
+    expectReadOnlyLookup(provider);
+    expect(test.state.instance).toMatchObject({ status: 'CREATED', externalReference: 'upstream-ref' });
+    expect(test.state.operation).toMatchObject({
+      status: 'SUCCEEDED', attemptCount: 2, canonicalErrorCode: null, reconciliationRequired: false,
+    });
   });
 
-  it('somente após lookup ausente repete provisionamento pela mesma chave determinística', async () => {
+  it('mantem UNKNOWN quando lookup esta ausente e nunca repete provisionamento', async () => {
     const provider = new FakeProviderAdapter({
       now: () => NOW,
-      responses: {
-        lookupInstance: { exists: false },
-        reconcileProvisioning: {
-          outcome: 'PROVISIONED',
-          instance: { reference: { id: 'upstream-ref' }, status: 'CREATED' },
-        },
-      },
+      responses: { lookupInstance: { exists: false } },
     });
     const test = harness(provider);
+    const originalInstance = { ...test.state.instance };
 
-    await test.reconcile({
+    await expect(test.reconcile({
       organizationId: ORGANIZATION_ID,
       operationId: OPERATION_ID,
       requestId: '8ecfc8d2-3a67-42db-a3de-24fc99aef758',
       deadline: new Date(NOW.getTime() + 60_000),
       signal: new AbortController().signal,
-    });
+    })).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
 
-    expect(test.timeline).toEqual([
-      'begin', 'commit', 'provider.lookup', 'provider.reconcile', 'begin', 'commit',
-    ]);
-    expect(provider.calls.reconcileProvisioning[0]?.input).toEqual({
-      upstreamInstanceKey: 'jrc_519b77a6a4e5409a85c8d78fc155c525',
-      providerAccountId: ACCOUNT_ID,
+    expect(test.timeline).toEqual(['begin', 'commit', 'provider.lookup', 'begin', 'commit']);
+    expectReadOnlyLookup(provider);
+    expect(test.state.instance).toEqual(originalInstance);
+    expect(test.state.operation).toMatchObject({
+      status: 'UNKNOWN', attemptCount: 2,
+      canonicalErrorCode: 'RECONCILIATION_FAILED', reconciliationRequired: true,
     });
   });
 
-  it('claim durável impede dois executores de emitir comandos upstream concorrentes', async () => {
+  it('claim duravel impede lookup concorrente e ausencia mantem UNKNOWN sem recriar', async () => {
     let releaseLookup!: () => void;
+    let enterLookup!: () => void;
     const lookupGate = new Promise<void>((resolve) => { releaseLookup = resolve; });
+    const lookupStarted = new Promise<void>((resolve) => { enterLookup = resolve; });
     const provider = new FakeProviderAdapter({
       now: () => NOW,
-      responses: {
-        lookupInstance: { exists: false },
-        reconcileProvisioning: {
-          outcome: 'PROVISIONED',
-          instance: { reference: { id: 'upstream-ref' }, status: 'CREATED' },
-        },
-      },
+      responses: { lookupInstance: { exists: false } },
     });
     const realLookup = provider.lookupInstance.bind(provider);
     provider.lookupInstance = async (...arguments_) => {
+      enterLookup();
       await lookupGate;
       return realLookup(...arguments_);
     };
     const test = harness(provider);
+    const originalInstance = { ...test.state.instance };
     const command = {
       organizationId: ORGANIZATION_ID,
       operationId: OPERATION_ID,
@@ -178,13 +192,26 @@ describe('reconciliação de provisionamento', () => {
       signal: new AbortController().signal,
     };
 
-    const first = test.reconcile(command);
-    await Promise.resolve();
-    await expect(test.reconcile(command)).rejects.toMatchObject({ code: 'RECONCILIATION_NOT_FOUND' });
-    releaseLookup();
-    await first;
+    // Attach both handlers immediately, before releasing the held lookup.
+    const first = test.reconcile(command).then(
+      value => ({ outcome: 'resolved', value }),
+      error => ({ outcome: 'rejected', error }),
+    );
+    await lookupStarted;
+    try {
+      expect(test.state.operation).toMatchObject({ status: 'PENDING', attemptCount: 2 });
+      await expect(test.reconcile(command)).rejects.toMatchObject({ code: 'RECONCILIATION_NOT_FOUND' });
+      expect(test.state.operation).toMatchObject({ status: 'PENDING', attemptCount: 2 });
+    } finally {
+      releaseLookup();
+    }
+    expect(await first).toMatchObject({ outcome: 'rejected', error: { code: 'RECONCILIATION_FAILED' } });
 
-    expect(provider.calls.lookupInstance).toHaveLength(1);
-    expect(provider.calls.reconcileProvisioning).toHaveLength(1);
+    expectReadOnlyLookup(provider);
+    expect(test.state.instance).toEqual(originalInstance);
+    expect(test.state.operation).toMatchObject({
+      status: 'UNKNOWN', attemptCount: 2,
+      canonicalErrorCode: 'RECONCILIATION_FAILED', reconciliationRequired: true,
+    });
   });
 });

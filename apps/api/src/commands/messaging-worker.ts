@@ -1,3 +1,4 @@
+import {createEvolutionFleetRuntime} from '../modules/evolution-fleet/runtime.js';
 import { pathToFileURL } from "node:url";
 import { createFlowService } from '../modules/flows/service.js';
 import { createHash } from "node:crypto";
@@ -107,13 +108,14 @@ export async function runMessagingWorker(
   const authPool = controlConfig ? new Pool({ connectionString: controlConfig.authUrl, ...loadDatabasePoolBudget(environment, 'MESSAGING_AUTH'), statement_timeout: 30_000 }) : undefined;
   const control = controlConfig && authPool ? (() => {
     const transact = <T>(org: string, work: Parameters<typeof withOrganizationTransaction<T>>[2]) => withOrganizationTransaction(pool, org, work);
-    const engine = new EvolutionProviderAdapter({ baseUrl: controlConfig.baseUrl, apiKey: controlConfig.apiKey });
+    const fleet=createEvolutionFleetRuntime(environment,transact);
+    const engine = fleet.provider;
     return {
       auth: createChatwootControlAuth({ enabled: true, hmacSecret: controlConfig.hmacSecret, transact,
         managedOrigin: environment.CHATWOOT_BASE_URL ? new URL(environment.CHATWOOT_BASE_URL).origin : undefined,
         resolveCurrentRole: createMessagingMembershipResolver(authPool) }),
       instances: createInstanceService({ repository: createPostgresInstanceRepository(), providers: new ProviderRegistry([engine], [['BAILEYS', engine]]),
-        runInOrganizationTransaction: transact, writeAudit: writeTenantAudit }),
+        runInOrganizationTransaction: transact, writeAudit: writeTenantAudit,guardOperation:fleet.guardOperation }),
     };
   })() : undefined;
   const integrations = createIntegrationRuntime(
@@ -139,7 +141,7 @@ export async function runMessagingWorker(
       resolveTypebotClient,
       prepareMedia: integrations.prepareMedia,
       ...(integrations.qr
-        ? { resolveQrClient: integrations.qr.resolveClient }
+        ? { resolveQrClient: integrations.qr.resolveClient,captureQrBinding:integrations.qr.captureBinding }
         : {}),
     });
     do {

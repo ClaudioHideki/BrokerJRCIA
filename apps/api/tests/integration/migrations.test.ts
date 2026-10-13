@@ -401,7 +401,8 @@ describe('migrations PostgreSQL', () => {
     // 0036 uses maintenance_boundary on these catalogued commercial tables,
     // not lifecycle_migrator. Keep the rest of the historical inventory strict.
     const lifecycleManaged=catalogue.filter(table=>!['support_tickets','support_messages',
-      'commercial_plans','commercial_plan_versions','organization_commercial_plans'].includes(table)).length+1;
+      'commercial_plans','commercial_plan_versions','organization_commercial_plans',
+      'evolution_instance_bindings','evolution_io_leases','evolution_io_backoff'].includes(table)).length+1;
     const result = await database.pool.query<{
       policyname: string;
       roles: string[];
@@ -421,7 +422,14 @@ describe('migrations PostgreSQL', () => {
       ...Array.from({length:2},()=>({policyname:'group_catalog_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:4},()=>({policyname:'group_events_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:3},()=>({policyname:'group_runtime_tenant',roles:['jrc_app'],cmd:'ALL'})),
-      ...Array.from({length:7},()=>({policyname:'tenant_scope',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:13},()=>({policyname:'tenant_scope',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:2},()=>({policyname:'automation_ai_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:7},()=>({policyname:'automation_effect_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:2},()=>({policyname:'group_central_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...['evolution_engines_migrator','evolution_binding_migrator','evolution_io_migrator','evolution_backoff_migrator',
+        'evolution_history_maintenance','evolution_cleanup_history_maintenance','evolution_cleanup_io_maintenance','evolution_io_history_maintenance']
+        .map(policyname=>({policyname,roles:['jrc_migrator'],cmd:'ALL'})),
+      {policyname:'evolution_binding_tenant',roles:['jrc_app'],cmd:'SELECT'},
       {policyname:'flow_origins_tenant_read',roles:['jrc_app'],cmd:'SELECT'},
       {policyname:'flow_origins_platform',roles:['jrc_platform'],cmd:'ALL'},
       {policyname:'flow_origins_migrator',roles:['jrc_migrator'],cmd:'ALL'},

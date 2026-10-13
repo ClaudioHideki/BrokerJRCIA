@@ -1,0 +1,37 @@
+# Optional private fleet configuration. The default compose remains single-engine.
+# Use an absolute path on the Dokploy host; never commit the referenced file.
+x-fleet-env: &fleet-env
+  - path: ${EVOLUTION_FLEET_ENV_FILE:?absolute-path-to-private-fleet-env-required}
+    required: true
+
+services:
+  api:
+    env_file: *fleet-env
+  worker:
+    env_file: *fleet-env
+  lifecycle-worker:
+    env_file: *fleet-env
+  automation-worker:
+    env_file: *fleet-env
+  automation-io-worker:
+    env_file: *fleet-env
+  scheduler-worker:
+    env_file: *fleet-env
+  fleet-register:
+    image: ${JRC_API_IMAGE:?required}
+    profiles: [maintenance]
+    restart: "no"
+    env_file: *fleet-env
+    entrypoint: [node, apps/api/dist/commands/evolution-fleet-register.js]
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?required}@postgres:5432/jrc_broker
+      EVOLUTION_BASE_URL: http://evolution:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?required}
+      QR_WEBHOOK_SIGNING_KEY: ${QR_WEBHOOK_SIGNING_KEY:?required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]

@@ -64,6 +64,8 @@ function documentationOptions() {
       service: new Proxy({}, { get() { return unavailable; } }) as ReturnType<typeof import('../modules/flows/service.js').createFlowService>,
       chatwoot: new Proxy({}, { get() { return unavailable; } }) as ReturnType<typeof import('../modules/flows/chatwoot-service.js').createFlowChatwootService>,
     },
+    flowDelegation:{authenticateApiKey:unavailable,jwtSecret:DOCUMENTATION_SECRET,resolveCurrentRole:unavailable,resolveFlowSession:unavailable,service:new Proxy({},{get(){return unavailable;}}) as ReturnType<typeof import('../modules/flows/delegation/service.js').createFlowDelegationService>},
+    nativeFlow:{reopenProof:new Proxy({},{get(){return unavailable;}}) as ReturnType<typeof import('../modules/flows/delegation/broker-reopen-proof.js').createNativeReopenProof>,authenticateApiKey:unavailable,jwtSecret:DOCUMENTATION_SECRET,resolveCurrentRole:unavailable,resolveFlowCredential:unavailable,resolveInstallationGrant:unavailable,resolveInstallationReduction:unavailable,registration:new Proxy({},{get(){return unavailable;}}) as ReturnType<typeof import('../modules/flows/delegation/registration/service.js').createNativeRegistrationService>,installation:new Proxy({},{get(){return unavailable;}}) as ReturnType<typeof import('../modules/flows/delegation/installation/service.js').createNativeInstallationService>,service:new Proxy({},{get(){return unavailable;}}) as ReturnType<typeof import('../modules/flows/delegation/service.js').createFlowDelegationService>,rateLimit:{store:{kind:'memory' as const,consume:unavailable},secret:DOCUMENTATION_SECRET,nodeEnv:'test' as const,trustedProxyCidrs:[],ipLimit:1,identityLimit:1,windowMs:60000}},
     automations: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
       service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/automations/service.js').AutomationService,
@@ -264,6 +266,9 @@ function normalizeDocument(document: JsonObject): JsonObject {
   const components = (document.components ??= {}) as JsonObject;
   components.securitySchemes = {
     ...((components.securitySchemes ?? {}) as JsonObject),
+    flowSessionAuth:{type:'http',scheme:'bearer',description:'Scoped opaque Flow session; tenant derives from jrc_auth.'},
+    flowCredentialAuth:{type:'http',scheme:'bearer',description:'Dedicated opaque native credential; not a session, JWT or grant.'},
+    flowInstallationGrantAuth:{type:'http',scheme:'bearer',description:'Installation grant authority only; reduction replay is exact bounded receipt only.'},
     platformSession: {
       type: "apiKey",
       in: "cookie",
@@ -330,6 +335,10 @@ function normalizeDocument(document: JsonObject): JsonObject {
       }
       if (path.startsWith("/v1/messaging/"))
         operation.security = [{ bearerAuth: [] }];
+      if(path.startsWith('/v1/delegated-flows'))operation.security=[{flowSessionAuth:[]}];
+      if(path.startsWith('/v1/flow-delegations'))operation.security=[{bearerAuth:[]}];
+      if((path.startsWith('/v1/flow-delegations/native-sessions')||path.startsWith('/v1/flow-delegations/native-cutovers/'))||path==='/v1/flow-delegations/native-context'||method==='get'&&path==='/v1/flow-delegations/native-registration-challenges/{id}'||method==='post'&&path==='/v1/flow-delegations/native-registrations'||path.endsWith('/claim'))operation.security=[{flowCredentialAuth:[]}];
+      if(path.startsWith('/v1/flow-delegations/native-installations/'))operation.security=[{flowInstallationGrantAuth:[]}];
       if (path.startsWith('/v1/attendance/'))operation.security=[{bearerAuth:[]}];
       if (['/v1/channels', '/v1/credentials', '/v1/automations', '/v1/automation-nodes', '/v1/automation-imports', '/v1/executions', '/v1/operations', '/v1/webhooks', '/v1/support']
         .some(prefix => path === prefix || path.startsWith(`${prefix}/`)))

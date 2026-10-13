@@ -1,5 +1,5 @@
-import type {HttpSimulationResponse} from '@jrc/contracts';
-export type SimulatedEvent={type:'MESSAGE';text:string}|{type:'ELAPSE';seconds:number}|HttpSimulationResponse;
+import type {AiSimulationResponse,HttpSimulationResponse} from '@jrc/contracts';
+export type SimulatedEvent={type:'MESSAGE';text:string}|{type:'ELAPSE';seconds:number}|HttpSimulationResponse|AiSimulationResponse;
 
 export function SimulationWaitControl({wakeAt,clock,events,disabled,onAdvance}:{wakeAt:string|undefined;clock:string;events:SimulatedEvent[];disabled:boolean;onAdvance:(seconds:number)=>void}){
   const elapsed=events.reduce((total,event)=>total+(event.type==='ELAPSE'?event.seconds:0),0);

@@ -17,7 +17,7 @@ describe('repository baseline', () => {
       .filter((name) => /manifest.*sha256|sha256.*manifest/iu.test(name))
       .sort();
 
-    expect(migrations.slice(-12)).toEqual([
+    expect(migrations.slice(-17)).toEqual([
       '0043_user_password_reset.sql',
       '0044_attendance_resume_operations.sql',
       '0045_local_attendance_directory.sql',
@@ -30,6 +30,11 @@ describe('repository baseline', () => {
       '0052_durable_private_media.sql',
       '0053_flow_delegation.sql',
       '0054_whatsapp_group_automation.sql',
+      '0055_complete_native.sql',
+      '0056_evolution_engine_fleet.sql',
+      '0057_automation_ai_budget.sql',
+      '0058_automation_conversation_media.sql',
+      '0059_whatsapp_group_central.sql',
     ]);
     expect(rootManifests).toEqual(['MANIFESTO_ARQUIVOS_SHA256.txt']);
   });

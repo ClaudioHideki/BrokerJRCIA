@@ -3,6 +3,7 @@ import { CompatibleAutomationHandoffConfigSchema } from './automation-handoff-v1
 import { ScheduleNodeConfigSchema } from './automation-schedule.js';
 import { menuOptions, type FlowNode } from './flows.js';
 import {DATA_NODE_TYPES,compatibleDataNodeSchema,dataNodePorts} from './automation-data-v2.js';
+import {compatibleAiNodeSchema} from './automation-ai.js';
 import {compatibleHttpQuerySchema} from './automation-http-query.js';
 
 export const NodeDiagnosticSchema = z.object({
@@ -54,7 +55,7 @@ export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = 
   define('code', 'JavaScript isolado', 'LOGIC', config({ target: safeKey, code: z.string() }), io, 'capacidade fora do escopo de criação Broker'),
   ...['ai-generate', 'ai-classify', 'ai-extract', 'ai-summarize', 'ai-agent'].map(type => define(type,
     ({ 'ai-generate': 'IA: gerar', 'ai-classify': 'IA: classificar', 'ai-extract': 'IA: extrair', 'ai-summarize': 'IA: resumir', 'ai-agent': 'Agente de IA' } as Record<string, string>)[type]!, 'AI',
-    config({ target: safeKey, credentialId }), io, type === 'ai-agent' ? 'agente genérico fora do escopo de criação Broker' : 'R7 e U3b/U5 (IA delimitada e simulação)')),
+    compatibleAiNodeSchema(type,config({ target: safeKey, credentialId })), node=>node.data.aiConfigVersion===undefined?['success','error']:['success','error','timeout','unknown'], type === 'ai-agent' ? 'agente genérico fora do escopo de criação Broker' : null)),
   define('delay', 'Aguardar', 'LOGIC', config({ seconds: z.coerce.number().int().min(1).max(604800) }), next),
   define('subflow', 'Subflow versionado', 'LOGIC', config({ automationId: credentialId, version: z.coerce.number().int().positive(), timeoutMs: z.preprocess(input => input ?? 10000, z.coerce.number().int().min(100).max(30000)).optional() }), next),
   define('handoff', 'Atendimento humano', 'HUMAN', CompatibleAutomationHandoffConfigSchema, terminal),

@@ -1,3 +1,4 @@
+import {createEvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
 import type { Pool } from "pg";
 import {createCentralCutoverService} from '../channels/central-cutover-service.js';
 import { z } from "zod";
@@ -120,32 +121,33 @@ export function createIntegrationRuntime(
   const config = loadIntegrationConfig(environment);
   const transact: ChatwootOptions["transact"] = (org, operation) =>
     withOrganizationTransaction(pool, org, operation);
+  const fleet=config.qr?createEvolutionFleetRuntime(environment,transact):undefined;
   const groupPolicy=config.qr&&environment.INTEGRATION_ENCRYPTION_KEY?{
     encryptionKey:environment.INTEGRATION_ENCRYPTION_KEY,
-    configurationScope:JSON.stringify([config.qr.baseUrl,config.qr.webhookOrigin,config.qr.signingKey]),
+    configurationScope:fleet!.configurationScope(config.qr.webhookOrigin),
   }:undefined;
   const groupCatalog=groupPolicy&&config.qr?createWhatsAppGroupCatalog({
-    encryptionKey:groupPolicy.encryptionKey,transact,
-    async readIdentity(context,key){const snapshot=await new EvolutionWorkspaceClient({baseUrl:config.qr!.baseUrl,apiKey:config.qr!.apiKey}).read(context,key);
+    encryptionKey:groupPolicy.encryptionKey,transact,captureBinding:fleet!.capture,assertBinding:fleet!.assert,
+    async readIdentity(context,key){const snapshot=await fleet!.workspace.read(context,key);
       return{connected:snapshot.profile.state==='open',phone:snapshot.profile.phone};},
-    readGroups:(context,key)=>new EvolutionGroupsClient({baseUrl:config.qr!.baseUrl,apiKey:config.qr!.apiKey}).list(context,key),
+    readGroups:(context,key)=>fleet!.groups.list(context,key),
   }):undefined;
   const groupAutomation=groupPolicy&&config.qr?createGroupAutomationRuntime({
-    ...groupPolicy,transact,enabled:automationRuntimeEnabled(environment),
+    ...groupPolicy,transact,captureBinding:fleet!.capture,assertBinding:fleet!.assert,enabled:automationRuntimeEnabled(environment),
     ...(groupCatalog?{refreshCatalogs:groupCatalog.refreshDueForAutomation}:{}),
     async readIdentity(context,instanceKey){
-      const snapshot=await new EvolutionWorkspaceClient({baseUrl:config.qr!.baseUrl,apiKey:config.qr!.apiKey}).read(context,instanceKey);
+      const snapshot=await fleet!.workspace.read(context,instanceKey);
       return{connected:snapshot.profile.state==='open',phone:snapshot.profile.phone,groupsIgnore:snapshot.settings?.groupsIgnore??null};
     },
     async sendText(context,instanceKey,recipient,text){
-      return createEvolutionGroupTextSender({baseUrl:config.qr!.baseUrl,apiKey:config.qr!.apiKey,instanceKey}).sendText(context,recipient,text);
+      return fleet!.groupText(context,instanceKey,recipient,text);
     },
   }):undefined;
   const identity = config.qr && config.chatwoot ? createChatwootHealth({ transact, encryptionKey: config.chatwoot.encryptionKey,
     async readIdentity(org, instanceId) {
       const row = await transact(org, async t => (await t.query<{ upstream_instance_key: string }>('SELECT upstream_instance_key FROM instances WHERE organization_id=$1 AND id=$2', [org, instanceId])).rows[0]);
       if (!row) throw new Error('INSTANCE_NOT_FOUND');
-      const snapshot = await new EvolutionWorkspaceClient({ baseUrl: config.qr!.baseUrl, apiKey: config.qr!.apiKey }).read({ organizationId: org,
+      const snapshot = await fleet!.workspace.read({ organizationId: org,
         requestId: randomUUID(), deadline: new Date(Date.now() + 10000), signal: AbortSignal.timeout(10000) }, row.upstream_instance_key);
       return { connected: snapshot.profile.state === 'open', phone: snapshot.profile.phone };
     },
@@ -153,6 +155,7 @@ export function createIntegrationRuntime(
   const qr = config.qr
     ? createQrMessagingService({
         ...config.qr,
+        fleet:fleet!,
         transact,
         identity,
         groups:environment.INTEGRATION_ENCRYPTION_KEY?createWhatsAppGroupEvents({encryptionKey:environment.INTEGRATION_ENCRYPTION_KEY}):undefined,
@@ -189,6 +192,7 @@ export function createIntegrationRuntime(
           }),
         ...(qr ? { activateQr: qr.activate } : {}),
         ...(identity ? { assertIdentity: identity.assertReady } : {}),
+        ...(groupPolicy ? {groupPolicy} : {}),
         async resolveIntegration(id) {
           return (
             await pool.query<{ organization_id: string }>(
@@ -270,7 +274,7 @@ export function createIntegrationRuntime(
     };
     if (claim.channel.provider === "BAILEYS") {
       if (!qr) throw new MediaError("MEDIA_NOT_CONFIGURED");
-      const client = await qr.resolveClient(claim.channel);
+      const client = await qr.resolveClient(claim.channel,claim);
       return () => client.sendMedia(claim.contact.externalId, file);
     }
     if (!resolveMetaClient) throw new MediaError("MEDIA_NOT_CONFIGURED");
@@ -306,6 +310,7 @@ export function createIntegrationRuntime(
     }}):undefined;
   return {
     qr,
+    fleet,
     groupAutomation,
     groupPolicy,
     chatwoot,

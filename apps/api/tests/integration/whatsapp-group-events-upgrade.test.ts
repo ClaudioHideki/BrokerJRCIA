@@ -53,6 +53,14 @@ it('requires the additive 0051 G2 upgrade after 0050 and preserves the physical 
       await privateMediaMigration.query('SET ROLE jrc_migrator');
       await privateMediaMigration.query(await readFile('apps/api/drizzle/migrations/0052_durable_private_media.sql','utf8'));
     }finally{await privateMediaMigration.query('RESET ROLE');privateMediaMigration.release();}
+    expect(await ready()).toBe(false);
+    // G2/C2 alone cannot satisfy the current runtime. Apply its remaining
+    // additive predecessors without recreating the existing group catalog.
+    const remaining=await db.database.pool.connect();
+    try{
+      await remaining.query('SET ROLE jrc_migrator');
+      for(const entry of full.entries.filter((entry:{idx:number})=>entry.idx>=52))await remaining.query(await readFile(join(source,entry.tag+'.sql'),'utf8'));
+    }finally{await remaining.query('RESET ROLE');remaining.release();}
     expect(await ready()).toBe(true);
     expect((await db.database.pool.query('SELECT * FROM whatsapp_group_catalogs WHERE channel_id=$1',[tenant.channel])).rows[0]).toEqual(before);
     expect((await db.database.pool.query('SELECT selected FROM whatsapp_group_catalog_items WHERE channel_id=$1',[tenant.channel])).rows[0]?.selected).toBe(true);

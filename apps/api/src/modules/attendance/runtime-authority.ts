@@ -8,7 +8,7 @@ export async function runtimeAuthorityAllows(tx:TenantTransaction, input:{
   organizationId:string;channelId:string;conversationId:string|null;automationId:string;version:number;executionId?:string;
 }, checkRemote=true,policy?:GroupPhysicalPolicy):Promise<boolean> {
   if(input.conversationId && (await tx.query("SELECT 1 FROM messaging_conversations WHERE organization_id=$1 AND id=$2 AND recipient_kind='GROUP'",[input.organizationId,input.conversationId])).rowCount)
-    return groupAuthorityAllows(tx,input,policy);
+    return await groupAuthorityAllows(tx,input,policy)&&(!checkRemote||(await readChatwootAttendanceGate(tx,{organizationId:input.organizationId,channelId:input.channelId,conversationId:input.conversationId})).allowed);
   const current=await tx.query(`
     SELECT 1 FROM attendance_owners o JOIN messaging_channels c ON c.organization_id=o.organization_id AND c.id=o.channel_id
     JOIN automation_bindings b ON b.organization_id=o.organization_id AND b.channel_id=o.channel_id

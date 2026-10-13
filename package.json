@@ -51,7 +51,8 @@
     "test:evolution-upstream": "vitest run tests/evolution-upstream.test.mjs",
     "security:release": "node scripts/security/check-release.mjs",
     "test:storage": "vitest run --config vitest.storage.config.ts",
-    "test:storage:ci": "node scripts/ci/storage-minio.mjs"
+    "test:storage:ci": "node scripts/ci/storage-minio.mjs",
+    "evolution:fleet:register": "node apps/api/dist/commands/evolution-fleet-register.js"
   },
   "devDependencies": {
     "@babel/parser": "7.29.8",

@@ -9,6 +9,7 @@ export type DeletionPreview = {resourceId:string;resourceName:string;kind:'CHANN
   blockers:string[];counts:Record<string,number>;externalEffects:string[];operationId:string|null;operationStatus:DeletionStatus|null};
 export type DeletionOperation = {operationId:string;status:DeletionStatus;errorCode:string|null;updatedAt:string};
 type WorkRow = {id:string;organization_id:string;kind:'CHANNEL'|'ORGANIZATION';resource_id:string;lease_token:string;reconciliation_requested:boolean};
+export interface CleanupDispatchContext{deletionId:string;lease:string;instanceId:string}
 type CleanupRow = {instance_id:string;upstream_key:string;status:string};
 
 export class LifecycleError extends Error {
@@ -38,9 +39,10 @@ export const withLifecycleWorkerTransaction=<T>(pool:Pool,work:(tx:QueryClient)=
   withLifecycleTransaction(pool,'jrc_lifecycle',work);
 
 export function createLifecycleService(options:{transact:LifecycleTransaction;
-  deprovision:(organizationId:string,upstreamKey:string)=>Promise<void>;
+  deprovision:(organizationId:string,upstreamKey:string,context?:CleanupDispatchContext)=>Promise<void>;
+  assertCleanup?:(tx:QueryClient,context:CleanupDispatchContext,mutation:boolean)=>Promise<void>;
   cleanupPrivateMedia?:(deletionId:string,lease:string)=>Promise<{state:'COMPLETE'|'PENDING'|'UNKNOWN'}>;
-  instanceExists?:(organizationId:string,upstreamKey:string)=>Promise<boolean>;uuid?:()=>string}){
+  instanceExists?:(organizationId:string,upstreamKey:string,context?:CleanupDispatchContext)=>Promise<boolean>;uuid?:()=>string}){
   const uuid=options.uuid??randomUUID;
   const translateError=(error:unknown):LifecycleError=>{
     if(error instanceof LifecycleError)return error;
@@ -127,6 +129,7 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
         'SELECT instance_id,upstream_key,status FROM lifecycle_cleanup_items WHERE deletion_id=$1 ORDER BY instance_id',[claimed.id])).rows);
       const attention=async(code:string)=>options.transact(tx=>tx.query("UPDATE lifecycle_deletions SET status='ACTION_REQUIRED',error_code=$3,reconciliation_requested=false,lease_token=NULL,lease_expires_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND lease_token=$2",[claimed.id,lease,code]).then(()=>undefined));
       for(const item of items){
+        const cleanupContext={deletionId:claimed.id,lease,instanceId:item.instance_id};
         if(item.status==='DONE')continue;
         const mayDeprovision=await options.transact(async tx=>{
           await lockCurrentLease(tx);
@@ -143,11 +146,12 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
           if(item.status==='PENDING')continue;
           if(!options.instanceExists){await attention('EVOLUTION_CLEANUP_UNVERIFIED');return true;}
           let exists:boolean;
-          try{exists=await options.instanceExists(claimed.organization_id,item.upstream_key);}
+          try{exists=await (options.assertCleanup?options.instanceExists(claimed.organization_id,item.upstream_key,cleanupContext):options.instanceExists(claimed.organization_id,item.upstream_key));}
           catch{await attention('EVOLUTION_CLEANUP_UNVERIFIED');return true;}
           await options.transact(async tx=>{
             await lockCurrentLease(tx);
             if(!await actorAuthorized(tx))throw new LifecycleError('LIFECYCLE_ACTOR_REVOKED',403);
+            await options.assertCleanup?.(tx,cleanupContext,false);
             await tx.query('UPDATE lifecycle_cleanup_items SET status=$3,last_error_code=NULL,updated_at=clock_timestamp() WHERE deletion_id=$1 AND instance_id=$2',[claimed.id,item.instance_id,exists?'PENDING':'DONE']);
           });
           continue;
@@ -158,7 +162,7 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
           if(!await actorAuthorized(tx))throw new LifecycleError('LIFECYCLE_ACTOR_REVOKED',403);
           await tx.query("UPDATE lifecycle_cleanup_items SET status='IN_FLIGHT',attempts=attempts+1,updated_at=clock_timestamp() WHERE deletion_id=$1 AND instance_id=$2 AND status='PENDING'",[claimed.id,item.instance_id]);
         });
-        try{await options.deprovision(claimed.organization_id,item.upstream_key);}
+        try{await (options.assertCleanup?options.deprovision(claimed.organization_id,item.upstream_key,cleanupContext):options.deprovision(claimed.organization_id,item.upstream_key));}
         catch{
           await options.transact(async tx=>{
             try{await lockCurrentLease(tx);}catch(error){if(error instanceof LifecycleError&&error.code==='LIFECYCLE_LEASE_LOST')return;throw error;}
@@ -169,6 +173,7 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
         }
         await options.transact(async tx=>{
           await lockCurrentLease(tx);
+          await options.assertCleanup?.(tx,cleanupContext,true);
           await tx.query("UPDATE lifecycle_cleanup_items SET status='DONE',last_error_code=NULL,updated_at=clock_timestamp() WHERE deletion_id=$1 AND instance_id=$2",[claimed.id,item.instance_id]);
         });
       }

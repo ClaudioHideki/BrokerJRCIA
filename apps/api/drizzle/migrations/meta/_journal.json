@@ -379,6 +379,41 @@
       "when": 1792190400000,
       "tag": "0054_whatsapp_group_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1792276800000,
+      "tag": "0055_complete_native",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1792363200000,
+      "tag": "0056_evolution_engine_fleet",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1792449600000,
+      "tag": "0057_automation_ai_budget",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1792536000000,
+      "tag": "0058_automation_conversation_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1792622400000,
+      "tag": "0059_whatsapp_group_central",
+      "breakpoints": true
     }
   ]
 }

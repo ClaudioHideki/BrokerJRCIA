@@ -20,6 +20,10 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 | json-stringify | AVAILABLE | DataNodeEditor: fonte, destino, erro e campos tipados | engine/simulação: transformação local tipada; success/error |
 | expression | AVAILABLE | DataNodeEditor: fonte, destino, erro e campos tipados | engine/simulação: transformação local tipada; success/error |
 | http | AVAILABLE | HttpQueryEditor: credencial por nome, destino HTTPS e parâmetros | IO_HTTP canônico; política atual; cinco saídas e resposta fictícia limitada |
+| ai-generate | AVAILABLE | Campos v1: credencial/revisao, modelo, conteudo e limites | IO_AI canonico; geracao; simulacao sintetica limitada |
+| ai-classify | AVAILABLE | Campos v1 e categorias unicas | IO_AI canonico; classificacao; simulacao sintetica limitada |
+| ai-extract | AVAILABLE | Campos v1 e campos de extracao tipados | IO_AI canonico; extracao; simulacao sintetica limitada |
+| ai-summarize | AVAILABLE | Campos v1: credencial/revisao, modelo, conteudo e limites | IO_AI canonico; resumo; simulacao sintetica limitada |
 | delay | AVAILABLE | FlowCanvas: segundos | engine: prazo persistido; scheduler; simulação por tempo virtual |
 | subflow | AVAILABLE | SubflowEditor: nome e versão publicada, com paginação | snapshot imutável comum a validação, simulação, publicação e worker; retorno next |
 | handoff | AVAILABLE | HandoffEditor: catálogo da caixa e time ou agente | engine: HANDOFF_PENDING simulado; worker: confirmação remota |
@@ -28,9 +32,10 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 
 Os formulários simples acima são os existentes; o menu visual com adicionar/remover/reordenar opções faz parte de U3a. `end` encerra o bot, não resolve a conversa na central.
 
+Os quatro blocos de IA delimitada usam `aiConfigVersion: 1`, credencial e revisao fixadas, modelo, conteudo, destino e limites explicitos de tempo, tokens, bytes e custo. O motor emite `IO_AI` e aguarda um resultado; v1 possui saidas `success`, `error`, `timeout` e `unknown`. Sem o marcador, os grafos historicos preservam as portas `success`/`error`. A simulacao usa respostas sinteticas para o no exato em espera e nao comprova chamada a um provedor real. Homologacao do provedor e aprovacao da release continuam necessarias; `ai-agent` permanece indisponivel para criacao.
+
 | Tipos | Criação | Pendência |
 | --- | --- | --- |
-| ai-generate, ai-classify, ai-extract, ai-summarize | UNAVAILABLE | R7/U3b/U5: IA delimitada e simulação |
 | sql, code, ai-agent | UNAVAILABLE | Fora do escopo de criação Broker; compatibilidade histórica mantida |
 | media, tag, attribute, note, resolve | UNAVAILABLE | R3–R7/U3b: catálogo, executor, formulário e simulação pendentes |
 

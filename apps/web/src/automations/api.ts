@@ -1,7 +1,7 @@
 import { LocalAttendanceChannelsSchema, attendanceCatalogSchema, ChatwootStatusSchema, AutomationDefinitionV1Schema, AutomationPublishedVersionV1Schema, NodeDiagnosticSchema, legacyStringsToNodeDiagnostics, type AttendanceDiagnostic, type AutomationDefinitionV1, type AutomationGraphV1, type AutomationPublishedVersionV1 } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
 import {LocalAttendanceDirectorySchema} from '@jrc/contracts';
-import {AutomationSubflowCatalogPageSchema,HttpCredentialCatalogPageSchema} from '@jrc/contracts';
+import {AiCredentialCatalogPageSchema,AutomationSubflowCatalogPageSchema,HttpCredentialCatalogPageSchema} from '@jrc/contracts';
 
 export interface AutomationNodeCatalogItem {type:string;category:string;label:string;description:string;version?:number;availability?:'AVAILABLE'|'UNAVAILABLE';unavailableReason?:string|null}
 export async function validateAutomation(client: ApiClient, id: string) {
@@ -10,7 +10,7 @@ export async function validateAutomation(client: ApiClient, id: string) {
   if (!Array.isArray(result.errors) || !result.errors.every((item):item is string => typeof item === 'string')) throw new ApiClientError('Diagnósticos inválidos retornados pelo serviço.',502);
   return { valid: result.valid, diagnostics: legacyStringsToNodeDiagnostics(result.errors) };
 }
-export interface AutomationExecution {attendanceDiagnostic?:AttendanceDiagnostic;id:string;automationId:string;version:number;bindingId:string;channelId:string;conversationRef?:string|null;contactRef?:string|null;status:string;currentNodeId:string|null;correlationId:string;startedAt:string;updatedAt:string;completedAt:string|null;durationMs?:number;errorCode?:string|null;input?:unknown;state?:unknown;nodes?:Array<{id:string;nodeId:string;ordinal:number;attempt:number;durationMs:number|null;status:string;input:unknown;output:unknown;errorCode:string|null;startedAt:string;completedAt:string|null}>;outbox?:Array<{id:string;nodeId:string;ordinal:number;kind:string;handoffDestination?:'LOCAL'|'CENTRAL'|null;status:string;attempts:number;remoteReference:string|null;lastError:string|null;createdAt:string;updatedAt:string}>}
+export interface AutomationExecution {attendanceDiagnostic?:AttendanceDiagnostic;id:string;automationId:string;version:number;bindingId:string;channelId:string;conversationRef?:string|null;contactRef?:string|null;status:string;currentNodeId:string|null;correlationId:string;startedAt:string;updatedAt:string;completedAt:string|null;durationMs?:number;errorCode?:string|null;input?:unknown;state?:unknown;nodes?:Array<{id:string;nodeId:string;ordinal:number;attempt:number;durationMs:number|null;status:string;input:unknown;output:unknown;errorCode:string|null;startedAt:string;completedAt:string|null}>;outbox?:Array<{boundedAi?:boolean;aiUsage?:import('./AiEffectDetails.js').AiUsageInspection|null;id:string;nodeId:string;ordinal:number;kind:string;handoffDestination?:'LOCAL'|'CENTRAL'|null;status:string;attempts:number;remoteReference:string|null;lastError:string|null;createdAt:string;updatedAt:string}>}
 const parsed=<T>(schema:{safeParse(value:unknown):{success:true;data:T}|{success:false}},value:unknown,message:string):T=>{const result=schema.safeParse(value);if(!result.success)throw new ApiClientError(message,502);return result.data;};
 export async function listAutomationsPage(client:ApiClient,cursor?:string){
   const value=await client.request<{data:unknown[];nextCursor?:string|null}>(`/v1/automations${cursor?`?cursor=${encodeURIComponent(cursor)}`:''}`);
@@ -34,6 +34,11 @@ export async function getSubflowCatalogPage(client:ApiClient,organizationId:stri
  const page=parsed(AutomationSubflowCatalogPageSchema,await client.request(`/v1/automations/${encodeURIComponent(rootAutomationId)}/subflow-catalog?${query}`,{signal:signal??null}),'Catálogo de subfluxos inválido retornado pelo serviço.');
  if(page.scope.organizationId!==organizationId||page.scope.rootAutomationId!==rootAutomationId)throw new ApiClientError('O catálogo não corresponde à empresa e ao fluxo em edição.',409);
  return page;
+}
+export async function getAiCredentialCatalogPage(client:ApiClient,organizationId:string,rootAutomationId:string,cursor?:string,signal?:AbortSignal){
+ const query=new URLSearchParams({pageSize:'200'});if(cursor)query.set('cursor',cursor);
+ const page=parsed(AiCredentialCatalogPageSchema,await client.request('/v1/automations/'+encodeURIComponent(rootAutomationId)+'/ai-credentials?'+query,{signal:signal??null}),'Catálogo de IA inválido retornado pelo serviço.');
+ if(page.scope.organizationId!==organizationId||page.scope.rootAutomationId!==rootAutomationId)throw new ApiClientError('O catálogo não corresponde à empresa e ao fluxo em edição.',409);return page;
 }
 export async function getHttpCredentialCatalogPage(client:ApiClient,organizationId:string,rootAutomationId:string,cursor?:string,signal?:AbortSignal){
  const query=new URLSearchParams({pageSize:'200'});if(cursor)query.set('cursor',cursor);

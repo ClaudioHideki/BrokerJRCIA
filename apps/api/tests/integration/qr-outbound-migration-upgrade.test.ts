@@ -39,6 +39,7 @@ it('upgrades populated 0048 to 0049 without inventing provider IDs, preserving h
   try {
     const source = resolve('apps/api/drizzle/migrations');
     const journal = JSON.parse(await readFile(join(source, 'meta/_journal.json'), 'utf8')) as { entries: Array<{ idx: number; tag: string; when: number }> };
+    const expectedMigrationCount=journal.entries.length;
     const latest = journal.entries.find(entry => entry.tag === '0049_qr_outbound_observations')!;
     journal.entries = journal.entries.filter(entry => entry.idx < latest.idx);
     expect(journal.entries.at(-1)?.tag).toBe('0048_central_cutover');
@@ -96,9 +97,14 @@ it('upgrades populated 0048 to 0049 without inventing provider IDs, preserving h
     await withGlobalRoleLock(admin, () => runMigrations(db.connectionString));
     expect(await probeAsApp()).toBe(true);
     const ended = (await db.pool.query('SELECT clock_timestamp() AS now')).rows[0]!.now as Date;
-    expect(await snapshot()).toEqual(before);
+    const after=await snapshot();
+    // Additive migrations may add columns; every historical value and row must remain.
+    for(const table of Object.keys(before) as Array<keyof typeof before>)expect(after[table]).toHaveLength(before[table].length);
+    expect(after).toMatchObject(before);
+    expect(after.conversations.every(row=>row.recipient_kind==='INDIVIDUAL'&&row.group_jid===null)).toBe(true);
+    expect(after.messages.every(row=>row.provider_scope==='')).toBe(true);
     const newJournal = (await db.pool.query('SELECT id,hash,created_at FROM drizzle.__drizzle_migrations ORDER BY id')).rows;
-    expect(newJournal).toHaveLength(52); expect(newJournal.slice(0, 48)).toEqual(oldJournal);
+    expect(newJournal).toHaveLength(expectedMigrationCount); expect(newJournal.slice(0, 48)).toEqual(oldJournal);
     expect(newJournal[48]).toMatchObject({ hash: createHash('sha256').update(await readFile(join(source, `${latest.tag}.sql`), 'utf8')).digest('hex'), created_at: String(latest.when) });
 
     const attempts = (await db.pool.query('SELECT * FROM qr_dispatch_attempts')).rows;

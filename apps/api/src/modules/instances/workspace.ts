@@ -1,3 +1,4 @@
+import type {EvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
 import type { InstanceSettings, ProviderWorkspaceSnapshot, ProviderContext } from '@jrc/providers';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import type { Role } from '../../http/plugins/authorization.js';
@@ -8,6 +9,7 @@ export class WorkspaceError extends Error {
 }
 interface InstanceRow { id:string; name:string; status:string; provider:string; upstreamKey:string; organizationStatus:string; createdAt:Date; updatedAt:Date }
 interface Dependencies {
+  captureBinding?:EvolutionFleetRuntime['capture'];assertBinding?:EvolutionFleetRuntime['assert'];
   transact<T>(organizationId:string,operation:OrganizationTransaction<T>):Promise<T>;
   provider:{read(context:ProviderContext,key:string):Promise<ProviderWorkspaceSnapshot>;updateSettings(context:ProviderContext,key:string,settings:InstanceSettings):Promise<void>};
 }
@@ -35,9 +37,11 @@ export class InstanceWorkspaceService {
          FROM provider_operations WHERE organization_id=$1 AND instance_id=$2 ORDER BY updated_at DESC,id DESC LIMIT 30`,[actor.organizationId,id]);
       return {instance,operations:operations.rows};
     });
+    const engine=await this.deps.captureBinding?.(actor.organizationId,local.instance.upstreamKey);
     let snapshot:ProviderWorkspaceSnapshot={profile:{name:null,phone:null,state:null},counts:{contacts:null,chats:null,messages:null},settings:null};
     let providerAvailable=false;
     try {snapshot=await this.deps.provider.read(this.context(actor),local.instance.upstreamKey);providerAvailable=true;}catch{/* Return local data without leaking provider errors. */}
+    if(engine)await this.deps.transact(actor.organizationId,tx=>this.deps.assertBinding!(engine,tx));
     const {instance}=local;
     return {observedAt:new Date().toISOString(),providerAvailable,...snapshot,
       instance:{id:instance.id,name:instance.name,status:instance.status,createdAt:instance.createdAt.toISOString(),updatedAt:instance.updatedAt.toISOString()},
@@ -59,9 +63,10 @@ export class InstanceWorkspaceService {
       await this.audit(tx,actor,id,'ATTEMPTED');
       return row;
     });
+    const engine=await this.deps.captureBinding?.(actor.organizationId,instance.upstreamKey);
     try{await this.deps.provider.updateSettings(this.context(actor),instance.upstreamKey,settings);}
     catch{await this.deps.transact(actor.organizationId,tx=>this.audit(tx,actor,id,'UNKNOWN'));throw new WorkspaceError(502,'PROVIDER_SETTINGS_UNCONFIRMED');}
-    await this.deps.transact(actor.organizationId,tx=>this.audit(tx,actor,id,'SUCCESS'));
+    await this.deps.transact(actor.organizationId,async tx=>{if(engine)await this.deps.assertBinding!(engine,tx,true);await this.audit(tx,actor,id,'SUCCESS');});
     return {ok:true as const};
   }
 }

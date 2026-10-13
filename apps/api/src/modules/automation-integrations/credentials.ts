@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import { createIntegrationSecrets } from '../integrations/secrets.js';
 import type { RateLimitStore } from '../auth/rate-limit/store.js';
-import {HttpCredentialPolicySchema} from '@jrc/contracts';
+import {AiCredentialPolicySchema,type AiModelPolicy,HttpCredentialPolicySchema} from '@jrc/contracts';
 
 export const CredentialTypeSchema=z.enum(['HTTP_HEADER','BEARER','BASIC','POSTGRES','MYSQL','AI_PROVIDER','GENERIC_JSON']);
 export type CredentialType=z.infer<typeof CredentialTypeSchema>;
@@ -13,6 +13,7 @@ export interface CredentialRepository {
  insert(tx:TenantTransaction,row:{org:string;id:string;name:string;type:CredentialType;encrypted:string;keyVersion:number;fingerprint:string;metadata:Record<string,unknown>}):Promise<CredentialRow>;
  rotate(tx:TenantTransaction,row:{org:string;id:string;revision:number;encrypted:string;keyVersion:number;fingerprint:string}):Promise<CredentialRow|null>;
  revoke(tx:TenantTransaction,org:string,id:string,revision:number):Promise<CredentialRow|null>;tested(tx:TenantTransaction,org:string,id:string):Promise<CredentialRow>;
+ aiPolicy?(tx:TenantTransaction,input:{org:string;id:string;revision:number;policy:{models:AiModelPolicy[];monthlyCostMicros:number}}):Promise<CredentialRow|null>;
  policy?(tx:TenantTransaction,input:{org:string;id:string;revision:number;allowedOrigins:string[]}):Promise<CredentialRow|null>;
 }
 const columns=`id,organization_id AS "organizationId",name,type,encrypted_secret AS "encryptedSecret",key_version AS "keyVersion",fingerprint,metadata,status,revision,last_tested_at AS "lastTestedAt",created_at AS "createdAt",updated_at AS "updatedAt"`;
@@ -23,6 +24,7 @@ export function createPostgresCredentialRepository():CredentialRepository{return
  async rotate(tx,row){return (await tx.query<CredentialRow>(`update automation_credentials set encrypted_secret=$4,key_version=$5,fingerprint=$6,revision=revision+1,status='ACTIVE',updated_at=now() where organization_id=$1 and id=$2 and revision=$3 and status='ACTIVE' returning ${columns}`,[row.org,row.id,row.revision,row.encrypted,row.keyVersion,row.fingerprint])).rows[0]??null;},
  async revoke(tx,org,id,revision){return (await tx.query<CredentialRow>(`update automation_credentials set encrypted_secret=null,status='REVOKED',revision=revision+1,updated_at=now() where organization_id=$1 and id=$2 and revision=$3 and status='ACTIVE' returning ${columns}`,[org,id,revision])).rows[0]??null;},
  async tested(tx,org,id){return (await tx.query<CredentialRow>(`update automation_credentials set last_tested_at=now(),updated_at=now() where organization_id=$1 and id=$2 returning ${columns}`,[org,id])).rows[0]!;},
+ async aiPolicy(tx,input){return (await tx.query<CredentialRow>(`update automation_credentials set metadata=jsonb_build_object('aiPolicy',$4::jsonb),revision=revision+1,updated_at=now() where organization_id=$1 and id=$2 and revision=$3 and status='ACTIVE' and type='AI_PROVIDER' returning ${columns}`,[input.org,input.id,input.revision,JSON.stringify(input.policy)])).rows[0]??null;},
  async policy(tx,input){return (await tx.query<CredentialRow>(`update automation_credentials set metadata=metadata||jsonb_build_object('allowedOrigins',$4::jsonb),revision=revision+1,updated_at=now() where organization_id=$1 and id=$2 and revision=$3 and status='ACTIVE' and type in ('HTTP_HEADER','BEARER','BASIC') returning ${columns}`,[input.org,input.id,input.revision,JSON.stringify(input.allowedOrigins)])).rows[0]??null;},
 };}
 
@@ -35,16 +37,21 @@ export function createCredentialVault(serialized:string):CredentialVault{
   open(row){if(row.status!=='ACTIVE'||!row.encryptedSecret)throw new Error('CREDENTIAL_REVOKED');const vault=vaults.get(row.keyVersion);if(!vault)throw new Error('CREDENTIAL_KEY_VERSION_UNAVAILABLE');return z.record(z.string(),z.unknown()).parse(JSON.parse(vault.decrypt(context(row.organizationId,row.type,row.id,row.keyVersion),row.encryptedSecret)));}};
 }
 
+const aiSecretSchema=z.strictObject({baseUrl:z.string().url().refine(value=>{try{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password&&!url.hash&&!url.search;}catch{return false;}},'Use um endpoint HTTPS sem credenciais.'),apiKey:z.string().min(1).max(8192),provider:z.string().max(100).optional()});
 export class CredentialError extends Error{constructor(readonly code:string,readonly statusCode=422){super(code);}}
 export interface CredentialTester {test(type:CredentialType,secret:Record<string,unknown>,metadata:Record<string,unknown>):Promise<void>}
-const view=(row:CredentialRow)=>({schemaVersion:1 as const,id:row.id,organizationId:row.organizationId,name:row.name,type:row.type,status:row.status,revision:row.revision,keyVersion:row.keyVersion,fingerprint:row.fingerprint.slice(0,12),metadata:row.metadata,lastTestedAt:row.lastTestedAt?.toISOString()??null,createdAt:row.createdAt.toISOString(),updatedAt:row.updatedAt.toISOString()});
+const view=(row:CredentialRow)=>({schemaVersion:1 as const,id:row.id,organizationId:row.organizationId,name:row.name,type:row.type,status:row.status,revision:row.revision,keyVersion:row.keyVersion,fingerprint:row.fingerprint.slice(0,12),metadata:row.type==='AI_PROVIDER'?{aiPolicy:AiCredentialPolicySchema.safeParse(row.metadata.aiPolicy).success?AiCredentialPolicySchema.parse(row.metadata.aiPolicy):null}:row.metadata,lastTestedAt:row.lastTestedAt?.toISOString()??null,createdAt:row.createdAt.toISOString(),updatedAt:row.updatedAt.toISOString()});
 export function createCredentialService(options:{transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;vault:CredentialVault;repository?:CredentialRepository;tester?:CredentialTester;testBudget?:{store:RateLimitStore;secret:string}}){
  const activeTests=new Set<string>();
  const repository=options.repository??createPostgresCredentialRepository();const get=async(tx:TenantTransaction,org:string,id:string,lock=false)=>{const row=await repository.get(tx,org,id,lock);if(!row)throw new CredentialError('CREDENTIAL_NOT_FOUND',404);return row;};
  return {list:(org:string)=>options.transact(org,async tx=>({data:(await repository.list(tx,org)).map(view)})),get:(org:string,id:string)=>options.transact(org,async tx=>view(await get(tx,org,id))),
-  create:(org:string,input:{name:string;type:CredentialType;secret:Record<string,unknown>;metadata:Record<string,unknown>})=>options.transact(org,async tx=>{const id=randomUUID(),sealed=options.vault.seal(org,input.type,id,input.secret);return view(await repository.insert(tx,{org,id,name:input.name.trim(),type:input.type,...sealed,metadata:input.metadata}));}),
-  rotate:(org:string,id:string,input:{revision:number;secret:Record<string,unknown>})=>options.transact(org,async tx=>{const current=await get(tx,org,id,true),sealed=options.vault.seal(org,current.type,id,input.secret),row=await repository.rotate(tx,{org,id,revision:input.revision,...sealed});if(!row)throw new CredentialError('CREDENTIAL_CHANGED',409);return view(row);}),
+  create:(org:string,input:{name:string;type:CredentialType;secret:Record<string,unknown>;metadata:Record<string,unknown>})=>options.transact(org,async tx=>{const id=randomUUID();if(input.type==='AI_PROVIDER'){input={...input,secret:aiSecretSchema.parse(input.secret),metadata:{aiPolicy:AiCredentialPolicySchema.parse(input.metadata.aiPolicy)}};}const sealed=options.vault.seal(org,input.type,id,input.secret);return view(await repository.insert(tx,{org,id,name:input.name.trim(),type:input.type,...sealed,metadata:input.metadata}));}),
+  rotate:(org:string,id:string,input:{revision:number;secret:Record<string,unknown>})=>options.transact(org,async tx=>{const current=await get(tx,org,id,true),sealed=options.vault.seal(org,current.type,id,current.type==='AI_PROVIDER'?aiSecretSchema.parse(input.secret):input.secret),row=await repository.rotate(tx,{org,id,revision:input.revision,...sealed});if(!row)throw new CredentialError('CREDENTIAL_CHANGED',409);return view(row);}),
   revoke:(org:string,id:string,revision:number)=>options.transact(org,async tx=>{await get(tx,org,id,true);const row=await repository.revoke(tx,org,id,revision);if(!row)throw new CredentialError('CREDENTIAL_CHANGED',409);return view(row);}),
+  updateAiPolicy:async(org:string,id:string,input:{revision:number;models:AiModelPolicy[];monthlyCostMicros:number})=>{
+   const policy=AiCredentialPolicySchema.parse({models:input.models,monthlyCostMicros:input.monthlyCostMicros});
+   return options.transact(org,async tx=>{const current=await get(tx,org,id,true);if(current.status!=='ACTIVE'||current.revision!==input.revision)throw new CredentialError('CREDENTIAL_CHANGED',409);if(current.type!=='AI_PROVIDER')throw new CredentialError('CREDENTIAL_AI_TYPE_REQUIRED',422);if(!repository.aiPolicy)throw new CredentialError('CREDENTIAL_POLICY_UNAVAILABLE',503);const row=await repository.aiPolicy(tx,{org,id,revision:input.revision,policy});if(!row)throw new CredentialError('CREDENTIAL_CHANGED',409);return view(row);});
+  },
   updateHttpPolicy:async(org:string,id:string,input:{revision:number;allowedOrigins:string[]})=>{
    const policy=HttpCredentialPolicySchema.parse({allowedOrigins:input.allowedOrigins});
    return options.transact(org,async tx=>{const current=await get(tx,org,id,true);

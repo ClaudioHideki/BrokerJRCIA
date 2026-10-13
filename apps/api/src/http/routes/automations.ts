@@ -42,6 +42,9 @@ export async function registerAutomationRoutes(app:FastifyInstance,options:Autom
   }
   api.post('/v1/automations',{preHandler:write,schema:{headers:IdempotencyHeadersSchema,querystring:empty,body:draft}},async(request,reply)=>reply.code(201).send(await options.service.create(org(request),request.body,request.headers['idempotency-key'])));
   api.get('/v1/automations/:id',{preHandler:read,schema:{params,querystring:empty}},request=>options.service.get(org(request),request.params.id));
+  api.get('/v1/automations/:id/ai-credentials',{preHandler:read,schema:{params,querystring:z.strictObject({pageSize:z.coerce.number().int().min(1).max(200).optional(),cursor:z.string().regex(/^[A-Za-z0-9_-]{1,256}$/u).optional()})}},request=>options.service.aiCredentialCatalog(org(request),request.params.id,{
+    ...(request.query.pageSize===undefined?{}:{pageSize:request.query.pageSize}),...(request.query.cursor===undefined?{}:{cursor:request.query.cursor}),
+  }));
   api.get('/v1/automations/:id/http-credentials',{preHandler:read,schema:{params,querystring:z.strictObject({pageSize:z.coerce.number().int().min(1).max(200).optional(),cursor:z.string().regex(/^[A-Za-z0-9_-]{1,256}$/u).optional()})}},request=>options.service.httpCredentialCatalog(org(request),request.params.id,{
     ...(request.query.pageSize===undefined?{}:{pageSize:request.query.pageSize}),...(request.query.cursor===undefined?{}:{cursor:request.query.cursor}),
   }));
