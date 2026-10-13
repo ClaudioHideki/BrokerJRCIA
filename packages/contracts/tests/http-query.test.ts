@@ -33,6 +33,6 @@ describe('delimited HTTP query contract',()=>{
   expect(definition.schema.safeParse(config).success).toBe(true);
   expect(definition.schema.safeParse({...config,method:'POST'}).success).toBe(false);
   expect(definition.schema.safeParse({method:'POST',url:'https://api.example.test/action',credentialId:id,target:'legacy',body:'original'}).success).toBe(true);
-  expect(definition.availability).toBe('UNAVAILABLE');
+  expect(definition.availability).toBe('AVAILABLE');
  });
 });

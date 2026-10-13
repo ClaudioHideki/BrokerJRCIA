@@ -13,6 +13,7 @@ Revisão independente verificou schema, catálogo paginado por organização/rai
 - Nove casos focais de OpenAPI/inventário passaram na composição canônica.
 - Typecheck terminou com código 0; o bundle web integrado foi gerado. A primeira invocação do Vite usou uma opção CLI inválida e não executou build; o comando corrigido terminou com código 0.
 - Auditoria canônica regenerada, bundle sem achados e gate sem CRITICAL/HIGH abertos.
+- O primeiro CI da main passou 2.647 casos e falhou somente na expectativa antiga UNAVAILABLE de um teste do candidato. A asserção foi alinhada à habilitação revisada; isso não altera o runtime.
 
 Não houve teste de concorrência PostgreSQL desse CAS; a intercalação de revogação/publicação foi determinística em unidade. Os testes das rotas não substituem os cenários reais da central.
 
