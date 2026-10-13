@@ -72,6 +72,7 @@ const EXPECTED_OPERATIONS = [
   'DELETE /v1/credentials/{id}', 'POST /v1/credentials/{id}/test',
   'GET /v1/webhooks', 'POST /v1/webhooks', 'DELETE /v1/webhooks/{id}', 'POST /hooks/{token}',
   'GET /v1/automations/status', 'GET /v1/automations', 'POST /v1/automations', 'GET /v1/automations/{id}',
+  'GET /v1/automations/{id}/subflow-catalog',
   'GET /v1/automations/migrations/legacy', 'POST /v1/automations/migrations/legacy',
   'POST /v1/automations/migrations/legacy/{id}/cutover', 'POST /v1/automations/migrations/legacy/{id}/rollback',
   'PUT /v1/automations/{id}', 'POST /v1/automations/{id}/validate', 'POST /v1/automations/{id}/simulate',

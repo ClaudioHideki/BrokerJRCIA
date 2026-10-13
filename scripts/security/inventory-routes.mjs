@@ -102,6 +102,8 @@ const ROUTE_POLICIES = Object.freeze({
     'NO_EXTERNAL_EFFECT','CREDENTIALS_STRIPPED_NO_PERSISTENCE','CURRENT_ORGANIZATION_IMPORT_PREVIEW_ONLY'),
   'GET /v1/automation-nodes': policy('apps/api/src/http/routes/automations.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_MEMBER',
     true, 'READ_ONLY', 'NONE', 'STATIC_EXECUTABLE_NODE_CATALOG'),
+  'GET /v1/automations/{id}/subflow-catalog': policy('apps/api/src/http/routes/automations.ts', 'JWT_CURRENT_MEMBERSHIP', 'CURRENT_MEMBER',
+    true, 'READ_ONLY_ID_VERSION_CURSOR', 'NO_STORE_METADATA_ONLY', 'RLS_CURRENT_ORGANIZATION_AUTHORIZED_ROOT_PUBLISHED_VERSION_METADATA'),
   'GET /v1/integrations/chatwoot/connections/{id}/attendance-catalog': policy('apps/api/src/http/routes/integrations.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_CHANNEL_ACCOUNT_INBOX_APPROVED_DESTINATION_CREDENTIAL_REVISION_RECHECK'),
   ...Object.fromEntries([
     'GET /v1/automations/status', 'GET /v1/automations', 'GET /v1/automations/{id}',

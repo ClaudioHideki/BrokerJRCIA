@@ -21,16 +21,24 @@ describe('automation runtime v2 engine',()=>{
     const common={configVersion:2,target:'result',errorVariable:'failure'};
     Object.assign(configs,{'data-set':{...common,valueSource:{kind:'LITERAL',value:{active:false}}},'data-rename':{...common,source:'message'},'data-pick':{...common,source:'message',keys:['name']},'data-merge':{...common,sources:['message','second']},'data-map':{...common,source:'message',field:'name'},'data-filter':{...common,source:'message',field:'name',operator:'equals',valueSource:{kind:'LITERAL',value:'A'}},'json-parse':{...common,source:'message'},'json-stringify':{...common,source:'message'},expression:{...common,source:'message',operation:'UPPER'}});
     configs.schedule={timezone:'UTC',weekly:[{day:1,start:'09:00',end:'18:00'}]};
+    const childId='33333333-3333-4333-8333-333333333333';
+    configs.subflow={automationId:childId,version:7};
     const current=node('current',type,configs[type]??{});
     const nodes=type==='start'?[current,node('end','end')]:['end','handoff'].includes(type)?[node('start','start'),current]:[node('start','start'),current,node('end','end')];
     const edges=type==='start'?[]:[{id:'s',source:'start',target:'current',port:'next'}];
     edges.push(...automationNodePorts(current).map(port=>({id:port,source:'current',target:'end',port})));
     const graph={nodes,edges};expect(validateAutomationGraph(graph)).toEqual([]);
-    const result=await executeAutomation({automationId:'11111111-1111-4111-8111-111111111111',version:1,graph,runtimeStateVersion:2},{text:'oi',eventType:'MESSAGE',now:new Date()},async()=>{throw new Error('Unexpected external dependency');});
+    let resolved=0;
+    const result=await executeAutomation({automationId:'11111111-1111-4111-8111-111111111111',version:1,graph,runtimeStateVersion:2},{text:'oi',eventType:'MESSAGE',now:new Date()},async(automationId,version)=>{
+      expect(type).toBe('subflow');expect(automationId).toBe(childId);expect(version).toBe(7);resolved++;
+      return {automationId,version,runtimeStateVersion:2,graph:{nodes:[node('child-start','start'),node('child-message','message',{text:'Filho publicado'}),node('child-end','end')],edges:[{id:'child-next',source:'child-start',target:'child-message',port:'next'},{id:'child-finish',source:'child-message',target:'child-end',port:'next'}]}};
+    });
+    expect(resolved).toBe(type==='subflow'?1:0);
     expect(result.effects.every(effect=>effect.kind==='SEND_TEXT'||effect.kind==='HANDOFF')).toBe(true);
     expect(['WAITING','COMPLETED','HANDOFF']).toContain(result.status);
     if(type==='handoff')expect(result.effects).toEqual([{nodeId:'current',ordinal:0,kind:'HANDOFF',payload:handoffConfig}]);
     if(type==='message')expect(result.effects[0]?.payload.text).toBe('Olá');
+    if(type==='subflow')expect(result.effects).toEqual([expect.objectContaining({kind:'SEND_TEXT',payload:{text:'Filho publicado'}})]);
     if(type==='variable')expect(result.state.variables.name).toBe('Ana');
     if(type==='input'||type==='menu')expect(result.wait?.kind).toBe('EVENT');
   });

@@ -17,6 +17,8 @@ O candidato foi congelado contra a main `42e58901f0c6d1745a26d6b90d57fc1674c769f
 
 A integração habilita `subflow` na paleta e alinha sua matriz documental. A compilação e o CI da revisão publicada verificam o código consolidado. As suítes locais já aprovadas não são repetidas para produzir uma contagem maior.
 
+O primeiro CI da main `3673d59171d6531f5e03c57c7e08dea0f632fab7` falhou antes de gerar imagens. Quatro ajustes de integração foram identificados: registro explícito da nova rota no inventário de segurança/OpenAPI, expectativa antiga de subflow indisponível, fixture do motor sem a versão filha resolvida e ausência de ambiente jsdom no novo teste do editor. A correção preserva a implementação e acrescenta uma asserção para a autorização/metadados da rota. Os três arquivos de contratos/motor/editor passaram 46 testes; os três critérios afetados de OpenAPI/inventário também passaram. As suítes aprovadas do candidato não foram repetidas. A publicação das imagens depende do CI da revisão corrigida.
+
 ## Instalação e limites
 
 Esta entrega não acrescenta migration, Compose ou ENV. A baseline continua 0052. Uma instalação ainda na 0051 precisa aplicar primeiro a migration de mídia privada prevista na release C2; trocar somente o container web não atualiza API e workers.

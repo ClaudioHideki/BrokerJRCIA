@@ -38,6 +38,17 @@ function openApiOperations(openapi) {
 }
 
 describe('dados reproduzíveis da auditoria de segurança', () => {
+  it('classifica o catálogo de subfluxos como metadados paginados da empresa e da raiz autorizada', async () => {
+    const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
+    const inventory = await buildRouteInventory({ rootDirectory: ROOT, openapi });
+    expect(inventory.find(route => route.method === 'GET' && route.path === '/v1/automations/{id}/subflow-catalog')).toMatchObject({
+      authentication: 'JWT_CURRENT_MEMBERSHIP', permission: 'CURRENT_MEMBER', tenantRls: true,
+      idempotency: 'READ_ONLY_ID_VERSION_CURSOR', challengeExposure: 'NO_STORE_METADATA_ONLY',
+      ownershipCheck: 'RLS_CURRENT_ORGANIZATION_AUTHORIZED_ROOT_PUBLISHED_VERSION_METADATA',
+      requestSchemas: ['path:id', 'query:cursor', 'query:pageSize'],
+      handlerFile: 'apps/api/src/http/routes/automations.ts',
+    });
+  });
   it('classifica a leitura G2 como configuração opaca de caixa QR com autorização atual', async () => {
     const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
     const inventory = await buildRouteInventory({ rootDirectory: ROOT, openapi });
