@@ -20,6 +20,7 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 | json-stringify | AVAILABLE | DataNodeEditor: fonte, destino, erro e campos tipados | engine/simulação: transformação local tipada; success/error |
 | expression | AVAILABLE | DataNodeEditor: fonte, destino, erro e campos tipados | engine/simulação: transformação local tipada; success/error |
 | delay | AVAILABLE | FlowCanvas: segundos | engine: prazo persistido; scheduler; simulação por tempo virtual |
+| subflow | AVAILABLE | SubflowEditor: nome e versão publicada, com paginação | snapshot imutável comum a validação, simulação, publicação e worker; retorno next |
 | handoff | AVAILABLE | HandoffEditor: catálogo da caixa e time ou agente | engine: HANDOFF_PENDING simulado; worker: confirmação remota |
 | end | AVAILABLE | FlowCanvas: nome | engine: fim da execução do bot |
 | schedule | AVAILABLE | ScheduleEditor: fuso, semana e exceções por data | engine: open/closed pelo instante fornecido; simulação com relógio virtual |
@@ -28,7 +29,6 @@ Os formulários simples acima são os existentes; o menu visual com adicionar/re
 
 | Tipos | Criação | Pendência |
 | --- | --- | --- |
-| subflow | UNAVAILABLE | R6/U3b/U5: seleção e simulação das dependências publicadas |
 | http | UNAVAILABLE | R7/U3b/U5: consulta delimitada, credenciais e simulação |
 | ai-generate, ai-classify, ai-extract, ai-summarize | UNAVAILABLE | R7/U3b/U5: IA delimitada e simulação |
 | sql, code, ai-agent | UNAVAILABLE | Fora do escopo de criação Broker; compatibilidade histórica mantida |
@@ -41,3 +41,7 @@ Evidências automatizadas: `packages/contracts/tests/automation-node-definitions
 A configuração nativa de `handoff` é explicitamente versionada (`handoffVersion: 1`). Requer uma caixa do tenant e um único destino: time **ou** agente. A simulação não faz chamada externa nem comprova transferência. Novas publicações e ativações revalidam catálogo, credencial, vínculo e política da caixa. Grafos históricos sem destino permanecem legíveis; sua publicação nova exige configurar o destino e sua execução antiga nunca produz confirmação remota fictícia. Consulte [limites e homologação do incremento nativo](native-handoff.md).
 
 Os novos blocos de dados gravam `configVersion: 2`, com literal JSON ou variável existente, limites de 64 KiB por valor e saídas success/error. Erro preserva o destino e grava somente um código seguro; caminhos de campos não são confundidos com nomes planos de variáveis. Sem marker, as publicações históricas mantêm parser, coerção e porta next. O editor preserva valores importados além de oito níveis/64 campos por nível; o contrato continua limitado a 64 níveis e 64 KiB. Não há rede, SQL, JavaScript ou IA nesses blocos.
+
+O corte P3 de subfluxos usa catálogo paginado de metadados por empresa e automação raiz, versões JSON publicadas e referências exatas, sem assumir versão 1. Validação, simulação e execução de raízes com política 1 usam o mesmo snapshot de dependências no motor canônico; o snapshot não consulta rede e reusa grafos imutáveis. Novas publicações recebem pelo servidor `dependencyPolicyVersion: 1` no bloco start, dentro do checksum, com até oito chamadas simultâneas, 32 versões únicas incluindo a raiz e 2 MiB agregados em UTF-8. O campo é interno e não aparece no formulário comum. A publicação revalida dependências dentro da transação final; filhas arquivadas não podem entrar em publicação nova.
+
+Raízes históricas sem esse marcador conservam seu grafo, checksum e referências fixadas, inclusive filhas arquivadas. A política da raiz permanece para toda a pilha e após espera/reinício, independentemente da política de uma filha. Entradas seguem a semântica atual do runtime JSON; pai e filha compartilham variáveis, e o retorno usa a porta next existente. A criação de subflow foi habilitada após revisão independente e testes do corte, inclusive persistência PostgreSQL. A release deve passar no CI da main antes da instalação; a integração delegada por caixa na central tem seu próprio escopo de autorização.

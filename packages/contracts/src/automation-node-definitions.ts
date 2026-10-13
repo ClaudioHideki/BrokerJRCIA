@@ -55,7 +55,7 @@ export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = 
     ({ 'ai-generate': 'IA: gerar', 'ai-classify': 'IA: classificar', 'ai-extract': 'IA: extrair', 'ai-summarize': 'IA: resumir', 'ai-agent': 'Agente de IA' } as Record<string, string>)[type]!, 'AI',
     config({ target: safeKey, credentialId }), io, type === 'ai-agent' ? 'agente genérico fora do escopo de criação Broker' : 'R7 e U3b/U5 (IA delimitada e simulação)')),
   define('delay', 'Aguardar', 'LOGIC', config({ seconds: z.coerce.number().int().min(1).max(604800) }), next),
-  define('subflow', 'Subflow versionado', 'LOGIC', config({ automationId: credentialId, version: z.coerce.number().int().positive(), timeoutMs: z.preprocess(input => input ?? 10000, z.coerce.number().int().min(100).max(30000)).optional() }), next, 'R6/U3b/U5 (seletor e simulação de dependências)'),
+  define('subflow', 'Subflow versionado', 'LOGIC', config({ automationId: credentialId, version: z.coerce.number().int().positive(), timeoutMs: z.preprocess(input => input ?? 10000, z.coerce.number().int().min(100).max(30000)).optional() }), next),
   define('handoff', 'Atendimento humano', 'HUMAN', CompatibleAutomationHandoffConfigSchema, terminal),
   define('end', 'Encerrar', 'LOGIC', config(), terminal),
   define('media', 'Enviar mídia', 'CONVERSATION', config({ url: z.url(), mediaType: z.enum(['image', 'audio', 'video', 'document']) }), io, 'R6/U3b (mídia por capacidade)', false),

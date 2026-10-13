@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AUTOMATION_ORIGIN, AutomationGraphV1Schema, AutomationHandoffConfigSchema, legacyStringsToNodeDiagnostics, nodeDiagnosticsToStrings, type NodeDiagnostic, type AutomationGraphV1 } from '@jrc/contracts';
+import { AUTOMATION_ORIGIN, AutomationGraphV1Schema, AutomationHandoffConfigSchema, AutomationSubflowCatalogPageSchema, nodeDiagnosticsToStrings, publishedDependencyPolicy, type AutomationGraphV1 } from '@jrc/contracts';
 import { z } from 'zod';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import { executeAutomation, validateAutomationGraph } from './engine.js';
@@ -14,14 +14,10 @@ import { lockAttendanceChannel } from '../attendance/repository.js';
 import type { HandoffReadiness, PreparedHandoffReadiness } from '../attendance/handoff-readiness.js';
 import { readAttendanceDiagnostic } from '../attendance/diagnostics.js';
 import { unknownOutboxDiagnostic } from './outbox-diagnostics.js';
+import {AutomationError} from './errors.js';
+import {prepareSubflowSnapshot,type SubflowSnapshot} from './subflow-dependencies.js';
 
-export class AutomationError extends Error {
-  readonly details: NodeDiagnostic[];
-  constructor(readonly code:string, readonly statusCode=422, details: readonly NodeDiagnostic[] | readonly string[] = []) {
-    super(code);
-    this.details = details.flatMap(item => typeof item === 'string' ? legacyStringsToNodeDiagnostics([item]) : [item]);
-  }
-}
+export {AutomationError} from './errors.js';
 export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean;runtimeReady?(org:string):Promise<boolean>;handoffReadiness?:HandoffReadiness}
 export async function requireAutomationDraftAccess(tx:TenantTransaction,org:string){
  const access=await readAutomationAccess(tx,org);
@@ -50,6 +46,12 @@ const readAutomationCursor=(value:string):DefinitionPageCursor=>{
   catch{throw new AutomationError('AUTOMATION_CURSOR_INVALID',400);}
 };
 const writeAutomationCursor=(row:{cursorUpdatedAt:string;id:string})=>Buffer.from(JSON.stringify({updatedAt:row.cursorUpdatedAt,id:row.id})).toString('base64url');
+const subflowCursorSchema=z.strictObject({automationId:z.uuid(),version:z.number().int().positive()});
+const readSubflowCursor=(value:string)=>{
+  if(!/^[A-Za-z0-9_-]{1,256}$/u.test(value))throw new AutomationError('AUTOMATION_SUBFLOW_CURSOR_INVALID',400);
+  try{return subflowCursorSchema.parse(JSON.parse(Buffer.from(value,'base64url').toString('utf8')));}
+  catch{throw new AutomationError('AUTOMATION_SUBFLOW_CURSOR_INVALID',400);}
+};
 
 export function createAutomationService(options:AutomationServiceOptions){
   const repository=options.repository??createPostgresAutomationRepository(),messaging=options.messaging??createPostgresMessagingRepository(),enabled=options.enabled??true;
@@ -58,21 +60,10 @@ export function createAutomationService(options:AutomationServiceOptions){
     const row=await repository.getDefinition(tx,org,id,lock);if(!row)throw new AutomationError('AUTOMATION_NOT_FOUND',404);return row;};
   const resolveVersion=async(tx:TenantTransaction,org:string,id:string,number:number):Promise<PublishedAutomation>=>{
     const row=await repository.getVersion(tx,org,id,number);if(!row)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return {automationId:id,version:number,graph:row.graph,runtimeStateVersion:row.runtimeStateVersion??1};};
-  const validateDependencies=async(tx:TenantTransaction,org:string,rootId:string,graph:AutomationGraphV1,requiredRuntimeVersion?:1|2)=>{
-    const active=new Set<string>([rootId]);
-    const visit=async(current:AutomationGraphV1,rootCaller?:AutomationGraphV1['nodes'][number],dependencyPath:string[]=[])=>{for(const node of current.nodes.filter(node=>node.type==='subflow')){
-      const id=String(node.data.automationId),v=Number(node.data.version),key=`${id}:${v}`;
-      // Diagnostics target the graph being edited, never an ID scoped to a dependency.
-      const caller=rootCaller??node,context=rootCaller?`${caller.label}: dependência ${dependencyPath.join(' → ')}; bloco ${node.label}`:node.label;
-      if(active.has(id))throw new AutomationError('AUTOMATION_SUBFLOW_RECURSION',422,[{nodeId:caller.id,field:'data.automationId',code:'SUBFLOW_RECURSION',message:`${context}: ciclo detectado no subfluxo (${key}).`}]);
-      active.add(id);const child=await repository.getVersion(tx,org,id,v);if(!child)throw new AutomationError('AUTOMATION_SUBFLOW_VERSION_NOT_FOUND',422,[{nodeId:caller.id,field:'data.version',code:'SUBFLOW_VERSION_NOT_FOUND',message:`${context}: versão publicada indisponível (${key}).`}]);
-      if(requiredRuntimeVersion!==undefined&&(child.runtimeStateVersion??1)!==requiredRuntimeVersion)throw new AutomationError('AUTOMATION_SUBFLOW_RUNTIME_VERSION_MISMATCH',422,[{nodeId:caller.id,field:'data.version',code:'SUBFLOW_RUNTIME_VERSION_MISMATCH',message:`${context}: esta versão usa dados textuais antigos. Revise e publique uma versão com dados JSON antes de vinculá-la (${key}).`}]);
-      await visit(child.graph,caller,[...dependencyPath,key]);active.delete(id);
-    }};await visit(graph);
-  };
+  const validateDependencies=(tx:TenantTransaction,org:string,rootId:string,graph:AutomationGraphV1)=>prepareSubflowSnapshot(tx,org,{automationId:rootId,version:1,graph,runtimeStateVersion:2},repository,'NEW');
   // Remote checks run before the committing transaction. Published dependencies
   // are immutable; draft revision and local destination snapshots are checked again.
-  const prepareHandoffs=async(org:string,graph:AutomationGraphV1,channelId?:string):Promise<PreparedHandoffReadiness>=>{
+  const prepareHandoffs=async(org:string,graph:AutomationGraphV1,channelId?:string,dependencies?:SubflowSnapshot):Promise<PreparedHandoffReadiness>=>{
     const checks:PreparedHandoffReadiness[]=[],seen=new Set<string>();
     const visit=async(current:AutomationGraphV1)=>{
       if(!AutomationGraphV1Schema.safeParse(current).success)throw new AutomationError('AUTOMATION_PUBLISHED_GRAPH_INVALID',409);
@@ -89,7 +80,7 @@ export function createAutomationService(options:AutomationServiceOptions){
       for(const node of current.nodes.filter(item=>item.type==='subflow')){
         const id=String(node.data.automationId),v=Number(node.data.version),key=`${id}:${v}`;
         if(seen.has(key))continue;seen.add(key);
-        const child=await options.transact(org,tx=>repository.getVersion(tx,org,id,v));
+        const child=dependencies?await dependencies.resolve(id,v):await options.transact(org,tx=>repository.getVersion(tx,org,id,v));
         if(!child)throw new AutomationError('AUTOMATION_SUBFLOW_VERSION_NOT_FOUND',422);
         await visit(child.graph);
       }
@@ -98,6 +89,18 @@ export function createAutomationService(options:AutomationServiceOptions){
   };
   return {
     status:async(org:string,role='OWNER')=>{const access=await options.transact(org,tx=>readAutomationAccess(tx,org));let ready=true;if(enabled&&options.runtimeReady)try{ready=await options.runtimeReady(org);}catch{ready=false;}return automationAvailability(access,enabled,role,ready);},
+    subflowCatalog:async(org:string,id:string,input:{pageSize?:number;cursor?:string}={})=>{
+      const pageSize=input.pageSize??200;if(!Number.isInteger(pageSize)||pageSize<1||pageSize>200)throw new AutomationError('AUTOMATION_SUBFLOW_PAGE_SIZE_INVALID',400);
+      const cursor=input.cursor?readSubflowCursor(input.cursor):undefined;
+      return options.transact(org,async tx=>{
+        await requireAutomationDraftAccess(tx,org);const root=await getDefinition(tx,org,id);if(root.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);
+        const page=await repository.listSubflowVersions(tx,org,id,{pageSize,...(cursor?{cursor}:{})}),last=page.rows.at(-1);
+        const result=AutomationSubflowCatalogPageSchema.safeParse({schemaVersion:1,scope:{organizationId:org,rootAutomationId:id},data:page.rows,
+          nextCursor:page.hasMore&&last?Buffer.from(JSON.stringify({automationId:last.automationId,version:last.version})).toString('base64url'):null});
+        if(!result.success||page.hasMore&&!last)throw new AutomationError('AUTOMATION_SUBFLOW_CATALOG_INVALID',503);
+        return result.data;
+      });
+    },
     list:(org:string,input:{pageSize?:number;cursor?:string}={})=>{const pageSize=input.pageSize??200,cursor=input.cursor?readAutomationCursor(input.cursor):undefined;
       return options.transact(org,async tx=>{const page=await repository.listDefinitions(tx,org,{pageSize,...(cursor?{cursor}:{})});return {data:page.rows.map(definition),nextCursor:page.hasMore?writeAutomationCursor(page.rows.at(-1)!):null};});},
     get:(org:string,id:string)=>options.transact(org,async tx=>definition(await getDefinition(tx,org,id))),
@@ -119,19 +122,19 @@ export function createAutomationService(options:AutomationServiceOptions){
       const updated=await repository.updateDefinition(tx,{org,id,name:input.name.trim(),graph,revision:input.revision});if(!updated)throw new AutomationError('AUTOMATION_CHANGED',409);return definition(updated);});},
     validate:(org:string,id:string)=>options.transact(org,async tx=>{const row=await getDefinition(tx,org,id);const diagnostics=validateAutomationGraph(row.draftGraph);if(!diagnostics.length)await validateDependencies(tx,org,id,row.draftGraph);return {valid:diagnostics.length===0,diagnostics,errors:nodeDiagnosticsToStrings(diagnostics)};}),
     simulate:(org:string,id:string,input:SimulationInput)=>options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);
-      await validateDependencies(tx,org,id,row.draftGraph,2);
-      const root={automationId:id,version:row.activeVersion??1,graph:row.draftGraph,runtimeStateVersion:2 as const},resolve=(child:string,childVersion:number)=>resolveVersion(tx,org,child,childVersion);
-      try{return await simulateConversation(root,input,resolve);}catch(error){
+      const dependencies=await prepareSubflowSnapshot(tx,org,{automationId:id,version:row.activeVersion??1,graph:row.draftGraph,runtimeStateVersion:2},repository,'NEW');
+      try{return await simulateConversation(dependencies.root,input,dependencies.resolve);}catch(error){
         if(error instanceof Error&&error.message.startsWith('AUTOMATION_SIMULATION_'))throw new AutomationError(error.message,409);
         throw error;
       }}),
     publish:async(org:string,id:string,revision:number)=>{await available(org);
       const snapshot=await options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
-        const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);await validateDependencies(tx,org,id,row.draftGraph,2);return row;});
-      const readiness=await prepareHandoffs(org,snapshot.draftGraph);
+        const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);const dependencies=await validateDependencies(tx,org,id,row.draftGraph);return {row,dependencies};});
+      const readiness=await prepareHandoffs(org,snapshot.dependencies.root.graph,undefined,snapshot.dependencies);
       return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
       await readiness.assertCurrent(tx);
-      const next=(row.activeVersion??0)+1,checksum=createHash('sha256').update(canonical(row.draftGraph)).digest('hex');const published=await repository.insertVersion(tx,{org,id,version:next,graph:row.draftGraph,checksum,runtimeStateVersion:2});await repository.activateVersion(tx,org,id,next);return version(published);});},
+      const dependencies=await validateDependencies(tx,org,id,row.draftGraph),graph=dependencies.root.graph;
+      const next=(row.activeVersion??0)+1,checksum=createHash('sha256').update(canonical(graph)).digest('hex');const published=await repository.insertVersion(tx,{org,id,version:next,graph,checksum,runtimeStateVersion:2});await repository.activateVersion(tx,org,id,next);return version(published);});},
     setArchived:(org:string,id:string,archived:boolean,actorId?:string)=>{return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);
       let row=await getDefinition(tx,org,id);
       if((row.lifecycleStatus==='ARCHIVED')===archived)return definition(row);
@@ -217,7 +220,8 @@ export function createExecutionService(options:AutomationServiceOptions){
     get:(org:string,id:string)=>options.transact(org,async tx=>{const row=await repository.getExecution(tx,org,id);if(!row)throw new AutomationError('AUTOMATION_EXECUTION_NOT_FOUND',404);const nodes=await repository.listNodeExecutions(tx,org,id),outbox=await repository.listExecutionOutbox(tx,org,id),context=await repository.getExecutionContext(tx,org,id);const diagnostic=context.conversationId?await readAttendanceDiagnostic(tx,{organizationId:org,channelId:row.channelId,conversationId:context.conversationId}):undefined;return {...execution(row),...(diagnostic?{attendanceDiagnostic:diagnostic}:{}),conversationRef:context.conversationId,contactRef:context.contactId,state:redact(row.state),errorCode:row.errorCode,input:redact(row.input),durationMs:(row.completedAt?new Date(row.completedAt):new Date()).getTime()-new Date(row.startedAt).getTime(),nodes:nodes.map(node=>({...node,attempt:Math.floor(node.ordinal/1000)+1,durationMs:node.completedAt?Math.max(0,new Date(node.completedAt).getTime()-new Date(node.startedAt).getTime()):null,input:redact(node.input),output:redact(node.output),startedAt:iso(node.startedAt),completedAt:node.completedAt?iso(node.completedAt):null})),outbox:outbox.map(item=>({...item,lastError:item.lastError,createdAt:iso(item.createdAt),updatedAt:iso(item.updatedAt)}))};}),
     runOnce:(org:string)=>options.enabled===false?Promise.resolve({processed:false}):options.transact(org,async tx=>{const leaseToken=randomUUID(),claimed=await repository.claimExecution(tx,org,leaseToken,120000);if(!claimed)return {processed:false};
       try{const root=await resolve(tx,org,claimed.automationId,claimed.version),kind=String(claimed.input.eventType??'MESSAGE') as 'MESSAGE'|'RESUME'|'TIMER';
-        const result=await executeAutomation(root,{text:String(claimed.input.text??''),eventType:kind,now:new Date(),payload:claimed.input},(id,v)=>resolve(tx,org,id,v),Object.keys(claimed.state??{}).length?claimed.state as RuntimeState:undefined);
+        const dependencies=publishedDependencyPolicy(root.graph)===1?await prepareSubflowSnapshot(tx,org,root,repository,'HISTORICAL'):undefined;
+        const result=await executeAutomation(dependencies?.root??root,{text:String(claimed.input.text??''),eventType:kind,now:new Date(),payload:claimed.input},dependencies?.resolve??((id,v)=>resolve(tx,org,id,v)),Object.keys(claimed.state??{}).length?claimed.state as RuntimeState:undefined);
         await repository.saveExecutionResult(tx,claimed,result);return {processed:true,executionId:claimed.id,status:result.status};
       }catch(error){await repository.failExecution(tx,org,claimed.id,leaseToken,error instanceof Error?error.message.slice(0,120):'AUTOMATION_EXECUTION_FAILED',false);return {processed:true,executionId:claimed.id,status:'FAILED' as const};}}),
     cancel:(org:string,id:string)=>options.transact(org,async tx=>{if(!await repository.cancelExecution(tx,org,id))throw new AutomationError('AUTOMATION_EXECUTION_NOT_CANCELABLE',409);return {ok:true};}),

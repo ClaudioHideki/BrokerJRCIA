@@ -64,3 +64,9 @@ Este incremento não altera Compose, ENV ou a baseline 0051. Os candidatos de m�
 Mídia privada durável foi integrada ao checkout canônico com a migração 0052, preservando o backend PostgreSQL padrão e o histórico inline. Build e 2.534 testes globais passaram; 71 testes dos arquivos de banco reparados passaram. O CI e o workflow de imagens passam a exigir o gate de armazenamento real com MinIO fixado. [Evidências C2](../../validation/2026-10-09-private-media-c2.md) e [guia de operação](../../operations/private-media-minio.md).
 
 Essa entrega não instala MinIO, não migra objetos entre destinos e não conclui C3–C5, subfluxos, G3, P9 ou P10. A release precisa de CI e imagens do mesmo SHA antes da instalação. O ensaio real de atendimento e de mídia permanece pendente.
+
+## Incremento de subfluxos — 13/10/2026
+
+O corte de seleção por nome/versão e snapshot imutável foi integrado ao Studio comum do Broker. A paleta libera subflow após revisão independente e os testes do corte: 85 core, 11 editor/canvas e dois cenários PostgreSQL reais. A política de dependências é atribuída pelo servidor e permanece fixa após espera/reinício; publicações históricas conservam grafo/checksum. [Evidências de subfluxos](../../validation/2026-10-13-subflow-release.md).
+
+Não há nova migration, Compose ou ENV nesse incremento; a baseline permanece 0052. A publicação usa a main e exige CI/imagens do mesmo SHA. HTTP/IA, ações/mídia de Flow, distribuição entre motores, recuperação produtiva, integração completa dos grupos e módulos delegados continuam com critérios próprios; esta entrega não encerra o programa.

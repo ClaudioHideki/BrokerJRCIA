@@ -1,4 +1,4 @@
-import type { AutomationGraphV1 } from '@jrc/contracts';
+import type { AutomationGraphV1, AutomationSubflowCatalogItem } from '@jrc/contracts';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { RuntimeResult, RuntimeState } from './types.js';
 import { promoteAttendanceInput } from '../attendance/event-router.js';
@@ -10,6 +10,7 @@ export interface DefinitionRow {id:string;organizationId:string;name:string;life
 export interface DefinitionPageCursor {updatedAt:string;id:string}
 export interface DefinitionPageRow extends DefinitionRow {cursorUpdatedAt:string}
 export interface VersionRow {automationId:string;organizationId:string;version:number;graph:AutomationGraphV1;checksum:string;publishedAt:Date;runtimeStateVersion?:1|2}
+export interface SubflowCatalogCursor {automationId:string;version:number}
 export interface BindingRow {id:string;organizationId:string;automationId:string;version:number;channelId:string;humanDestinationId:string|null;status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number;createdAt:Date;updatedAt:Date}
 export interface ExecutionRow {id:string;organizationId:string;automationId:string;version:number;bindingId:string;channelId:string;conversationId:string|null;status:string;currentNodeId:string|null;correlationId:string;state:RuntimeState;input:Record<string,unknown>;errorCode:string|null;attempts:number;startedAt:Date;updatedAt:Date;completedAt:Date|null;leaseToken:string|null}
 export type OutboxKind='SEND_TEXT'|'HANDOFF'|'RESUME_EVENT'|'IO_HTTP'|'IO_SQL'|'IO_CODE'|'IO_AI';
@@ -49,6 +50,7 @@ const claimedExecutionColumns=executionColumns.split(',').map(column=>`e.${colum
 
 export interface AutomationRepository {
  listDefinitions(tx:TenantTransaction,org:string,options:{pageSize:number;cursor?:DefinitionPageCursor}):Promise<{rows:DefinitionPageRow[];hasMore:boolean}>;
+ listSubflowVersions(tx:TenantTransaction,org:string,rootId:string,options:{pageSize:number;cursor?:SubflowCatalogCursor}):Promise<{rows:AutomationSubflowCatalogItem[];hasMore:boolean}>;
  getDefinition(tx:TenantTransaction,org:string,id:string,lock?:boolean):Promise<DefinitionRow|null>;
  insertDefinition(tx:TenantTransaction,row:{org:string;id:string;name:string;graph:AutomationGraphV1}):Promise<DefinitionRow>;
  updateDefinition(tx:TenantTransaction,row:{org:string;id:string;name:string;graph:AutomationGraphV1;revision:number}):Promise<DefinitionRow|null>;
@@ -80,6 +82,14 @@ export interface AutomationRepository {
 }
 
 export function createPostgresAutomationRepository():AutomationRepository{return {
+  async listSubflowVersions(tx,org,rootId,options){
+    const rows=(await tx.query<AutomationSubflowCatalogItem>(`select v.automation_id as "automationId",d.name,v.version,v.checksum,v.runtime_state_version as "runtimeStateVersion"
+      from automation_versions v join automation_definitions d on d.organization_id=v.organization_id and d.id=v.automation_id
+      where v.organization_id=$1 and v.automation_id<>$2 and d.lifecycle_status<>'ARCHIVED' and v.runtime_state_version=2
+      and ($3::uuid is null or v.automation_id>$3::uuid or (v.automation_id=$3::uuid and v.version<$4))
+      order by v.automation_id asc,v.version desc limit $5`,[org,rootId,options.cursor?.automationId??null,options.cursor?.version??null,options.pageSize+1])).rows;
+    return {rows:rows.slice(0,options.pageSize),hasMore:rows.length>options.pageSize};
+  },
   async listDefinitions(tx,org,options){
     const rows=(await tx.query<DefinitionPageRow>(`select ${definitionColumns},to_char(updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "cursorUpdatedAt"
       from automation_definitions where organization_id=$1

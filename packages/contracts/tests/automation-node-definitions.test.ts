@@ -5,6 +5,9 @@ import { welcomeFlow } from '../src/flows.js';
 import { readFileSync } from 'node:fs';
 
 describe('canonical automation node definitions', () => {
+  it('offers version-pinned subflows after the selector, shared snapshot and persisted execution cut',()=>{
+    expect(getNodeDefinition('subflow',1)).toMatchObject({availability:'AVAILABLE',runtimeSupported:true,capabilitiesRequired:[],unavailableReason:null});
+  });
   it('offers a validated business-hours node with distinct open and closed paths',()=>{
     const schedule=getNodeDefinition('schedule',1)!;
     expect(schedule).toMatchObject({availability:'AVAILABLE',runtimeSupported:true});

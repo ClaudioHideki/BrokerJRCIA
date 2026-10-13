@@ -1,6 +1,7 @@
 import { LocalAttendanceChannelsSchema, attendanceCatalogSchema, ChatwootStatusSchema, AutomationDefinitionV1Schema, AutomationPublishedVersionV1Schema, NodeDiagnosticSchema, legacyStringsToNodeDiagnostics, type AttendanceDiagnostic, type AutomationDefinitionV1, type AutomationGraphV1, type AutomationPublishedVersionV1 } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
 import {LocalAttendanceDirectorySchema} from '@jrc/contracts';
+import {AutomationSubflowCatalogPageSchema} from '@jrc/contracts';
 
 export interface AutomationNodeCatalogItem {type:string;category:string;label:string;description:string;version?:number;availability?:'AVAILABLE'|'UNAVAILABLE';unavailableReason?:string|null}
 export async function validateAutomation(client: ApiClient, id: string) {
@@ -28,6 +29,12 @@ export async function createAutomation(client:ApiClient,name:string,graph:Automa
 export async function saveAutomation(client:ApiClient,value:AutomationDefinitionV1){return parsed(AutomationDefinitionV1Schema,await client.request(`/v1/automations/${value.id}`,{method:'PUT',body:JSON.stringify({name:value.name,graph:value.draft.graph,revision:value.draft.revision})}),'Automação inválida retornada pelo serviço.');}
 export async function listAutomationNodes(client:ApiClient){return (await client.request<{data:AutomationNodeCatalogItem[]}>('/v1/automation-nodes')).data;}
 export async function listVersions(client:ApiClient,id:string){const value=await client.request<{data:unknown[]}>(`/v1/automations/${id}/versions`);return value.data.map(item=>parsed(AutomationPublishedVersionV1Schema,item,'Versão inválida retornada pelo serviço.'));}
+export async function getSubflowCatalogPage(client:ApiClient,organizationId:string,rootAutomationId:string,cursor?:string,signal?:AbortSignal){
+ const query=new URLSearchParams({pageSize:'200'});if(cursor)query.set('cursor',cursor);
+ const page=parsed(AutomationSubflowCatalogPageSchema,await client.request(`/v1/automations/${encodeURIComponent(rootAutomationId)}/subflow-catalog?${query}`,{signal:signal??null}),'Catálogo de subfluxos inválido retornado pelo serviço.');
+ if(page.scope.organizationId!==organizationId||page.scope.rootAutomationId!==rootAutomationId)throw new ApiClientError('O catálogo não corresponde à empresa e ao fluxo em edição.',409);
+ return page;
+}
 export async function listExecutions(client:ApiClient,automationId?:string){const query=automationId?`?automationId=${encodeURIComponent(automationId)}`:'';return (await client.request<{data:AutomationExecution[]}>(`/v1/executions${query}`)).data;}
 export type {AutomationDefinitionV1,AutomationGraphV1,AutomationPublishedVersionV1};
 

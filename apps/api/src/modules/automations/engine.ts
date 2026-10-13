@@ -3,7 +3,7 @@ import { FlowGraphSchema, AutomationHandoffConfigSchema, hasNativeHandoffConfig,
   type AutomationGraphV1, type FlowNode } from '@jrc/contracts';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
 import { executeDataNode } from './data-nodes.js';
-import {getDataNodeV2Schema,isDataNodeType} from '@jrc/contracts';
+import {getDataNodeV2Schema,isDataNodeType,publishedDependencyPolicy,SUBFLOW_MAX_DEPTH} from '@jrc/contracts';
 import { isBusinessOpen } from './business-hours.js';
 import { assertRuntimeState, isRuntimeKey as safeKey, renderRuntimeText as renderFlowText,
   renderRuntimeValue, runtimeJson, runtimeStateVersion, runtimeText } from './runtime-state.js';
@@ -34,6 +34,7 @@ export { validateAutomationGraph } from '@jrc/contracts';
 export async function executeAutomation(
   root:PublishedAutomation,input:RuntimeInput,resolve:(automationId:string,version:number)=>Promise<PublishedAutomation>,previous?:RuntimeState,
 ):Promise<RuntimeResult>{
+  const dependencyPolicy=publishedDependencyPolicy(root.graph);
   const stateVersion=runtimeStateVersion(previous,root.runtimeStateVersion);
   const variables:RuntimeState['variables']=Object.create(null) as RuntimeState['variables'];
   for(const [key,value] of Object.entries(previous?.variables??{}))if(safeKey(key))variables[key]=runtimeJson(stateVersion===1?string(value):value);
@@ -117,6 +118,7 @@ export async function executeAutomation(
       state.nodeId=node.id;state.waiting={kind:'DELAY',nodeId:node.id,...(stateVersion===2?{wakeAt:wakeAt.getTime()}:{})};return finish({status:'WAITING',state,effects,trace,wait:{kind:'DELAY',nodeId:node.id,wakeAt}});
     }
     if(node.type==='subflow'){
+      if(dependencyPolicy===1&&state.stack.length>=SUBFLOW_MAX_DEPTH)throw new Error('AUTOMATION_SUBFLOW_DEPTH_LIMIT');
       const automationId=string(node.data.automationId),version=Number(node.data.version),returnNodeId=next(published.graph,node.id);
       if(!returnNodeId)throw new Error('AUTOMATION_SUBFLOW_RETURN_MISSING');
       if(state.stack.some(frame=>frame.automationId===automationId)||automationId===published.automationId)throw new Error('AUTOMATION_SUBFLOW_RECURSION');
