@@ -500,6 +500,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       ),
       { auth: controlAuth, instances: instances.service, pairActionRedis: redisClient },
     );
+    if(whatsappGroups&&integrationRuntime.groupAutomation)whatsappGroups.automation=integrationRuntime.groupAutomation;
     channels = {
       jwtSecret: config.jwtSecret,
       authenticateApiKey: apiKeys.authenticateApiKey,

@@ -10,6 +10,10 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/channels/{id}/whatsapp-group-automation','PUT /v1/channels/{id}/whatsapp-group-automation',
+  'POST /v1/channels/{id}/whatsapp-group-automation/pause','POST /v1/channels/{id}/whatsapp-group-automation/resume',
+  'POST /v1/channels/{id}/whatsapp-group-automation/dispatch-attempts/{attemptId}/abandon',
+  'POST /v1/channels/{id}/whatsapp-group-automation/observations/{observationId}/abandon',
   'GET /v1/channels/central/inboxes', 'GET /v1/channels/central/inboxes/{inboxId}/preview',
   'GET /v1/channels/central/operations/{operationId}', 'GET /v1/channels/central/operations/by-key/{key}',
   'GET /v1/channels/{id}/central-operation', 'POST /v1/channels/central/operations/{operationId}/advance',

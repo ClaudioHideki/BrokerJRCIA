@@ -1,0 +1,30 @@
+/** Structural readiness for 0053. All earlier runtime predicates remain required. */
+export const flowDelegationRuntimeSql=`
+ NOT EXISTS(SELECT 1 FROM (VALUES ('flow_delegation_credentials'),('flow_delegation_sessions'),('flow_delegation_session_grants'),('flow_member_grants'),('flow_executor_profiles'),('automation_definition_scopes'),('flow_executor_cutovers')) AS required(name)
+ WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass('public.'||required.name) AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='tenant_scope' AND p.polcmd='*')
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='lifecycle_migrator'))
+ OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.'||required.name),'SELECT') OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.'||required.name),'INSERT') OR NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.'||required.name),'UPDATE')
+ OR pg_catalog.has_table_privilege('jrc_auth',pg_catalog.to_regclass('public.'||required.name),'SELECT')
+ OR pg_catalog.has_table_privilege('jrc_platform',pg_catalog.to_regclass('public.'||required.name),'SELECT')
+ OR (required.name NOT IN ('flow_delegation_session_grants','automation_definition_scopes') AND pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.'||required.name),'DELETE'))
+ OR EXISTS(SELECT 1 FROM pg_catalog.pg_class c,LATERAL pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault('r',c.relowner))) acl WHERE c.oid=pg_catalog.to_regclass('public.'||required.name) AND acl.grantee=0))
+ AND EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass('public.flow_executor_origins') AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='flow_origins_tenant_read' AND p.polcmd='r'))
+ AND pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.flow_executor_origins'),'SELECT')
+ AND NOT pg_catalog.has_table_privilege('jrc_app',pg_catalog.to_regclass('public.flow_executor_origins'),'INSERT,UPDATE,DELETE')
+ AND NOT pg_catalog.has_table_privilege('jrc_auth',pg_catalog.to_regclass('public.flow_executor_origins'),'SELECT')
+ AND pg_catalog.has_table_privilege('jrc_platform',pg_catalog.to_regclass('public.flow_executor_origins'),'SELECT') AND pg_catalog.has_table_privilege('jrc_platform',pg_catalog.to_regclass('public.flow_executor_origins'),'INSERT') AND pg_catalog.has_table_privilege('jrc_platform',pg_catalog.to_regclass('public.flow_executor_origins'),'UPDATE')
+ AND NOT EXISTS(SELECT 1 FROM (VALUES ('resolve_flow_delegation_session(text)','jrc_auth'),('resolve_flow_delegation_credential(text)','jrc_auth'),('lock_current_flow_origin_capability(text)','jrc_app'),('lifecycle_pending_count_before_flow_delegation(uuid,uuid,uuid)','jrc_lifecycle')) required(signature,role_name)
+ WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc f WHERE f.oid=pg_catalog.to_regprocedure('public.'||required.signature) AND f.prosecdef AND pg_catalog.pg_get_userbyid(f.proowner)='jrc_migrator')
+ OR NOT pg_catalog.has_function_privilege(required.role_name,pg_catalog.to_regprocedure('public.'||required.signature),'EXECUTE')
+ OR EXISTS(SELECT 1 FROM pg_catalog.pg_proc f,LATERAL pg_catalog.aclexplode(coalesce(f.proacl,pg_catalog.acldefault('f',f.proowner))) acl WHERE f.oid=pg_catalog.to_regprocedure('public.'||required.signature) AND acl.grantee=0))
+ AND NOT pg_catalog.has_function_privilege('jrc_app',pg_catalog.to_regprocedure('public.resolve_flow_delegation_session(text)'),'EXECUTE')
+ AND NOT pg_catalog.has_function_privilege('jrc_platform',pg_catalog.to_regprocedure('public.resolve_flow_delegation_session(text)'),'EXECUTE')
+ AND NOT pg_catalog.has_function_privilege('jrc_auth',pg_catalog.to_regprocedure('public.lock_current_flow_origin_capability(text)'),'EXECUTE')
+ AND EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.automation_definitions') AND attname='delegation_scope_revision' AND attnotnull AND NOT attisdropped)
+ AND NOT EXISTS(SELECT 1 FROM (VALUES ('flow_delegation_session_grants','lifecycle_flow_session_grants_block'),('automation_definition_scopes','lifecycle_automation_definition_scopes_block'),('flow_executor_origins','flow_origin_native_downgrade')) required(name,trigger_name)
+ WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid=pg_catalog.to_regclass('public.'||required.name) AND t.tgname=required.trigger_name AND t.tgenabled IN ('O','A') AND NOT t.tgisinternal))
+ AND NOT EXISTS(SELECT 1 FROM (VALUES ('flow_executor_cutovers','fence_dispatched_at'),('flow_executor_cutovers','lease_token'),('flow_executor_cutovers','lease_expires_at')) required(name,column_name)
+ WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.'||required.name) AND attname=required.column_name AND NOT attisdropped))
+`;

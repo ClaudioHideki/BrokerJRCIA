@@ -7,8 +7,10 @@ import type { MessagingRepository } from "./repository.js";
 import type { MessagingChannel } from "./types.js";
 import { dispatchClaim, type DispatchPorts } from "./dispatcher.js";
 import { runBotTurn } from "./bot-runner.js";
+import type { createGroupAutomationRuntime } from '../whatsapp-groups/automation-runtime.js';
 
 export interface MessagingWorkerOptions {
+  groupAutomation?: Pick<ReturnType<typeof createGroupAutomationRuntime>, 'dispatchOnce'>;
   automationRuntimeEnabled?:boolean;
   automations?:{route(organizationId:string,event:{channelId:string;conversationId:string;eventKey:string;text:string;payload?:Record<string,unknown>}):Promise<unknown>};
   flows?: Pick<ReturnType<typeof createFlowService>,'runTurn'|'settleHandoffs'>;
@@ -39,6 +41,9 @@ export function createMessagingWorker(options: MessagingWorkerOptions) {
     async runOnce(organizationId: string): Promise<void> {
       if(repository.recoverQrOutboundObservations)await transact(organizationId,tx=>repository.recoverQrOutboundObservations!(tx,organizationId));
       await options.flows?.settleHandoffs(organizationId);
+      // The same worker/tenant turn dispatches the explicit GROUP recipient.
+      // Its durable marker lives in the existing messaging outbox/QR ledger.
+      await options.groupAutomation?.dispatchOnce(organizationId);
       const botClaim = await transact(organizationId, (tx) =>
         repository.claimBotTurn(tx, {
           organizationId,

@@ -70,15 +70,18 @@ export function createAutomationEffectDispatcher(options:{
 
 export async function runAutomationWorker(environment:NodeJS.ProcessEnv=process.env,watch=false){const config=loadAutomationWorkerConfig(environment),pool=new Pool({connectionString:config.databaseUrl,...loadDatabasePoolBudget(environment,'AUTOMATION_WORKER'),statement_timeout:30000});
   const instanceId=workerInstanceId();
-  const enabled=automationRuntimeEnabled(environment),repository=createPostgresAutomationRepository(),transact=<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pool,org,work),execution=createExecutionService({transact,repository,enabled});
   const integrations=createIntegrationRuntime(environment,pool);
+  const enabled=automationRuntimeEnabled(environment),repository=createPostgresAutomationRepository(integrations.groupPolicy),transact=<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pool,org,work);
+  // GROUP delegates to the canonical executor, with its physical authority policy.
+  // Claim once per tenant; never run a second engine beside this wrapper.
+  const execution=integrations.groupAutomation?{runOnce:integrations.groupAutomation.executeOnce}:createExecutionService({transact,repository,enabled});
   const resume=createAttendanceResumeWorker({transact,...(integrations.dashboardClient?{client:integrations.dashboardClient}:{})});
   const handoff=integrations.dashboardClient&&integrations.chatwoot?createNativeHandoffService({transact,client:integrations.dashboardClient,
     attendanceService:{validateTarget:integrations.chatwoot.validateHumanDestination,catalog:integrations.chatwoot.attendanceCatalog}}):undefined;
   const outbox=createOutboxDispatcher({transact,repository,enabled},createAutomationEffectDispatcher({transact,messaging:createPostgresMessagingRepository(),...(handoff?{handoff}:{})}));
   const abort=new AbortController(),stop=()=>abort.abort();process.once('SIGINT',stop);process.once('SIGTERM',stop);
   try{do{await scanOperationalOrganizations(async(cursor,batchSize)=>(await pool.query<{organization_id:string}>('select * from operational_worker_organizations($1,$2)',[cursor,batchSize])).rows.map(row=>row.organization_id),
-    async org=>{await transact(org,tx=>recordAutomationHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId,enabled));if(enabled)await resume.runOnce(org);await execution.runOnce(org);if(enabled&&handoff)await handoff.reconcileOnce(org);await outbox.runOnce(org);},abort.signal,
+    async org=>{await transact(org,tx=>recordAutomationHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId,enabled));if(enabled)await integrations.groupAutomation?.refreshCatalogsOnce?.(org);if(enabled)await resume.runOnce(org);await execution.runOnce(org);if(enabled&&handoff)await handoff.reconcileOnce(org);if(enabled)await integrations.groupAutomation?.enqueueEffectsOnce(org);await outbox.runOnce(org);},abort.signal,
     (_error,org)=>process.stderr.write(JSON.stringify({event:'AUTOMATION_WORKER_ORGANIZATION_FAILED',organizationId:org})+'\n'));
     if(watch&&!abort.signal.aborted)await setTimeout(config.intervalMs,undefined,{signal:abort.signal}).catch(()=>undefined);
   }while(watch&&!abort.signal.aborted);}finally{process.off('SIGINT',stop);process.off('SIGTERM',stop);await pool.end();}}

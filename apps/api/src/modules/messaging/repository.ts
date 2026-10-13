@@ -738,7 +738,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       const row = first(
         await transaction.query<MessageDatabaseRow>(
           `SELECT ${MESSAGE_COLUMNS} FROM messaging_messages
-          WHERE organization_id = $1 AND channel_id = $2 AND upstream_message_id = $3`,
+          WHERE organization_id = $1 AND channel_id = $2 AND provider_scope='' AND upstream_message_id = $3`,
           [input.organizationId, input.channelId, input.upstreamMessageId],
         ),
       );
@@ -913,7 +913,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
             upstream_message_id, content, state, created_at, updated_at)
          VALUES ($1, $2, $3, $4, 'INCOMING', 'CONTACT', $5, $6::jsonb, 'DELIVERED',
                  COALESCE($7::timestamptz, now()), COALESCE($7::timestamptz, now()))
-         ON CONFLICT (organization_id, channel_id, upstream_message_id)
+         ON CONFLICT (organization_id, channel_id, provider_scope, upstream_message_id)
            WHERE upstream_message_id IS NOT NULL
          DO NOTHING
          RETURNING ${MESSAGE_COLUMNS}`,
@@ -934,8 +934,9 @@ export function createPostgresMessagingRepository(): MessagingRepository {
         message = first(
           await transaction.query<MessageDatabaseRow>(
             `SELECT ${MESSAGE_COLUMNS} FROM messaging_messages
-            WHERE organization_id = $1 AND channel_id = $2 AND upstream_message_id = $3`,
-            [input.organizationId, input.channelId, input.upstreamMessageId],
+            WHERE organization_id = $1 AND channel_id = $2 AND upstream_message_id = $3
+              AND provider_scope=whatsapp_group_provider_scope($1,$4)`,
+            [input.organizationId, input.channelId, input.upstreamMessageId,input.conversationId],
           ),
         );
       }
@@ -991,7 +992,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
            (organization_id, channel_id, upstream_message_id, state,
             canonical_error_code, occurred_at)
          VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, now()))
-         ON CONFLICT (organization_id, channel_id, upstream_message_id, state) DO NOTHING
+         ON CONFLICT (organization_id, channel_id, provider_scope, upstream_message_id, state) DO NOTHING
          RETURNING id`,
         [
           input.organizationId,
@@ -1009,7 +1010,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       const current = first(
         await transaction.query<MessageDatabaseRow>(
           `SELECT ${MESSAGE_COLUMNS} FROM messaging_messages
-          WHERE organization_id = $1 AND channel_id = $2 AND upstream_message_id = $3
+          WHERE organization_id = $1 AND channel_id = $2 AND provider_scope='' AND upstream_message_id = $3
           FOR UPDATE`,
           [input.organizationId, input.channelId, input.upstreamMessageId],
         ),
@@ -1477,11 +1478,13 @@ export function createPostgresMessagingRepository(): MessagingRepository {
         >(
           `SELECT state FROM messaging_status_events
             WHERE organization_id = $1 AND channel_id = $2 AND upstream_message_id = $3
+              AND provider_scope=(SELECT provider_scope FROM messaging_messages WHERE organization_id=$1 AND id=$4)
             ORDER BY occurred_at, id`,
           [
             input.organizationId,
             owned.channelId,
             input.outcome.upstreamMessageId,
+            input.messageId,
           ],
         );
         let reconciledState: MessageState = "SENT";

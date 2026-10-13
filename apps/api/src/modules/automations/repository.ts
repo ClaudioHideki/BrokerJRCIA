@@ -5,6 +5,7 @@ import { promoteAttendanceInput } from '../attendance/event-router.js';
 import { runtimeAuthorityAllows } from '../attendance/runtime-authority.js';
 import { AttendanceError } from '../attendance/types.js';
 import { unknownOutboxDiagnostic } from './outbox-diagnostics.js';
+import type {GroupPhysicalPolicy} from '../whatsapp-groups/automation-authority.js';
 
 export interface DefinitionRow {id:string;organizationId:string;name:string;lifecycleStatus:'DRAFT'|'PUBLISHED'|'ARCHIVED';draftGraph:AutomationGraphV1;draftRevision:number;activeVersion:number|null;updatedAt:Date}
 export interface DefinitionPageCursor {updatedAt:string;id:string}
@@ -76,12 +77,14 @@ export interface AutomationRepository {
  retryExecution(tx:TenantTransaction,org:string,id:string):Promise<boolean>;
  resumeExecution(tx:TenantTransaction,row:{org:string;id:string;eventId:string;eventKey:string;payload:Record<string,unknown>}):Promise<boolean>;
  releaseDueWaits(tx:TenantTransaction,org:string,limit:number):Promise<number>;
- claimOutbox(tx:TenantTransaction,org:string,leaseToken:string,leaseMs:number,kinds:OutboxKind[]):Promise<OutboxRow|null>;
+ claimOutbox(tx:TenantTransaction,org:string,leaseToken:string,leaseMs:number,kinds:OutboxKind[],recipientKind?:'GROUP'):Promise<OutboxRow|null>;
  settleOutbox(tx:TenantTransaction,org:string,id:string,leaseToken:string,result:{status:'SENT'|'PENDING'|'FAILED';remoteReference?:string;error?:string;availableAt?:Date}):Promise<boolean>;
  recordUnknownOutbox(tx:TenantTransaction,org:string,id:string,leaseToken:string,error:string):Promise<boolean>;
 }
 
-export function createPostgresAutomationRepository():AutomationRepository{return {
+export function createPostgresAutomationRepository(policy?:GroupPhysicalPolicy):AutomationRepository{
+  const authority=(tx:TenantTransaction,input:Parameters<typeof runtimeAuthorityAllows>[1],remote=true)=>runtimeAuthorityAllows(tx,input,remote,policy);
+  return {
   async listSubflowVersions(tx,org,rootId,options){
     const rows=(await tx.query<AutomationSubflowCatalogItem>(`select v.automation_id as "automationId",d.name,v.version,v.checksum,v.runtime_state_version as "runtimeStateVersion"
       from automation_versions v join automation_definitions d on d.organization_id=v.organization_id and d.id=v.automation_id
@@ -112,7 +115,7 @@ export function createPostgresAutomationRepository():AutomationRepository{return
   async routeEvent(tx,row){
     await lockAttendanceChannelRead(tx,row.org,row.channelId);
     const binding=(await tx.query<BindingRow>(`select ${bindingColumns} from automation_bindings where organization_id=$1 and channel_id=$2 and status in ('ACTIVE','PAUSED') and ${runtimeTenantActive} for update`,[row.org,row.channelId])).rows[0];if(!binding)return null;
-    if(!await runtimeAuthorityAllows(tx,{organizationId:row.org,channelId:row.channelId,conversationId:row.conversationId,automationId:binding.automationId,version:binding.version},false))return null;
+    if(!await authority(tx,{organizationId:row.org,channelId:row.channelId,conversationId:row.conversationId,automationId:binding.automationId,version:binding.version},false))return null;
     const active=row.conversationId?(await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions
       where organization_id=$1 and binding_id=$2 and conversation_id=$3 and status in ('QUEUED','RUNNING','WAITING','HANDOFF','UNKNOWN','FAILED')
       order by started_at,id limit 2 for no key update`,[row.org,binding.id,row.conversationId])).rows:[];
@@ -137,7 +140,7 @@ export function createPostgresAutomationRepository():AutomationRepository{return
     const locked=(await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions where organization_id=$1 and id=any($2::uuid[])
       and (status='QUEUED' or (status='RUNNING' and lease_expires_at<now())) order by id for no key update skip locked`,[org,candidates.map(row=>row.id)])).rows;
     for(const candidate of candidates){
-      const execution=locked.find(row=>row.id===candidate.id);if(!execution||!await runtimeAuthorityAllows(tx,execution))continue;
+      const execution=locked.find(row=>row.id===candidate.id);if(!execution||!await authority(tx,{...execution,executionId:execution.id}))continue;
       return (await tx.query<ExecutionRow>(`update automation_executions set status='RUNNING',attempts=attempts+1,lease_token=$3,
         lease_expires_at=now()+($4::int*interval '1 millisecond'),updated_at=now() where organization_id=$1 and id=$2 returning ${executionColumns}`,
         [org,execution.id,leaseToken,leaseMs])).rows[0]??null;
@@ -145,6 +148,8 @@ export function createPostgresAutomationRepository():AutomationRepository{return
     return null;
   },
   async saveExecutionResult(tx,execution,result){
+    if(execution.attempts===1 && (await tx.query("SELECT 1 FROM messaging_conversations WHERE organization_id=$1 AND id=$2 AND recipient_kind='GROUP'",[execution.organizationId,execution.conversationId])).rowCount)
+      result={...result,effects:[{nodeId:'group-session-policy',ordinal:0,kind:'SEND_TEXT',payload:{text:'Este atendimento segue somente as respostas de quem iniciou. Outros participantes não avançam o menu.'}},...result.effects]};
     const turnOffset=execution.attempts*1000;
     // The engine emits at most 500 effects per turn. Keep the reserved 1000-slot
     // band disjoint from the following turn; reject rather than overflow SQL int.
@@ -198,18 +203,20 @@ export function createPostgresAutomationRepository():AutomationRepository{return
       if(wait.rowCount){await tx.query(`update automation_executions set status='QUEUED',input='{"eventType":"TIMER"}'::jsonb,updated_at=now() where organization_id=$1 and id=$2 and status='WAITING'`,[org,row.id]);released++;}}
     return released;
   },
-  async claimOutbox(tx,org,leaseToken,leaseMs,kinds){
+  async claimOutbox(tx,org,leaseToken,leaseMs,kinds,recipientKind){
     const candidates=(await tx.query<{id:string;executionId:string;channelId:string;kind:OutboxKind;recoverLocal:boolean}>(`select o.id,o.execution_id AS "executionId",e.channel_id AS "channelId",o.kind,o.status='UNKNOWN' AS "recoverLocal"
       from automation_outbox o join automation_executions e on e.organization_id=o.organization_id and e.id=o.execution_id
       where o.organization_id=$1 and ${runtimeTenantActive} and ${outboxClaimEligible} and o.kind=any($2::text[])
       and e.status NOT IN ('CANCELED','FAILED','UNKNOWN') and ${outboxHeadEligible}
-      order by o.created_at,o.execution_id,o.ordinal,o.id limit 50`,[org,kinds])).rows;
+      and (($3::text IS NULL AND NOT EXISTS(SELECT 1 FROM messaging_conversations m WHERE m.organization_id=e.organization_id AND m.id=e.conversation_id AND m.recipient_kind='GROUP'))
+        OR EXISTS(SELECT 1 FROM messaging_conversations m WHERE m.organization_id=e.organization_id AND m.id=e.conversation_id AND m.recipient_kind=$3))
+      order by o.created_at,o.execution_id,o.ordinal,o.id limit 50`,[org,kinds,recipientKind??null])).rows;
     for(const channel of [...new Set(candidates.map(row=>row.channelId))].sort())await lockAttendanceChannelRead(tx,org,channel);
     const locked=(await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions where organization_id=$1 and id=any($2::uuid[])
       and status NOT IN ('CANCELED','FAILED','UNKNOWN') order by id for no key update skip locked`,[org,candidates.map(row=>row.executionId)])).rows;
     for(const candidate of candidates){
       const execution=locked.find(row=>row.id===candidate.executionId);if(!execution)continue;
-      const permitted=await runtimeAuthorityAllows(tx,execution,candidate.kind!=='HANDOFF');
+      const permitted=await authority(tx,{...execution,executionId:execution.id},candidate.kind!=='HANDOFF');
       if(!permitted&&!candidate.recoverLocal)continue;
       // Recheck after the execution lock, in a fresh READ COMMITTED statement.
       // The candidate list can be stale. The reservation becomes UNKNOWN before

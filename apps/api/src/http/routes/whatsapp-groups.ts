@@ -5,17 +5,23 @@ import {
   UpdateWhatsAppGroupSelectionSchema, WhatsAppGroupCatalogPageQuerySchema,
   WhatsAppGroupCatalogPageSchema,
   WhatsAppGroupEventsConfigurationSchema,
+  ConfigureWhatsAppGroupAutomationSchema,WhatsAppGroupAutomationActionSchema,
+  WhatsAppGroupAutomationQuerySchema,WhatsAppGroupAutomationViewSchema,
+  AbandonQrDispatchAttemptRequestSchema,AbandonQrOutboundObservationRequestSchema,
 } from '@jrc/contracts';
 import { GroupCatalogError, type createWhatsAppGroupCatalog } from '../../modules/whatsapp-groups/service.js';
 import { tenantOperationalProblem } from '../../modules/tenancy/operational-limits.js';
 import { authenticateRequest, type AuthenticationOptions } from '../plugins/authentication.js';
 import type { Role } from '../plugins/authorization.js';
 import type { createWhatsAppGroupWebhookConfiguration } from '../../modules/whatsapp-groups/webhook-configuration.js';
+import {GroupRuntimeError,type createGroupAutomationRuntime} from '../../modules/whatsapp-groups/automation-runtime.js';
+import {AttendanceError} from '../../modules/attendance/types.js';
 
 export interface WhatsAppGroupsRouteOptions extends AuthenticationOptions {
   service: ReturnType<typeof createWhatsAppGroupCatalog>;
   resolveCurrentRole(userId: string, organizationId: string): Promise<Role | null>;
   configuration?:ReturnType<typeof createWhatsAppGroupWebhookConfiguration>;
+  automation?:Pick<ReturnType<typeof createGroupAutomationRuntime>,'inspect'|'configure'|'pause'|'resume'|'abandonAttempt'|'abandonObservation'>;
 }
 
 const publicErrorCodes = new Set([
@@ -47,6 +53,16 @@ export async function registerWhatsAppGroupsRoutes(app: FastifyInstance, options
   app.setErrorHandler((error, request, reply) => {
     const operational = tenantOperationalProblem(error, request.id);
     if (operational) return reply.code(operational.status).type('application/problem+json').send(operational);
+    if(error instanceof GroupRuntimeError){
+      const codes=new Set(['GROUP_INVALID','GROUP_TRIGGER_INVALID','GROUP_ACCESS_DENIED','GROUP_RUNTIME_UNAVAILABLE',
+        'GROUP_TRANSPORT_IGNORED','GROUP_IDENTITY_CHANGED','GROUP_WEBHOOK_CHANGED','GROUP_AUTHORITY_CHANGED',
+        'GROUP_NODE_UNSUPPORTED','GROUP_CONTROL_CHANGED','GROUP_SESSION_ACTIVE','GROUP_WORKSPACE_CHANGED',
+        'GROUP_CHANNEL_UNAVAILABLE','GROUP_OUTCOME_UNKNOWN','GROUP_NOT_ENABLED','GROUP_ATTEMPT_NOT_FOUND','GROUP_OBSERVATION_NOT_FOUND']);
+      if(codes.has(error.code))return problem(reply,request,error.code==='GROUP_ACCESS_DENIED'?403:
+        ['GROUP_INVALID','GROUP_TRIGGER_INVALID'].includes(error.code)?400:error.code.endsWith('_NOT_FOUND')?404:409,error.code);
+    }
+    if(error instanceof AttendanceError&&['FORBIDDEN','QR_ATTEMPT_NOT_FOUND','QR_ATTEMPT_CHANGED','QR_OBSERVATION_NOT_FOUND','QR_OBSERVATION_CHANGED','QR_DISPATCH_STILL_ACTIVE','QR_ATTEMPTS_CHANGED'].includes(error.code))
+      return problem(reply,request,error.statusCode,error.code);
     if (error instanceof GroupCatalogError && publicErrorCodes.has(error.code)
       && Number.isInteger(error.status) && error.status >= 400 && error.status <= 599) {
       return problem(reply, request, error.status, error.code);
@@ -73,6 +89,34 @@ export async function registerWhatsAppGroupsRoutes(app: FastifyInstance, options
     cursor: z.string().min(1).max(1024).regex(/^[A-Za-z0-9_-]+$/u).optional(),
   });
   const response = { 200: WhatsAppGroupCatalogPageSchema };
+  if(options.automation){
+    const service=options.automation,response={200:WhatsAppGroupAutomationViewSchema};
+    api.get('/v1/channels/:id/whatsapp-group-automation',{
+      preHandler:[memberGuard(false)],schema:{params,querystring:WhatsAppGroupAutomationQuerySchema,response},
+    },request=>service.inspect(principal(request),request.params.id,request.query.groupJid));
+    api.put('/v1/channels/:id/whatsapp-group-automation',{
+      preHandler:[memberGuard(true)],schema:{params,querystring:empty,body:ConfigureWhatsAppGroupAutomationSchema,response},
+    },async request=>{await service.configure(principal(request),request.params.id,request.body);
+      return service.inspect(principal(request),request.params.id,request.body.groupJid);});
+    api.post('/v1/channels/:id/whatsapp-group-automation/pause',{
+      preHandler:[memberGuard(true)],schema:{params,querystring:empty,body:WhatsAppGroupAutomationActionSchema,response},
+    },async request=>{await service.pause(principal(request),request.params.id,request.body.groupJid,request.body.expectedRevision);
+      return service.inspect(principal(request),request.params.id,request.body.groupJid);});
+    api.post('/v1/channels/:id/whatsapp-group-automation/resume',{
+      preHandler:[memberGuard(true)],schema:{params,querystring:empty,body:WhatsAppGroupAutomationActionSchema,response},
+    },async request=>{await service.resume(principal(request),request.params.id,request.body.groupJid,request.body.expectedRevision);
+      return service.inspect(principal(request),request.params.id,request.body.groupJid);});
+    api.post('/v1/channels/:id/whatsapp-group-automation/dispatch-attempts/:attemptId/abandon',{
+      preHandler:[memberGuard(true)],schema:{params:params.extend({attemptId:z.uuid()}),querystring:empty,
+        body:AbandonQrDispatchAttemptRequestSchema.extend({groupJid:WhatsAppGroupAutomationQuerySchema.shape.groupJid}),response},
+    },async request=>{const{groupJid,...input}=request.body;await service.abandonAttempt(principal(request),request.params.id,groupJid,request.params.attemptId,input);
+      return service.inspect(principal(request),request.params.id,groupJid);});
+    api.post('/v1/channels/:id/whatsapp-group-automation/observations/:observationId/abandon',{
+      preHandler:[memberGuard(true)],schema:{params:params.extend({observationId:z.uuid()}),querystring:empty,
+        body:AbandonQrOutboundObservationRequestSchema.extend({groupJid:WhatsAppGroupAutomationQuerySchema.shape.groupJid}),response},
+    },async request=>{const{groupJid,...input}=request.body;await service.abandonObservation(principal(request),request.params.id,groupJid,request.params.observationId,input);
+      return service.inspect(principal(request),request.params.id,groupJid);});
+  }
   if(options.configuration)api.get('/v1/channels/:id/whatsapp-group-events-configuration',{
     preHandler:[memberGuard(false)],schema:{params,querystring:empty,response:{200:WhatsAppGroupEventsConfigurationSchema}},
   },request=>options.configuration!.status(principal(request),request.params.id));

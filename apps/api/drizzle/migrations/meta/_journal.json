@@ -365,6 +365,20 @@
       "when": 1792017600000,
       "tag": "0052_durable_private_media",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1792104000000,
+      "tag": "0053_flow_delegation",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1792190400000,
+      "tag": "0054_whatsapp_group_automation",
+      "breakpoints": true
     }
   ]
 }

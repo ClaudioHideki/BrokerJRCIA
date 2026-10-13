@@ -17816,6 +17816,2392 @@
         ]
       }
     },
+    "/v1/channels/{id}/whatsapp-group-automation": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "groupJid",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "attempts": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "messageId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "state": {
+                            "enum": [
+                              "DISPATCHED",
+                              "UNKNOWN",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "messageId",
+                          "revision",
+                          "state"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "capability": {
+                      "enum": [
+                        "QR_TEXT",
+                        "UNSUPPORTED"
+                      ],
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "control": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "pauseReason": {
+                          "enum": [
+                            "HUMAN_ACTION",
+                            "EXTERNAL_OBSERVED",
+                            "AUTHORITY_CHANGED",
+                            "OUTCOME_UNKNOWN"
+                          ],
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "triggerText": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "enabled",
+                        "triggerText",
+                        "pauseReason"
+                      ],
+                      "type": "object"
+                    },
+                    "flow": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "automationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "name": {
+                          "maxLength": 160,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "ownerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "supported": {
+                          "type": "boolean"
+                        },
+                        "version": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "automationId",
+                        "name",
+                        "version",
+                        "bindingId",
+                        "bindingRevision",
+                        "ownerRevision",
+                        "supported"
+                      ],
+                      "type": "object"
+                    },
+                    "groupJid": {
+                      "maxLength": 128,
+                      "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                      "type": "string"
+                    },
+                    "identity": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "fingerprint": {
+                          "pattern": "^[a-f0-9]{64}$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "fingerprint"
+                      ],
+                      "type": "object"
+                    },
+                    "initiatorJid": {
+                      "maxLength": 128,
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "nextAction": {
+                      "enum": [
+                        "CONNECT_WHATSAPP",
+                        "UPDATE_GROUPS",
+                        "SELECT_GROUP",
+                        "CONFIGURE_EVENTS",
+                        "ALLOW_GROUP_MESSAGES",
+                        "PUBLISH_AND_BIND_FLOW",
+                        "CHOOSE_SUPPORTED_FLOW",
+                        "ENABLE_GROUP_AUTOMATION",
+                        "REVALIDATE_GROUP",
+                        "RESUME_GROUP",
+                        "RECONCILE_OUTCOME",
+                        "READY",
+                        "UNSUPPORTED_TRANSPORT",
+                        "UNSUPPORTED_GROUP"
+                      ],
+                      "type": "string"
+                    },
+                    "observations": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attempts": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "messageId": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "enum": [
+                                    "DISPATCHED",
+                                    "UNKNOWN",
+                                    "ABANDONED"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "messageId",
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "blocking": {
+                            "type": "boolean"
+                          },
+                          "disposition": {
+                            "enum": [
+                              "RECONCILE",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          },
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "enum": [
+                              "QR_ACK_PENDING",
+                              "QR_PROVIDER_ID_CONFLICT",
+                              "QR_ABANDONED_ATTEMPT_UNRESOLVED",
+                              "QR_OBSERVATION_ABANDONED",
+                              "QR_LIFECYCLE_RECONCILE"
+                            ],
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "revision",
+                          "blocking",
+                          "disposition",
+                          "reason",
+                          "attempts"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "enum": [
+                        1
+                      ],
+                      "type": "number"
+                    },
+                    "state": {
+                      "enum": [
+                        "SETUP_REQUIRED",
+                        "READY",
+                        "ACTIVE",
+                        "PAUSED",
+                        "UNKNOWN"
+                      ],
+                      "type": "string"
+                    },
+                    "subject": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "organizationId",
+                    "channelId",
+                    "groupJid",
+                    "subject",
+                    "capability",
+                    "state",
+                    "nextAction",
+                    "flow",
+                    "identity",
+                    "control",
+                    "initiatorJid",
+                    "attempts",
+                    "observations"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedBindingId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "expectedBindingRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedIdentityFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "expectedIdentityRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedOwnerRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "groupJid": {
+                    "maxLength": 128,
+                    "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                    "type": "string"
+                  },
+                  "triggerText": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "groupJid",
+                  "triggerText",
+                  "expectedOwnerRevision",
+                  "expectedBindingId",
+                  "expectedBindingRevision",
+                  "expectedIdentityRevision",
+                  "expectedIdentityFingerprint"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "attempts": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "messageId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "state": {
+                            "enum": [
+                              "DISPATCHED",
+                              "UNKNOWN",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "messageId",
+                          "revision",
+                          "state"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "capability": {
+                      "enum": [
+                        "QR_TEXT",
+                        "UNSUPPORTED"
+                      ],
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "control": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "pauseReason": {
+                          "enum": [
+                            "HUMAN_ACTION",
+                            "EXTERNAL_OBSERVED",
+                            "AUTHORITY_CHANGED",
+                            "OUTCOME_UNKNOWN"
+                          ],
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "triggerText": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "enabled",
+                        "triggerText",
+                        "pauseReason"
+                      ],
+                      "type": "object"
+                    },
+                    "flow": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "automationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "name": {
+                          "maxLength": 160,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "ownerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "supported": {
+                          "type": "boolean"
+                        },
+                        "version": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "automationId",
+                        "name",
+                        "version",
+                        "bindingId",
+                        "bindingRevision",
+                        "ownerRevision",
+                        "supported"
+                      ],
+                      "type": "object"
+                    },
+                    "groupJid": {
+                      "maxLength": 128,
+                      "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                      "type": "string"
+                    },
+                    "identity": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "fingerprint": {
+                          "pattern": "^[a-f0-9]{64}$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "fingerprint"
+                      ],
+                      "type": "object"
+                    },
+                    "initiatorJid": {
+                      "maxLength": 128,
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "nextAction": {
+                      "enum": [
+                        "CONNECT_WHATSAPP",
+                        "UPDATE_GROUPS",
+                        "SELECT_GROUP",
+                        "CONFIGURE_EVENTS",
+                        "ALLOW_GROUP_MESSAGES",
+                        "PUBLISH_AND_BIND_FLOW",
+                        "CHOOSE_SUPPORTED_FLOW",
+                        "ENABLE_GROUP_AUTOMATION",
+                        "REVALIDATE_GROUP",
+                        "RESUME_GROUP",
+                        "RECONCILE_OUTCOME",
+                        "READY",
+                        "UNSUPPORTED_TRANSPORT",
+                        "UNSUPPORTED_GROUP"
+                      ],
+                      "type": "string"
+                    },
+                    "observations": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attempts": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "messageId": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "enum": [
+                                    "DISPATCHED",
+                                    "UNKNOWN",
+                                    "ABANDONED"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "messageId",
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "blocking": {
+                            "type": "boolean"
+                          },
+                          "disposition": {
+                            "enum": [
+                              "RECONCILE",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          },
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "enum": [
+                              "QR_ACK_PENDING",
+                              "QR_PROVIDER_ID_CONFLICT",
+                              "QR_ABANDONED_ATTEMPT_UNRESOLVED",
+                              "QR_OBSERVATION_ABANDONED",
+                              "QR_LIFECYCLE_RECONCILE"
+                            ],
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "revision",
+                          "blocking",
+                          "disposition",
+                          "reason",
+                          "attempts"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "enum": [
+                        1
+                      ],
+                      "type": "number"
+                    },
+                    "state": {
+                      "enum": [
+                        "SETUP_REQUIRED",
+                        "READY",
+                        "ACTIVE",
+                        "PAUSED",
+                        "UNKNOWN"
+                      ],
+                      "type": "string"
+                    },
+                    "subject": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "organizationId",
+                    "channelId",
+                    "groupJid",
+                    "subject",
+                    "capability",
+                    "state",
+                    "nextAction",
+                    "flow",
+                    "identity",
+                    "control",
+                    "initiatorJid",
+                    "attempts",
+                    "observations"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/channels/{id}/whatsapp-group-automation/dispatch-attempts/{attemptId}/abandon": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attemptId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "groupJid": {
+                    "maxLength": 128,
+                    "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 500,
+                    "minLength": 5,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "reason",
+                  "groupJid"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "attempts": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "messageId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "state": {
+                            "enum": [
+                              "DISPATCHED",
+                              "UNKNOWN",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "messageId",
+                          "revision",
+                          "state"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "capability": {
+                      "enum": [
+                        "QR_TEXT",
+                        "UNSUPPORTED"
+                      ],
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "control": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "pauseReason": {
+                          "enum": [
+                            "HUMAN_ACTION",
+                            "EXTERNAL_OBSERVED",
+                            "AUTHORITY_CHANGED",
+                            "OUTCOME_UNKNOWN"
+                          ],
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "triggerText": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "enabled",
+                        "triggerText",
+                        "pauseReason"
+                      ],
+                      "type": "object"
+                    },
+                    "flow": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "automationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "name": {
+                          "maxLength": 160,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "ownerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "supported": {
+                          "type": "boolean"
+                        },
+                        "version": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "automationId",
+                        "name",
+                        "version",
+                        "bindingId",
+                        "bindingRevision",
+                        "ownerRevision",
+                        "supported"
+                      ],
+                      "type": "object"
+                    },
+                    "groupJid": {
+                      "maxLength": 128,
+                      "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                      "type": "string"
+                    },
+                    "identity": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "fingerprint": {
+                          "pattern": "^[a-f0-9]{64}$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "fingerprint"
+                      ],
+                      "type": "object"
+                    },
+                    "initiatorJid": {
+                      "maxLength": 128,
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "nextAction": {
+                      "enum": [
+                        "CONNECT_WHATSAPP",
+                        "UPDATE_GROUPS",
+                        "SELECT_GROUP",
+                        "CONFIGURE_EVENTS",
+                        "ALLOW_GROUP_MESSAGES",
+                        "PUBLISH_AND_BIND_FLOW",
+                        "CHOOSE_SUPPORTED_FLOW",
+                        "ENABLE_GROUP_AUTOMATION",
+                        "REVALIDATE_GROUP",
+                        "RESUME_GROUP",
+                        "RECONCILE_OUTCOME",
+                        "READY",
+                        "UNSUPPORTED_TRANSPORT",
+                        "UNSUPPORTED_GROUP"
+                      ],
+                      "type": "string"
+                    },
+                    "observations": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attempts": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "messageId": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "enum": [
+                                    "DISPATCHED",
+                                    "UNKNOWN",
+                                    "ABANDONED"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "messageId",
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "blocking": {
+                            "type": "boolean"
+                          },
+                          "disposition": {
+                            "enum": [
+                              "RECONCILE",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          },
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "enum": [
+                              "QR_ACK_PENDING",
+                              "QR_PROVIDER_ID_CONFLICT",
+                              "QR_ABANDONED_ATTEMPT_UNRESOLVED",
+                              "QR_OBSERVATION_ABANDONED",
+                              "QR_LIFECYCLE_RECONCILE"
+                            ],
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "revision",
+                          "blocking",
+                          "disposition",
+                          "reason",
+                          "attempts"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "enum": [
+                        1
+                      ],
+                      "type": "number"
+                    },
+                    "state": {
+                      "enum": [
+                        "SETUP_REQUIRED",
+                        "READY",
+                        "ACTIVE",
+                        "PAUSED",
+                        "UNKNOWN"
+                      ],
+                      "type": "string"
+                    },
+                    "subject": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "organizationId",
+                    "channelId",
+                    "groupJid",
+                    "subject",
+                    "capability",
+                    "state",
+                    "nextAction",
+                    "flow",
+                    "identity",
+                    "control",
+                    "initiatorJid",
+                    "attempts",
+                    "observations"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/channels/{id}/whatsapp-group-automation/observations/{observationId}/abandon": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "observationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "attemptIds": {
+                    "items": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "expectedRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "groupJid": {
+                    "maxLength": 128,
+                    "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 500,
+                    "minLength": 5,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "attemptIds",
+                  "reason",
+                  "groupJid"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "attempts": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "messageId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "state": {
+                            "enum": [
+                              "DISPATCHED",
+                              "UNKNOWN",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "messageId",
+                          "revision",
+                          "state"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "capability": {
+                      "enum": [
+                        "QR_TEXT",
+                        "UNSUPPORTED"
+                      ],
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "control": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "pauseReason": {
+                          "enum": [
+                            "HUMAN_ACTION",
+                            "EXTERNAL_OBSERVED",
+                            "AUTHORITY_CHANGED",
+                            "OUTCOME_UNKNOWN"
+                          ],
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "triggerText": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "enabled",
+                        "triggerText",
+                        "pauseReason"
+                      ],
+                      "type": "object"
+                    },
+                    "flow": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "automationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "name": {
+                          "maxLength": 160,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "ownerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "supported": {
+                          "type": "boolean"
+                        },
+                        "version": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "automationId",
+                        "name",
+                        "version",
+                        "bindingId",
+                        "bindingRevision",
+                        "ownerRevision",
+                        "supported"
+                      ],
+                      "type": "object"
+                    },
+                    "groupJid": {
+                      "maxLength": 128,
+                      "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                      "type": "string"
+                    },
+                    "identity": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "fingerprint": {
+                          "pattern": "^[a-f0-9]{64}$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "fingerprint"
+                      ],
+                      "type": "object"
+                    },
+                    "initiatorJid": {
+                      "maxLength": 128,
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "nextAction": {
+                      "enum": [
+                        "CONNECT_WHATSAPP",
+                        "UPDATE_GROUPS",
+                        "SELECT_GROUP",
+                        "CONFIGURE_EVENTS",
+                        "ALLOW_GROUP_MESSAGES",
+                        "PUBLISH_AND_BIND_FLOW",
+                        "CHOOSE_SUPPORTED_FLOW",
+                        "ENABLE_GROUP_AUTOMATION",
+                        "REVALIDATE_GROUP",
+                        "RESUME_GROUP",
+                        "RECONCILE_OUTCOME",
+                        "READY",
+                        "UNSUPPORTED_TRANSPORT",
+                        "UNSUPPORTED_GROUP"
+                      ],
+                      "type": "string"
+                    },
+                    "observations": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attempts": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "messageId": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "enum": [
+                                    "DISPATCHED",
+                                    "UNKNOWN",
+                                    "ABANDONED"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "messageId",
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "blocking": {
+                            "type": "boolean"
+                          },
+                          "disposition": {
+                            "enum": [
+                              "RECONCILE",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          },
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "enum": [
+                              "QR_ACK_PENDING",
+                              "QR_PROVIDER_ID_CONFLICT",
+                              "QR_ABANDONED_ATTEMPT_UNRESOLVED",
+                              "QR_OBSERVATION_ABANDONED",
+                              "QR_LIFECYCLE_RECONCILE"
+                            ],
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "revision",
+                          "blocking",
+                          "disposition",
+                          "reason",
+                          "attempts"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "enum": [
+                        1
+                      ],
+                      "type": "number"
+                    },
+                    "state": {
+                      "enum": [
+                        "SETUP_REQUIRED",
+                        "READY",
+                        "ACTIVE",
+                        "PAUSED",
+                        "UNKNOWN"
+                      ],
+                      "type": "string"
+                    },
+                    "subject": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "organizationId",
+                    "channelId",
+                    "groupJid",
+                    "subject",
+                    "capability",
+                    "state",
+                    "nextAction",
+                    "flow",
+                    "identity",
+                    "control",
+                    "initiatorJid",
+                    "attempts",
+                    "observations"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/channels/{id}/whatsapp-group-automation/pause": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "groupJid": {
+                    "maxLength": 128,
+                    "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "groupJid",
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "attempts": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "messageId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "state": {
+                            "enum": [
+                              "DISPATCHED",
+                              "UNKNOWN",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "messageId",
+                          "revision",
+                          "state"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "capability": {
+                      "enum": [
+                        "QR_TEXT",
+                        "UNSUPPORTED"
+                      ],
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "control": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "pauseReason": {
+                          "enum": [
+                            "HUMAN_ACTION",
+                            "EXTERNAL_OBSERVED",
+                            "AUTHORITY_CHANGED",
+                            "OUTCOME_UNKNOWN"
+                          ],
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "triggerText": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "enabled",
+                        "triggerText",
+                        "pauseReason"
+                      ],
+                      "type": "object"
+                    },
+                    "flow": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "automationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "name": {
+                          "maxLength": 160,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "ownerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "supported": {
+                          "type": "boolean"
+                        },
+                        "version": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "automationId",
+                        "name",
+                        "version",
+                        "bindingId",
+                        "bindingRevision",
+                        "ownerRevision",
+                        "supported"
+                      ],
+                      "type": "object"
+                    },
+                    "groupJid": {
+                      "maxLength": 128,
+                      "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                      "type": "string"
+                    },
+                    "identity": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "fingerprint": {
+                          "pattern": "^[a-f0-9]{64}$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "fingerprint"
+                      ],
+                      "type": "object"
+                    },
+                    "initiatorJid": {
+                      "maxLength": 128,
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "nextAction": {
+                      "enum": [
+                        "CONNECT_WHATSAPP",
+                        "UPDATE_GROUPS",
+                        "SELECT_GROUP",
+                        "CONFIGURE_EVENTS",
+                        "ALLOW_GROUP_MESSAGES",
+                        "PUBLISH_AND_BIND_FLOW",
+                        "CHOOSE_SUPPORTED_FLOW",
+                        "ENABLE_GROUP_AUTOMATION",
+                        "REVALIDATE_GROUP",
+                        "RESUME_GROUP",
+                        "RECONCILE_OUTCOME",
+                        "READY",
+                        "UNSUPPORTED_TRANSPORT",
+                        "UNSUPPORTED_GROUP"
+                      ],
+                      "type": "string"
+                    },
+                    "observations": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attempts": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "messageId": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "enum": [
+                                    "DISPATCHED",
+                                    "UNKNOWN",
+                                    "ABANDONED"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "messageId",
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "blocking": {
+                            "type": "boolean"
+                          },
+                          "disposition": {
+                            "enum": [
+                              "RECONCILE",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          },
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "enum": [
+                              "QR_ACK_PENDING",
+                              "QR_PROVIDER_ID_CONFLICT",
+                              "QR_ABANDONED_ATTEMPT_UNRESOLVED",
+                              "QR_OBSERVATION_ABANDONED",
+                              "QR_LIFECYCLE_RECONCILE"
+                            ],
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "revision",
+                          "blocking",
+                          "disposition",
+                          "reason",
+                          "attempts"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "enum": [
+                        1
+                      ],
+                      "type": "number"
+                    },
+                    "state": {
+                      "enum": [
+                        "SETUP_REQUIRED",
+                        "READY",
+                        "ACTIVE",
+                        "PAUSED",
+                        "UNKNOWN"
+                      ],
+                      "type": "string"
+                    },
+                    "subject": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "organizationId",
+                    "channelId",
+                    "groupJid",
+                    "subject",
+                    "capability",
+                    "state",
+                    "nextAction",
+                    "flow",
+                    "identity",
+                    "control",
+                    "initiatorJid",
+                    "attempts",
+                    "observations"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/channels/{id}/whatsapp-group-automation/resume": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "groupJid": {
+                    "maxLength": 128,
+                    "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "groupJid",
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "attempts": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "messageId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "state": {
+                            "enum": [
+                              "DISPATCHED",
+                              "UNKNOWN",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "messageId",
+                          "revision",
+                          "state"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "capability": {
+                      "enum": [
+                        "QR_TEXT",
+                        "UNSUPPORTED"
+                      ],
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "control": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "pauseReason": {
+                          "enum": [
+                            "HUMAN_ACTION",
+                            "EXTERNAL_OBSERVED",
+                            "AUTHORITY_CHANGED",
+                            "OUTCOME_UNKNOWN"
+                          ],
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "triggerText": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "enabled",
+                        "triggerText",
+                        "pauseReason"
+                      ],
+                      "type": "object"
+                    },
+                    "flow": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "automationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "bindingRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "name": {
+                          "maxLength": 160,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "ownerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "supported": {
+                          "type": "boolean"
+                        },
+                        "version": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "automationId",
+                        "name",
+                        "version",
+                        "bindingId",
+                        "bindingRevision",
+                        "ownerRevision",
+                        "supported"
+                      ],
+                      "type": "object"
+                    },
+                    "groupJid": {
+                      "maxLength": 128,
+                      "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                      "type": "string"
+                    },
+                    "identity": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "fingerprint": {
+                          "pattern": "^[a-f0-9]{64}$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "fingerprint"
+                      ],
+                      "type": "object"
+                    },
+                    "initiatorJid": {
+                      "maxLength": 128,
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "nextAction": {
+                      "enum": [
+                        "CONNECT_WHATSAPP",
+                        "UPDATE_GROUPS",
+                        "SELECT_GROUP",
+                        "CONFIGURE_EVENTS",
+                        "ALLOW_GROUP_MESSAGES",
+                        "PUBLISH_AND_BIND_FLOW",
+                        "CHOOSE_SUPPORTED_FLOW",
+                        "ENABLE_GROUP_AUTOMATION",
+                        "REVALIDATE_GROUP",
+                        "RESUME_GROUP",
+                        "RECONCILE_OUTCOME",
+                        "READY",
+                        "UNSUPPORTED_TRANSPORT",
+                        "UNSUPPORTED_GROUP"
+                      ],
+                      "type": "string"
+                    },
+                    "observations": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attempts": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "messageId": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "enum": [
+                                    "DISPATCHED",
+                                    "UNKNOWN",
+                                    "ABANDONED"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "messageId",
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "blocking": {
+                            "type": "boolean"
+                          },
+                          "disposition": {
+                            "enum": [
+                              "RECONCILE",
+                              "ABANDONED"
+                            ],
+                            "type": "string"
+                          },
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "enum": [
+                              "QR_ACK_PENDING",
+                              "QR_PROVIDER_ID_CONFLICT",
+                              "QR_ABANDONED_ATTEMPT_UNRESOLVED",
+                              "QR_OBSERVATION_ABANDONED",
+                              "QR_LIFECYCLE_RECONCILE"
+                            ],
+                            "type": "string"
+                          },
+                          "revision": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "revision",
+                          "blocking",
+                          "disposition",
+                          "reason",
+                          "attempts"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 200,
+                      "type": "array"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "enum": [
+                        1
+                      ],
+                      "type": "number"
+                    },
+                    "state": {
+                      "enum": [
+                        "SETUP_REQUIRED",
+                        "READY",
+                        "ACTIVE",
+                        "PAUSED",
+                        "UNKNOWN"
+                      ],
+                      "type": "string"
+                    },
+                    "subject": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "organizationId",
+                    "channelId",
+                    "groupJid",
+                    "subject",
+                    "capability",
+                    "state",
+                    "nextAction",
+                    "flow",
+                    "identity",
+                    "control",
+                    "initiatorJid",
+                    "attempts",
+                    "observations"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/channels/{id}/whatsapp-group-events-configuration": {
       "get": {
         "parameters": [
@@ -18011,9 +20397,6 @@
                           },
                           "automationEnabled": {
                             "default": false,
-                            "enum": [
-                              false
-                            ],
                             "type": "boolean"
                           },
                           "groupJid": {
@@ -18275,9 +20658,6 @@
                           },
                           "automationEnabled": {
                             "default": false,
-                            "enum": [
-                              false
-                            ],
                             "type": "boolean"
                           },
                           "groupJid": {
@@ -18577,9 +20957,6 @@
                           },
                           "automationEnabled": {
                             "default": false,
-                            "enum": [
-                              false
-                            ],
                             "type": "boolean"
                           },
                           "groupJid": {

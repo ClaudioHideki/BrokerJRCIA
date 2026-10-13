@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {QrDispatchAttemptViewSchema,QrOutboundObservationViewSchema} from './messaging/schemas.js';
 
 // These are local catalog/page limits, independent of the provider's API.
 export const WHATSAPP_GROUP_CATALOG_MAX_ITEMS = 2_000;
@@ -20,7 +21,9 @@ export const WhatsAppGroupCatalogItemSchema = z.strictObject({
   restrict: z.boolean().nullable(), announce: z.boolean().nullable(),
   isCommunity: z.boolean().nullable(), isCommunityAnnounce: z.boolean().nullable(),
   linkedParent: groupJid.nullable(), selected: z.boolean().default(false),
-  automationEnabled: z.literal(false).default(false),
+  // This is explicit configured opt-in. The operational read-view separately
+  // reports fresh authority/capability; selection alone never enables a bot.
+  automationEnabled: z.boolean().default(false),
 });
 
 export const WhatsAppGroupCatalogSnapshotSchema = z.strictObject({
@@ -91,3 +94,37 @@ export const WhatsAppGroupEventsConfigurationSchema = z.strictObject({
     ctx.addIssue({code:'custom',message:'Uncertain mutation permits read-only reconciliation'});
 });
 export type WhatsAppGroupEventsConfiguration=z.infer<typeof WhatsAppGroupEventsConfigurationSchema>;
+
+export const WhatsAppRecipientSchema=z.discriminatedUnion('kind',[
+  z.strictObject({kind:z.literal('INDIVIDUAL'),phone:z.string().regex(/^[1-9]\d{6,14}$/u)}),
+  z.strictObject({kind:z.literal('GROUP'),groupJid}),
+]);
+export type WhatsAppRecipient=z.infer<typeof WhatsAppRecipientSchema>;
+export const ConfigureWhatsAppGroupAutomationSchema=z.strictObject({
+  groupJid,triggerText:z.string().trim().min(1).max(64),
+  expectedOwnerRevision:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  expectedBindingId:z.uuid(),expectedBindingRevision:revision,
+  expectedIdentityRevision:revision,expectedIdentityFingerprint:identityFingerprint,
+  expectedRevision:revision.optional(),
+});
+export const WhatsAppGroupAutomationActionSchema=z.strictObject({groupJid,expectedRevision:revision});
+export const WhatsAppGroupAutomationQuerySchema=z.strictObject({groupJid});
+export const WhatsAppGroupAutomationNextActionSchema=z.enum([
+  'CONNECT_WHATSAPP','UPDATE_GROUPS','SELECT_GROUP','CONFIGURE_EVENTS','ALLOW_GROUP_MESSAGES',
+  'PUBLISH_AND_BIND_FLOW','CHOOSE_SUPPORTED_FLOW','ENABLE_GROUP_AUTOMATION','REVALIDATE_GROUP',
+  'RESUME_GROUP','RECONCILE_OUTCOME','READY','UNSUPPORTED_TRANSPORT','UNSUPPORTED_GROUP',
+]);
+export const WhatsAppGroupAutomationViewSchema=z.strictObject({
+  schemaVersion:z.literal(1),organizationId:z.uuid(),channelId:z.uuid(),groupJid,subject:z.string().min(1).max(256),
+  capability:z.enum(['QR_TEXT','UNSUPPORTED']),state:z.enum(['SETUP_REQUIRED','READY','ACTIVE','PAUSED','UNKNOWN']),
+  nextAction:WhatsAppGroupAutomationNextActionSchema,
+  flow:z.strictObject({automationId:z.uuid(),name:z.string().min(1).max(160),version:revision,
+    bindingId:z.uuid(),bindingRevision:revision,ownerRevision:z.number().int().nonnegative(),supported:z.boolean()}).nullable(),
+  identity:z.strictObject({revision,fingerprint:identityFingerprint}).nullable(),
+  control:z.strictObject({revision,enabled:z.boolean(),triggerText:z.string().trim().min(1).max(64),
+    pauseReason:z.enum(['HUMAN_ACTION','EXTERNAL_OBSERVED','AUTHORITY_CHANGED','OUTCOME_UNKNOWN']).nullable()}).nullable(),
+  initiatorJid:z.string().max(128).nullable(),attempts:z.array(QrDispatchAttemptViewSchema).max(200),
+  observations:z.array(QrOutboundObservationViewSchema).max(200),
+});
+export type ConfigureWhatsAppGroupAutomation=z.infer<typeof ConfigureWhatsAppGroupAutomationSchema>;
+export type WhatsAppGroupAutomationView=z.infer<typeof WhatsAppGroupAutomationViewSchema>;

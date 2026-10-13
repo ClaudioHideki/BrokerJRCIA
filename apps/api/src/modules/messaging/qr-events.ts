@@ -6,6 +6,9 @@ import { normalizeQrGroupEvents, type QrGroupEvent } from './qr-group-events.js'
 
 export type QrEvent =
   | QrGroupEvent
+  | {kind:'group-text';groupJid:string;upstreamMessageId:string;fromMe:boolean;participantJid:string|null;
+      participantJidAlt:string|null;content:{type:'TEXT';text:string};occurredAt:Date}
+  | {kind:'group-status';groupJid:string;upstreamMessageId:string;state:'SENT'|'DELIVERED'|'READ'|'FAILED'}
   | { kind: "connection"; state: "CONNECTED" | "DISCONNECTED"; identity?: string }
   | {
       kind: "message" | "outbound";
@@ -35,6 +38,8 @@ const object = (value: unknown): Record<string, unknown> =>
     : {};
 const id = z.string().min(1).max(256);
 const text = z.string().min(1).max(4096);
+const groupJid=z.string().max(128).regex(/^\d+(?:-\d+)?@g\.us$/u);
+const participantJid=z.string().max(128).regex(/^(?:[1-9]\d{6,14}(?::\d+)?@s\.whatsapp\.net|\d+(?::\d+)?@lid)$/u);
 function phone(jid: unknown): string | undefined {
   if (typeof jid !== "string") return;
   return /^([1-9]\d{7,14})(?::\d+)?@s\.whatsapp\.net$/u.exec(jid)?.[1];
@@ -81,6 +86,9 @@ export function normalizeQrEvent(
             "5": "READ",
           };
         const state = states[String(status)];
+        const destination=data.remoteJid??key.remoteJid;
+        if(state && typeof destination==='string' && destination.endsWith('@g.us'))
+          return [{kind:'group-status',groupJid:groupJid.parse(destination),upstreamMessageId:id.parse(data.keyId??key.id),state}];
         return state
           ? [
               {
@@ -90,6 +98,25 @@ export function normalizeQrEvent(
               },
             ]
           : [];
+      }
+      if(typeof key.remoteJid==='string' && key.remoteJid.endsWith('@g.us')) {
+        const group=groupJid.parse(key.remoteJid);
+        if(typeof key.fromMe!=='boolean')return [];
+        const author=key.participant===undefined || key.participant===null ? null : participantJid.parse(key.participant);
+        const alt=key.participantAlt===undefined || key.participantAlt===null ? null : participantJid.parse(key.participantAlt);
+        if(!key.fromMe && !author)throw new Error('QR_EVENT_INVALID');
+        const seconds=z.coerce.number().int().positive().max(253402300799).parse(data.messageTimestamp),occurredAt=new Date(seconds*1000);
+        if(occurredAt.getTime()>Date.now()+300000)throw new Error('QR_EVENT_INVALID');
+        let message=object(data.message);
+        for(let i=0;i<3;i++) {
+          const wrapped=object(message.ephemeralMessage??message.viewOnceMessage??message.viewOnceMessageV2);
+          if(!wrapped.message)break;message=object(wrapped.message);
+        }
+        if(message.protocolMessage||message.reactionMessage||message.senderKeyDistributionMessage)return [];
+        const body=message.conversation??object(message.extendedTextMessage).text;
+        if(body===undefined)return [];
+        return [{kind:'group-text',groupJid:group,upstreamMessageId:id.parse(key.id),fromMe:key.fromMe,
+          participantJid:author,participantJidAlt:alt,content:{type:'TEXT',text:text.parse(body)},occurredAt}];
       }
       if (
         typeof key.remoteJid !== "string" ||

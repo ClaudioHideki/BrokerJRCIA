@@ -1,4 +1,6 @@
-export const RUNTIME_SCHEMA_BASELINE = '0052_durable_private_media';
+import {flowDelegationRuntimeSql} from './flow-delegation-runtime-schema.js';
+import {whatsappGroupRuntimeSql} from './whatsapp-group-runtime-schema.js';
+export const RUNTIME_SCHEMA_BASELINE = '0054_whatsapp_group_automation';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -413,7 +415,7 @@ const requiredObjectsSql = `SELECT
   AND NOT EXISTS(SELECT 1 FROM (VALUES ('bot_id'),('bot_callback'),('capabilities_observed_at'),('callback_verified_at'),('callback_credential_version'),('callback_destination_revision')) AS required(column_name)
     WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.central_transport_bindings') AND attname=required.column_name AND attnum>0 AND NOT attisdropped))
   AND EXISTS(SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.lifecycle_pending_count_before_central_cutover(uuid,uuid,uuid)') AND prosecdef)
-  AS ready`;
+  AND (${flowDelegationRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AS ready`;
 
 export async function probeRequiredRuntimeSchema(query: SchemaProbeQuery): Promise<boolean> {
   const result = await query(requiredObjectsSql);

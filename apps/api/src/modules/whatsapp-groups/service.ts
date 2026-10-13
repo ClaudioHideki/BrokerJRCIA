@@ -3,13 +3,17 @@ import { z } from 'zod';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import type { ProviderContext, EvolutionGroupCatalogItem } from '@jrc/providers';
 import { WhatsAppGroupCatalogItemSchema, WhatsAppGroupCatalogPageQuerySchema, WhatsAppGroupCatalogPageSchema,
-  UpdateWhatsAppGroupSelectionSchema, type WhatsAppGroupCatalogPage, type WhatsAppGroupCatalogPageQuery,
+  UpdateWhatsAppGroupSelectionSchema, AUTOMATION_ORIGIN, type WhatsAppGroupCatalogPage, type WhatsAppGroupCatalogPageQuery,
   type UpdateWhatsAppGroupSelection } from '@jrc/contracts';
 import { requireActiveOrganization, TenantOperationalError } from '../tenancy/operational-limits.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
 import { reconcileWhatsAppGroupParticipation } from './events.js';
 
 export interface GroupCatalogPrincipal { organizationId: string; actorId: string }
+const workerAuthority=Symbol('group-catalog-worker');
+type WorkerPrincipal={organizationId:string;[workerAuthority]:true};
+type CatalogPrincipal=GroupCatalogPrincipal|WorkerPrincipal;
+const isWorker=(principal:CatalogPrincipal):principal is WorkerPrincipal=>workerAuthority in principal;
 export interface GroupCatalogOptions {
   encryptionKey: string;
   transact<T>(org: string, work: OrganizationTransaction<T>): Promise<T>;
@@ -35,18 +39,36 @@ function providerCode(error: unknown) {
 export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
   const key = Buffer.from(options.encryptionKey, 'base64');
   if (key.length !== 32 || key.toString('base64') !== options.encryptionKey) throw new Error('INVALID_INTEGRATION_ENCRYPTION_KEY');
-  async function access(tx: TenantTransaction, principal: GroupCatalogPrincipal, channel: string, write = false): Promise<ChannelRow> {
-    z.uuid().parse(channel); z.uuid().parse(principal.organizationId); z.uuid().parse(principal.actorId);
+  async function access(tx: TenantTransaction, principal: CatalogPrincipal, channel: string, write = false): Promise<ChannelRow> {
+    z.uuid().parse(channel); z.uuid().parse(principal.organizationId);
     await requireActiveOrganization(tx, principal.organizationId);
     // This projection locks current membership AND active user; JWT roles alone
     // cannot authorize a result after provider I/O or a page kept open in a tab.
-    const member = (await tx.query<{ role: string }>('SELECT role FROM lock_local_attendance_member($1)', [principal.actorId])).rows[0];
-    if (!member || write && !['OWNER', 'ADMIN'].includes(member.role)) throw new GroupCatalogError('GROUP_ACCESS_DENIED', 403);
+    if(!isWorker(principal)){
+      z.uuid().parse(principal.actorId);
+      const member = (await tx.query<{ role: string }>('SELECT role FROM lock_local_attendance_member($1)', [principal.actorId])).rows[0];
+      if (!member || write && !['OWNER', 'ADMIN'].includes(member.role)) throw new GroupCatalogError('GROUP_ACCESS_DENIED', 403);
+    }
     try { await lockAttendanceChannel(tx, principal.organizationId, channel); }
     catch (error) {
       if ((error as { code?: unknown })?.code === 'CHANNEL_NOT_FOUND') throw new GroupCatalogError('GROUP_CHANNEL_NOT_FOUND', 404);
       throw error;
     }
+    if(isWorker(principal)&&!(await tx.query(`/* GROUP_AUTOMATION_CATALOG_ACCESS */ SELECT 1 AS allowed
+      FROM whatsapp_group_automation_controls g
+      JOIN flow_features f ON f.organization_id=g.organization_id
+      JOIN attendance_owners o ON o.organization_id=g.organization_id AND o.channel_id=g.channel_id
+      JOIN automation_bindings b ON b.organization_id=g.organization_id AND b.id=g.binding_id
+      JOIN automation_definitions d ON d.organization_id=g.organization_id AND d.id=g.automation_id
+      JOIN messaging_channels c ON c.organization_id=g.organization_id AND c.id=g.channel_id
+      JOIN whatsapp_group_catalog_items item ON item.organization_id=g.organization_id AND item.channel_id=g.channel_id AND item.group_jid=g.group_jid
+      WHERE g.organization_id=$1 AND g.channel_id=$2 AND g.enabled AND item.selected AND f.enabled
+        AND o.executor='BROKER' AND o.remote_binding_id IS NULL AND o.revision=g.owner_revision
+        AND o.automation_id=g.automation_id AND o.version=g.version
+        AND b.status='ACTIVE' AND b.channel_id=g.channel_id AND b.automation_id=g.automation_id AND b.version=g.version AND b.revision=g.binding_revision
+        AND d.lifecycle_status='PUBLISHED' AND d.active_version=g.version
+        AND c.transport='BROKER_TRANSPORT' AND c.bot_public_id=g.automation_id::text AND c.bot_origin_reference=$3`,
+      [principal.organizationId,channel,AUTOMATION_ORIGIN])).rowCount)throw new GroupCatalogError('GROUP_ACCESS_DENIED',403);
     // Read AFTER acquiring locks: archive, deletion or disconnect may have
     // committed while this request waited for the instance/channel lock.
     const row = (await tx.query<ChannelRow>(`SELECT c.instance_id,i.upstream_instance_key,i.status='CONNECTED' AS connected
@@ -57,13 +79,15 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
   }
   const catalog = async (tx: TenantTransaction, org: string, channel: string) =>
     (await tx.query<CatalogRow>('SELECT * FROM whatsapp_group_catalogs WHERE organization_id=$1 AND channel_id=$2 FOR UPDATE', [org, channel])).rows[0];
-  async function pageIn(tx: TenantTransaction, principal: GroupCatalogPrincipal, channel: string, input: WhatsAppGroupCatalogPageQuery, connected: boolean): Promise<WhatsAppGroupCatalogPage> {
+  async function pageIn(tx: TenantTransaction, principal: CatalogPrincipal, channel: string, input: WhatsAppGroupCatalogPageQuery, connected: boolean): Promise<WhatsAppGroupCatalogPage> {
     const query = WhatsAppGroupCatalogPageQuerySchema.parse(input), row = await catalog(tx, principal.organizationId, channel);
     if (!row?.snapshot_id || !row.identity_fingerprint || !row.observed_at || !row.valid_until) throw new GroupCatalogError('GROUP_CATALOG_NOT_READY', 404);
     if (query.cursor && query.cursor.snapshotId !== row.snapshot_id) throw new GroupCatalogError('GROUP_CATALOG_CHANGED');
     const data = (await tx.query<Record<string, unknown>>(`SELECT group_jid AS "groupJid",subject,participant_count AS "participantCount",
       restrict,announce,is_community AS "isCommunity",is_community_announce AS "isCommunityAnnounce",linked_parent AS "linkedParent",
-      selected,automation_enabled AS "automationEnabled" FROM whatsapp_group_catalog_items WHERE organization_id=$1 AND channel_id=$2
+      selected,EXISTS(SELECT 1 FROM whatsapp_group_automation_controls g WHERE g.organization_id=item.organization_id
+        AND g.channel_id=item.channel_id AND g.group_jid=item.group_jid AND g.enabled) AS "automationEnabled"
+      FROM whatsapp_group_catalog_items item WHERE organization_id=$1 AND channel_id=$2
       AND ($3::text IS NULL OR group_jid>$3) ORDER BY group_jid LIMIT $4`, [principal.organizationId, channel, query.cursor?.afterGroupJid ?? null, query.limit + 1])).rows;
     const total = Number((await tx.query<{ count: string }>('SELECT count(*)::text AS count FROM whatsapp_group_catalog_items WHERE organization_id=$1 AND channel_id=$2', [principal.organizationId, channel])).rows[0]!.count);
     const items = data.slice(0, query.limit).map(item => WhatsAppGroupCatalogItemSchema.parse(item));
@@ -81,11 +105,11 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
     await options.transact(org, tx => tx.query(`UPDATE whatsapp_group_catalogs SET lease_token=NULL,lease_expires_at=NULL,
       last_error_code=$4,updated_at=now() WHERE organization_id=$1 AND channel_id=$2 AND lease_token=$3`, [org, channel, lease, code]));
   }
-  return {
-    async refresh(principal: GroupCatalogPrincipal, channel: string): Promise<WhatsAppGroupCatalogPage> {
+  const service={
+    async refresh(principal: CatalogPrincipal, channel: string): Promise<WhatsAppGroupCatalogPage> {
       // Existing explicit OWNER/ADMIN action also upgrades boxes connected
       // before G2. Configuration confirmation is independent of catalog facts.
-      await options.ensureEventsConfiguration?.(principal,channel);
+      if(!isWorker(principal))await options.ensureEventsConfiguration?.(principal,channel);
       const lease = randomUUID(), org = principal.organizationId;
       const captured = await options.transact(org, async tx => {
         const current = await access(tx, principal, channel, true);
@@ -93,7 +117,9 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
         await tx.query('INSERT INTO whatsapp_group_catalogs(organization_id,channel_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [org, channel]);
         const claimed = await tx.query(`UPDATE whatsapp_group_catalogs SET lease_token=$3,lease_expires_at=clock_timestamp()+interval '60 seconds',
           last_attempt_at=clock_timestamp(),updated_at=clock_timestamp() WHERE organization_id=$1 AND channel_id=$2
-          AND (lease_token IS NULL OR lease_expires_at<=clock_timestamp()) RETURNING channel_id`, [org, channel, lease]);
+          AND (lease_token IS NULL OR lease_expires_at<=clock_timestamp())
+          ${isWorker(principal)?"AND (valid_until IS NULL OR valid_until<clock_timestamp()+interval '2 minutes') AND last_attempt_at<clock_timestamp()-interval '30 seconds'":''}
+          RETURNING channel_id`, [org, channel, lease]);
         if (!claimed.rowCount) throw new GroupCatalogError('GROUP_CATALOG_REFRESHING');
         return current;
       });
@@ -116,7 +142,8 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
           const completed = await tx.query(`UPDATE whatsapp_group_catalogs SET snapshot_id=$4,observed_at=clock_timestamp(),valid_until=clock_timestamp()+interval '5 minutes',
             identity_revision=identity_revision+CASE WHEN identity_fingerprint IS NOT NULL AND identity_fingerprint<>$5 THEN 1 ELSE 0 END,
             identity_fingerprint=$5,catalog_revision=catalog_revision+1,last_error_code=NULL,lease_token=NULL,lease_expires_at=NULL,updated_at=now()
-            WHERE organization_id=$1 AND channel_id=$2 AND lease_token=$3 AND lease_expires_at>clock_timestamp() RETURNING channel_id`, [org, channel, lease, randomUUID(), fingerprint]);
+            WHERE organization_id=$1 AND channel_id=$2 AND lease_token=$3 AND lease_expires_at>clock_timestamp()
+              AND clock_timestamp()<$6::timestamptz RETURNING channel_id`, [org, channel, lease, randomUUID(), fingerprint,context.deadline]);
           if (!completed.rowCount) throw new GroupCatalogError('GROUP_REFRESH_LEASE_LOST');
           const selected = previous?.identity_fingerprint === fingerprint ? new Set((await tx.query<{ group_jid: string }>('SELECT group_jid FROM whatsapp_group_catalog_items WHERE organization_id=$1 AND channel_id=$2 AND selected', [org, channel])).rows.map(item => item.group_jid)) : new Set<string>();
           await tx.query('DELETE FROM whatsapp_group_catalog_items WHERE organization_id=$1 AND channel_id=$2', [org, channel]);
@@ -178,6 +205,36 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
         VALUES($1,$2,'WHATSAPP_GROUP_SELECTION_CHANGED','messaging_channel',$3,$4,'SUCCESS',$5::jsonb)`, [principal.organizationId, principal.actorId, channel, randomUUID(), JSON.stringify({ snapshotId: row.snapshot_id, selected: parsed.enabled })]);
       return pageIn(tx, principal, channel, { limit: 50 }, true);
       });
+    },
+  };
+  return{...service,refresh:(principal:GroupCatalogPrincipal,channel:string)=>service.refresh(principal,channel),
+    async refreshDueForAutomation(org:string):Promise<{processed:boolean;channelId?:string;status?:'CURRENT'|'FAILED';code?:string}>{
+      z.uuid().parse(org);
+      const due=await options.transact(org,async tx=>(await tx.query<{channel_id:string}>(`/* GROUP_AUTOMATION_CATALOG_DUE */
+        SELECT k.channel_id FROM whatsapp_group_catalogs k
+        JOIN messaging_channels c ON c.organization_id=k.organization_id AND c.id=k.channel_id
+        JOIN instances i ON i.organization_id=c.organization_id AND i.id=c.instance_id
+        JOIN organizations t ON t.id=k.organization_id JOIN flow_features f ON f.organization_id=k.organization_id
+        WHERE k.organization_id=$1 AND t.status='ACTIVE' AND f.enabled AND c.provider='BAILEYS' AND c.transport='BROKER_TRANSPORT'
+          AND c.deleting_at IS NULL AND i.archived_at IS NULL AND i.status='CONNECTED'
+          AND (k.valid_until IS NULL OR k.valid_until<clock_timestamp()+interval '2 minutes')
+          AND k.last_attempt_at<clock_timestamp()-interval '30 seconds'
+          AND (k.lease_token IS NULL OR k.lease_expires_at<=clock_timestamp())
+          AND EXISTS(SELECT 1 FROM whatsapp_group_automation_controls g JOIN whatsapp_group_catalog_items item
+            ON item.organization_id=g.organization_id AND item.channel_id=g.channel_id AND item.group_jid=g.group_jid
+            JOIN attendance_owners o ON o.organization_id=g.organization_id AND o.channel_id=g.channel_id
+            JOIN automation_bindings b ON b.organization_id=g.organization_id AND b.id=g.binding_id
+            JOIN automation_definitions d ON d.organization_id=g.organization_id AND d.id=g.automation_id
+            WHERE g.organization_id=k.organization_id AND g.channel_id=k.channel_id AND g.enabled AND item.selected
+              AND o.executor='BROKER' AND o.remote_binding_id IS NULL AND o.revision=g.owner_revision
+              AND o.automation_id=g.automation_id AND o.version=g.version
+              AND b.status='ACTIVE' AND b.channel_id=g.channel_id AND b.automation_id=g.automation_id AND b.version=g.version AND b.revision=g.binding_revision
+              AND d.lifecycle_status='PUBLISHED' AND d.active_version=g.version
+              AND c.bot_public_id=g.automation_id::text AND c.bot_origin_reference=$2)
+        ORDER BY k.last_attempt_at,k.channel_id LIMIT 1`,[org,AUTOMATION_ORIGIN])).rows[0]);
+      if(!due)return{processed:false};
+      try{await service.refresh({organizationId:org,[workerAuthority]:true},due.channel_id);return{processed:true,channelId:due.channel_id,status:'CURRENT'};}
+      catch(error){return{processed:true,channelId:due.channel_id,status:'FAILED',code:error instanceof GroupCatalogError?error.code:'GROUP_CATALOG_UNAVAILABLE'};}
     },
   };
 }

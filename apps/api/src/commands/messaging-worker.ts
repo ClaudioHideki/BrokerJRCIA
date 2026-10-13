@@ -129,7 +129,8 @@ export async function runMessagingWorker(
   try {
     const worker = createMessagingWorker({
       automationRuntimeEnabled:automationRuntimeEnabled(environment),
-      automations:createEventRouter({repository:createPostgresAutomationRepository(),enabled:automationRuntimeEnabled(environment),transact:(org,work)=>withOrganizationTransaction(pool,org,work)}),
+      automations:createEventRouter({repository:createPostgresAutomationRepository(integrations.groupPolicy),enabled:automationRuntimeEnabled(environment),transact:(org,work)=>withOrganizationTransaction(pool,org,work)}),
+      ...(integrations.groupAutomation?{groupAutomation:integrations.groupAutomation}:{}),
       flows:createFlowService({transact:(org,work)=>withOrganizationTransaction(pool,org,work)}),
       repository: createPostgresMessagingRepository(),
       transact: (organizationId, operation) =>

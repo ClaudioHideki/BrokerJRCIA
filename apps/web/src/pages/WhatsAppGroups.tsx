@@ -3,6 +3,7 @@ import { UpdateWhatsAppGroupSelectionSchema, WhatsAppGroupCatalogPageSchema,
   type WhatsAppGroupCatalogItem, type WhatsAppGroupCatalogPage, type WhatsAppGroupCatalogSnapshot } from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
 import { WhatsAppGroupEventsConfiguration } from './WhatsAppGroupEventsConfiguration.js';
+import { WhatsAppGroupAutomation } from './WhatsAppGroupAutomation.js';
 
 type Cursor = NonNullable<WhatsAppGroupCatalogPage['nextCursor']>;
 interface View {
@@ -24,6 +25,7 @@ function encodeCursor(cursor: Cursor) {
 
 export function WhatsAppGroups({ client, channelId, canManage,eventsConfigurationOrganizationId }: { client: ApiClient; channelId: string; canManage: boolean;eventsConfigurationOrganizationId?:string }) {
   const [configurationRevision,setConfigurationRevision]=useState(0);
+  const [configuredGroup,setConfiguredGroup]=useState<string|null>(null);
   const [view, setView] = useState<View>(() => emptyView(client, channelId, true));
   const generation = useRef(0), controllers = useRef(new Set<AbortController>());
   const readController = useRef<AbortController | null>(null), lock = useRef(false);
@@ -81,7 +83,7 @@ export function WhatsAppGroups({ client, channelId, canManage,eventsConfiguratio
       generation.current++;
       for (const controller of controllers.current) controller.abort();
       controllers.current.clear(); readController.current = null; lock.current = false;
-      organization.current = null; stack.current = [null];
+      organization.current = null; stack.current = [null]; setConfiguredGroup(null);
     }
     clear(); setView(emptyView(client, channelId, true));
     const unregister = client.registerTenantPurge(() => { clear(); setView(emptyView(client, channelId)); });
@@ -140,7 +142,7 @@ export function WhatsAppGroups({ client, channelId, canManage,eventsConfiguratio
   const page = visible.page;
   return <section className="panel" aria-label="Grupos do WhatsApp">
     <div className="panel-heading"><h2>Grupos do WhatsApp</h2></div>
-    <p>Selecionar grupos registra sua escolha. Bot e envio em grupos ainda não estão disponíveis.</p>
+    <p>Selecione o grupo e configure o bot. A ativação exige um menu publicado e uma mensagem para iniciar o atendimento.</p>
     {eventsConfigurationOrganizationId?<WhatsAppGroupEventsConfiguration client={client} channelId={channelId}
       organizationId={eventsConfigurationOrganizationId} revision={configurationRevision}/>:null}
     {visible.error ? <p className="notice notice--error" role="alert">{visible.error}</p> : null}
@@ -155,12 +157,17 @@ export function WhatsAppGroups({ client, channelId, canManage,eventsConfiguratio
           disabled={!canManage || page.snapshot.status !== 'CURRENT' || visible.busy || visible.loading}
           onChange={() => { void mutate(item); }} /> <span>{item.subject}</span></label>
         <p>{item.participantCount} participantes</p>
+        <button type="button" className="button button--secondary" disabled={visible.loading||visible.busy}
+          onClick={()=>setConfiguredGroup(item.groupJid)}>Configurar bot de {item.subject}</button>
       </li>)}</ul>}
       <div className="button-row">
         <button className="button button--secondary" type="button" disabled={visible.stack.length <= 1 || visible.loading || visible.busy} onClick={() => navigate('previous')}>Página anterior</button>
         <button className="button button--secondary" type="button" disabled={!page.nextCursor || visible.loading || visible.busy} onClick={() => navigate('next')}>Próxima página</button>
       </div>
     </> : !visible.loading ? <p>O catálogo ainda não foi consultado. Conecte o WhatsApp e atualize os grupos.</p> : null}
+    {page&&configuredGroup&&page.items.some(item=>item.groupJid===configuredGroup)?<WhatsAppGroupAutomation
+      key={`${page.snapshot.scope.organizationId}:${channelId}:${configuredGroup}`} client={client}
+      organizationId={page.snapshot.scope.organizationId} channelId={channelId} groupJid={configuredGroup} canManage={canManage}/>:null}
     <div className="button-row">
       <button className="button button--secondary" type="button" disabled={visible.loading} onClick={() => { void read(); }}>Recarregar catálogo</button>
       {canManage ? <button className="button button--primary" type="button" disabled={visible.loading || visible.busy} onClick={() => { void mutate(); }}>Atualizar grupos do WhatsApp</button> : null}

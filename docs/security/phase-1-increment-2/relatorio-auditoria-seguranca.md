@@ -2,7 +2,7 @@
 
 - Fase: 1
 - Incremento: 2 — Console web operacional JRC
-- Referência da fonte: `sha256:2cd93a9120bb789dcc9dd91e605bd6356c711b2d53f002bffdcd4618fde00db1`
+- Referência da fonte: `sha256:d5ca3339f2c9e8b9bfebff79394cb6520c51ae3f2c6e43b00f1a4fbbe14da700`
 - Data de referência: 2026-09-06
 
 ## Resumo executivo
@@ -164,10 +164,16 @@ A imagem fixa Node por tag e digest, separa build/runtime e executa o entrypoint
 | POST | `/v1/channels/{id}/pair` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER | `apps/api/src/http/routes/channels.ts:117` |
 | POST | `/v1/channels/{id}/reconnect` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER | `apps/api/src/http/routes/channels.ts:125` |
 | GET | `/v1/channels/{id}/status` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR_VIEWER | SIM | RLS_ORGANIZATION_AND_CANONICAL_CHANNEL_ID_BEFORE_PROVIDER | `apps/api/src/http/routes/channels.ts:106` |
-| GET | `/v1/channels/{id}/whatsapp-group-events-configuration` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_CURRENT_ACTOR_CHANNEL_INSTANCE_BINDING_IDENTITY_CONFIGURATION_REVISIONS | `apps/api/src/http/routes/whatsapp-groups.ts:76` |
-| GET | `/v1/channels/{id}/whatsapp-groups` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_CURRENT_ORGANIZATION_LOCKED_CHANNEL_INSTANCE_ACTIVE_MEMBER | `apps/api/src/http/routes/whatsapp-groups.ts:79` |
-| POST | `/v1/channels/{id}/whatsapp-groups/refresh` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ORGANIZATION_CHANNEL_NUMBER_SNAPSHOT_NO_SEND_OR_BOT | `apps/api/src/http/routes/whatsapp-groups.ts:84` |
-| PUT | `/v1/channels/{id}/whatsapp-groups/selection` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ACTOR_LOCKED_CHANNEL_ITEM_AUDITED_NO_SEND_OR_BOT | `apps/api/src/http/routes/whatsapp-groups.ts:87` |
+| GET | `/v1/channels/{id}/whatsapp-group-automation` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_CURRENT_ACTOR_CHANNEL_GROUP_IDENTITY_BINDING_VERSION_NO_CLIENT_SCOPE | `apps/api/src/http/routes/whatsapp-groups.ts:94` |
+| PUT | `/v1/channels/{id}/whatsapp-group-automation` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ACTOR_CHANNEL_GROUP_FRESH_NUMBER_SUPPORTED_PUBLISHED_VERSION | `apps/api/src/http/routes/whatsapp-groups.ts:97` |
+| POST | `/v1/channels/{id}/whatsapp-group-automation/dispatch-attempts/{attemptId}/abandon` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ACTOR_CHANNEL_GROUP_STORED_ATTEMPT_UNKNOWN_ONLY | `apps/api/src/http/routes/whatsapp-groups.ts:109` |
+| POST | `/v1/channels/{id}/whatsapp-group-automation/observations/{observationId}/abandon` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ACTOR_CHANNEL_GROUP_STORED_OBSERVATION_NO_ACTIVE_DISPATCH | `apps/api/src/http/routes/whatsapp-groups.ts:114` |
+| POST | `/v1/channels/{id}/whatsapp-group-automation/pause` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ACTOR_CHANNEL_GROUP_CANONICAL_EXECUTION | `apps/api/src/http/routes/whatsapp-groups.ts:101` |
+| POST | `/v1/channels/{id}/whatsapp-group-automation/resume` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ACTOR_CHANNEL_GROUP_SAME_INITIATOR_IMMUTABLE_VERSION | `apps/api/src/http/routes/whatsapp-groups.ts:105` |
+| GET | `/v1/channels/{id}/whatsapp-group-events-configuration` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_CURRENT_ACTOR_CHANNEL_INSTANCE_BINDING_IDENTITY_CONFIGURATION_REVISIONS | `apps/api/src/http/routes/whatsapp-groups.ts:120` |
+| GET | `/v1/channels/{id}/whatsapp-groups` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN_OPERATOR | SIM | RLS_CURRENT_ORGANIZATION_LOCKED_CHANNEL_INSTANCE_ACTIVE_MEMBER | `apps/api/src/http/routes/whatsapp-groups.ts:123` |
+| POST | `/v1/channels/{id}/whatsapp-groups/refresh` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ORGANIZATION_CHANNEL_NUMBER_SNAPSHOT_NO_SEND_OR_BOT | `apps/api/src/http/routes/whatsapp-groups.ts:128` |
+| PUT | `/v1/channels/{id}/whatsapp-groups/selection` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ACTOR_LOCKED_CHANNEL_ITEM_AUDITED_NO_SEND_OR_BOT | `apps/api/src/http/routes/whatsapp-groups.ts:131` |
 | GET | `/v1/channels/central/inboxes` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ORGANIZATION_APPROVED_ACCOUNT_DESTINATION_OPERATION_NO_SECRET_RESPONSE | `apps/api/src/http/routes/channels.ts:60` |
 | GET | `/v1/channels/central/inboxes/{inboxId}/preview` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ORGANIZATION_APPROVED_ACCOUNT_DESTINATION_OPERATION_NO_SECRET_RESPONSE | `apps/api/src/http/routes/channels.ts:61` |
 | GET | `/v1/channels/central/operations/{operationId}` | JWT_CURRENT_MEMBERSHIP | OWNER_ADMIN | SIM | RLS_CURRENT_ORGANIZATION_APPROVED_ACCOUNT_DESTINATION_OPERATION_NO_SECRET_RESPONSE | `apps/api/src/http/routes/channels.ts:62` |

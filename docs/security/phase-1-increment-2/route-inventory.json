@@ -1521,6 +1521,152 @@
   },
   {
     "method": "GET",
+    "path": "/v1/channels/{id}/whatsapp-group-automation",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN_OPERATOR",
+    "tenantRls": true,
+    "idempotency": "READ_ONLY",
+    "requestSchemas": [
+      "path:id",
+      "query:groupJid"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
+    "handlerLine": 94,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_CHANNEL_GROUP_IDENTITY_BINDING_VERSION_NO_CLIENT_SCOPE"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/channels/{id}/whatsapp-group-automation",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_OWNER_BINDING_IDENTITY_CONTROL_REVISIONS_EXPLICIT_TRIGGER_OPT_IN",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
+    "handlerLine": 97,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_CHANNEL_GROUP_FRESH_NUMBER_SUPPORTED_PUBLISHED_VERSION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/{id}/whatsapp-group-automation/dispatch-attempts/{attemptId}/abandon",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_ATTEMPT_REVISION_EXPLICIT_REASON_AUDIT_NO_REPLAY",
+    "requestSchemas": [
+      "body:application/json",
+      "path:attemptId",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
+    "handlerLine": 109,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_CHANNEL_GROUP_STORED_ATTEMPT_UNKNOWN_ONLY"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/{id}/whatsapp-group-automation/observations/{observationId}/abandon",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_OBSERVATION_REVISION_EXACT_UNKNOWN_ATTEMPT_SET_REASON_NO_REPLAY",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id",
+      "path:observationId"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
+    "handlerLine": 114,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_CHANNEL_GROUP_STORED_OBSERVATION_NO_ACTIVE_DISPATCH"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/{id}/whatsapp-group-automation/pause",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_CONTROL_REVISION_TRANSACTIONAL_HUMAN_PAUSE",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
+    "handlerLine": 101,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_CHANNEL_GROUP_CANONICAL_EXECUTION"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/channels/{id}/whatsapp-group-automation/resume",
+    "authentication": "JWT_CURRENT_MEMBERSHIP",
+    "permission": "OWNER_ADMIN",
+    "tenantRls": true,
+    "idempotency": "EXPECTED_CONTROL_REVISION_FRESH_IDENTITY_AUTHORITY_NO_UNKNOWN",
+    "requestSchemas": [
+      "body:application/json",
+      "path:id"
+    ],
+    "responseSchemas": [
+      "200:application/json"
+    ],
+    "cacheHeaders": [
+      "Cache-Control",
+      "Pragma",
+      "X-Request-Id"
+    ],
+    "challengeExposure": "NO_STORE_METADATA_ONLY",
+    "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
+    "handlerLine": 105,
+    "ownershipCheck": "RLS_CURRENT_ACTOR_CHANNEL_GROUP_SAME_INITIATOR_IMMUTABLE_VERSION"
+  },
+  {
+    "method": "GET",
     "path": "/v1/channels/{id}/whatsapp-group-events-configuration",
     "authentication": "JWT_CURRENT_MEMBERSHIP",
     "permission": "OWNER_ADMIN_OPERATOR",
@@ -1539,7 +1685,7 @@
     ],
     "challengeExposure": "NO_STORE_METADATA_ONLY",
     "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
-    "handlerLine": 76,
+    "handlerLine": 120,
     "ownershipCheck": "RLS_CURRENT_ACTOR_CHANNEL_INSTANCE_BINDING_IDENTITY_CONFIGURATION_REVISIONS"
   },
   {
@@ -1564,7 +1710,7 @@
     ],
     "challengeExposure": "NO_STORE_METADATA_ONLY",
     "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
-    "handlerLine": 79,
+    "handlerLine": 123,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_LOCKED_CHANNEL_INSTANCE_ACTIVE_MEMBER"
   },
   {
@@ -1588,7 +1734,7 @@
     ],
     "challengeExposure": "NO_STORE_METADATA_ONLY",
     "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
-    "handlerLine": 84,
+    "handlerLine": 128,
     "ownershipCheck": "RLS_CURRENT_ORGANIZATION_CHANNEL_NUMBER_SNAPSHOT_NO_SEND_OR_BOT"
   },
   {
@@ -1612,7 +1758,7 @@
     ],
     "challengeExposure": "NO_STORE_METADATA_ONLY",
     "handlerFile": "apps/api/src/http/routes/whatsapp-groups.ts",
-    "handlerLine": 87,
+    "handlerLine": 131,
     "ownershipCheck": "RLS_CURRENT_ACTOR_LOCKED_CHANNEL_ITEM_AUDITED_NO_SEND_OR_BOT"
   },
   {

@@ -29,6 +29,8 @@ describe('repository baseline', () => {
       '0050_whatsapp_group_catalog.sql',
       '0051_whatsapp_group_events.sql',
       '0052_durable_private_media.sql',
+      '0053_flow_delegation.sql',
+      '0054_whatsapp_group_automation.sql',
     ]);
     expect(rootManifests).toEqual(['MANIFESTO_ARQUIVOS_SHA256.txt']);
   });

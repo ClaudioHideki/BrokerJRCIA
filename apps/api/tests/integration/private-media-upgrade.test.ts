@@ -22,8 +22,8 @@ it('upgrades populated 0051 to registered 0052 preserving every historical inlin
  let app:Pool|undefined;
  try{
   const source=fileURLToPath(new URL('../../drizzle/migrations/',import.meta.url)),journal=JSON.parse(await readFile(join(source,'meta/_journal.json'),'utf8'));
-  const final=journal.entries.at(-1);expect(journal.entries).toHaveLength(52);expect(final.tag).toBe('0052_durable_private_media');expect(final.idx).toBe(51);
-  const previous={...journal,entries:journal.entries.slice(0,-1)};expect(previous.entries.at(-1).tag).toBe('0051_whatsapp_group_events');
+  const mediaIndex=journal.entries.findIndex(entry=>entry.tag==='0052_durable_private_media');expect(mediaIndex).toBe(51);const final=journal.entries[mediaIndex];expect(final.tag).toBe('0052_durable_private_media');expect(final.idx).toBe(51);
+  const previous={...journal,entries:journal.entries.slice(0,mediaIndex)};expect(previous.entries.at(-1).tag).toBe('0051_whatsapp_group_events');
   await mkdir(join(folder,'meta'));await writeFile(join(folder,'meta/_journal.json'),JSON.stringify(previous));
   for(const entry of previous.entries)await copyFile(join(source,entry.tag+'.sql'),join(folder,entry.tag+'.sql'));
   await withGlobalRoleLock(admin,async()=>{
@@ -45,7 +45,7 @@ it('upgrades populated 0051 to registered 0052 preserving every historical inlin
   const receipts=async()=>(await db.pool.query('SELECT id,hash,created_at FROM drizzle.__drizzle_migrations ORDER BY id')).rows,old=await receipts();expect(old).toHaveLength(51);
   await withGlobalRoleLock(admin,()=>runMigrations(db.connectionString));expect(await probe()).toBe(true);
   const after=await snapshot();expect(after).toEqual(before.map(row=>({...row,storage_backend:'INLINE_V1',private_object_id:null})));
-  const current=await receipts();expect(current).toHaveLength(52);expect(current.slice(0,51)).toEqual(old);
+  const current=await receipts();expect(current).toHaveLength(journal.entries.length);expect(current.slice(0,51)).toEqual(old);
   expect(current[51]).toMatchObject({hash:createHash('sha256').update(await readFile(join(source,final.tag+'.sql'),'utf8')).digest('hex'),created_at:String(final.when)});
   await withGlobalRoleLock(admin,()=>runMigrations(db.connectionString));expect(await receipts()).toEqual(current);expect(await snapshot()).toEqual(after);
   const media=createMediaStore({encryptionKey:key,transact:(org,work)=>withOrganizationTransaction(app!,org,work),download:async()=>{throw Error('No historical download');}});

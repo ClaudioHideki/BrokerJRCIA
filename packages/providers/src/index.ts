@@ -6,6 +6,7 @@ export * from './evolution/client.js';
 export * from './evolution/messaging.js';
 export * from './evolution/workspace.js';
 export * from './evolution/groups.js';
+export * from './evolution/group-text.js';
 export * from './evolution/evolution-provider-adapter.js';
 export * from './fake/fake-provider-adapter.js';
 export * from './meta/meta-provider-adapter.js';

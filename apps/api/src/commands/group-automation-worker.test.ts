@@ -1,0 +1,12 @@
+import {expect,it,vi} from 'vitest';
+const ports=vi.hoisted(()=>({refresh:vi.fn().mockResolvedValue({processed:false}),execute:vi.fn().mockResolvedValue({processed:false}),enqueue:vi.fn().mockResolvedValue({processed:false}),generic:vi.fn().mockResolvedValue({processed:false}),repo:vi.fn(()=>({})),fallback:vi.fn(()=>({runOnce:vi.fn()})),heartbeat:vi.fn(),end:vi.fn(),resume:vi.fn()}));
+vi.mock('pg',()=>({Pool:class{query=vi.fn(async()=>({rows:[{organization_id:'11111111-1111-4111-8111-111111111111'}]}));end=ports.end;}}));
+vi.mock('../db/tenant-transaction.js',()=>({withOrganizationTransaction:async(_pool:any,_org:any,work:any)=>work({query:vi.fn()})}));
+vi.mock('../modules/automations/repository.js',()=>({createPostgresAutomationRepository:ports.repo}));
+vi.mock('../modules/automations/service.js',()=>({createExecutionService:ports.fallback,createOutboxDispatcher:()=>({runOnce:ports.generic})}));
+vi.mock('../modules/automations/availability.js',()=>({automationRuntimeEnabled:()=>true,recordAutomationHeartbeat:ports.heartbeat}));
+const policy={encryptionKey:'synthetic-private-key',configurationScope:'synthetic-scope'};
+vi.mock('../modules/integrations/runtime.js',()=>({createIntegrationRuntime:()=>({groupPolicy:policy,groupAutomation:{refreshCatalogsOnce:ports.refresh,executeOnce:ports.execute,enqueueEffectsOnce:ports.enqueue}})}));
+vi.mock('../modules/attendance/resume-worker.js',()=>({createAttendanceResumeWorker:()=>({runOnce:ports.resume})}));
+import {runAutomationWorker} from './automation-worker.js';
+it('renews due group catalogs before one canonical execution claim without starting a second engine',async()=>{await runAutomationWorker({DATABASE_URL:'postgresql://jrc_app@127.0.0.1/synthetic',AUTOMATION_RUNTIME_V2_ENABLED:'true'} as any,false);const org='11111111-1111-4111-8111-111111111111';expect(ports.repo).toHaveBeenCalledWith(policy);expect(ports.refresh).toHaveBeenCalledWith(org);expect(ports.refresh.mock.invocationCallOrder[0]).toBeLessThan(ports.execute.mock.invocationCallOrder[0]!);expect(ports.execute).toHaveBeenCalledTimes(1);expect(ports.execute).toHaveBeenCalledWith(org);expect(ports.fallback).not.toHaveBeenCalled();expect(ports.enqueue).toHaveBeenCalledWith(org);expect(ports.generic).toHaveBeenCalledWith(org);expect(ports.end).toHaveBeenCalledTimes(1);});

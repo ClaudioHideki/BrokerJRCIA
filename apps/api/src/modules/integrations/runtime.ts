@@ -20,7 +20,7 @@ import {
   readChatwootAccount,
   readChatwootConnection,
 } from "./chatwoot-service.js";
-import { MediaError, EvolutionWorkspaceClient, type MetaCloudClient } from "@jrc/providers";
+import { MediaError, EvolutionWorkspaceClient, EvolutionGroupsClient, createEvolutionGroupTextSender, type MetaCloudClient } from "@jrc/providers";
 import { randomUUID } from 'node:crypto';
 import { createChatwootHealth } from './chatwoot-health.js';
 import { createChatwootControlService } from './chatwoot-control-service.js';
@@ -36,6 +36,8 @@ import { readCentralTransportContext } from '../messaging/central-transport.js';
 import { createEventRouter } from '../automations/service.js';
 import { automationRuntimeEnabled } from '../automations/availability.js';
 import { createWhatsAppGroupEvents } from '../whatsapp-groups/events.js';
+import { createGroupAutomationRuntime } from '../whatsapp-groups/automation-runtime.js';
+import { createWhatsAppGroupCatalog } from '../whatsapp-groups/service.js';
 
 type QrConfig = Pick<
   QrServiceOptions,
@@ -118,6 +120,27 @@ export function createIntegrationRuntime(
   const config = loadIntegrationConfig(environment);
   const transact: ChatwootOptions["transact"] = (org, operation) =>
     withOrganizationTransaction(pool, org, operation);
+  const groupPolicy=config.qr&&environment.INTEGRATION_ENCRYPTION_KEY?{
+    encryptionKey:environment.INTEGRATION_ENCRYPTION_KEY,
+    configurationScope:JSON.stringify([config.qr.baseUrl,config.qr.webhookOrigin,config.qr.signingKey]),
+  }:undefined;
+  const groupCatalog=groupPolicy&&config.qr?createWhatsAppGroupCatalog({
+    encryptionKey:groupPolicy.encryptionKey,transact,
+    async readIdentity(context,key){const snapshot=await new EvolutionWorkspaceClient({baseUrl:config.qr!.baseUrl,apiKey:config.qr!.apiKey}).read(context,key);
+      return{connected:snapshot.profile.state==='open',phone:snapshot.profile.phone};},
+    readGroups:(context,key)=>new EvolutionGroupsClient({baseUrl:config.qr!.baseUrl,apiKey:config.qr!.apiKey}).list(context,key),
+  }):undefined;
+  const groupAutomation=groupPolicy&&config.qr?createGroupAutomationRuntime({
+    ...groupPolicy,transact,enabled:automationRuntimeEnabled(environment),
+    ...(groupCatalog?{refreshCatalogs:groupCatalog.refreshDueForAutomation}:{}),
+    async readIdentity(context,instanceKey){
+      const snapshot=await new EvolutionWorkspaceClient({baseUrl:config.qr!.baseUrl,apiKey:config.qr!.apiKey}).read(context,instanceKey);
+      return{connected:snapshot.profile.state==='open',phone:snapshot.profile.phone,groupsIgnore:snapshot.settings?.groupsIgnore??null};
+    },
+    async sendText(context,instanceKey,recipient,text){
+      return createEvolutionGroupTextSender({baseUrl:config.qr!.baseUrl,apiKey:config.qr!.apiKey,instanceKey}).sendText(context,recipient,text);
+    },
+  }):undefined;
   const identity = config.qr && config.chatwoot ? createChatwootHealth({ transact, encryptionKey: config.chatwoot.encryptionKey,
     async readIdentity(org, instanceId) {
       const row = await transact(org, async t => (await t.query<{ upstream_instance_key: string }>('SELECT upstream_instance_key FROM instances WHERE organization_id=$1 AND id=$2', [org, instanceId])).rows[0]);
@@ -133,6 +156,7 @@ export function createIntegrationRuntime(
         transact,
         identity,
         groups:environment.INTEGRATION_ENCRYPTION_KEY?createWhatsAppGroupEvents({encryptionKey:environment.INTEGRATION_ENCRYPTION_KEY}):undefined,
+        groupAutomation,
         async resolveChannel(id) {
           const row = (
             await pool.query<{ organization_id: string; instance_id: string }>(
@@ -282,6 +306,8 @@ export function createIntegrationRuntime(
     }}):undefined;
   return {
     qr,
+    groupAutomation,
+    groupPolicy,
     chatwoot,
     centralIngress,
     centralCutover:centralEnvironment?createCentralCutoverService({transact,client:centralEnvironment.client,vault:centralEnvironment.vault,callback:centralEnvironment.callback}):undefined,

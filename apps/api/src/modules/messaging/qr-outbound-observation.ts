@@ -8,9 +8,10 @@ import { AttendanceError } from '../attendance/types.js';
 import { integrationAudit } from '../integrations/chatwoot-service.js';
 import type { AbandonQrOutboundObservationRequest, QrOutboundObservationView, AbandonQrDispatchAttemptRequest, QrDispatchAttemptView } from '@jrc/contracts';
 import { isOrganizationActive } from '../tenancy/operational-limits.js';
+import {hasAmbiguousGroupProviderId} from '../whatsapp-groups/provider-scope.js';
 
 type Scope = { organizationId: string; channelId: string; conversationId: string };
-type Observation = { id: string; channel_id: string; conversation_id: string; provider_message_id: string; content: MessageContent; occurred_at: Date; disposition: string };
+type Observation = { id: string; channel_id: string; conversation_id: string; provider_scope:string;provider_message_id: string; content: MessageContent; occurred_at: Date; disposition: string };
 
 /** The caller holds the channel lock. An observation never enters the send outbox. */
 export async function recordQrOutboundObservation(tx: TenantTransaction, input: Scope & {
@@ -18,7 +19,7 @@ export async function recordQrOutboundObservation(tx: TenantTransaction, input: 
 }) {
   const row = (await tx.query<{ id: string }>(`INSERT INTO qr_outbound_observations
     (organization_id,channel_id,conversation_id,provider_message_id,content,occurred_at)
-    VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(organization_id,channel_id,provider_message_id)
+    VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(organization_id,channel_id,provider_scope,provider_message_id)
     DO UPDATE SET provider_message_id=EXCLUDED.provider_message_id RETURNING id`,
     [input.organizationId,input.channelId,input.conversationId,input.upstreamMessageId,input.content,input.occurredAt])).rows[0]!;
   await settleQrOutboundObservation(tx,input.organizationId,row.id);
@@ -26,15 +27,23 @@ export async function recordQrOutboundObservation(tx: TenantTransaction, input: 
 
 /** Exact provider ID is the only positive correlation. Sender hints, text and dates are never evidence. */
 export async function settleQrOutboundObservation(tx: TenantTransaction, org: string, id: string) {
-  const o = (await tx.query<Observation>(`SELECT id,channel_id,conversation_id,provider_message_id,content,occurred_at,disposition
+  const o = (await tx.query<Observation>(`SELECT id,channel_id,conversation_id,provider_scope,provider_message_id,content,occurred_at,disposition
     FROM qr_outbound_observations WHERE organization_id=$1 AND id=$2 FOR UPDATE`,[org,id])).rows[0];
   if (!o || o.disposition !== 'RECONCILE') return;
   await lockMessageStatusKey(tx,org,o.channel_id,o.provider_message_id);
+  if(o.provider_scope.startsWith('g3:')&&await hasAmbiguousGroupProviderId(tx,{organizationId:org,channelId:o.channel_id,conversationId:o.conversation_id,providerId:o.provider_message_id,providerScope:o.provider_scope})){
+    const pending=Boolean((await tx.query(`SELECT 1 FROM qr_dispatch_attempts WHERE organization_id=$1 AND conversation_id=$2 AND state IN ('DISPATCHED','UNKNOWN') LIMIT 1`,[org,o.conversation_id])).rowCount);
+    await tx.query(`UPDATE qr_outbound_observations SET blocking=$3,reason='QR_GROUP_IDENTITY_RECONCILE',revision=revision+1,updated_at=clock_timestamp()
+      WHERE organization_id=$1 AND id=$2`,[org,id,pending]);
+    return; // A scoped ID collision does not authenticate the callback epoch.
+  }
   const canonical = (await tx.query<{id:string;source:string;direction:string;conversation_id:string}>(`SELECT id,source,direction,conversation_id FROM messaging_messages
-    WHERE organization_id=$1 AND channel_id=$2 AND upstream_message_id=$3`,[org,o.channel_id,o.provider_message_id])).rows[0];
+    WHERE organization_id=$1 AND channel_id=$2 AND upstream_message_id=$3 AND provider_scope=$4`,[org,o.channel_id,o.provider_message_id,o.provider_scope])).rows[0];
   if (canonical?.direction === 'OUTGOING' && canonical.conversation_id===o.conversation_id) {
     await tx.query(`UPDATE qr_outbound_observations SET disposition=$3,blocking=false,message_id=$4,reason='QR_PROVIDER_ID_CONFIRMED',revision=revision+1,updated_at=now()
       WHERE organization_id=$1 AND id=$2`,[org,id,canonical.source==='EXTERNAL_OBSERVED'?'EXTERNAL_OBSERVED':'BROKER_ECHO',canonical.id]);
+    if(o.provider_scope.startsWith('g3:'))await tx.query(`UPDATE whatsapp_group_transport_facts SET disposition=$3,message_id=$4
+      WHERE organization_id=$1 AND observation_id=$2`,[org,id,canonical.source==='EXTERNAL_OBSERVED'?'EXTERNAL_OBSERVED':'BROKER_ECHO',canonical.id]);
     return;
   }
   const attempts = (await tx.query<{pending:boolean;abandoned:boolean}>(`SELECT
@@ -55,6 +64,13 @@ export async function settleQrOutboundObservation(tx: TenantTransaction, org: st
       WHERE organization_id=$1 AND id=$2`,[org,id]);
     return;
   }
+  if(o.provider_scope.startsWith('g3:')&&o.provider_scope!==(await tx.query<{scope:string}>('SELECT whatsapp_group_provider_scope($1,$2) AS scope',[org,o.conversation_id])).rows[0]!.scope){
+    await tx.query("UPDATE qr_outbound_observations SET blocking=false,reason='QR_GROUP_IDENTITY_RECONCILE',revision=revision+1 WHERE organization_id=$1 AND id=$2",[org,id]);return;
+  }
+  if(o.provider_scope.startsWith('g3:')&&(await tx.query(`SELECT 1 FROM whatsapp_group_automation_controls g JOIN whatsapp_group_catalogs k ON k.organization_id=g.organization_id AND k.channel_id=g.channel_id
+    WHERE g.organization_id=$1 AND g.conversation_id=$2 AND (g.identity_revision<>k.identity_revision OR g.identity_fingerprint<>k.identity_fingerprint OR k.last_error_code='IDENTITY_CHANGED')`,[org,o.conversation_id])).rowCount){
+    await tx.query("UPDATE qr_outbound_observations SET blocking=false,reason='QR_GROUP_IDENTITY_RECONCILE',revision=revision+1 WHERE organization_id=$1 AND id=$2",[org,id]);return;
+  }
   const scope={organizationId:org,channelId:o.channel_id,conversationId:o.conversation_id};
   // Pause executors conservatively. This is an external effect, not a human identity or an assignment.
   await interruptChatwootAttendance(tx,scope,false);
@@ -63,12 +79,17 @@ export async function settleQrOutboundObservation(tx: TenantTransaction, org: st
   const messageId=randomUUID();
   let state:MessageState='SENT';
   const statuses=(await tx.query<{state:MessageState}>(`SELECT state FROM messaging_status_events WHERE organization_id=$1 AND channel_id=$2
-    AND upstream_message_id=$3 ORDER BY occurred_at,id`,[org,o.channel_id,o.provider_message_id])).rows;
+    AND upstream_message_id=$3 AND provider_scope=$4 ORDER BY occurred_at,id`,[org,o.channel_id,o.provider_message_id,o.provider_scope])).rows;
   for(const status of statuses)if(canAdvanceMessageState(state,status.state))state=status.state;
   await tx.query(`INSERT INTO messaging_messages(id,organization_id,channel_id,conversation_id,direction,source,upstream_message_id,content,state,created_at)
     VALUES($1,$2,$3,$4,'OUTGOING','EXTERNAL_OBSERVED',$5,$6,$8,$7)`,[messageId,org,o.channel_id,o.conversation_id,o.provider_message_id,o.content,o.occurred_at,state]);
   await tx.query(`UPDATE qr_outbound_observations SET disposition='EXTERNAL_OBSERVED',blocking=false,message_id=$3,
     reason='QR_EXTERNAL_OBSERVED',revision=revision+1,updated_at=now() WHERE organization_id=$1 AND id=$2`,[org,id,messageId]);
+  if(o.provider_scope.startsWith('g3:')){
+    await tx.query(`UPDATE whatsapp_group_automation_controls SET pause_reason=CASE WHEN pause_reason='HUMAN_ACTION' THEN pause_reason ELSE 'EXTERNAL_OBSERVED' END,
+      pause_actor_id=CASE WHEN pause_reason='HUMAN_ACTION' THEN pause_actor_id ELSE NULL END,revision=revision+1 WHERE organization_id=$1 AND conversation_id=$2`,[org,o.conversation_id]);
+    await tx.query("UPDATE whatsapp_group_transport_facts SET disposition='EXTERNAL_OBSERVED',message_id=$3 WHERE organization_id=$1 AND observation_id=$2",[org,id,messageId]);
+  }
 }
 
 export async function beginQrDispatchAttempt(tx: TenantTransaction, input: Scope & { messageId: string; leaseToken: string }) {

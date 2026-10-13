@@ -4,6 +4,19 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/channels/{id}/whatsapp-group-automation':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR',true,
+    'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_CHANNEL_GROUP_IDENTITY_BINDING_VERSION_NO_CLIENT_SCOPE'),
+  'PUT /v1/channels/{id}/whatsapp-group-automation':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'EXPECTED_OWNER_BINDING_IDENTITY_CONTROL_REVISIONS_EXPLICIT_TRIGGER_OPT_IN','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_CHANNEL_GROUP_FRESH_NUMBER_SUPPORTED_PUBLISHED_VERSION'),
+  'POST /v1/channels/{id}/whatsapp-group-automation/pause':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'EXPECTED_CONTROL_REVISION_TRANSACTIONAL_HUMAN_PAUSE','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_CHANNEL_GROUP_CANONICAL_EXECUTION'),
+  'POST /v1/channels/{id}/whatsapp-group-automation/resume':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'EXPECTED_CONTROL_REVISION_FRESH_IDENTITY_AUTHORITY_NO_UNKNOWN','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_CHANNEL_GROUP_SAME_INITIATOR_IMMUTABLE_VERSION'),
+  'POST /v1/channels/{id}/whatsapp-group-automation/dispatch-attempts/{attemptId}/abandon':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'EXPECTED_ATTEMPT_REVISION_EXPLICIT_REASON_AUDIT_NO_REPLAY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_CHANNEL_GROUP_STORED_ATTEMPT_UNKNOWN_ONLY'),
+  'POST /v1/channels/{id}/whatsapp-group-automation/observations/{observationId}/abandon':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'EXPECTED_OBSERVATION_REVISION_EXACT_UNKNOWN_ATTEMPT_SET_REASON_NO_REPLAY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_CHANNEL_GROUP_STORED_OBSERVATION_NO_ACTIVE_DISPATCH'),
+
   'GET /v1/channels/{id}/whatsapp-group-events-configuration':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR',true,
     'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_CHANNEL_INSTANCE_BINDING_IDENTITY_CONFIGURATION_REVISIONS'),
   'GET /v1/channels/{id}/whatsapp-groups':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR',true,

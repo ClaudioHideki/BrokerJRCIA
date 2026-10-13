@@ -238,6 +238,17 @@ describe('migrations PostgreSQL', () => {
 
   it('aplica a matriz completa de grants das roles de runtime', async () => {
     const tables = [
+      'whatsapp_group_automation_controls',
+      'whatsapp_group_automation_sessions',
+      'whatsapp_group_transport_facts',
+      'flow_delegation_credentials',
+      'flow_delegation_sessions',
+      'flow_delegation_session_grants',
+      'automation_definition_scopes',
+      'flow_executor_cutovers',
+      'flow_member_grants',
+      'flow_executor_profiles',
+      'flow_executor_origins',
       'media_private_objects',
       'media_private_operations',
       'api_keys',
@@ -265,6 +276,17 @@ describe('migrations PostgreSQL', () => {
     const privileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'];
     const allBusinessPrivileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
     const expected = new Map<string, readonly string[]>([
+      ['jrc_app:whatsapp_group_automation_controls', ['SELECT','INSERT','UPDATE']],
+      ['jrc_app:whatsapp_group_automation_sessions', ['SELECT','INSERT','UPDATE']],
+      ['jrc_app:whatsapp_group_transport_facts', ['SELECT','INSERT','UPDATE']],
+      ['jrc_app:flow_delegation_credentials', ['SELECT','INSERT','UPDATE']],
+      ['jrc_app:flow_delegation_sessions', ['SELECT','INSERT','UPDATE']],
+      ['jrc_app:flow_delegation_session_grants', ['SELECT','INSERT','UPDATE','DELETE']],
+      ['jrc_app:automation_definition_scopes', ['SELECT','INSERT','UPDATE','DELETE']],
+      ['jrc_app:flow_executor_cutovers', ['SELECT','INSERT','UPDATE']],
+      ['jrc_app:flow_member_grants', ['SELECT','INSERT','UPDATE']],
+      ['jrc_app:flow_executor_profiles', ['SELECT','INSERT','UPDATE']],
+      ['jrc_app:flow_executor_origins', ['SELECT']],
       ['jrc_auth:organizations', ['SELECT']],
       ['jrc_auth:users', ['SELECT']],
       ['jrc_auth:memberships', ['SELECT']],
@@ -312,6 +334,17 @@ describe('migrations PostgreSQL', () => {
 
   it('habilita e força RLS em todas as tabelas multicliente', async () => {
     const expectedTables = [
+      'whatsapp_group_automation_controls',
+      'whatsapp_group_automation_sessions',
+      'whatsapp_group_transport_facts',
+      'flow_delegation_credentials',
+      'flow_delegation_sessions',
+      'flow_delegation_session_grants',
+      'automation_definition_scopes',
+      'flow_executor_cutovers',
+      'flow_member_grants',
+      'flow_executor_profiles',
+      'flow_executor_origins',
       'media_private_objects',
       'media_private_operations',
       'api_keys',
@@ -387,6 +420,11 @@ describe('migrations PostgreSQL', () => {
       ...Array.from({length:2},()=>({policyname:'qr_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'group_catalog_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:4},()=>({policyname:'group_events_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:3},()=>({policyname:'group_runtime_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      ...Array.from({length:7},()=>({policyname:'tenant_scope',roles:['jrc_app'],cmd:'ALL'})),
+      {policyname:'flow_origins_tenant_read',roles:['jrc_app'],cmd:'SELECT'},
+      {policyname:'flow_origins_platform',roles:['jrc_platform'],cmd:'ALL'},
+      {policyname:'flow_origins_migrator',roles:['jrc_migrator'],cmd:'ALL'},
       // 0043 revokes delegated access through the restricted definer function.
       {policyname:'embed_authorizations_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
       {policyname:'embed_sessions_auth_revoke',roles:['jrc_migrator'],cmd:'UPDATE'},
@@ -495,7 +533,7 @@ describe('migrations PostgreSQL', () => {
     ].sort((a,b)=>a.policyname.localeCompare(b.policyname)));
   });
 
-  it('checks the reviewed 0034-0051 policy tables, expressions and restricted grants', async () => {
+  it('checks the reviewed 0034-0054 policy tables, expressions and restricted grants', async () => {
     const attendanceTables = [
       'attendance_owners', 'attendance_sessions', 'chatwoot_attendance_controls',
       'chatwoot_mirror_attempts', 'chatwoot_attendance_observations', 'attendance_handoff_operations', 'attendance_resume_operations',
@@ -507,7 +545,9 @@ describe('migrations PostgreSQL', () => {
     const qrTables = ['qr_dispatch_attempts','qr_outbound_observations'];
     const groupTables = ['whatsapp_group_catalogs','whatsapp_group_catalog_items'];
     const groupEventTables=['whatsapp_group_events','whatsapp_group_participation','whatsapp_group_participants','whatsapp_group_webhook_operations'];
-    const tables = [...attendanceTables, ...centralTables, ...qrTables, ...groupTables,...groupEventTables, ...commercialTables, ...removalTables];
+    const groupRuntimeTables=["whatsapp_group_automation_controls","whatsapp_group_automation_sessions","whatsapp_group_transport_facts"];
+    const flowDelegationTables=["flow_delegation_credentials","flow_delegation_sessions","flow_delegation_session_grants","automation_definition_scopes","flow_executor_cutovers","flow_member_grants","flow_executor_profiles"];
+    const tables = [...groupRuntimeTables,...flowDelegationTables,...attendanceTables, ...centralTables, ...qrTables, ...groupTables,...groupEventTables, ...commercialTables, ...removalTables];
     type ReviewedPolicy = { tablename: string; policyname: string; roles: string[]; cmd: string;
       permissive: string; qual: string | null; with_check: string | null };
     const connection = await database.pool.connect();
@@ -526,6 +566,8 @@ describe('migrations PostgreSQL', () => {
         qual: string | null = 'true', withCheck: string | null = 'true'): ReviewedPolicy =>
         ({ tablename, policyname, roles: [role], cmd, permissive: 'PERMISSIVE', qual, with_check: withCheck });
       const expected: ReviewedPolicy[] = [
+        ...groupRuntimeTables.flatMap(table=>[policy(table,'group_runtime_tenant','jrc_app','ALL',reference.qual,reference.with_check),policy(table,'lifecycle_migrator','jrc_migrator')]),
+        ...flowDelegationTables.flatMap(table=>[policy(table,'tenant_scope','jrc_app','ALL',reference.qual,reference.with_check),policy(table,'lifecycle_migrator','jrc_migrator')]),
         ...attendanceTables.flatMap(table => [
           policy(table, 'attendance_tenant', 'jrc_app', 'ALL', reference.qual, reference.with_check),
           policy(table, 'lifecycle_migrator', 'jrc_migrator'),
@@ -584,9 +626,9 @@ describe('migrations PostgreSQL', () => {
             has_table_privilege('jrc_auth',$1,'INSERT') AS auth_insert,
             has_table_privilege('jrc_auth',$1,'UPDATE') AS auth_update,
             has_table_privilege('jrc_auth',$1,'DELETE') AS auth_delete`, [`public.${table}`])).rows[0];
-        const tenantAccess = attendanceTables.includes(table) || centralTables.includes(table) || qrTables.includes(table) || groupTables.includes(table)||groupEventTables.includes(table);
+        const tenantAccess = groupRuntimeTables.includes(table)||flowDelegationTables.includes(table)||attendanceTables.includes(table) || centralTables.includes(table) || qrTables.includes(table) || groupTables.includes(table)||groupEventTables.includes(table);
         expect(grants, table).toEqual({ app_select: tenantAccess, app_insert: tenantAccess,
-          app_update: tenantAccess&&table!=='whatsapp_group_events', app_delete: ['local_attendance_team_members','whatsapp_group_catalog_items'].includes(table), auth_select: false, auth_insert: false,
+          app_update: tenantAccess&&table!=='whatsapp_group_events', app_delete: ['local_attendance_team_members','whatsapp_group_catalog_items','flow_delegation_session_grants','automation_definition_scopes'].includes(table), auth_select: false, auth_insert: false,
           auth_update: false, auth_delete: false });
       }
       for (const table of ['local_attendance_teams', 'local_attendance_team_members']) {
