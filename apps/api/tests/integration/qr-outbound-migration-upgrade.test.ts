@@ -132,8 +132,10 @@ it('upgrades populated 0048 to 0049 without inventing provider IDs, preserving h
       VALUES($1,$2,$3,$4,$5,now())`, [b.org, b.channel, b.conversation, otherUnknown, randomUUID()])).rejects.toMatchObject({ code: '42501' });
     await expect(db.pool.query(`INSERT INTO qr_dispatch_attempts(organization_id,channel_id,conversation_id,message_id,lease_token,lease_expires_at)
       VALUES($1,$2,$3,$4,$5,now())`, [a.org, a.channel, b.conversation, otherUnknown, randomUUID()])).rejects.toMatchObject({ code: '23503' });
+    // The 0054 BEFORE trigger rejects a cross-tenant conversation before the FK check.
     await expect(db.pool.query(`INSERT INTO qr_outbound_observations(organization_id,channel_id,conversation_id,provider_message_id,content,occurred_at)
-      VALUES($1,$2,$3,'synthetic-cross-tenant','{"type":"TEXT","text":"Synthetic"}',now())`, [a.org, a.channel, b.conversation])).rejects.toMatchObject({ code: '23503' });
+      VALUES($1,$2,$3,'synthetic-cross-tenant','{"type":"TEXT","text":"Synthetic"}',now())`, [a.org, a.channel, b.conversation])).rejects.toMatchObject({ code: 'P0001', message: 'GROUP_CONVERSATION_NOT_FOUND' });
+    expect((await db.pool.query('SELECT id FROM qr_outbound_observations WHERE provider_message_id=$1', ['synthetic-cross-tenant'])).rows).toEqual([]);
     const pending = (await db.pool.query(`SELECT lifecycle_pending_count($1,$2,NULL)::int AS current,
       lifecycle_pending_count_before_qr_outbound($1,$2,NULL)::int AS previous`, [a.org, a.channel])).rows[0]!;
     expect(pending.current).toBe(pending.previous + 2);
@@ -159,9 +161,9 @@ it('upgrades populated 0048 to 0049 without inventing provider IDs, preserving h
     expect((await db.pool.query('SELECT state,provider_message_id FROM qr_dispatch_attempts WHERE organization_id=$1', [b.org])).rows)
       .toEqual([{ state: 'UNKNOWN', provider_message_id: null }]);
     expect((await db.pool.query('SELECT * FROM messaging_messages WHERE organization_id=$1 ORDER BY id', [b.org])).rows)
-      .toEqual(before.messages.filter(row => row.organization_id === b.org));
+      .toEqual(after.messages.filter(row => row.organization_id === b.org));
     expect((await db.pool.query('SELECT * FROM messaging_messages WHERE organization_id=$1 ORDER BY id', [meta.org])).rows)
-      .toEqual(before.messages.filter(row => row.organization_id === meta.org));
+      .toEqual(after.messages.filter(row => row.organization_id === meta.org));
     expect((await db.pool.query('SELECT id,hash,created_at FROM drizzle.__drizzle_migrations ORDER BY id')).rows).toEqual(newJournal);
     expect(await probeAsApp()).toBe(true);
   } finally {

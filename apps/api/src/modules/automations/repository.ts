@@ -16,6 +16,7 @@ export interface BindingRow {id:string;organizationId:string;automationId:string
 export interface ExecutionRow {id:string;organizationId:string;automationId:string;version:number;bindingId:string;channelId:string;conversationId:string|null;status:string;currentNodeId:string|null;correlationId:string;state:RuntimeState;input:Record<string,unknown>;errorCode:string|null;attempts:number;startedAt:Date;updatedAt:Date;completedAt:Date|null;leaseToken:string|null}
 export type OutboxKind='SEND_TEXT'|'HANDOFF'|'RESUME_EVENT'|'IO_HTTP'|'IO_SQL'|'IO_CODE'|'IO_AI';
 export interface OutboxRow {id:string;organizationId:string;executionId:string;channelId:string;conversationId:string|null;nodeId:string;ordinal:number;kind:OutboxKind;payload:Record<string,unknown>;attempts:number;leaseToken:string}
+export type HandoffTerminalResult={status:'SENT';remoteReference?:string}|{status:'FAILED';error:string};
 export interface NodeExecutionRow {id:string;nodeId:string;ordinal:number;status:string;input:Record<string,unknown>;output:Record<string,unknown>;errorCode:string|null;startedAt:Date;completedAt:Date|null}
 export interface OutboxInspectionRow {boundedAi?:boolean;aiUsage?:{status:string;month:string;model:string;reservedMicros:number;observedMicros:number|null;inputTokens:number|null;outputTokens:number|null}|null;id:string;nodeId:string;ordinal:number;kind:OutboxKind;handoffDestination?:'LOCAL'|'CENTRAL'|null;status:string;attempts:number;remoteReference:string|null;lastError:string|null;createdAt:Date;updatedAt:Date}
 export interface ExecutionContextRow {conversationId:string|null;contactId:string|null}
@@ -79,6 +80,7 @@ export interface AutomationRepository {
  releaseDueWaits(tx:TenantTransaction,org:string,limit:number):Promise<number>;
  claimOutbox(tx:TenantTransaction,org:string,leaseToken:string,leaseMs:number,kinds:OutboxKind[],recipientKind?:'GROUP'):Promise<OutboxRow|null>;
  settleOutbox(tx:TenantTransaction,org:string,id:string,leaseToken:string,result:{status:'SENT'|'PENDING'|'FAILED';remoteReference?:string;error?:string;availableAt?:Date}):Promise<boolean>;
+ hasCommittedHandoffResult(tx:TenantTransaction,item:OutboxRow,result:HandoffTerminalResult):Promise<boolean>;
  recordUnknownOutbox(tx:TenantTransaction,org:string,id:string,leaseToken:string,error:string):Promise<boolean>;
 }
 
@@ -245,6 +247,37 @@ export function createPostgresAutomationRepository(policy?:GroupPhysicalPolicy):
     return null;
   },
   async settleOutbox(tx,org,id,leaseToken,result){return Boolean((await tx.query(`update automation_outbox set status=$4,remote_reference=coalesce($5,remote_reference),last_error=$6,available_at=coalesce($7,available_at),lease_token=null,lease_expires_at=null,updated_at=now() where organization_id=$1 and id=$2 and lease_token=$3 and status='UNKNOWN'`,[org,id,leaseToken,result.status,result.remoteReference??null,result.error??null,result.availableAt??null])).rowCount);},
+  async hasCommittedHandoffResult(tx,item,result){
+    if(item.kind!=='HANDOFF'||!item.conversationId||(result.status==='SENT'?!result.remoteReference:!result.error))return false;
+    // Acknowledgment only: never mutate/requeue a terminal row or run IO here.
+    // Local FAILED records prove a terminal failure, not which lease authored it.
+    // External handoffs additionally require their durable operation and lease.
+    return Boolean((await tx.query(`SELECT 1 FROM automation_outbox o
+      JOIN automation_executions e ON e.organization_id=o.organization_id AND e.id=o.execution_id
+      WHERE o.organization_id=$1 AND o.id=$2 AND o.execution_id=$3 AND e.channel_id=$4
+        AND e.conversation_id=$5 AND o.node_id=$6 AND o.ordinal=$7 AND o.payload=$8::jsonb
+        AND o.kind='HANDOFF' AND o.status=$9 AND o.lease_token IS NULL AND o.lease_expires_at IS NULL
+        AND (
+          (o.payload @> '{"handoffVersion":2}'::jsonb
+            AND NOT EXISTS(SELECT 1 FROM attendance_handoff_operations h
+              WHERE h.organization_id=o.organization_id AND h.outbox_id=o.id)
+            AND (($9='SENT' AND o.payload @> '{"destination":{"kind":"LOCAL"}}'::jsonb
+                AND o.payload #>> '{destination,organizationId}'=o.organization_id::text
+                AND o.payload #>> '{destination,channelId}'=e.channel_id::text
+                AND o.last_error IS NULL AND o.remote_reference='local-handoff:'||o.id::text AND o.remote_reference=$10)
+              OR ($9='FAILED' AND o.remote_reference IS NULL AND o.last_error=$11)))
+          OR
+          (NOT (o.payload @> '{"handoffVersion":2}'::jsonb)
+            AND EXISTS(SELECT 1 FROM attendance_handoff_operations h
+              WHERE h.organization_id=o.organization_id AND h.outbox_id=o.id AND h.execution_id=o.execution_id
+                AND h.channel_id=e.channel_id AND h.conversation_id=e.conversation_id AND h.lease_token=$12
+                AND (($9='SENT' AND h.state='APPLIED' AND h.phase='CONFIRMED' AND h.last_error IS NULL
+                  AND o.last_error IS NULL AND o.remote_reference='chatwoot-handoff:'||h.id::text AND o.remote_reference=$10)
+                  OR ($9='FAILED' AND h.state='ACTION_REQUIRED' AND h.phase IN ('PREPARED','OPEN_DISPATCHED')
+                    AND h.last_error=$11 AND o.last_error=$11 AND o.remote_reference IS NULL))))
+        )`,[item.organizationId,item.id,item.executionId,item.channelId,item.conversationId,item.nodeId,item.ordinal,JSON.stringify(item.payload),
+          result.status,result.status==='SENT'?result.remoteReference:null,result.status==='FAILED'?result.error:null,item.leaseToken])).rowCount);
+  },
   async recordUnknownOutbox(tx,org,id,leaseToken,error){return Boolean((await tx.query(`update automation_outbox set last_error=$4,updated_at=now() where organization_id=$1 and id=$2 and lease_token=$3 and status='UNKNOWN'`,[org,id,leaseToken,unknownOutboxDiagnostic(error)])).rowCount);},
 };}
 import { lockAttendanceChannelRead } from '../attendance/repository.js';

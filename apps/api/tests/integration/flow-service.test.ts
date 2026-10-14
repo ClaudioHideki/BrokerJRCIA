@@ -1,8 +1,6 @@
 import {createHmac,randomUUID} from 'node:crypto';
-import {readFile} from 'node:fs/promises';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {seedAttendanceTenant} from './helpers/attendance.js';
-import {attendanceDatabaseBeforeFlow as attendanceDatabase} from './helpers/flow-promotion-test-fixture.js';
+import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
 import {createAutomationService} from '../../src/modules/automations/service.js';
 import {createFlowDelegationService} from '../../src/modules/flows/delegation/service.js';
 import {createIntegrationSecrets} from '../../src/modules/integrations/secrets.js';
@@ -23,7 +21,7 @@ let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 const vault=createIntegrationSecrets(Buffer.alloc(32,29).toString('base64'));
 const full=['flow:read','flow:edit','flow:publish','flow:bind'];
 const graph={nodes:[{id:'s',type:'start',label:'Start',position:{x:0,y:0},data:{}},{id:'e',type:'end',label:'End',position:{x:1,y:0},data:{}}],edges:[{id:'next',source:'s',target:'e',port:'next'}]};
-beforeAll(async()=>{db=await attendanceDatabase();await db.database.pool.query(await readFile(new URL('../../drizzle/migrations/0053_flow_delegation.sql',import.meta.url),'utf8'));});
+beforeAll(async()=>{db=await attendanceDatabase();});
 afterAll(async()=>{await db?.dispose();});
 async function rowLockBarrier(fragment:string){
  const deadline=Date.now()+5000;

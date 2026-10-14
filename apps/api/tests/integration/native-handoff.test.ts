@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { HumanTarget } from '@jrc/contracts';
 import { attendanceDatabase, seedAttendanceTenant } from './helpers/attendance.js';
-import type { OutboxRow } from '../../src/modules/automations/repository.js';
+import { createPostgresAutomationRepository,type OutboxRow } from '../../src/modules/automations/repository.js';
 import { createEventRouter,createExecutionService,createOutboxDispatcher } from '../../src/modules/automations/service.js';
 import { createAutomationEffectDispatcher } from '../../src/commands/automation-worker.js';
 import { createPostgresHandoffRepository } from '../../src/modules/attendance/handoff-repository.js';
@@ -72,7 +72,7 @@ describe('native handoff durable PostgreSQL state',()=>{
     });
     const client=()=>new ChatwootClient({baseUrl:`https://${t.org}.example.test`,token:'synthetic-only',fetch});
     const attendanceService=createChatwootAttendanceService({transact:db.transact,client});
-    const service=()=>createNativeHandoffService({transact:db.transact,client,attendanceService});
+    const service=(transact:typeof db.transact=db.transact)=>createNativeHandoffService({transact,client,attendanceService});
     const item:OutboxRow={id:outbox,organizationId:t.org,executionId:execution,channelId:t.channel,conversationId:t.conversation,nodeId:'handoff',ordinal:1,kind:'HANDOFF',payload,attempts:1,leaseToken:lease};
     const state=async()=>({operation:(await db.database.pool.query('SELECT * FROM attendance_handoff_operations WHERE organization_id=$1',[t.org])).rows[0],
       outbox:(await db.database.pool.query('SELECT * FROM automation_outbox WHERE id=$1',[outbox])).rows[0],
@@ -247,5 +247,61 @@ describe('native handoff durable PostgreSQL state',()=>{
     const client=await db.database.pool.connect();try{await client.query('BEGIN');await client.query('ALTER TABLE attendance_handoff_operations NO FORCE ROW LEVEL SECURITY');
       expect(await probeRequiredRuntimeSchema(sql=>client.query(sql))).toBe(false);
     }finally{await client.query('ROLLBACK');client.release();}
+  });
+
+  it('recognizes only the committed central ledger and exact receipt without another remote mutation',async()=>{
+    const t=await fixture(),repository=createPostgresAutomationRepository();
+    const result=await t.service().dispatch(t.item);
+    expect(result.kind).toBe('SENT');
+    if(result.kind!=='SENT'||!result.remoteReference)throw Error('Expected synthetic handoff receipt');
+    const terminal={status:'SENT' as const,remoteReference:result.remoteReference};
+    const before=await t.state(),posts=t.requests.filter(r=>r.method==='POST').length;
+    await db.transact(t.org,async tx=>{
+      expect(await repository.hasCommittedHandoffResult(tx,t.item,terminal)).toBe(true);
+      expect(await repository.hasCommittedHandoffResult(tx,{...t.item,leaseToken:randomUUID()},terminal)).toBe(false);
+      expect(await repository.hasCommittedHandoffResult(tx,{...t.item,nodeId:'another-node'},terminal)).toBe(false);
+      expect(await repository.hasCommittedHandoffResult(tx,t.item,{status:'SENT',remoteReference:'chatwoot-handoff:'+randomUUID()})).toBe(false);
+    });
+    expect(await t.state()).toEqual(before);
+    expect(t.requests.filter(r=>r.method==='POST')).toHaveLength(posts);
+  });
+  it('reports an already failed central handoff only with its matching ACTION_REQUIRED ledger',async()=>{
+    const t=await fixture(),repository=createPostgresAutomationRepository();
+    await db.database.pool.query("UPDATE automation_outbox SET payload='{}',status='PENDING',lease_token=NULL,lease_expires_at=NULL WHERE id=$1",[t.outbox]);
+    const dispatcher=createOutboxDispatcher({transact:db.transact,repository,enabled:true},createAutomationEffectDispatcher({transact:db.transact,messaging:createPostgresMessagingRepository(),handoff:t.service()}));
+    expect(await dispatcher.runOnce(t.org)).toMatchObject({processed:true,status:'FAILED'});
+    const before=await t.state(),terminal={status:'FAILED' as const,error:'HANDOFF_DESTINATION_REQUIRED_REPUBLISH'};
+    const claimed={...t.item,payload:{},leaseToken:before.operation.lease_token};
+    await db.transact(t.org,async tx=>{
+      expect(await repository.hasCommittedHandoffResult(tx,claimed,terminal)).toBe(true);
+      expect(await repository.hasCommittedHandoffResult(tx,{...claimed,leaseToken:randomUUID()},terminal)).toBe(false);
+      expect(await repository.hasCommittedHandoffResult(tx,claimed,{status:'FAILED',error:'DIFFERENT_ERROR'})).toBe(false);
+    });
+    expect(await t.state()).toEqual(before);expect(t.fetch).not.toHaveBeenCalled();
+    expect(await dispatcher.runOnce(t.org)).toEqual({processed:false});
+  });
+
+  it('recognizes a proven pre-HTTP failure after the opening phase commit acknowledgment is lost',async()=>{
+    const t=await fixture(),repository=createPostgresAutomationRepository();
+    await db.database.pool.query("UPDATE automation_outbox SET status='PENDING',lease_token=NULL,lease_expires_at=NULL WHERE id=$1",[t.outbox]);
+    let lostAcknowledgment=false;
+    const loseOpeningCommitAck:typeof db.transact=async(org,work)=>{
+      const value=await db.transact(org,work);
+      if(!lostAcknowledgment){
+        const row=(await db.database.pool.query('SELECT phase FROM attendance_handoff_operations WHERE organization_id=$1 AND outbox_id=$2',[t.org,t.outbox])).rows[0];
+        if(row?.phase==='OPEN_DISPATCHED'){
+          lostAcknowledgment=true;throw Error('SYNTHETIC_COMMIT_ACK_LOST');
+        }
+      }
+      return value;
+    };
+    const dispatcher=createOutboxDispatcher({transact:db.transact,repository,enabled:true},createAutomationEffectDispatcher({transact:db.transact,messaging:createPostgresMessagingRepository(),handoff:t.service(loseOpeningCommitAck)}));
+    expect(await dispatcher.runOnce(t.org)).toMatchObject({status:'FAILED'});
+    const state=await t.state();
+    expect(lostAcknowledgment).toBe(true);
+    expect(state.operation).toMatchObject({state:'ACTION_REQUIRED',phase:'OPEN_DISPATCHED',last_error:'SYNTHETIC_COMMIT_ACK_LOST'});
+    expect(state.outbox).toMatchObject({status:'FAILED',last_error:'SYNTHETIC_COMMIT_ACK_LOST',remote_reference:null});
+    expect(t.requests.filter(r=>r.method==='POST')).toHaveLength(0);
+    expect(await dispatcher.runOnce(t.org)).toEqual({processed:false});
   });
 });

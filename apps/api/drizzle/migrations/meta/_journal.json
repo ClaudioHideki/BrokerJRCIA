@@ -414,6 +414,13 @@
       "when": 1792622400000,
       "tag": "0059_whatsapp_group_central",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1792708800000,
+      "tag": "0060_consolidated_runtime_integrity",
+      "breakpoints": true
     }
   ]
 }

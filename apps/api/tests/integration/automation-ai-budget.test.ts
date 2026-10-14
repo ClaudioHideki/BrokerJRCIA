@@ -6,6 +6,7 @@ import {createAiBudgetService} from '../../src/modules/automations/ai-budget.js'
 import {createPostgresCredentialRepository} from '../../src/modules/automation-integrations/credentials.js';
 import {createPostgresAutomationRepository,type OutboxRow} from '../../src/modules/automations/repository.js';
 import {createAutomationAiEffectDispatcher} from '../../src/modules/automations/ai-effect.js';
+import {createOutboxDispatcher} from '../../src/modules/automations/service.js';
 const model={name:'approved',inputMicrosPerMillion:1000000,outputMicrosPerMillion:1000000};
 describe('AI budget PostgreSQL concurrency isolation restart and atomic persistence',()=>{
  let h:Awaited<ReturnType<typeof attendanceDatabase>>,tenant:Awaited<ReturnType<typeof seedAttendanceTenant>>,credential:string,binding:string;
@@ -25,4 +26,31 @@ describe('AI budget PostgreSQL concurrency isolation restart and atomic persiste
  it('preserves charged monthly budget when a safely settled outbox is purged and registers tenant tables',async()=>{const item=await effect(),budget=service();await budget.begin(item,config());await h.transact(tenant.org,async tx=>{await budget.commit(tx,item,{kind:'OBSERVED',costMicros:12,inputTokens:10,outputTokens:2});await repository.settleOutbox(tx,tenant.org,item.id,item.leaseToken,{status:'SENT'});});await h.database.pool.query('delete from automation_outbox where organization_id=$1 and id=$2',[tenant.org,item.id]);expect(await bucket()).toEqual({held:'0',charged:'12'});const catalog=await h.database.pool.query(`select table_name from lifecycle_purge_catalogue where table_name in ('automation_ai_monthly_budgets','automation_ai_reservations') order by table_name`);expect(catalog.rows).toHaveLength(2);});
  it('blocks manual labels from confirming or recreating an uncertain marked AI POST',async()=>{const item=await effect();await service().begin(item,config());for(const outcome of ['CONFIRMED_NOT_SENT','CONFIRMED_SENT'] as const)await expect(h.transact(tenant.org,tx=>repository.reconcileUnknownOutbox(tx,{org:tenant.org,executionId:item.executionId,outboxId:item.id,actorId:randomUUID(),outcome,evidenceCode:'SYNTHETIC'}))).rejects.toThrow('AUTOMATION_AI_USAGE_RECONCILIATION_REQUIRED');expect(await bucket()).toEqual({held:'8301',charged:'0'});});
  it('rejects revoked/repriced policy before a synthetic provider request',async()=>{const item=await effect();await h.database.pool.query(`update automation_credentials set revision=2,metadata=jsonb_build_object('aiPolicy',$3::jsonb) where organization_id=$1 and id=$2`,[tenant.org,credential,JSON.stringify({models:[{...model,inputMicrosPerMillion:100000000}],monthlyCostMicros:10000})]);let posts=0;const dispatcher=createAutomationAiEffectDispatcher({...service(),audit:async()=>{},request:async()=>{posts++;throw Error('must not call');}});expect((await dispatcher.dispatch(item)).kind).toBe('FAILED');expect(posts).toBe(0);expect(await bucket()).toBeUndefined();});
+
+ it('rolls back AI usage and a resumed execution when canonical settlement loses its CAS',async()=>{
+  const item=await effect(),budget=service();await budget.begin(item,config());
+  // Keep the real PostgreSQL transaction and budget mutation. Only inject the
+  // final CAS loss, and make a fallback acceptance deliberately available.
+  let committedReadbacks=0;
+  const losingRepository={...repository,
+   claimOutbox:async()=>item,
+   settleOutbox:async()=>false,
+   hasCommittedHandoffResult:async()=>{committedReadbacks++;return true;},
+   resumeExecution:async(tx:Parameters<typeof repository.resumeExecution>[0])=>{
+    await tx.query("UPDATE automation_executions SET status='QUEUED' WHERE organization_id=$1 AND id=$2",[tenant.org,item.executionId]);return true;
+   },
+  };
+  const dispatcher=createOutboxDispatcher({transact:h.transact,repository:losingRepository},{
+   dispatch:async()=>({kind:'SENT',remoteReference:'io:'+item.id,resumePayload:{outcome:'success'},
+    commit:(tx:Parameters<typeof repository.resumeExecution>[0])=>budget.commit(tx,item,{kind:'OBSERVED',costMicros:12,inputTokens:10,outputTokens:2})}),
+  },['IO_AI']);
+  await expect(dispatcher.runOnce(tenant.org)).rejects.toThrow('AUTOMATION_EFFECT_SETTLEMENT_LOST');
+  expect(committedReadbacks).toBe(0);expect(await bucket()).toEqual({held:'8301',charged:'0'});
+  const persisted=await h.transact(tenant.org,async tx=>({
+   reservation:(await tx.query('SELECT status FROM automation_ai_reservations WHERE organization_id=$1 AND outbox_id=$2',[tenant.org,item.id])).rows[0].status,
+   execution:(await tx.query('SELECT status FROM automation_executions WHERE organization_id=$1 AND id=$2',[tenant.org,item.executionId])).rows[0].status,
+   outbox:(await tx.query('SELECT status FROM automation_outbox WHERE organization_id=$1 AND id=$2',[tenant.org,item.id])).rows[0].status,
+  }));
+  expect(persisted).toEqual({reservation:'UNKNOWN',execution:'WAITING',outbox:'UNKNOWN'});
+ });
 });

@@ -465,14 +465,26 @@ for(const replacement of ['KEY','INSTANCE'] as const){
         }else await db.database.pool.query('UPDATE instances SET upstream_instance_key=$2 WHERE id=$1',[t.instance,currentKey]);
         const currentBinding=createHmac('sha256',Buffer.from(key,'base64')).update('whatsapp-group-webhook-binding:v2\0')
           .update(JSON.stringify([configurationScope,t.org,t.channel,currentInstance,currentKey])).digest('hex');
-        await db.database.pool.query('UPDATE whatsapp_group_webhook_operations SET instance_id=$2,binding_fingerprint=$3 WHERE organization_id=$1',[t.org,currentInstance,currentBinding]);
+        if(replacement==='INSTANCE'){
+          // A replacement workspace gets a new operation; the old physical snapshot stays immutable.
+          await db.database.pool.query(`INSERT INTO whatsapp_group_webhook_operations
+            (organization_id,channel_id,instance_id,actor_id,binding_fingerprint,expected_identity_revision,catalog_revision,identity_revision,identity_fingerprint,phase,observed_at)
+            SELECT organization_id,channel_id,$3,$4,$5,identity_revision,catalog_revision,identity_revision,identity_fingerprint,'CONFIRMED',clock_timestamp()
+            FROM whatsapp_group_catalogs WHERE organization_id=$1 AND channel_id=$2`,[t.org,t.channel,currentInstance,t.actor,currentBinding]);
+        }else await db.database.pool.query('UPDATE whatsapp_group_webhook_operations SET binding_fingerprint=$2 WHERE organization_id=$1 AND channel_id=$3',[t.org,currentBinding,t.channel]);
       }
       return{connected:true,phone,groupsIgnore:false};
     }});
     const enabled=await t.runtime.configure(t.principal,t.channel,t.input),paused=await t.runtime.pause(t.principal,t.channel,group,enabled.revision);
+    const priorWebhook=(await db.database.pool.query('SELECT * FROM whatsapp_group_webhook_operations WHERE organization_id=$1 AND channel_id=$2',[t.org,t.channel])).rows[0]!;
     replace=true;await expect(t.runtime.resume(t.principal,t.channel,group,paused.revision)).rejects.toMatchObject({code:'GROUP_WORKSPACE_CHANGED'});
     expect((await db.database.pool.query('SELECT revision,pause_reason FROM whatsapp_group_automation_controls WHERE organization_id=$1',[t.org])).rows[0])
       .toEqual({revision:paused.revision,pause_reason:'HUMAN_ACTION'});
+    if(replacement==='INSTANCE'){
+      expect((await db.database.pool.query('SELECT * FROM whatsapp_group_webhook_operations WHERE organization_id=$1 AND id=$2',[t.org,priorWebhook.id])).rows).toEqual([priorWebhook]);
+      expect((await db.database.pool.query('SELECT count(*)::int AS n FROM whatsapp_group_webhook_operations WHERE organization_id=$1 AND channel_id=$2',[t.org,t.channel])).rows).toEqual([{n:2}]);
+    }
+    expect(t.sends).toEqual([]);
   });
 }
 for(const quota of ['DAILY','PENDING'] as const){

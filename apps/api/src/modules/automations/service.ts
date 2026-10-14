@@ -243,14 +243,27 @@ export function createExecutionService(options:AutomationServiceOptions){
 
 export type OutboxDispatchResult={kind:'SENT';remoteReference?:string;resumePayload?:Record<string,unknown>;commit?:(tx:TenantTransaction)=>Promise<void>}|{kind:'NOT_SENT';retryAt:Date;error:string}|{kind:'FAILED';error:string;resumePayload?:Record<string,unknown>;commit?:(tx:TenantTransaction)=>Promise<void>}|{kind:'UNKNOWN';error:string};
 export interface ExternalEffectDispatcher {dispatch(item:OutboxRow):Promise<OutboxDispatchResult>}
-export function createOutboxDispatcher(options:AutomationServiceOptions,external:ExternalEffectDispatcher,kinds:OutboxKind[]=['SEND_TEXT','HANDOFF','RESUME_EVENT']){const repository=options.repository??createPostgresAutomationRepository();return {runOnce:async(org:string)=>{
+export function createOutboxDispatcher(options:AutomationServiceOptions,external:ExternalEffectDispatcher,kinds:OutboxKind[]=['SEND_TEXT','HANDOFF','RESUME_EVENT']){const repository=options.repository??createPostgresAutomationRepository();
+  const settleTerminal=async(tx:TenantTransaction,org:string,item:OutboxRow,leaseToken:string,result:Extract<OutboxDispatchResult,{kind:'SENT'|'FAILED'}>)=>{
+    const terminal=result.kind==='SENT'
+      ?{status:'SENT' as const,...(result.remoteReference?{remoteReference:result.remoteReference}:{})}
+      :{status:'FAILED' as const,error:result.error};
+    if(await repository.settleOutbox(tx,org,item.id,leaseToken,terminal))return;
+    // Domain handoffs commit their pause/session/receipt together before returning.
+    // Only acknowledge proven terminal state; all writes still require the CAS.
+    // In particular, AI budget commits and execution resumes must roll back on loss.
+    if(item.kind==='HANDOFF'&&item.organizationId===org&&item.leaseToken===leaseToken&&result.commit===undefined&&result.resumePayload===undefined
+      &&await repository.hasCommittedHandoffResult(tx,item,terminal))return;
+    throw new AutomationError('AUTOMATION_EFFECT_SETTLEMENT_LOST',409);
+  };
+  return {runOnce:async(org:string)=>{
   if(options.enabled===false)return {processed:false};
   const leaseToken=randomUUID(),item=await options.transact(org,tx=>repository.claimOutbox(tx,org,leaseToken,120000,kinds));if(!item)return {processed:false};
   // The row is already UNKNOWN before the external call. A process crash can therefore never cause a blind replay.
   let result:OutboxDispatchResult;try{result=await external.dispatch(item);}catch{result={kind:'UNKNOWN',error:'AUTOMATION_EFFECT_UNKNOWN'};}
   if(result.kind==='UNKNOWN'){const diagnostic=unknownOutboxDiagnostic(result.error);await options.transact(org,tx=>repository.recordUnknownOutbox(tx,org,item.id,leaseToken,diagnostic));return {processed:true,id:item.id,status:'UNKNOWN' as const};}
-  if(result.kind==='SENT')await options.transact(org,async tx=>{if(result.commit)await result.commit(tx);if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});if(!await repository.settleOutbox(tx,org,item.id,leaseToken,{status:'SENT',...(result.remoteReference?{remoteReference:result.remoteReference}:{})}))throw new AutomationError('AUTOMATION_EFFECT_SETTLEMENT_LOST',409);});
+  if(result.kind==='SENT')await options.transact(org,async tx=>{if(result.commit)await result.commit(tx);if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});await settleTerminal(tx,org,item,leaseToken,result);});
   else if(result.kind==='NOT_SENT')await options.transact(org,tx=>repository.settleOutbox(tx,org,item.id,leaseToken,{status:'PENDING',error:result.error,availableAt:result.retryAt}));
-  else await options.transact(org,async tx=>{if(result.commit)await result.commit(tx);if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});if(!await repository.settleOutbox(tx,org,item.id,leaseToken,{status:'FAILED',error:result.error}))throw new AutomationError('AUTOMATION_EFFECT_SETTLEMENT_LOST',409);});
+  else await options.transact(org,async tx=>{if(result.commit)await result.commit(tx);if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});await settleTerminal(tx,org,item,leaseToken,result);});
   return {processed:true,id:item.id,status:result.kind};
 }};}

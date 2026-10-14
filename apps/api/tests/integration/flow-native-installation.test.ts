@@ -2,6 +2,8 @@ import {createHash,randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,expect,it} from 'vitest';import {Pool} from 'pg';
 import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
 import {connectionStringForRole} from './helpers/task7.js';
+import {createLifecycleService,withLifecyclePlatformTransaction,withLifecycleWorkerTransaction} from '../../src/modules/lifecycle/service.js';
+import {probeRequiredRuntimeSchema} from '../../src/db/runtime-schema.js';
 import {ensureQrChannel} from '../../src/modules/messaging/qr-service.js';
 import {createIntegrationSecrets} from '../../src/modules/integrations/secrets.js';
 import {createFlowDelegationService} from '../../src/modules/flows/delegation/service.js';import {createNativeRegistrationService} from '../../src/modules/flows/delegation/registration/service.js';import {createNativeRegistrationVault} from '../../src/modules/flows/delegation/registration/core.js';
@@ -110,4 +112,167 @@ it('uses SQL expiry after callback and cannot claim an expired valid historical 
  t.callback(async request=>{const stop=Date.now()+5000;while(Date.now()<stop){if((await db.database.pool.query('SELECT expires_at<=clock_timestamp() AS expired FROM flow_native_installation_grants WHERE id=$1',[id])).rows[0].expired)return {...request,authorized:true};await new Promise(resolve=>setTimeout(resolve,10));}throw new Error('SQL expiry barrier not observed');});
  await expect(t.installations.claim(t.access,id,{...t.claim,transferNonce:nonce})).rejects.toMatchObject({code:'FLOW_INSTALLATION_NOT_FOUND'});
  expect((await db.database.pool.query('SELECT state,token_hash,host_callback_ciphertext FROM flow_native_installation_grants WHERE id=$1',[id])).rows[0]).toEqual({state:'PENDING',token_hash:null,host_callback_ciphertext:null});
+});
+
+const nativeLifecycleTables = [
+  'flow_native_registration_challenges', 'flow_native_registration_targets',
+  'flow_native_registrations', 'flow_native_installation_grants',
+  'flow_native_installation_operations', 'flow_native_installation_targets',
+] as const;
+
+async function nativeLifecycleFixture() {
+  const actor = randomUUID();
+  await db.database.pool.query(
+    "INSERT INTO platform_users(id,email,password_hash,role,mfa_seed) VALUES($1,$2,'synthetic','SUPER_ADMIN','synthetic')",
+    [actor, `native-lifecycle-${actor}@example.test`],
+  );
+  const platform = new Pool({connectionString:connectionStringForRole(db.database.connectionString, 'jrc_platform')});
+  const worker = new Pool({connectionString:connectionStringForRole(db.database.connectionString, 'jrc_lifecycle')});
+  return {
+    actor, worker,
+    platform: createLifecycleService({
+      transact:work => withLifecyclePlatformTransaction(platform, work),
+      deprovision:async () => undefined,
+    }),
+    service: createLifecycleService({
+      transact:work => withLifecycleWorkerTransaction(worker, work),
+      deprovision:async () => undefined,
+    }),
+    dispose:async () => { await platform.end(); await worker.end(); },
+  };
+}
+
+async function nativeRows(org:string) {
+  const rows:Record<string,unknown[]> = {};
+  for (const table of nativeLifecycleTables) {
+    rows[table] = (await db.database.pool.query(
+      `SELECT to_jsonb(t) AS value FROM ${table} t WHERE organization_id=$1 ORDER BY to_jsonb(t)::text`, [org],
+    )).rows.map(row => row.value);
+  }
+  return rows;
+}
+
+it('purges committed native challenge and registration cycles only for the selected company', async () => {
+  const a = await fixture(), b = await fixture();
+  await claim(a); await claim(b);
+  await db.database.pool.query(
+    "INSERT INTO memberships(organization_id,user_id,role) VALUES($1,$2,'OPERATOR')",
+    [b.org, a.principal.actorId],
+  );
+  const beforeA = await nativeRows(a.org), beforeB = await nativeRows(b.org);
+  for (const table of nativeLifecycleTables) expect(beforeA[table]!.length).toBeGreaterThan(0);
+  const lifecycle = await nativeLifecycleFixture();
+  try {
+    const requested = await lifecycle.platform.requestOrganization(a.org, 'Attendance', 'Synthetic native lifecycle regression', lifecycle.actor);
+    expect(await lifecycle.service.processOne()).toBe(true);
+    expect(await lifecycle.platform.status(a.org, a.org, requested.operationId)).toMatchObject({status:'COMPLETED', errorCode:null});
+    for (const rows of Object.values(await nativeRows(a.org))) expect(rows).toEqual([]);
+    expect(await nativeRows(b.org)).toEqual(beforeB);
+    expect((await db.database.pool.query('SELECT id FROM organizations WHERE id=$1', [a.org])).rowCount).toBe(0);
+    expect((await db.database.pool.query('SELECT id FROM organizations WHERE id=$1', [b.org])).rowCount).toBe(1);
+    expect((await db.database.pool.query('SELECT id FROM users WHERE id=$1', [a.principal.actorId])).rowCount).toBe(1);
+    expect((await db.database.pool.query(
+      'SELECT organization_id FROM memberships WHERE user_id=$1 ORDER BY organization_id', [a.principal.actorId],
+    )).rows).toEqual([{organization_id:b.org}]);
+  } finally { await lifecycle.dispose(); }
+});
+
+it('still rejects a cross-company registration reference at commit when the cycle FK is deferred', async () => {
+  const a = await fixture(), b = await fixture();
+  const client = await db.database.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL ROLE jrc_migrator');
+    await client.query('SET CONSTRAINTS flow_native_challenge_registration_fk DEFERRED');
+    expect((await client.query(
+      'UPDATE flow_native_registration_challenges SET registration_id=$3 WHERE organization_id=$1 AND registration_id=$2',
+      [a.org, a.registered.id, b.registered.id],
+    )).rowCount).toBe(1);
+    await expect(client.query('COMMIT')).rejects.toMatchObject({code:'23503', constraint:'flow_native_challenge_registration_fk'});
+  } finally { await client.query('ROLLBACK'); client.release(); }
+  expect((await db.database.pool.query(
+    'SELECT registration_id FROM flow_native_registration_challenges WHERE organization_id=$1 AND registration_id=$2',
+    [a.org, a.registered.id],
+  )).rowCount).toBe(1);
+  expect((await db.database.pool.query('SELECT id FROM flow_native_registrations WHERE organization_id=$1 AND id=$2', [b.org, b.registered.id])).rowCount).toBe(1);
+});
+
+it.each(['flow_native_registration_targets', 'flow_native_installation_targets'] as const)(
+  'keeps %s immutable to the actual app role', async table => {
+    const t = await fixture();
+    expect((await db.transact(t.org, tx => tx.query(
+      `SELECT inbox_id FROM ${table} WHERE organization_id=$1`, [t.org],
+    ))).rowCount).toBeGreaterThan(0);
+    await expect(db.transact(t.org, tx => tx.query(
+      `UPDATE ${table} SET inbox_id=inbox_id WHERE organization_id=$1`, [t.org],
+    ))).rejects.toMatchObject({code:'42501'});
+    await expect(db.transact(t.org, tx => tx.query(
+      `DELETE FROM ${table} WHERE organization_id=$1`, [t.org],
+    ))).rejects.toMatchObject({code:'42501'});
+  },
+);
+
+it.each([
+  ['registration target UPDATE', 'GRANT UPDATE ON flow_native_registration_targets TO jrc_app'],
+  ['installation target column UPDATE', 'GRANT UPDATE(inbox_id) ON flow_native_installation_targets TO jrc_app'],
+  ['nondeferrable native cycle', 'ALTER TABLE flow_native_registration_challenges ALTER CONSTRAINT flow_native_challenge_registration_fk NOT DEFERRABLE'],
+  ['initially deferred native cycle', 'ALTER TABLE flow_native_registration_challenges ALTER CONSTRAINT flow_native_challenge_registration_fk DEFERRABLE INITIALLY DEFERRED'],
+  ['missing native cycle FK', 'ALTER TABLE flow_native_registration_challenges DROP CONSTRAINT flow_native_challenge_registration_fk'],
+  ['unrestricted native pending helper', 'GRANT EXECUTE ON FUNCTION lifecycle_native_pending_count(uuid,uuid) TO jrc_app'],
+] as const)('rejects readiness after %s and accepts the rolled-back baseline', async (_label, damage) => {
+  const tenant = await fixture();
+  const probe = () => db.transact(tenant.org, tx => probeRequiredRuntimeSchema(sql => tx.query(sql)));
+  expect(await probe()).toBe(true);
+  const client = await db.database.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL ROLE jrc_migrator');
+    await client.query(damage);
+    await client.query('SET LOCAL ROLE jrc_app');
+    expect(await probeRequiredRuntimeSchema(sql => client.query(sql))).toBe(false);
+  } finally { await client.query('ROLLBACK'); client.release(); }
+  expect(await probe()).toBe(true);
+});
+
+it('preserves an actual UNKNOWN installation operation and rejects organization deletion before dispatch', async () => {
+  const t = await fixture();
+  t.callback(async () => { throw new Error('Synthetic unavailable installation host'); });
+  await expect(claim(t)).rejects.toMatchObject({code:'FLOW_INSTALLATION_HOST_UNAVAILABLE', statusCode:503});
+  const before = await nativeRows(t.org);
+  expect((await db.database.pool.query(
+    'SELECT state,lease_until FROM flow_native_installation_operations WHERE organization_id=$1', [t.org],
+  )).rows).toEqual([{state:'UNKNOWN',lease_until:null}]);
+  const lifecycle = await nativeLifecycleFixture();
+  try {
+    expect(await lifecycle.platform.previewOrganization(t.org)).toMatchObject({canDelete:false, blockers:['PENDING_OR_UNCERTAIN_WORK']});
+    const linked = (await db.database.pool.query(
+      'SELECT i.id,i.provider_account_id FROM instances i JOIN messaging_channels c ON c.organization_id=i.organization_id AND c.instance_id=i.id WHERE c.organization_id=$1 AND c.id=$2',
+      [t.org, t.channel],
+    )).rows[0]!;
+    expect(await lifecycle.platform.previewChannel(t.org, linked.id)).toMatchObject({canDelete:false});
+    const unrelated = randomUUID();
+    await db.database.pool.query(
+      "INSERT INTO instances(id,organization_id,provider_account_id,name,upstream_instance_key,status) VALUES($1,$2,$3,'Unmapped synthetic QR',$4,'DISCONNECTED')",
+      [unrelated, t.org, linked.provider_account_id, `synthetic-unmapped-${unrelated}`],
+    );
+    expect(await lifecycle.platform.previewChannel(t.org, unrelated)).toMatchObject({canDelete:true, blockers:[]});
+    await expect(lifecycle.platform.requestOrganization(t.org, 'Attendance', 'Synthetic uncertain native regression', lifecycle.actor))
+      .rejects.toMatchObject({code:'LIFECYCLE_PENDING_WORK', status:409});
+    expect((await db.database.pool.query('SELECT id FROM lifecycle_deletions WHERE organization_id=$1', [t.org])).rowCount).toBe(0);
+    expect((await db.database.pool.query('SELECT status FROM organizations WHERE id=$1', [t.org])).rows).toEqual([{status:'ACTIVE'}]);
+    expect(await nativeRows(t.org)).toEqual(before);
+
+    // Simulate a persisted deletion admitted by an older release: final purge
+    // must independently preserve uncertainty even if admission was bypassed.
+    const deletion = randomUUID(), lease = randomUUID();
+    await db.database.pool.query(
+      `INSERT INTO lifecycle_deletions(id,organization_id,kind,resource_id,actor_kind,actor_id,status,lease_token,lease_expires_at)
+       VALUES($1,$2,'ORGANIZATION',$2,'PLATFORM',$3,'REMOVING_DATA',$4,clock_timestamp()+interval '10 minutes')`,
+      [deletion, t.org, lifecycle.actor, lease],
+    );
+    await expect(lifecycle.worker.query('SELECT lifecycle_purge_organization($1,$2)', [deletion, lease]))
+      .rejects.toMatchObject({code:'23514', constraint:'lifecycle_pending_work'});
+    expect(await nativeRows(t.org)).toEqual(before);
+    expect((await db.database.pool.query('SELECT id FROM organizations WHERE id=$1', [t.org])).rowCount).toBe(1);
+  } finally { await lifecycle.dispose(); }
 });

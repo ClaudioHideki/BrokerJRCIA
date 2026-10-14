@@ -16,7 +16,7 @@ import { createPostgresHandoffRepository } from '../../src/modules/attendance/ha
 import type { TenantTransaction } from '../../src/db/tenant-transaction.js';
 import { createChatwootService } from '../../src/modules/integrations/chatwoot-service.js';
 import { createIntegrationSecrets } from '../../src/modules/integrations/secrets.js';
-import type { OutboxRow } from '../../src/modules/automations/repository.js';
+import { createPostgresAutomationRepository,type OutboxRow } from '../../src/modules/automations/repository.js';
 import {assertHandoffBinding} from '../../src/modules/attendance/handoff-binding.js';
 let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();},60000);
@@ -249,4 +249,67 @@ it.each(['QUEUE','TEAM','AGENT'] as const)('runs menu, capture, local %s, operat
   {cycle:1,state:'RESOLVED',integration_id:null,local_team_id:kind==='TEAM'?human!.team:null,local_agent_id:kind==='AGENT'?human!.agent:null},
   {cycle:2,state:'BOT_ACTIVE',integration_id:null,local_team_id:null,local_agent_id:null},
  ]);
+});
+
+it('reads a committed local receipt without changing it and rejects incompatible identity or receipt',async()=>{
+ const t=await fixture(),repository=createPostgresAutomationRepository();
+ const result=await createLocalHandoffService({transact:db.transact}).dispatch(t.item);
+ expect(result).toEqual({kind:'SENT',remoteReference:`local-handoff:${t.item.id}`});
+ const terminal={status:'SENT' as const,remoteReference:`local-handoff:${t.item.id}`};
+ const before=(await db.database.pool.query('SELECT * FROM automation_outbox WHERE id=$1',[t.item.id])).rows[0];
+ await db.transact(t.org,async tx=>{
+  expect(await repository.hasCommittedHandoffResult(tx,t.item,terminal)).toBe(true);
+  expect(await repository.hasCommittedHandoffResult(tx,t.item,{...terminal,remoteReference:'local-handoff:'+randomUUID()})).toBe(false);
+  for(const changed of [
+   {...t.item,organizationId:randomUUID()}, {...t.item,id:randomUUID()}, {...t.item,executionId:randomUUID()},
+   {...t.item,channelId:randomUUID()}, {...t.item,conversationId:randomUUID()}, {...t.item,nodeId:'another-node'},
+   {...t.item,ordinal:t.item.ordinal+1}, {...t.item,payload:{...t.item.payload,target:{kind:'AGENT',agentId:randomUUID()}}},
+   {...t.item,kind:'SEND_TEXT' as const}, {...t.item,kind:'IO_AI' as const},
+  ])expect(await repository.hasCommittedHandoffResult(tx,changed,terminal)).toBe(false);
+ });
+ expect((await db.database.pool.query('SELECT * FROM automation_outbox WHERE id=$1',[t.item.id])).rows[0]).toEqual(before);
+});
+it('reports an atomically failed local handoff through the coordinator without requeueing it',async()=>{
+ const t=await fixture(),target=await humanTarget(t,'AGENT'),repository=createPostgresAutomationRepository();
+ await db.database.pool.query("UPDATE memberships SET status='DISABLED' WHERE organization_id=$1 AND user_id=$2",[t.org,target.agent]);
+ await db.database.pool.query("UPDATE automation_outbox SET status='PENDING',lease_token=NULL,lease_expires_at=NULL WHERE id=$1",[t.item.id]);
+ const dispatcher=createOutboxDispatcher({transact:db.transact,repository,enabled:true},createAutomationEffectDispatcher({transact:db.transact,messaging:createPostgresMessagingRepository()}));
+ expect(await dispatcher.runOnce(t.org)).toMatchObject({processed:true,status:'FAILED'});
+ expect(await dispatcher.runOnce(t.org)).toEqual({processed:false});
+ const terminal={status:'FAILED' as const,error:'LOCAL_AGENT_UNAVAILABLE'};
+ const claimed={...t.item,payload:target.payload};
+ const before=(await db.database.pool.query('SELECT * FROM automation_outbox WHERE id=$1',[t.item.id])).rows[0];
+ expect(before).toMatchObject({status:'FAILED',last_error:terminal.error,remote_reference:null,lease_token:null,lease_expires_at:null});
+ await db.transact(t.org,async tx=>{
+  expect(await repository.hasCommittedHandoffResult(tx,claimed,terminal)).toBe(true);
+  expect(await repository.hasCommittedHandoffResult(tx,claimed,{status:'FAILED',error:'DIFFERENT_ERROR'})).toBe(false);
+  expect(await repository.hasCommittedHandoffResult(tx,claimed,{status:'SENT',remoteReference:`local-handoff:${t.item.id}`})).toBe(false);
+ });
+ expect((await db.database.pool.query('SELECT * FROM automation_outbox WHERE id=$1',[t.item.id])).rows[0]).toEqual(before);
+});
+
+it.each(['invalid','foreign-organization','foreign-channel'] as const)('observes terminal local %s rejection without a second mutation or retry',async variant=>{
+ const t=await fixture(),repository=createPostgresAutomationRepository();
+ const payload=variant==='invalid'?{handoffVersion:2}:{
+  ...t.item.payload,
+  destination:{kind:'LOCAL',organizationId:variant==='foreign-organization'?randomUUID():t.org,channelId:variant==='foreign-channel'?randomUUID():t.channel},
+ };
+ const error=variant==='invalid'?'HANDOFF_DESTINATION_REQUIRED_REPUBLISH':'HANDOFF_SCOPE_MISMATCH';
+ await db.database.pool.query("UPDATE automation_outbox SET payload=$2,status='PENDING',lease_token=NULL,lease_expires_at=NULL WHERE id=$1",[t.item.id,JSON.stringify(payload)]);
+ const dispatcher=createOutboxDispatcher({transact:db.transact,repository,enabled:true},createAutomationEffectDispatcher({transact:db.transact,messaging:createPostgresMessagingRepository()}));
+ expect(await dispatcher.runOnce(t.org)).toMatchObject({processed:true,status:'FAILED'});
+ const read=async()=>({
+  outbox:(await db.database.pool.query('SELECT * FROM automation_outbox WHERE id=$1',[t.item.id])).rows[0],
+  sessions:(await db.database.pool.query('SELECT * FROM attendance_sessions WHERE organization_id=$1',[t.org])).rows,
+  conversation:(await db.database.pool.query('SELECT mode FROM messaging_conversations WHERE id=$1',[t.conversation])).rows[0],
+ });
+ const before=await read();
+ expect(before.outbox).toMatchObject({status:'FAILED',last_error:error,attempts:2,remote_reference:null,lease_token:null,lease_expires_at:null});
+ expect(before.sessions).toEqual([]);expect(before.conversation).toEqual({mode:'HUMAN'});
+ await db.transact(t.org,async tx=>{
+  expect(await repository.hasCommittedHandoffResult(tx,{...t.item,payload},{status:'FAILED',error})).toBe(true);
+  expect(await repository.hasCommittedHandoffResult(tx,{...t.item,payload},{status:'SENT',remoteReference:`local-handoff:${t.item.id}`})).toBe(false);
+ });
+ expect(await dispatcher.runOnce(t.org)).toEqual({processed:false});
+ expect(await read()).toEqual(before);
 });

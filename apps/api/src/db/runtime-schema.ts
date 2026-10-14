@@ -1,7 +1,7 @@
 import {consolidatedRuntimeSql} from './consolidated-runtime-schema.js';
 import {flowDelegationRuntimeSql} from './flow-delegation-runtime-schema.js';
 import {whatsappGroupRuntimeSql} from './whatsapp-group-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0059_whatsapp_group_central';
+export const RUNTIME_SCHEMA_BASELINE = '0060_consolidated_runtime_integrity';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 

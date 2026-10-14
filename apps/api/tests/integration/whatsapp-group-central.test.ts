@@ -61,10 +61,10 @@ async function central(t:Awaited<ReturnType<typeof fixture>>,unknown=false){
    if(path.endsWith('/contacts/search'))data={payload:[]};
    else if(path.endsWith('/contacts')&&method==='POST')data={payload:{contact:{id:41}}};
    else if(path.endsWith('/contact_inboxes'))data={source_id:body.source_id};
-   else if(path.endsWith('/inboxes/9'))data={id:9,channel_type:'Channel::Api',greeting_enabled:false,enable_auto_assignment:false};
+   else if(path.endsWith('/inboxes/9'))data={id:9,name:'Group central',channel_type:'Channel::Api',greeting_enabled:false,enable_auto_assignment:false};
    else if(path.endsWith('/agent_bot'))data={};
    else if(path.endsWith('/conversations')&&method==='POST')data={id:51};
-   else if(path.endsWith('/conversations/51'))data={id:51,account_id:7,inbox_id:9,status:'pending',updated_at:100,meta:{assignee:null,assignee_type:null,team:null}};
+   else if(path.endsWith('/conversations/51'))data={id:51,account_id:7,inbox_id:9,status:'pending',updated_at:100,meta:{sender:{id:41},assignee:null,assignee_type:null,team:null}};
    else if(path.endsWith('/messages')&&method==='POST'){if(unknown)throw Error('synthetic lost receipt');data={id:++remoteId};}
    else if(method==='PATCH')data={};
    else throw Error('Unexpected synthetic endpoint '+method+' '+path);
@@ -73,11 +73,12 @@ async function central(t:Awaited<ReturnType<typeof fixture>>,unknown=false){
  const vault=chatwootEnvironment(options).vault,secret='synthetic-group-callback';
  await db.database.pool.query('INSERT INTO chatwoot_accounts(organization_id,base_url,account_id,status,encrypted_token) VALUES($1,$2,7,\'READY\',$3)',[t.org,options.baseUrl,vault.encrypt(t.org+':chatwoot-account','synthetic-token')]);
  await db.database.pool.query('INSERT INTO chatwoot_connections(id,organization_id,channel_id,inbox_id,name,status,encrypted_webhook_secret) VALUES($1,$2,$3,9,\'Group central\',\'READY\',$4)',[t.integration,t.org,t.channel,vault.encrypt(t.org+':chatwoot-webhook:'+t.integration,secret)]);
- const worker=createChatwootWorker(options),service=createChatwootService(options);
+ let worker=createChatwootWorker(options);const service=createChatwootService(options);
  const receive=(patch:Record<string,unknown>={})=>{const raw=Buffer.from(JSON.stringify({event:'message_created',id:901,account:{id:7},inbox:{id:9},conversation:{id:51,inbox_id:9},message_type:'outgoing',private:false,sender:{id:12,type:'user'},content:'Resposta humana no grupo',...patch})),timestamp=String(Math.floor(Date.now()/1000));return service.ingest(t.integration,raw,timestamp,'sha256='+createHmac('sha256',secret).update(timestamp+'.').update(raw).digest('hex'));};
  const run=async()=>{for(let i=0;i<20;i++){if(!(await db.database.pool.query("SELECT 1 FROM integration_jobs WHERE organization_id=$1 AND status='PENDING' AND available_at<=now()",[t.org])).rowCount)break;await worker.runOnce(t.org);}
   return(await db.database.pool.query('SELECT kind,status,last_error FROM integration_jobs WHERE organization_id=$1 ORDER BY created_at,id',[t.org])).rows;};
- return{calls,receive,run};
+ const restart=async()=>{worker=createChatwootWorker(options);await worker.runOnce(t.org);};
+ return{calls,receive,run,restart};
 }
 it('mirrors a selected group without an individual contact and returns an authenticated human reply to the same group',async()=>{
  const t=await fixture();await t.runtime.configure(t.principal,t.channel,t.input);const c=await central(t);
@@ -94,11 +95,19 @@ it('mirrors a selected group without an individual contact and returns an authen
 });
 it('keeps a group mirror with an unknown receipt durable across worker restarts without another POST',async()=>{
  const t=await fixture();const c=await central(t,true);await t.ingest('observed only');
- expect(await c.run()).toEqual(expect.arrayContaining([expect.objectContaining({status:'UNKNOWN'})]));
- const posts=c.calls.filter(x=>x.path.endsWith('/messages')&&x.method==='POST').length;expect(posts).toBe(1);await c.run();expect(c.calls.filter(x=>x.path.endsWith('/messages')&&x.method==='POST')).toHaveLength(posts);
+ expect(await c.run()).toEqual(expect.arrayContaining([expect.objectContaining({kind:'MIRROR_MESSAGE',status:'UNKNOWN',last_error:'CHATWOOT_OUTCOME_UNKNOWN'})]));
+ const posts=c.calls.filter(x=>x.path.endsWith('/messages')&&x.method==='POST').length;expect(posts).toBe(1);
+ await c.restart();expect(await c.run()).toEqual(expect.arrayContaining([expect.objectContaining({kind:'MIRROR_MESSAGE',status:'UNKNOWN',last_error:'CHATWOOT_OUTCOME_UNKNOWN'})]));
+ expect(c.calls.filter(x=>x.path.endsWith('/messages')&&x.method==='POST')).toHaveLength(posts);
 });
 it('does not dispatch a queued human group reply after destination authorization is revoked',async()=>{
- const t=await fixture();const c=await central(t);await t.ingest('observed only');await c.run();await c.receive();await c.run();
+ const t=await fixture();const c=await central(t);await t.ingest('observed only');
+ expect(await c.run()).toEqual(expect.arrayContaining([expect.objectContaining({kind:'MIRROR_MESSAGE',status:'SUCCEEDED',last_error:null})]));
+ await c.receive();expect(await c.run()).toEqual(expect.arrayContaining([expect.objectContaining({kind:'CHATWOOT_REPLY',status:'SUCCEEDED',last_error:null})]));
+ expect((await db.database.pool.query(`SELECT count(*)::int AS n FROM messaging_outbox o
+  JOIN messaging_messages m ON m.organization_id=o.organization_id AND m.id=o.message_id
+  JOIN chatwoot_group_replies r ON r.organization_id=m.organization_id AND r.message_id=m.id
+  WHERE o.organization_id=$1 AND m.source='OPERATOR' AND m.state='ACCEPTED'`,[t.org])).rows).toEqual([{n:1}]);
  await db.database.pool.query("UPDATE chatwoot_destinations SET approval_status='REVOKED' WHERE organization_id=$1",[t.org]);
  expect(await t.runtime.dispatchOnce(t.org)).toEqual({processed:false});expect(t.sends).toEqual([]);
 });

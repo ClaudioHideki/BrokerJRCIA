@@ -1,11 +1,11 @@
 /** Readiness for native modules, Evolution routing and bounded AI. */
 export const consolidatedRuntimeSql=`
  NOT EXISTS(SELECT 1 FROM (VALUES ('flow_native_registration_challenges','tenant_scope','jrc_app','*','SELECT,INSERT,UPDATE'),
-('flow_native_registration_targets','tenant_scope','jrc_app','*','SELECT,INSERT,UPDATE'),
+('flow_native_registration_targets','tenant_scope','jrc_app','*','SELECT,INSERT'),
 ('flow_native_registrations','tenant_scope','jrc_app','*','SELECT,INSERT,UPDATE'),
 ('flow_native_installation_grants','tenant_scope','jrc_app','*','SELECT,INSERT,UPDATE'),
 ('flow_native_installation_operations','tenant_scope','jrc_app','*','SELECT,INSERT,UPDATE'),
-('flow_native_installation_targets','tenant_scope','jrc_app','*','SELECT,INSERT,UPDATE'),
+('flow_native_installation_targets','tenant_scope','jrc_app','*','SELECT,INSERT'),
 ('automation_action_resources','automation_effect_tenant','jrc_app','*','SELECT,INSERT,UPDATE'),
 ('automation_action_catalogs','automation_effect_tenant','jrc_app','*','SELECT,INSERT,UPDATE'),
 ('automation_conversation_state','automation_effect_tenant','jrc_app','*','SELECT,INSERT,UPDATE'),
@@ -38,4 +38,44 @@ export const consolidatedRuntimeSql=`
  WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.oid=pg_catalog.to_regprocedure('public.'||required.signature) AND p.prosecdef AND pg_catalog.pg_get_userbyid(p.proowner)='jrc_migrator')
  OR NOT pg_catalog.has_function_privilege(required.role_name,pg_catalog.to_regprocedure('public.'||required.signature),'EXECUTE')
  OR EXISTS(SELECT 1 FROM pg_catalog.pg_proc p,LATERAL pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE p.oid=pg_catalog.to_regprocedure('public.'||required.signature) AND a.grantee=0))
+
+ -- Snapshot UPDATE may also be granted per-column; table ACLs alone cannot see it.
+ AND NOT EXISTS(SELECT 1 FROM (VALUES ('flow_native_registration_targets'),('flow_native_installation_targets')) required(name)
+  WHERE pg_catalog.has_any_column_privilege('jrc_app',pg_catalog.to_regclass('public.'||required.name),'UPDATE'))
+ -- 0060's structural witness remains visible to the app without catalogue access.
+ AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c
+  WHERE c.conrelid=pg_catalog.to_regclass('public.flow_native_registration_challenges')
+   AND c.confrelid=pg_catalog.to_regclass('public.flow_native_registrations')
+   AND c.conname='flow_native_challenge_registration_fk' AND c.contype='f'
+   AND c.convalidated AND c.condeferrable AND NOT c.condeferred
+   AND c.confdeltype='a' AND c.confupdtype='a' AND c.confmatchtype='s'
+   AND (SELECT array_agg(a.attname::text ORDER BY k.ord)
+    FROM unnest(c.conkey) WITH ORDINALITY k(num,ord)
+    JOIN pg_catalog.pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.num)
+    =ARRAY['organization_id','registration_id']::text[]
+   AND (SELECT array_agg(a.attname::text ORDER BY k.ord)
+    FROM unnest(c.confkey) WITH ORDINALITY k(num,ord)
+    JOIN pg_catalog.pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=k.num)
+    =ARRAY['organization_id','id']::text[])
+ AND NOT EXISTS(SELECT 1 FROM (VALUES
+  ('lifecycle_native_pending_count(uuid,uuid)',false),
+  ('lifecycle_pending_count(uuid,uuid,uuid)',true),
+  ('lifecycle_cancel_safe_work(uuid,uuid)',false),
+  ('lifecycle_validate_purge(uuid,uuid,text)',true),
+  ('lifecycle_pending_count_before_complete_native(uuid,uuid,uuid)',false),
+  ('lifecycle_cancel_safe_work_before_complete_native(uuid,uuid)',false),
+  ('lifecycle_validate_purge_before_complete_native(uuid,uuid,text)',false)
+ ) required(signature,worker_execute)
+  WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p
+   WHERE p.oid=pg_catalog.to_regprocedure('public.'||required.signature)
+    AND p.prosecdef AND pg_catalog.pg_get_userbyid(p.proowner)='jrc_migrator'
+    AND p.proconfig @> ARRAY['search_path=pg_catalog, public']::text[])
+   OR pg_catalog.has_function_privilege('jrc_lifecycle',pg_catalog.to_regprocedure('public.'||required.signature),'EXECUTE')
+    IS DISTINCT FROM required.worker_execute
+   OR pg_catalog.has_function_privilege('jrc_app',pg_catalog.to_regprocedure('public.'||required.signature),'EXECUTE')
+   OR pg_catalog.has_function_privilege('jrc_auth',pg_catalog.to_regprocedure('public.'||required.signature),'EXECUTE')
+   OR pg_catalog.has_function_privilege('jrc_platform',pg_catalog.to_regprocedure('public.'||required.signature),'EXECUTE')
+   OR EXISTS(SELECT 1 FROM pg_catalog.pg_proc p,
+    LATERAL pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl
+    WHERE p.oid=pg_catalog.to_regprocedure('public.'||required.signature) AND acl.grantee=0))
 `;
