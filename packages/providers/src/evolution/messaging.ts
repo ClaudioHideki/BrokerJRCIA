@@ -22,7 +22,7 @@ type Options = {
   timeoutMs?: number;
 };
 const failure = (code: string) => Object.assign(new Error(code), { code });
-const webhookEvents = ['MESSAGES_UPSERT','MESSAGES_UPDATE','CONNECTION_UPDATE','GROUPS_UPSERT','GROUPS_UPDATE','GROUP_PARTICIPANTS_UPDATE'];
+const webhookEvents = ['MESSAGES_UPSERT','MESSAGES_UPDATE','CONNECTION_UPDATE','GROUPS_UPSERT','GROUP_UPDATE','GROUP_PARTICIPANTS_UPDATE'];
 function webhookDestination(url:string,secret:string) {
   const target=new URL(url);
   if(!['http:','https:'].includes(target.protocol)||target.username||target.password||target.search||target.hash||!secret)

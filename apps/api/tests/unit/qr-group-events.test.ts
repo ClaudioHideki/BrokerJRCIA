@@ -76,14 +76,14 @@ describe('authenticated QR group event normalization', () => {
     const client = new EvolutionMessagingClient({ baseUrl: 'https://engine.example.test', apiKey: 'private-global-canary', instanceKey: 'synthetic', fetch: request });
     await client.configureWebhook('https://broker.example.test/v1/webhooks/whatsapp/synthetic', 'scoped-token');
     const sent = JSON.parse(request.mock.calls[0]![1].body);
-    expect(sent.webhook.events).toEqual(['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'GROUPS_UPSERT', 'GROUPS_UPDATE', 'GROUP_PARTICIPANTS_UPDATE']);
+    expect(sent.webhook.events).toEqual(['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'GROUPS_UPSERT', 'GROUP_UPDATE', 'GROUP_PARTICIPANTS_UPDATE']);
     expect(sent.webhook.headers).toEqual({ Authorization: 'Bearer scoped-token' });
     expect(sent.webhook).toMatchObject({ byEvents: false, base64: false });
     expect(sent.webhook.webhookByEvents).toBeUndefined(); expect(sent.webhook.webhookBase64).toBeUndefined();
     expect(JSON.stringify(sent)).not.toContain('private-global-canary');
   });
   it('reads the pinned Prisma response shape without accepting request keys as configuration evidence', async () => {
-    const events = ['MESSAGES_UPSERT','MESSAGES_UPDATE','CONNECTION_UPDATE','GROUPS_UPSERT','GROUPS_UPDATE','GROUP_PARTICIPANTS_UPDATE'];
+    const events = ['MESSAGES_UPSERT','MESSAGES_UPDATE','CONNECTION_UPDATE','GROUPS_UPSERT','GROUP_UPDATE','GROUP_PARTICIPANTS_UPDATE'];
     const response = { enabled: true, url: 'https://broker.example.test/qr', headers: { Authorization: 'Bearer scoped' },
       webhookByEvents: false, webhookBase64: false, events };
     const request = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(response)))
