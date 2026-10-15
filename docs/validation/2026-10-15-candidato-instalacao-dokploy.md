@@ -71,7 +71,7 @@ compose -p NOME_DO_COMPOSE_CANDIDATO -f ./infra/dokploy/compose.yaml --profile m
 
 Esperado: `CURRENT`, `compatible: true`, nenhuma migration pendente e versões esperada/aplicada iguais ao corte da imagem registrado na publicação. Não usar o terminal da API para ler o journal: a role `jrc_app` não tem essa permissão.
 
-Neste corte, a última migração Broker é `0063_conversation_effect_protocol` (inclui0061de captura e0062de tomada NICO). O JRC tem migrações próprias para registro/instalação/ownership nativo, envio NICO, recibos das ações e proteção de configuração por caixa; a imagem Rails e a Sidekiq precisam conter e usar o mesmo conjunto. A imagem NICO runtime não recebe essas migrações.
+Neste corte, a última migração Broker é `0064_native_flow_guard_coverage` (inclui 0061 de captura, 0062 de tomada NICO e 0063 de efeitos). A 0064 exige a prova dos 19 pontos de execução nativos; uma prova antiga ainda em `DRAINED` passa a `UNKNOWN` para reconciliação, sem repetir a troca de executor. Vínculos já ativados, automações e mensagens permanecem intactos. O JRC tem migrações próprias para registro/instalação/ownership nativo, envio NICO, recibos das ações e proteção de configuração por caixa; a imagem Rails e a Sidekiq precisam conter e usar o mesmo conjunto. A imagem NICO runtime não recebe essas migrações.
 
 Depois **apagar todo o campo Advanced → Run Command**, salvar e usar General → Deploy. Isso inicia a aplicação e todos os workers com o comando normal. Não deixar o comando de migração no campo: o container pontual termina e não inicia o sistema.
 

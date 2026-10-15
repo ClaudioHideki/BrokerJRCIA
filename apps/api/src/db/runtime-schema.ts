@@ -4,7 +4,7 @@ import {inputTimeoutRuntimeSql} from './input-timeout-runtime-schema.js';
 import {flowDelegationRuntimeSql} from './flow-delegation-runtime-schema.js';
 import {whatsappGroupRuntimeSql} from './whatsapp-group-runtime-schema.js';
 import {nicoTakeoverRuntimeSql} from './nico-takeover-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0063_conversation_effect_protocol';
+export const RUNTIME_SCHEMA_BASELINE = '0064_native_flow_guard_coverage';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 

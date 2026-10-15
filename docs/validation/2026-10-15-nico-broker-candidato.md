@@ -84,3 +84,5 @@ Esses testes não encerram todo o programa P0–P10 nem comprovam uma implantaç
 
 A publicação das branches e imagens candidatas será registrada com CI e digests efetivos. Nenhuma imagem é considerada publicada por existir um Dockerfile ou um commit. O usuário acompanha o candidato antes de qualquer alteração no Dokploy.
 
+O CI do corte `fe8f3d6` aprovou build, editor compilado, migrações vazias, TypeScript, suíte geral e interface; os 13 erros PostgreSQL de `flow-service` revelaram a constraint histórica 0053 limitada a 11 guards. A correção aditiva 0064 exige os 19 guards atuais e invalida apenas provas nativas ainda consumíveis, mantendo os fatos já ativados e o transporte STOCK. Não altera os bytes de 0053. Regressão de upgrade primeiro reproduzida em falha; após a correção, os 60 cenários do serviço e o upgrade passaram em conjunto. Doze testes de baseline/journal e TypeScript também passaram. A revisão independente não encontrou P1/P2 nesse reparo; o CI do novo commit será a evidência consolidada.
+
