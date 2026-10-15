@@ -21,6 +21,7 @@ describe('runtime schema probe', () => {
     expect(sql).toContain('lifecycle_deletions');
     expect(sql).toContain('support_tickets');
     expect(sql).toContain('support_messages');
+    expect(sql).toContain('flow_executor_cutovers_drain_proof');
   });
 
   it('requires the archival triggers and forced group policies, not only their tables', async () => {

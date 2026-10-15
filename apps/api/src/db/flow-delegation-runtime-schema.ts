@@ -1,8 +1,5 @@
-/** Structural readiness for 0053 and its 0064 proof coverage repair. */
+/** Structural readiness for the original 0053 boundary. */
 export const flowDelegationRuntimeSql=`
- EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass('public.flow_executor_cutovers')
-  AND c.conname='flow_executor_cutovers_drain_proof' AND c.contype='c' AND c.convalidated)
- AND
  NOT EXISTS(SELECT 1 FROM (VALUES ('flow_delegation_credentials'),('flow_delegation_sessions'),('flow_delegation_session_grants'),('flow_member_grants'),('flow_executor_profiles'),('automation_definition_scopes'),('flow_executor_cutovers')) AS required(name)
  WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass('public.'||required.name) AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'
   AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='tenant_scope' AND p.polcmd='*')
@@ -30,4 +27,10 @@ export const flowDelegationRuntimeSql=`
  WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid=pg_catalog.to_regclass('public.'||required.name) AND t.tgname=required.trigger_name AND t.tgenabled IN ('O','A') AND NOT t.tgisinternal))
  AND NOT EXISTS(SELECT 1 FROM (VALUES ('flow_executor_cutovers','fence_dispatched_at'),('flow_executor_cutovers','lease_token'),('flow_executor_cutovers','lease_expires_at')) required(name,column_name)
  WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.'||required.name) AND attname=required.column_name AND NOT attisdropped))
+`;
+
+/** Current runtime also requires 0064; an isolated historical 0053 test does not. */
+export const nativeFlowGuardCoverageRuntimeSql=`
+ EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass('public.flow_executor_cutovers')
+  AND c.conname='flow_executor_cutovers_drain_proof' AND c.contype='c' AND c.convalidated)
 `;

@@ -63,6 +63,9 @@ try {
   const result = await esbuild.build({
     absWorkingDir: root, entryPoints: ['apps/web/src/native-flow/entry.tsx'], outfile: path.join(staging, 'editor.js'),
     bundle: true, format: 'esm', platform: 'browser', target: ['es2022'], jsx: 'automatic', minify: true,
+    // Escape multiline templates as strings; preserve their values while making
+    // the generated artifact compatible with the host's Git whitespace gate.
+    supported: { 'template-literal': false },
     metafile: true, sourcemap: false, legalComments: 'external',
     tsconfig: path.join(root, 'apps/web/tsconfig.json'),
     define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.DEV': 'false', 'import.meta.env.PROD': 'true',

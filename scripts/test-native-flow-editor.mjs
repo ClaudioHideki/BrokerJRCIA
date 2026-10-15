@@ -6,6 +6,8 @@ import { chromium } from '@playwright/test';
 import { AUTOMATION_NODE_CATALOG_V1 } from '../packages/contracts/dist/index.js';
 
 const directory = path.resolve(process.argv[2] ?? '.sessions/native-flow-editor');
+assert.ok(!/[\t ]+$/m.test(await readFile(path.join(directory, 'editor.js'), 'utf8')),
+  'Native editor release JavaScript must pass the host Git whitespace check without changing string values');
 const org = '11111111-2222-4333-8444-555555555555', id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const handle = '12345678-1234-4234-8234-123456789abc', channel = '76543210-1234-4234-8234-123456789abc';
 const graph = { nodes: [
