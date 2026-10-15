@@ -55,7 +55,7 @@ describe('Console JRC', () => {
 
     expect(await screen.findByRole('heading', { name: 'Saúde operacional' })).toBeVisible();
     expect(screen.getByRole('link', { name: 'Saúde operacional' })).toHaveAttribute('href', '/operations/health');
-    expect(api.request).toHaveBeenCalledWith('/v1/operations/health');
+    await waitFor(() => expect(api.request).toHaveBeenCalledWith('/v1/operations/health'));
     expect(await screen.findByText('Nenhum alerta operacional ativo.')).toBeVisible();
   });
 

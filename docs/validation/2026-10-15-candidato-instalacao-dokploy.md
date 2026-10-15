@@ -101,6 +101,12 @@ bundle exec rails runner 'a = Account.find(3); a.with_lock { a.update!(custom_at
 
 Para habilitar a Account 4, substituir apenas `3` por `4`. O comando preserva os demais atributos. A Account precisa estar ativa; configurar seu próprio provedor, modelo padrão e limites em Inteligência Artificial. Não aumenta permissões, não envia mensagens e não ativa o bot. Não executamos essa habilitação para 3/4 no servidor.
 
+O runtime selecionado também precisa aceitar o ID. No serviço **NICO runtime candidato**, configurar `NICO_ALLOWED_ACCOUNTS` com os IDs explicitamente autorizados, separados por vírgula: por exemplo `1,3,4` quando essas três Accounts utilizarem aquela implantação. Preservar os IDs já atendidos; não usar `*` para liberar todos. Essa variável é lida na inicialização: salvar e reimplantar somente o serviço runtime candidato após a alteração. Não exige reconstruir a imagem. `NICO_MODE=provider` exige o provedor da própria Account enviado pelo Rails, além da autenticação de serviço.
+
+Também é possível manter um runtime separado por Account (`NICO_ALLOWED_ACCOUNTS=3` ou `4`) e configurar `NICO_RUNTIME_ROUTES` no Rails e Sidekiq com cada endpoint e seu `token_env`. Nesse caso, incluir todas as Accounts que continuarão atendidas: a ausência de um ID no mapa retorna `account_not_configured`, sem fallback. Guardar cada `NICO_RUNTIME_TOKEN_...` somente no Environment/cofre, com pelo menos32 caracteres; nunca na interface do navegador. O mapa e a lista do runtime são configurações diferentes e ambas precisam corresponder à Account.
+
+O comportamento acima foi conferido em `services/nico-runtime/src/server.ts`, `provider-config.ts` e no `JrcNico::RuntimeClient` da base atual. A observação antiga no README do runtime sobre uma única Account em provider não representa a implementação atual da lista explícita. Habilitar a flag no banco sem ajustar uma lista restrita a `1` continuará produzindo `account_not_configured` para3/4.
+
 Consulta sem alterações:
 
 ```sh
