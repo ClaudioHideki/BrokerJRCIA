@@ -145,6 +145,7 @@ export function MessagingPage() {
   const sendLock = useRef(false),
     pendingSend = useRef<{ payload: string; key: string } | null>(null);
   const [changingMode, setChangingMode] = useState(false);
+  const modeMutationRevision = useRef(0);
   const [resumingConversation,setResumingConversation]=useState<string|null>(null);
   const [messageRevision, setMessageRevision] = useState(0);
   const [error, setError] = useState<{
@@ -317,19 +318,28 @@ export function MessagingPage() {
   useEffect(() => {
     if (conversationId === "") return;
     const generation = tenantGeneration.current;
+    const modeRevision = modeMutationRevision.current;
     const controller = new AbortController();
     controllers.current.add(controller);
     setLoadingMessages(true);
     setMessages([]);
     setError(null);
-    void loadMessages(client, conversationId, controller.signal)
-      .then((data) => {
+    void Promise.all([
+      loadMessages(client, conversationId, controller.signal),
+      client.request<unknown>(`/v1/messaging/conversations/${encodeURIComponent(conversationId)}`, { signal: controller.signal }),
+    ])
+      .then(([data, rawConversation]) => {
         if (
           generation !== tenantGeneration.current ||
           controller.signal.aborted
         )
           return;
+        const current = ConversationViewSchema.safeParse(rawConversation);
+        if (!current.success || current.data.id !== conversationId || current.data.channelId !== channelId) throw invalidResponse();
         setMessages(data);
+        if (modeRevision === modeMutationRevision.current) {
+          setConversations(rows => rows.map(row => row.id === conversationId ? current.data : row));
+        }
       })
       .catch((caught: unknown) => {
         if (
@@ -352,7 +362,7 @@ export function MessagingPage() {
       controller.abort();
       controllers.current.delete(controller);
     };
-  }, [client, conversationId, messageRevision]);
+  }, [channelId, client, conversationId, messageRevision]);
 
   const selectedConversation =
     conversations.find((item) => item.id === conversationId) ?? null;
@@ -655,6 +665,7 @@ export function MessagingPage() {
     if (!canMutate || !selectedConversation) return;
     const generation = tenantGeneration.current;
     const mode = selectedConversation.mode === "BOT" ? "HUMAN" : "BOT";
+    modeMutationRevision.current += 1;
     setChangingMode(true);
     setError(null);
     try {

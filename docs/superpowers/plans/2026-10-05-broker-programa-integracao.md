@@ -21,6 +21,10 @@
 
 ## Entrega na main por incremento
 
+### Candidato separado autorizado em 15/10/2026
+
+Para a estabilização coordenada NICO/Broker, o usuário autorizou uma branch nova separada para testes e imagens candidatas. Usar `codex/nico-broker-coordenado-20261015` no Broker e no JRC, preservando as revisões instaladas e sem promover automaticamente para main ou para o servidor. O [plano do candidato](2026-10-15-nico-broker-estabilizacao.md) registra as entregas, testes e componentes. Essa instrução específica substitui a entrega direta na main descrita abaixo enquanto o candidato é desenvolvido e homologado.
+
 Decisão do usuário em 06/10/2026: cada incremento concluído e validado deve ser integrado à main, que é a referência do servidor. Reutilizar o checkout atual; não criar branches adicionais para novas etapas nem publicar imagens de entrega a partir de branches de desenvolvimento. Os incrementos P2 já existentes serão integrados após fechar os gates pendentes. Para cada entrega, registrar SHA da main, CI e digests das imagens API/web geradas daquela revisão. O usuário aplica esses digests no Dokploy; código na main, imagem publicada e servidor atualizado são verificações separadas. Um incremento parcial não encerra os critérios pendentes da fase completa.
 
 ### Atualização de 08/10/2026

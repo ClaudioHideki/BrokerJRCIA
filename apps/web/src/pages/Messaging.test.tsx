@@ -105,6 +105,9 @@ function loadedRequest(overrides: {
         mode: overrides.mode ?? 'BOT',
       }] };
     }
+    if (path === `/v1/messaging/conversations/${CONVERSATION_ID}`) {
+      return { id: CONVERSATION_ID, channelId: CHANNEL_ID, contactId: CONTACT_ID, mode: overrides.mode ?? 'BOT' };
+    }
     if (path === `/v1/messaging/conversations/${CONVERSATION_ID}/messages`) {
       return { data: [{
         id: MESSAGE_ID,
@@ -120,6 +123,71 @@ function loadedRequest(overrides: {
 }
 
 describe('MessagingPage', () => {
+  it('refreshes the remote attendance mode with the history without losing the draft or changing attendance', async () => {
+    const base = loadedRequest();
+    let human = false;
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === `/v1/messaging/conversations/${CONVERSATION_ID}`) {
+        return { id: CONVERSATION_ID, channelId: CHANNEL_ID, contactId: CONTACT_ID, mode: human ? 'HUMAN' : 'BOT' };
+      }
+      return base(path, init);
+    }) as ApiClient['request'];
+    renderPage(clientFor(request));
+    await screen.findByText('Olá, preciso de ajuda');
+    fireEvent.change(screen.getByLabelText('Responder'), { target: { value: 'Resposta em preparação' } });
+    human = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar histórico' }));
+    expect(await screen.findByText('Modo: Atendimento humano')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retomar bot' })).toBeEnabled();
+    expect(screen.getByLabelText('Responder')).toHaveValue('Resposta em preparação');
+    expect((request as ReturnType<typeof vi.fn>).mock.calls.some(([, init]) => init?.method && init.method !== 'GET')).toBe(false);
+  });
+
+  it('does not overwrite a confirmed human takeover with an older refresh response', async () => {
+    const base = loadedRequest();
+    let refreshing = false, resolve: ((value: unknown) => void) | null = null;
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === `/v1/messaging/conversations/${CONVERSATION_ID}` && refreshing) return new Promise(r => { resolve = r; });
+      return base(path, init);
+    }) as ApiClient['request'];
+    renderPage(clientFor(request));
+    await screen.findByText('Olá, preciso de ajuda');
+    refreshing = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar histórico' }));
+    await waitFor(() => expect(resolve).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Assumir atendimento' }));
+    await screen.findByText('Modo: Atendimento humano');
+    await act(async () => { resolve!({ id: CONVERSATION_ID, channelId: CHANNEL_ID, contactId: CONTACT_ID, mode: 'BOT' }); });
+    expect(screen.getByText('Modo: Atendimento humano')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retomar bot' })).toBeEnabled();
+  });
+
+  it('does not apply a late history refresh to the next selected conversation', async () => {
+    const second = '22222222-3333-4444-8555-666666666666';
+    const base = loadedRequest();
+    let refreshing = false, resolve: (value: unknown) => void = () => {};
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === `/v1/messaging/channels/${CHANNEL_ID}/conversations`) {
+        return { data: [CONVERSATION_ID, second].map(id => ({ id, channelId: CHANNEL_ID, contactId: CONTACT_ID, mode: 'BOT' })) };
+      }
+      if (path === `/v1/messaging/conversations/${CONVERSATION_ID}` && refreshing) return new Promise(r => { resolve = r; });
+      if (path === `/v1/messaging/conversations/${second}`) return { id: second, channelId: CHANNEL_ID, contactId: CONTACT_ID, mode: 'BOT' };
+      if (path === `/v1/messaging/conversations/${second}/messages`) return { data: [{ id: MESSAGE_ID, direction: 'INCOMING', state: 'DELIVERED', text: 'Histórico da segunda conversa' }] };
+      return base(path, init);
+    }) as ApiClient['request'];
+    renderPage(clientFor(request));
+    await screen.findByText('Olá, preciso de ajuda');
+    refreshing = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar histórico' }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith(`/v1/messaging/conversations/${CONVERSATION_ID}`, expect.anything()));
+    fireEvent.change(screen.getByLabelText('Conversa'), { target: { value: second } });
+    await screen.findByText('Histórico da segunda conversa');
+    await act(async () => { resolve({ id: CONVERSATION_ID, channelId: CHANNEL_ID, contactId: CONTACT_ID, mode: 'HUMAN' }); });
+    expect(screen.getByLabelText('Conversa')).toHaveValue(second);
+    expect(screen.getByText('Modo: Bot')).toBeVisible();
+    expect(screen.queryByText('Olá, preciso de ajuda')).toBeNull();
+  });
+
   it('explains the separate explicit resume for the selected human conversation without writing on load',async()=>{
     const request=loadedRequest({mode:'HUMAN'});renderPage(clientFor(request));
     expect(await screen.findByText(/A retomada vale somente para a conversa selecionada/)).toBeVisible();
