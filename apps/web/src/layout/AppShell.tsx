@@ -13,7 +13,7 @@ const navigation = [
   ['/credentials', 'Credenciais', 'key'],
   ['/uso-custos', 'Uso e custos', 'costs'],
   ['/relatorios', 'Relatórios', 'reports'],
-  ['/health', 'Saúde operacional', 'health'],
+  ['/operations/health', 'Saúde operacional', 'health'],
   ['/suporte', 'Suporte', 'messages'],
   ['/brain', 'JRC Brain', 'brain'],
   ['/chaves-api', 'Chaves de API', 'key'],

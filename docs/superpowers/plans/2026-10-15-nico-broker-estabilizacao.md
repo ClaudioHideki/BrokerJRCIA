@@ -34,7 +34,7 @@
 - Modify: app/services/jrc_nico/tool_executor.rb
 - Modify: app/jobs/jrc_nico/customer_turn_job.rb
 - Modify: app/services/jrc_nico/context_builder.rb
-- Test: spec/services/jrc_nico/recent_history_spec.rb
+- Test: spec/services/jrc_nico/operator_session_recent_history_spec.rb
 
 **Interfaces:**
 - Consumes: conversation.messages com default_scope de Message por created_at ascendente.

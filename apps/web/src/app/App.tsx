@@ -71,7 +71,7 @@ function AppRoutes() {
         <Route path="/suporte" element={<SupportPage />} />
         <Route path="/providers" element={<Navigate replace to="/channels" />} />
         <Route path="/provisionamento" element={<ProvisioningPage />} />
-        <Route path="/health" element={<OperationalHealthPage />} />
+        <Route path="/operations/health" element={<OperationalHealthPage />} />
         <Route path="/relatorios" element={<ReportsPage />} />
         <Route path="/uso-custos" element={<UsagePage />} />
         <Route path="/brain" element={<BrainPage />} />

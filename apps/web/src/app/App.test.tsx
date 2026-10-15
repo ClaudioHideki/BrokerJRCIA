@@ -46,6 +46,19 @@ function client(): ApiClient {
 }
 
 describe('Console JRC', () => {
+  it('opens operational health directly at its console URL without using the API liveness path', async () => {
+    const api = client();
+    api.request = vi.fn(async () => ({
+      observedAt: '2026-10-15T12:00:00.000Z', overall: 'UP', components: [], alerts: [],
+    })) as ApiClient['request'];
+    render(<App client={api} initialEntries={['/operations/health']} />);
+
+    expect(await screen.findByRole('heading', { name: 'Saúde operacional' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Saúde operacional' })).toHaveAttribute('href', '/operations/health');
+    expect(api.request).toHaveBeenCalledWith('/v1/operations/health');
+    expect(await screen.findByText('Nenhum alerta operacional ativo.')).toBeVisible();
+  });
+
   it('orienta a equipe para o login administrativo separado', async () => {
     const anonymous = client();
     anonymous.restore = vi.fn(async () => { throw new Error('Sem sessão'); });

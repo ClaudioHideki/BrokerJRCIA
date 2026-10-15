@@ -135,7 +135,7 @@ export function DashboardPage() {
                 </div>
                 <Icon name="arrow" />
               </Link>
-              <Link className="quick-action" to="/health">
+              <Link className="quick-action" to="/operations/health">
                 <span className="quick-icon amber">
                   <Icon name="health" />
                 </span>

@@ -10,23 +10,28 @@ Bases: Broker 0620ecd0c03ec22252f8518d3a76b6414f6d6cf0 e JRC b58e093dd3a32fe9782
 
 A consulta do histórico também lê o estado atual da conversa e atualiza o rótulo bot/humano. Escopo de conversa/caixa e guards de tenant/aborto são verificados antes de apresentar os dados. O rascunho é preservado.
 
-Uma revisão de mutação local impede que uma resposta GET iniciada antes de uma tomada humana desfaça o modo confirmado. Atualizar histórico não faz PATCH nem envia mensagem.
+Uma revisão de mutação local impede que uma resposta GET iniciada antes ou durante uma tomada humana desfaça o modo confirmado. Atualizar histórico não faz PATCH nem envia mensagem. A tela de saúde passa a usar /operations/health, preservando /health para a API e permitindo acesso direto/reload pelo proxy.
 
 Evidência TDD:
 - Duas regressões iniciais falharam no código original, por modo obsoleto e ausência da consulta do estado.
 - Uma regressão adicional falhou ao aplicar BOT antigo depois da tomada humana confirmada.
-- Após a correção, Messaging.test.tsx: 34 testes aprovados.
+- A revisão independente encontrou também GET iniciado durante o PATCH; a regressão falhou no candidato inicial e passou após invalidar a leitura na confirmação da mutação.
+- Após a revisão, Messaging.test.tsx: 35 testes aprovados; App.test.tsx: 6 testes aprovados, incluindo o acesso direto à saúde.
 - npm run typecheck: aprovado.
-- npm test -- --maxWorkers=2 --reporter=dot: 375 arquivos, 2.884 testes aprovados.
+- npm test -- --maxWorkers=2 --reporter=dot: 375 arquivos, 2.886 testes aprovados no incremento revisado.
 - As restrições iniciais de esbuild/Git/Docker foram resolvidas por execução autorizada dos comandos locais; não foram removidos gates.
 
-## Incremento inicial JRC/NICO em verificação
+## Incremento inicial JRC/NICO publicado na branch candidata
 
 Foram escritos sete cenários sobre janela recente, mensagens privadas, conversa/Account e claim da entrada mais recente. No fonte original: sete exemplos, seis falhas correspondentes ao defeito e uma aprovação de isolamento.
 
 Seis consultas foram alteradas em OperatorSession, ToolExecutor, CustomerTurnJob e ContextBuilder, substituindo order acumulado por reorder. O restante da autorização, formato e limites foi preservado.
 
-Regressões e fluxos existentes de comandos/delegação estão em execução no laboratório Rails/PostgreSQL/Redis descartável. O resultado final será acrescentado após sua conclusão. Não há alteração de provedor, modelo, orçamento ou runtime NICO nesta correção.
+Regressões e fluxos existentes de comandos/delegação: 80 exemplos aprovados em sete arquivos no laboratório Rails/PostgreSQL/Redis descartável. O arquivo novo passou novamente com sete exemplos após ajustes de fixture/estilo e RuboCop sem ocorrências. Não há alteração de provedor, modelo, orçamento ou runtime NICO nesta correção.
+
+Fonte JRC: f8938d05846f556a81d6f2917347460eed288099. [CI NICO aprovado](https://github.com/ClaudioHideki/jrc-conversas-lab2/actions/runs/38764982127). [Build da imagem app iniciado](https://github.com/ClaudioHideki/jrc-conversas-lab2/actions/runs/38766434387); digest ainda não confirmado neste registro.
+
+O primeiro commit Broker 978f499a2beab045e2eeb417f512cef1bffac0e1 passou no [CI completo](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/38763465516). A revisão de corrida e rota de saúde forma o próximo commit candidato e receberá seu próprio CI.
 
 ## Continuidade e instalação
 

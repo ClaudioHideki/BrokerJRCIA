@@ -162,6 +162,36 @@ describe('MessagingPage', () => {
     expect(screen.getByRole('button', { name: 'Retomar bot' })).toBeEnabled();
   });
 
+  it('keeps confirmed human attendance when history was refreshed during the pending takeover', async () => {
+    const base = loadedRequest();
+    let takingOver = false;
+    let confirmTakeover: ((value: unknown) => void) | null = null;
+    let finishRefresh: ((value: unknown) => void) | null = null;
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === `/v1/messaging/conversations/${CONVERSATION_ID}/mode` && init?.method === 'PATCH') {
+        takingOver = true;
+        return new Promise(resolve => { confirmTakeover = resolve; });
+      }
+      if (path === `/v1/messaging/conversations/${CONVERSATION_ID}` && takingOver) {
+        return new Promise(resolve => { finishRefresh = resolve; });
+      }
+      return base(path, init);
+    }) as ApiClient['request'];
+    renderPage(clientFor(request));
+    await screen.findByText('Olá, preciso de ajuda');
+    fireEvent.click(screen.getByRole('button', { name: 'Assumir atendimento' }));
+    await waitFor(() => expect(confirmTakeover).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar histórico' }));
+    await waitFor(() => expect(finishRefresh).not.toBeNull());
+    await act(async () => { confirmTakeover!({ updated: true }); });
+    await screen.findByText('Modo: Atendimento humano');
+    await act(async () => {
+      finishRefresh!({ id: CONVERSATION_ID, channelId: CHANNEL_ID, contactId: CONTACT_ID, mode: 'BOT' });
+    });
+    expect(screen.getByText('Modo: Atendimento humano')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retomar bot' })).toBeEnabled();
+  });
+
   it('does not apply a late history refresh to the next selected conversation', async () => {
     const second = '22222222-3333-4444-8555-666666666666';
     const base = loadedRequest();

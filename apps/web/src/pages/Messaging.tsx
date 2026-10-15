@@ -674,6 +674,7 @@ export function MessagingPage() {
         { method: "PATCH", body: JSON.stringify({ mode }) },
       );
       if (generation !== tenantGeneration.current) return;
+      modeMutationRevision.current += 1;
       setConversations((current) =>
         current.map((conversation) =>
           conversation.id === selectedConversation.id
