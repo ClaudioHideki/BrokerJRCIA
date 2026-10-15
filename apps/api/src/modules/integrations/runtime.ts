@@ -25,6 +25,7 @@ import { MediaError, EvolutionWorkspaceClient, EvolutionGroupsClient, createEvol
 import { randomUUID } from 'node:crypto';
 import { createChatwootHealth } from './chatwoot-health.js';
 import { createChatwootControlService } from './chatwoot-control-service.js';
+import { createNicoTakeovers } from './nico-takeovers.js';
 import { createPairActionStore, type PairActionRedisClient } from './chatwoot-pair-action-store.js';
 import type { MessagingChannel, OutboxClaim } from "../messaging/types.js";
 import { createOnboardingService } from './chatwoot-onboarding.js';
@@ -322,6 +323,7 @@ export function createIntegrationRuntime(
     } }) : undefined,
     dashboardClient: options ? chatwootEnvironment(options).client : undefined,
     identity,
+    takeovers: control && centralEnvironment ? createNicoTakeovers({ transact, auth: control.auth, client: centralEnvironment.client }) : undefined,
     controlService: control && options && chatwoot && identity ? createChatwootControlService({
       ...options, ...control, chatwoot, health: identity,
       ...(control.pairActionRedis ? { pairActions: createPairActionStore({ client: control.pairActionRedis, encryptionKey: options.encryptionKey }) } : {}),

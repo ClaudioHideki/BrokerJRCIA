@@ -1,7 +1,7 @@
 import type { AutomationGraphV1, AutomationSubflowCatalogItem } from '@jrc/contracts';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { RuntimeResult, RuntimeState } from './types.js';
-import { promoteAttendanceInput } from '../attendance/event-router.js';
+import { automationMessageInput,promoteAttendanceInput } from '../attendance/event-router.js';
 import { runtimeAuthorityAllows } from '../attendance/runtime-authority.js';
 import { AttendanceError } from '../attendance/types.js';
 import { unknownOutboxDiagnostic } from './outbox-diagnostics.js';
@@ -113,7 +113,7 @@ export function createPostgresAutomationRepository(policy?:GroupPhysicalPolicy):
   async listBindings(tx,org,id){return (await tx.query<BindingRow>(`select ${bindingColumns} from automation_bindings where organization_id=$1 and automation_id=$2 order by created_at desc`,[org,id])).rows;},
   async insertBinding(tx,row){return (await tx.query<BindingRow>(`insert into automation_bindings(organization_id,id,automation_id,version,channel_id,human_destination_id) select $1,$2,$3,$4,c.id,$6 from messaging_channels c where c.organization_id=$1 and c.id=$5 returning ${bindingColumns}`,[row.org,row.id,row.automationId,row.version,row.channelId,row.humanDestinationId])).rows[0]!;},
   async setBindingStatus(tx,org,id,status,revision){return (await tx.query<BindingRow>(`update automation_bindings set status=$3,revision=revision+1,updated_at=now() where organization_id=$1 and id=$2 and revision=$4 returning ${bindingColumns}`,[org,id,status,revision])).rows[0]??null;},
-  async insertEvent(tx,row){return Boolean((await tx.query(`insert into automation_events(organization_id,id,event_key,type,payload) values($1,$2,$3,$4,$5) on conflict(organization_id,event_key) do nothing returning id`,[row.org,row.id,row.eventKey,row.type,JSON.stringify(row.payload)])).rowCount);},
+  async insertEvent(tx,row){return Boolean((await tx.query(`insert into automation_events(organization_id,id,event_key,type,payload) values($1,$2,$3,$4,$5) on conflict(organization_id,event_key) do nothing returning id`,[row.org,row.id,row.eventKey,row.type,JSON.stringify(row.type==='MESSAGE'?automationMessageInput(row.payload):row.payload)])).rowCount);},
   async routeEvent(tx,row){
     await lockAttendanceChannelRead(tx,row.org,row.channelId);
     const binding=(await tx.query<BindingRow>(`select ${bindingColumns} from automation_bindings where organization_id=$1 and channel_id=$2 and status in ('ACTIVE','PAUSED') and ${runtimeTenantActive} for update`,[row.org,row.channelId])).rows[0];if(!binding)return null;
@@ -125,14 +125,14 @@ export function createPostgresAutomationRepository(policy?:GroupPhysicalPolicy):
     if(active.length>1)throw new Error('AUTOMATION_SESSION_RECONCILIATION_REQUIRED');
     const current=active[0];
     if(current){
-      await tx.query(`update automation_events set execution_id=$3,payload=$4 where organization_id=$1 and id=$2 and status='PENDING'`,
-        [row.org,row.eventId,current.id,JSON.stringify(row.input)]);
-      const resumed=await promoteAttendanceInput(tx,row.org,current.id);
+      await tx.query(`update automation_events set execution_id=$3,payload=$4,admitted_at=clock_timestamp() where organization_id=$1 and id=$2 and status='PENDING'`,
+        [row.org,row.eventId,current.id,JSON.stringify(automationMessageInput(row.input))]);
+      const resumed=await promoteAttendanceInput(tx,row.org,current.id,policy);
       return {execution:(await this.getExecution(tx,row.org,current.id))!,resumed};
     }
     if(binding.status!=='ACTIVE')return null;
-    const created=(await tx.query<ExecutionRow>(`insert into automation_executions(organization_id,id,automation_id,version,binding_id,channel_id,conversation_id,trigger_event_key,correlation_id,input,state) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'{}') returning ${executionColumns}`,[row.org,row.executionId,binding.automationId,binding.version,binding.id,row.channelId,row.conversationId,row.eventKey,row.correlationId,JSON.stringify(row.input)])).rows[0]!;
-    await tx.query(`update automation_events set execution_id=$3,status='CONSUMED',consumed_at=now() where organization_id=$1 and id=$2`,[row.org,row.eventId,created.id]);return {execution:created,resumed:false};
+    const created=(await tx.query<ExecutionRow>(`insert into automation_executions(organization_id,id,automation_id,version,binding_id,channel_id,conversation_id,trigger_event_key,correlation_id,input,state) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'{}') returning ${executionColumns}`,[row.org,row.executionId,binding.automationId,binding.version,binding.id,row.channelId,row.conversationId,row.eventKey,row.correlationId,JSON.stringify(automationMessageInput(row.input))])).rows[0]!;
+    await tx.query(`update automation_events set execution_id=$3,status='CONSUMED',consumed_at=now(),admitted_at=clock_timestamp() where organization_id=$1 and id=$2`,[row.org,row.eventId,created.id]);return {execution:created,resumed:false};
   },
   async claimExecution(tx,org,leaseToken,leaseMs){
     const candidates=(await tx.query<{id:string;channelId:string}>(`select id,channel_id AS "channelId" from automation_executions
@@ -164,9 +164,9 @@ export function createPostgresAutomationRepository(policy?:GroupPhysicalPolicy):
     // The array is the execution order. Older producers used ordinal=0 for every
     // node; never trust that value to be globally unique within a turn.
     for(const [effectOrdinal,effect] of result.effects.entries())await tx.query(`insert into automation_outbox(organization_id,execution_id,node_id,ordinal,kind,payload) values($1,$2,$3,$4,$5,$6) on conflict(organization_id,execution_id,node_id,ordinal) do nothing`,[execution.organizationId,execution.id,effect.nodeId,turnOffset+effectOrdinal,effect.kind,JSON.stringify(effect.payload)]);
-    if(result.wait)await tx.query(`insert into automation_waits(organization_id,execution_id,node_id,kind,wake_at,state) values($1,$2,$3,$4,$5,$6)`,[execution.organizationId,execution.id,result.wait.nodeId,result.wait.kind,result.wait.wakeAt??null,JSON.stringify(result.state)]);
+    if(result.wait)await tx.query(`insert into automation_waits(id,organization_id,execution_id,node_id,kind,wake_at,deadline_at,state) values(coalesce($1::uuid,gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8)`,[result.wait.waitId??null,execution.organizationId,execution.id,result.wait.nodeId,result.wait.kind,result.wait.wakeAt??null,result.wait.deadlineAt??null,JSON.stringify(result.state)]);
     await tx.query(`update automation_executions set status=$4,current_node_id=$5,state=$6,updated_at=now(),completed_at=case when $4 in ('COMPLETED','HANDOFF') then now() else null end,lease_token=null,lease_expires_at=null,error_code=null where organization_id=$1 and id=$2 and lease_token=$3`,[execution.organizationId,execution.id,execution.leaseToken,result.status,result.state.nodeId,JSON.stringify(result.state)]);
-    if(result.wait?.kind==='EVENT')await promoteAttendanceInput(tx,execution.organizationId,execution.id);
+    if(result.wait?.kind==='EVENT')await promoteAttendanceInput(tx,execution.organizationId,execution.id,policy);
   },
   async failExecution(tx,org,id,leaseToken,code,unknown){await tx.query(`update automation_executions set status=$4,error_code=$5,updated_at=now(),completed_at=case when $4='FAILED' then now() else null end,lease_token=null,lease_expires_at=null where organization_id=$1 and id=$2 and lease_token=$3`,[org,id,leaseToken,unknown?'UNKNOWN':'FAILED',code]);},
   async getExecution(tx,org,id){return (await tx.query<ExecutionRow>(`select ${executionColumns} from automation_executions where organization_id=$1 and id=$2`,[org,id])).rows[0]??null;},
@@ -197,14 +197,21 @@ export function createPostgresAutomationRepository(policy?:GroupPhysicalPolicy):
     await tx.query("update automation_waits set status='CANCELED' where organization_id=$1 and execution_id=$2 and status='WAITING'",[org,id]);return true;
   },
   async retryExecution(tx,org,id){const execution=await this.getExecution(tx,org,id);if(!execution)return false;const definition=await this.getDefinition(tx,org,execution.automationId,true);if(!definition||definition.lifecycleStatus==='ARCHIVED')return false;return Boolean((await tx.query(`update automation_executions set status='QUEUED',error_code=null,completed_at=null,updated_at=now() where organization_id=$1 and id=$2 and status='FAILED' and exists(select 1 from automation_definitions d where d.organization_id=$1 and d.id=automation_executions.automation_id and d.lifecycle_status<>'ARCHIVED')`,[org,id])).rowCount);},
-  async resumeExecution(tx,row){const execution=await this.getExecution(tx,row.org,row.id);if(execution){const definition=await this.getDefinition(tx,row.org,execution.automationId,true);if(definition?.lifecycleStatus==='ARCHIVED')return false;}if(!execution)return false;const locked=(await tx.query<{status:string}>('select status from automation_executions where organization_id=$1 and id=$2 for update',[row.org,row.id])).rows[0];if(!locked||!['WAITING','HANDOFF'].includes(locked.status))return false;const inserted=await this.insertEvent(tx,{org:row.org,id:row.eventId,eventKey:row.eventKey,type:'EXPLICIT_RESUME',payload:row.payload});if(!inserted)return true;await tx.query(`update automation_executions set status='QUEUED',input=$3,updated_at=now(),completed_at=null where organization_id=$1 and id=$2`,[row.org,row.id,JSON.stringify({...row.payload,eventType:'RESUME'})]);await tx.query(`update automation_waits set status='RESUMED',resume_event_key=$3,resumed_at=now() where organization_id=$1 and execution_id=$2 and status='WAITING'`,[row.org,row.id,row.eventKey]);await tx.query(`update automation_events set execution_id=$3,status='CONSUMED',consumed_at=now() where organization_id=$1 and id=$2`,[row.org,row.eventId,row.id]);return true;},
+  async resumeExecution(tx,row){const execution=await this.getExecution(tx,row.org,row.id);if(execution){const definition=await this.getDefinition(tx,row.org,execution.automationId,true);if(definition?.lifecycleStatus==='ARCHIVED')return false;}if(!execution)return false;const locked=(await tx.query<{status:string;state:RuntimeState}>('select status,state from automation_executions where organization_id=$1 and id=$2 for update',[row.org,row.id])).rows[0];if(!locked||!['WAITING','HANDOFF'].includes(locked.status))return false;
+    // A capture is settled only by an admitted MESSAGE or its own deadline.
+    if(locked.state?.waiting?.kind==='EVENT'&&locked.state.waiting.waitId!==undefined)return false;
+    const inserted=await this.insertEvent(tx,{org:row.org,id:row.eventId,eventKey:row.eventKey,type:'EXPLICIT_RESUME',payload:row.payload});if(!inserted)return true;await tx.query(`update automation_executions set status='QUEUED',input=$3,updated_at=now(),completed_at=null where organization_id=$1 and id=$2`,[row.org,row.id,JSON.stringify({...row.payload,eventType:'RESUME'})]);await tx.query(`update automation_waits set status='RESUMED',resume_event_key=$3,resumed_at=now() where organization_id=$1 and execution_id=$2 and status='WAITING'`,[row.org,row.id,row.eventKey]);await tx.query(`update automation_events set execution_id=$3,status='CONSUMED',consumed_at=now() where organization_id=$1 and id=$2`,[row.org,row.eventId,row.id]);return true;},
   async releaseDueWaits(tx,org,limit){
     // Lock executions before waits, matching cancel/resume. A canceled execution cannot be requeued.
-    const due=await tx.query<{id:string}>(`select e.id from automation_executions e where e.organization_id=$1 and ${runtimeTenantActive} and e.status='WAITING'
-      and exists(select 1 from automation_waits w where w.organization_id=e.organization_id and w.execution_id=e.id and w.kind='DELAY' and w.status='WAITING' and w.wake_at<=now())
-      order by e.updated_at for update of e skip locked limit $2`,[org,limit]);
+    const candidates=(await tx.query<{id:string;channelId:string}>(`select e.id,e.channel_id as "channelId" from automation_executions e where e.organization_id=$1 and ${runtimeTenantActive} and e.status='WAITING'
+      and exists(select 1 from automation_waits w where w.organization_id=e.organization_id and w.execution_id=e.id and w.status='WAITING'
+        and ((w.kind='DELAY' and w.wake_at<=now()) or (w.kind='EVENT' and w.deadline_at<=clock_timestamp()))) order by e.updated_at,e.id limit $2`,[org,limit])).rows;
+    for(const channel of [...new Set(candidates.map(row=>row.channelId))].sort())await lockAttendanceChannelRead(tx,org,channel);
+    const due=await tx.query<{id:string}>(`select e.id from automation_executions e where e.organization_id=$1 and e.id=any($2::uuid[]) and e.status='WAITING'
+      order by e.updated_at,e.id for update of e skip locked`,[org,candidates.map(row=>row.id)]);
     let released=0;
-    for(const row of due.rows){const wait=await tx.query(`update automation_waits set status='RESUMED',resumed_at=now() where organization_id=$1 and execution_id=$2 and kind='DELAY' and status='WAITING' and wake_at<=now()`,[org,row.id]);
+    for(const row of due.rows){if(await promoteAttendanceInput(tx,org,row.id,policy)){released++;continue;}
+      const wait=await tx.query(`update automation_waits set status='RESUMED',resumed_at=now() where organization_id=$1 and execution_id=$2 and kind='DELAY' and status='WAITING' and wake_at<=now()`,[org,row.id]);
       if(wait.rowCount){await tx.query(`update automation_executions set status='QUEUED',input='{"eventType":"TIMER"}'::jsonb,updated_at=now() where organization_id=$1 and id=$2 and status='WAITING'`,[org,row.id]);released++;}}
     return released;
   },

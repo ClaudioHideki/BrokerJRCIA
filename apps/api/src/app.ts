@@ -543,6 +543,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     chatwootControl = {
       jwtSecret: config.jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey,
       service: controlAuth, onboarding: integrationRuntime.onboarding, facade: integrationRuntime.controlService,
+      takeovers: integrationRuntime.takeovers,
     };
     chatwootEmbed = {
       nodeEnv, jwtSecret: config.jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey,

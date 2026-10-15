@@ -10,6 +10,7 @@ import {
 } from "@jrc/providers";
 
 const integer = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+const canonicalInteger = z.union([integer, z.string().regex(/^[1-9]\d{0,15}$/).transform(Number).pipe(integer)]);
 const catalogName=z.string().max(1000);
 const workingHour=z.object({day_of_week:z.number().int().min(0).max(6),closed_all_day:z.boolean(),open_all_day:z.boolean().optional(),
   open_hour:z.number().int().min(0).max(23).nullable().optional(),open_minutes:z.number().int().min(0).max(59).nullable().optional(),
@@ -586,11 +587,11 @@ export class ChatwootClient {
     integer.parse(inboxId);
     const query=beforeId===undefined?'':`?before=${integer.max(Number.MAX_SAFE_INTEGER-1).parse(beforeId)+1}`;
     const data=record(await this.request('GET',this.account(accountId)+`/conversations/${integer.parse(conversationId)}/messages${query}`));
-    const schema=z.object({id:integer,account_id:integer.optional(),inbox_id:integer,conversation_id:integer,
+    const schema=z.object({id:canonicalInteger,account_id:canonicalInteger.optional(),inbox_id:canonicalInteger,conversation_id:canonicalInteger,
       message_type:z.union([z.literal(0),z.literal(1),z.literal(2),z.literal(3),z.enum(['incoming','outgoing','activity','template'])]),
       private:z.boolean(),content:z.string().nullable(),content_type:z.string().optional(),attachments:z.array(z.unknown()).max(100).optional(),
       content_attributes:z.record(z.string(),z.unknown()).default({}),status:z.enum(['sent','delivered','read','failed']).optional(),
-      sender:z.object({id:integer,type:z.string().optional()}).nullable().optional(),created_at:z.number().finite().nonnegative()});
+      sender:z.object({id:canonicalInteger,type:z.string().optional()}).nullable().optional(),created_at:z.number().finite().nonnegative()});
     const messages=parseCatalog(z.array(schema).max(100),data.payload);
     if(messages.some(message=>message.account_id!==undefined&&message.account_id!==accountId||message.inbox_id!==inboxId||message.conversation_id!==conversationId))
       throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');

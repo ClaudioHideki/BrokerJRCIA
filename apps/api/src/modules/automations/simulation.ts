@@ -31,7 +31,7 @@ export async function simulateConversation(root:PublishedAutomation,input:Simula
     if(event.type==='MESSAGE'){
       // Retain the legacy replies contract; explicit events may observe messages during DELAY.
       if(result.wait?.kind==='IO'||(parsed.replies&&result.wait?.kind!=='EVENT'))throw new Error('AUTOMATION_SIMULATION_NOT_WAITING');
-      result=await executeAutomation(root,{text:event.text,eventType:'MESSAGE',now},resolve,result.state);
+      result=await executeAutomation(root,{text:event.text,eventType:'MESSAGE',now,...(result.wait?.waitId?{inputWait:{waitId:result.wait.waitId,admittedAt:now.getTime()}}:{})},resolve,result.state);
     }else if(event.type==='AI_RESPONSE'){
       const effect=result.wait?.kind==='IO'&&result.wait.nodeId===event.nodeId?result.effects.find(effect=>effect.kind==='IO_AI'&&effect.nodeId===event.nodeId&&effect.payload.aiConfigVersion===1):undefined;
       if(!effect)throw new Error('AUTOMATION_SIMULATION_AI_WAIT_MISMATCH');
@@ -55,12 +55,12 @@ export async function simulateConversation(root:PublishedAutomation,input:Simula
       if(!Number.isFinite(until.getTime()))throw new Error('AUTOMATION_SIMULATION_CLOCK_INVALID');
       // Run each due timer at its deadline, including delays created by earlier timers.
       // The engine's durable step limit also bounds loops in this reconstruction.
-      while(result.status==='WAITING'&&result.wait?.kind==='DELAY'){
-        const wakeAt=result.wait.wakeAt;
+      while(result.status==='WAITING'&&(result.wait?.kind==='DELAY'||result.wait?.kind==='EVENT'&&result.wait.deadlineAt!==undefined)){
+        const wakeAt=result.wait.kind==='DELAY'?result.wait.wakeAt:result.wait.deadlineAt;
         if(!wakeAt)throw new Error('AUTOMATION_SIMULATION_DELAY_UNAVAILABLE');
         if(wakeAt.getTime()>until.getTime())break;
         now=new Date(Math.max(now.getTime(),wakeAt.getTime()));
-        result=await executeAutomation(root,{text:'',eventType:'TIMER',now},resolve,result.state);
+        result=await executeAutomation(root,{text:'',eventType:'TIMER',now,...(result.wait.waitId?{inputWait:{waitId:result.wait.waitId}}:{})},resolve,result.state);
         effects.push(...result.effects);trace.push(...result.trace);
       }
       now=until;

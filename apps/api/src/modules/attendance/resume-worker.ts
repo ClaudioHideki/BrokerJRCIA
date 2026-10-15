@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import type { ResumeOperationView } from '@jrc/contracts';
+import {AutomationGraphV1Schema,InputCaptureConfigSchema,type ResumeOperationView} from '@jrc/contracts';
+import type {RuntimeState} from '../automations/types.js';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import { readChatwootAccount,type AccountRow } from '../integrations/chatwoot-context.js';
 import type { ChatwootClient } from '../integrations/chatwoot-client.js';
@@ -60,13 +61,26 @@ export function createAttendanceResumeWorker(options:Options) {
       await tx.query("UPDATE automation_executions SET status='CANCELED',completed_at=now(),lease_token=null,lease_expires_at=null,updated_at=now() WHERE organization_id=$1 AND conversation_id=$2 AND status IN ('HANDOFF','FAILED')",[org,op.conversationId]);
       const maximum=(await tx.query<{cycle:number}>('SELECT coalesce(max(cycle),0)::int AS cycle FROM attendance_sessions WHERE organization_id=$1 AND conversation_id=$2',[org,op.conversationId])).rows[0]!.cycle;
       const cycle=Math.max(maximum,s.cycle)+1,execution=randomUUID(),session=randomUUID();
-      const state=s.target.kind==='NEW_SESSION'?{}:s.target.kind==='MENU'
-        ?{...s.previousState!,nodeId:s.target.nodeId,waiting:undefined,stack:[]}:s.previousState!;
+      let state:RuntimeState|Record<string,never>=s.target.kind==='NEW_SESSION'?{}:s.target.kind==='MENU'
+        ?{...s.previousState!,nodeId:s.target.nodeId,stack:[]}:s.previousState!;
+      if(s.target.kind==='MENU')delete (state as RuntimeState).waiting;
       const waiting=s.target.kind==='CONTINUE';
+      if(waiting){
+        const graph=AutomationGraphV1Schema.parse((await tx.query<{graph:unknown}>('SELECT graph FROM automation_versions WHERE organization_id=$1 AND automation_id=$2 AND version=$3',[org,s.automationId,s.version])).rows[0]?.graph);
+        const node=graph.nodes.find(node=>node.id===s.previousState!.waiting!.nodeId);
+        if(node?.type==='input'&&node.data.inputConfigVersion!==undefined){
+          const config=InputCaptureConfigSchema.parse(node.data),waitId=randomUUID();
+          const now=Number((await tx.query<{at:number}>("SELECT floor(extract(epoch from clock_timestamp())*1000)::double precision AS at")).rows[0]!.at);
+          const deadlineAt=config.timeoutSeconds===undefined?undefined:now+config.timeoutSeconds*1000;
+          state={...s.previousState!,waiting:{kind:'EVENT',nodeId:node.id,waitId,...(deadlineAt===undefined?{}:{deadlineAt})}};
+        }
+      }
       await tx.query(`INSERT INTO automation_executions(organization_id,id,automation_id,version,binding_id,channel_id,conversation_id,trigger_event_key,correlation_id,status,input,state,current_node_id)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'{"text":"","eventType":"RESUME"}'::jsonb,$11,$12)`,
         [org,execution,s.automationId,s.version,s.bindingId,s.channelId,s.conversationId,`attendance-resume:${op.id}`,randomUUID(),waiting?'WAITING':'QUEUED',JSON.stringify(state),s.target.kind==='MENU'?s.target.nodeId:waiting?s.previousState!.nodeId:null]);
-      if(waiting)await tx.query(`INSERT INTO automation_waits(organization_id,execution_id,node_id,kind,state) VALUES($1,$2,$3,'EVENT',$4)`,[org,execution,s.previousState!.waiting!.nodeId,JSON.stringify(state)]);
+      if(waiting){const capture=(state as RuntimeState).waiting!;
+        await tx.query(`INSERT INTO automation_waits(id,organization_id,execution_id,node_id,kind,state,deadline_at) VALUES(coalesce($1::uuid,gen_random_uuid()),$2,$3,$4,'EVENT',$5,$6)`,[capture.waitId??null,org,execution,capture.nodeId,JSON.stringify(state),capture.deadlineAt===undefined?null:new Date(capture.deadlineAt)]);
+      }
       await tx.query("UPDATE attendance_sessions SET state='RESOLVED',revision=revision+1,updated_at=now() WHERE organization_id=$1 AND conversation_id=$2 AND state<>'RESOLVED'",[org,s.conversationId]);
       await tx.query(`INSERT INTO attendance_sessions(organization_id,id,channel_id,conversation_id,integration_id,destination_revision,account_id,inbox_id,cycle,execution_id,automation_id,version,state,owner_revision,remote_conversation_id,resume_node_id)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,[org,session,s.channelId,s.conversationId,s.scope?.integrationId??null,s.scope?.destinationRevision??null,s.scope?.accountId??null,s.scope?.inboxId??null,

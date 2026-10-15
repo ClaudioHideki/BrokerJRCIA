@@ -20,7 +20,7 @@ beforeAll(async()=>{
 });
 afterAll(async()=>{await db?.dispose();});
 it('requires the composed 0054 structures, tenant policies and enabled immutable trigger rather than a service-only readiness',async()=>{
-  expect(RUNTIME_SCHEMA_BASELINE).toBe('0060_consolidated_runtime_integrity');
+  expect(RUNTIME_SCHEMA_BASELINE).toBe('0062_nico_takeover_operations');
   expect(await db.transact(tenant.org,tx=>probeRequiredRuntimeSchema(sql=>tx.query(sql)))).toBe(true);
   const client=await db.database.pool.connect();try{
     await client.query('BEGIN');await client.query('ALTER TABLE whatsapp_group_automation_sessions DISABLE TRIGGER whatsapp_group_session_immutable');

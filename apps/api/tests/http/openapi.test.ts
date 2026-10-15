@@ -10,6 +10,11 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/attendance',
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers',
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers/cancel',
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers/{takeoverId}',
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers/{takeoverId}/complete',
   "POST /v1/flow-delegations/native-cutovers/{id}/reopen-proof",
   "DELETE /v1/flow-delegations/native-credentials/{id}",
   "DELETE /v1/flow-delegations/native-installation-grants/{id}",
@@ -372,6 +377,17 @@ describe('OpenAPI público da JRC', () => {
     expect(document.paths['/v1/integrations/chatwoot/control/context']?.get?.security).toEqual([{ bearerAuth: [] }, { jrcApiKeyAuth: [] }]);
     expect(document.paths['/v1/integrations/chatwoot/control-credentials']?.post?.security).toEqual([{ bearerAuth: [] }]);
     expect(document.paths['/v1/integrations/chatwoot']?.get?.security).toEqual([{ bearerAuth: [] }]);
+  });
+
+  it('documents NICO takeovers with only the bound service key accepted by their handlers', async () => {
+    const document = await createOpenApiDocument();
+    const prefix = '/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}';
+    for (const [method, suffix] of [
+      ['get', '/attendance'], ['post', '/takeovers'], ['post', '/takeovers/cancel'],
+      ['get', '/takeovers/{takeoverId}'], ['post', '/takeovers/{takeoverId}/complete'],
+    ]) {
+      expect(document.paths[prefix + suffix]?.[method]?.security).toEqual([{ jrcApiKeyAuth: [] }]);
+    }
   });
 
   it('mantém a Swagger UI desabilitada por padrão', async () => {

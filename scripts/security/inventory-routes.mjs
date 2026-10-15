@@ -4,6 +4,26 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/attendance': policy(
+    'apps/api/src/http/routes/nico-takeovers.ts', 'BOUND_CHATWOOT_CONTROL_KEY', 'CHATWOOT_MANAGE_ATTRIBUTED_SERVICE',
+    true, 'READ_ONLY', 'NO_STORE_METADATA_ONLY', 'RLS_ACTIVE_ORGANIZATION_CONNECTION_REMOTE_CONVERSATION_CURRENT_REVISIONS',
+  ),
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers': policy(
+    'apps/api/src/http/routes/nico-takeovers.ts', 'BOUND_CHATWOOT_CONTROL_KEY', 'CHATWOOT_MANAGE_ATTRIBUTED_SERVICE',
+    true, 'REQUEST_UUID_FINGERPRINT_EXPECTED_REVISIONS', 'NO_STORE_METADATA_ONLY', 'RLS_ACTIVE_ORGANIZATION_CURRENT_CONNECTION_OWNER_AND_DURABLE_OPERATION',
+  ),
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers/cancel': policy(
+    'apps/api/src/http/routes/nico-takeovers.ts', 'BOUND_CHATWOOT_CONTROL_KEY', 'CHATWOOT_MANAGE_ATTRIBUTED_SERVICE',
+    true, 'REQUEST_UUID_FINGERPRINT_PERSISTENT_TOMBSTONE', 'NO_STORE_METADATA_ONLY', 'RLS_CURRENT_CONNECTION_REQUEST_AND_OPERATION_FINGERPRINT',
+  ),
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers/{takeoverId}': policy(
+    'apps/api/src/http/routes/nico-takeovers.ts', 'BOUND_CHATWOOT_CONTROL_KEY', 'CHATWOOT_MANAGE_ATTRIBUTED_SERVICE',
+    true, 'READ_ONLY_CURRENT_OPERATION', 'NO_STORE_METADATA_ONLY', 'RLS_CURRENT_CONNECTION_REMOTE_CONVERSATION_AND_OPERATION',
+  ),
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers/{takeoverId}/complete': policy(
+    'apps/api/src/http/routes/nico-takeovers.ts', 'BOUND_CHATWOOT_CONTROL_KEY', 'CHATWOOT_MANAGE_ATTRIBUTED_SERVICE',
+    true, 'ONE_CANONICAL_MESSAGE_PER_OPERATION', 'NO_STORE_METADATA_ONLY', 'RLS_CURRENT_CONNECTION_EXACT_ACTOR_RECIPIENT_CONTENT_AND_AUTHENTICATED_RECEIPT',
+  ),
   'POST /v1/flow-delegations/native-cutovers/{id}/reopen-proof':policy('apps/api/src/http/routes/flow-native.ts','OPAQUE_NATIVE_CREDENTIAL_HASH_LOOKUP','CURRENT_HOST_ACCOUNT_ACTOR_INBOX_REGISTRATION',true,'READ_ONLY_NONCE_EXACT_OWNER_REVISION_10_SECOND_PROOF','NO_STORE_METADATA_ONLY','RLS_CURRENT_NATIVE_BIND_SCOPE_REGISTRATION_CREDENTIAL_EXPIRY_DRAINED_OWNER_NONE'),
   'PUT /v1/credentials/{id}/ai-policy':policy('apps/api/src/http/routes/credentials.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,'EXPECTED_CREDENTIAL_REVISION','NO_STORE_METADATA_ONLY','RLS_CURRENT_TENANT_AI_MODEL_PRICING_BUDGET_POLICY_WITHOUT_SECRET_RESPONSE'),
   "GET /v1/automations/{id}/ai-credentials":policy("apps/api/src/http/routes/automations.ts","JWT_CURRENT_MEMBERSHIP","CURRENT_MEMBER",true,"READ_ONLY_ROOT_BOUND_CURSOR","NO_STORE_METADATA_ONLY","RLS_CURRENT_ORGANIZATION_AUTHORIZED_ROOT_ACTIVE_AI_METADATA"),

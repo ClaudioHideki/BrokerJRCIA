@@ -29,11 +29,17 @@ Seis consultas foram alteradas em OperatorSession, ToolExecutor, CustomerTurnJob
 
 Regressões e fluxos existentes de comandos/delegação: 80 exemplos aprovados em sete arquivos no laboratório Rails/PostgreSQL/Redis descartável. O arquivo novo passou novamente com sete exemplos após ajustes de fixture/estilo e RuboCop sem ocorrências. Não há alteração de provedor, modelo, orçamento ou runtime NICO nesta correção.
 
-Fonte JRC: f8938d05846f556a81d6f2917347460eed288099. [CI NICO aprovado](https://github.com/ClaudioHideki/jrc-conversas-lab2/actions/runs/38764982127). [Build da imagem app iniciado](https://github.com/ClaudioHideki/jrc-conversas-lab2/actions/runs/38766434387); digest ainda não confirmado neste registro.
+Fonte JRC: f8938d05846f556a81d6f2917347460eed288099. [CI NICO aprovado](https://github.com/ClaudioHideki/jrc-conversas-lab2/actions/runs/38764982127). [Build e publicação da imagem app aprovados](https://github.com/ClaudioHideki/jrc-conversas-lab2/actions/runs/38766434387). Digest conferido diretamente no registro: `ghcr.io/claudiohideki/jrc-conversas-lab2@sha256:8ea570721344a842dc68875c6f1734268350e5076e9706379f065bd57deaab20`. Esse incremento contém a correção do histórico; o protocolo de tomada coordenada ainda está em desenvolvimento e não faz parte dessa imagem.
 
-O primeiro commit Broker 978f499a2beab045e2eeb417f512cef1bffac0e1 passou no [CI completo](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/38763465516). A revisão de corrida e rota de saúde forma o próximo commit candidato e receberá seu próprio CI.
+O primeiro commit Broker 978f499a2beab045e2eeb417f512cef1bffac0e1 passou no [CI completo](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/38763465516). A revisão de corrida e rota de saúde está publicada no commit 4c7a5eff1a3fa427aa52ef57636b9e00c7ad7fd8 e passou no [CI completo próprio](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/38767447518).
 
 ## Continuidade e instalação
+
+O [roteiro do candidato no Dokploy](2026-10-15-candidato-instalacao-dokploy.md) descreve ambiente separado, migrations, configurações por Account, habilitação do NICO e matriz funcional. É procedimento de instalação; não é registro de deploy executado.
+
+O lote seguinte reúne timeout de captura0061, tomada NICO0062 e proteção do lease de vínculo nativo. Depois de acrescentar as cinco rotas NICO ao OpenAPI/inventário, os12 testes HTTP/contrato passaram. A suíte geral executou2931 casos:2930 passaram e o teste de fixture Git da auditoria excedeu15s durante contenção local; o arquivo inteiro foi reexecutado isoladamente, com6 casos aprovados e a fixture em5,4s. Nenhum timeout do produto foi ampliado. Typecheck aprovado.
+
+O ensaio PostgreSQL conjunto apresentou timeouts de setup e expiração de leases durante contenção local; não é registrado como aprovado. Na suíte de vínculo nativo,55 de57 casos passaram em uma execução isolada, incluindo os8 novos. Duas fixtures foram corrigidas para testar o intervalo pretendido; os casos de bloqueio de perfil e timeout de vínculo passaram em seleção focal. O caso legado UNKNOWN passou isoladamente em9,74s depois de exceder o lease legítimo em uma execução mais lenta. Nenhum prazo do produto foi aumentado. O gate consolidado será o CI Linux do commit candidato; essas evidências locais não substituem o CI nem a homologação física.
 
 A tomada coordenada NICO/Broker, os executores de ações/mídia, timeout do Flow, distribuição QR/Flow e demais critérios P0–P10 continuam no programa. A correção da tela não entrega o protocolo distribuído de tomada, e corrigir histórico não torna todos os módulos NICO homologados.
 

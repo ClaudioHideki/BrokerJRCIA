@@ -230,7 +230,10 @@ export function createExecutionService(options:AutomationServiceOptions){
     runOnce:(org:string)=>options.enabled===false?Promise.resolve({processed:false}):options.transact(org,async tx=>{const leaseToken=randomUUID(),claimed=await repository.claimExecution(tx,org,leaseToken,120000);if(!claimed)return {processed:false};
       try{const root=await resolve(tx,org,claimed.automationId,claimed.version),kind=String(claimed.input.eventType??'MESSAGE') as 'MESSAGE'|'RESUME'|'TIMER';
         const dependencies=publishedDependencyPolicy(root.graph)===1?await prepareSubflowSnapshot(tx,org,root,repository,'HISTORICAL'):undefined;
-        const result=await executeAutomation(dependencies?.root??root,{text:String(claimed.input.text??''),eventType:kind,now:new Date(),payload:claimed.input},dependencies?.resolve??((id,v)=>resolve(tx,org,id,v)),Object.keys(claimed.state??{}).length?claimed.state as RuntimeState:undefined);
+        const rawWait=claimed.input.inputWait;
+        const inputWait=rawWait&&typeof rawWait==='object'&&!Array.isArray(rawWait)&&typeof (rawWait as Record<string,unknown>).waitId==='string'
+          ?rawWait as {waitId:string;admittedAt?:number}:undefined;
+        const result=await executeAutomation(dependencies?.root??root,{text:String(claimed.input.text??''),eventType:kind,now:new Date(),payload:claimed.input,...(inputWait?{inputWait}:{})},dependencies?.resolve??((id,v)=>resolve(tx,org,id,v)),Object.keys(claimed.state??{}).length?claimed.state as RuntimeState:undefined);
         await repository.saveExecutionResult(tx,claimed,result);return {processed:true,executionId:claimed.id,status:result.status};
       }catch(error){await repository.failExecution(tx,org,claimed.id,leaseToken,error instanceof Error?error.message.slice(0,120):'AUTOMATION_EXECUTION_FAILED',false);return {processed:true,executionId:claimed.id,status:'FAILED' as const};}}),
     cancel:(org:string,id:string)=>options.transact(org,async tx=>{if(!await repository.cancelExecution(tx,org,id))throw new AutomationError('AUTOMATION_EXECUTION_NOT_CANCELABLE',409);return {ok:true};}),

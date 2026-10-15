@@ -31,6 +31,23 @@ function mountEditor(request:ApiClient['request'],search='') {
 
 beforeEach(()=>sessionStorage.clear());
 afterEach(()=>vi.restoreAllMocks());
+it('advances a versioned capture deadline using only a virtual elapsed event',async()=>{
+ vi.spyOn(Date,'now').mockReturnValue(Date.parse('2030-01-01T00:00:00.000Z'));
+ const bodies:Record<string,unknown>[]=[];
+ const request=vi.fn(async(path:string,init?:RequestInit)=>{
+  if(path===`/v1/automations/${automationId}`)return definition;
+  if(path==='/v1/automation-nodes')return{data:AUTOMATION_NODE_CATALOG_V1};
+  if(path.endsWith('/simulate')){bodies.push(JSON.parse(String(init?.body)));return bodies.length===1
+   ?{status:'WAITING',state:{variables:{}},effects:[],trace:[],wait:{kind:'EVENT',nodeId:'capture',waitId:automationId,deadlineAt:'2030-01-01T00:00:05.000Z'}}
+   :{status:'COMPLETED',state:{variables:{}},effects:[{kind:'SEND_TEXT',payload:{text:'Prazo encerrado'}}],trace:[]};}
+  throw Error(path);
+ }) as ApiClient['request'];
+ mountEditor(request);fireEvent.click(await screen.findByRole('button',{name:'Testar'}));
+ fireEvent.click(await screen.findByRole('button',{name:'Avançar até o fim da espera'}));
+ expect(await screen.findByText('Prazo encerrado')).toBeVisible();
+ expect(bodies[1]).toMatchObject({clock:'2030-01-01T00:00:00.000Z',events:[{type:'ELAPSE',seconds:5}]});
+ expect(bodies[1]).not.toHaveProperty('inputWait');
+});
 it('explains queued attendance blocked by a human instead of claiming a send failure',async()=>{
  const request=vi.fn(async()=>({id:automationId,automationId,channelId:automationId,version:1,status:'QUEUED',correlationId:'qa',nodes:[],outbox:[],
    attendanceDiagnostic:{allowed:false,reason:'HUMAN_CONTROL',controlRevision:8,cycle:1}})) as ApiClient['request'];

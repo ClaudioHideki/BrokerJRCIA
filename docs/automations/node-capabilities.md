@@ -6,7 +6,7 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 | --- | --- | --- | --- |
 | start | AVAILABLE | FlowCanvas: nome | engine: início sem efeito |
 | message | AVAILABLE | FlowCanvas: mensagem | engine: SEND_TEXT simulado |
-| input | AVAILABLE | FlowCanvas: pergunta/variável | engine: espera/resposta |
+| input | AVAILABLE | InputEditor: pergunta, variável e prazo opcional explícito | engine: espera/resposta; prazo persistido e saída timeout |
 | menu | AVAILABLE | FlowCanvas: texto/opções/variável | engine: espera/opção numerada |
 | condition | AVAILABLE | FlowCanvas: campo/comparação/valor | engine: yes/no |
 | variable | AVAILABLE | FlowCanvas: variável/valor | engine: interpolação no estado |
@@ -31,6 +31,8 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 | schedule | AVAILABLE | ScheduleEditor: fuso, semana e exceções por data | engine: open/closed pelo instante fornecido; simulação com relógio virtual |
 
 Os formulários simples acima são os existentes; o menu visual com adicionar/remover/reordenar opções faz parte de U3a. `end` encerra o bot, não resolve a conversa na central.
+
+Capturas novas usam `inputConfigVersion: 1` e podem configurar `timeoutSeconds` inteiro de 1 a 604800, com as saídas `next` e `timeout` conectadas. Sem prazo, aguardam a próxima mensagem. O prazo persiste entre reinícios, e uma resposta admitida pelo servidor até inclusive o limite vence; o timeout não preenche a variável. A retomada humana confirmada em **Continuar de onde parou** cria uma nova tentativa com o prazo integral configurado. Capturas históricas sem marcador conservam a semântica e metadados anteriores. Studio usa tempo virtual para simular o prazo, sem esperar tempo real. Consulte o [desenho e as regras de concorrência](../superpowers/specs/2026-10-15-input-timeout-design.md).
 
 Os quatro blocos de IA delimitada usam `aiConfigVersion: 1`, credencial e revisao fixadas, modelo, conteudo, destino e limites explicitos de tempo, tokens, bytes e custo. O motor emite `IO_AI` e aguarda um resultado; v1 possui saidas `success`, `error`, `timeout` e `unknown`. Sem o marcador, os grafos historicos preservam as portas `success`/`error`. A simulacao usa respostas sinteticas para o no exato em espera e nao comprova chamada a um provedor real. Homologacao do provedor e aprovacao da release continuam necessarias; `ai-agent` permanece indisponivel para criacao.
 

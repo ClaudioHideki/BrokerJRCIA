@@ -1,11 +1,14 @@
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import { AttendanceError } from './types.js';
+import { hasNicoTakeoverFence } from './nico-takeover-fence.js';
 
 export type AttendanceGateInput = {organizationId:string;channelId:string;conversationId:string};
 export type AttendanceGate = {allowed:boolean;revision:number;state:'NONE'|'INITIALIZING'|'READY'|'HUMAN'|'PAUSED'|'RECONCILE';cycle:number|null};
 
 /** Caller locks the channel before executions/jobs/conversation. This read never resumes a session. */
 export async function readChatwootAttendanceGate(tx:TenantTransaction,input:AttendanceGateInput):Promise<AttendanceGate> {
+  if(await hasNicoTakeoverFence(tx,input.organizationId,input.conversationId))
+    return {allowed:false,revision:0,state:'RECONCILE',cycle:null};
   if((await tx.query(`SELECT 1 FROM qr_outbound_observations WHERE organization_id=$1 AND channel_id=$2
     AND conversation_id=$3 AND blocking LIMIT 1`,[input.organizationId,input.channelId,input.conversationId])).rowCount)
     return {allowed:false,revision:0,state:'RECONCILE',cycle:null};

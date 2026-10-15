@@ -7,7 +7,7 @@ describe('combined URA and password reset upgrade', () => {
     const baseline = expected.slice(0, 41);
     expect(compareMigrationStatus(expected, baseline)).toMatchObject({
       state: 'PENDING', compatible: false,
-      pending: ['0042_native_handoff_operations', '0043_user_password_reset', '0044_attendance_resume_operations', '0045_local_attendance_directory','0046_central_transport','0047_central_dispatch','0048_central_cutover','0049_qr_outbound_observations','0050_whatsapp_group_catalog','0051_whatsapp_group_events','0052_durable_private_media','0053_flow_delegation','0054_whatsapp_group_automation','0055_complete_native','0056_evolution_engine_fleet','0057_automation_ai_budget','0058_automation_conversation_media','0059_whatsapp_group_central', '0060_consolidated_runtime_integrity'],
+      pending: ['0042_native_handoff_operations', '0043_user_password_reset', '0044_attendance_resume_operations', '0045_local_attendance_directory','0046_central_transport','0047_central_dispatch','0048_central_cutover','0049_qr_outbound_observations','0050_whatsapp_group_catalog','0051_whatsapp_group_events','0052_durable_private_media','0053_flow_delegation','0054_whatsapp_group_automation','0055_complete_native','0056_evolution_engine_fleet','0057_automation_ai_budget','0058_automation_conversation_media','0059_whatsapp_group_central', '0060_consolidated_runtime_integrity', '0061_automation_input_timeout', '0062_nico_takeover_operations'],
     });
   });
 

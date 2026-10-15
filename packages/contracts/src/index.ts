@@ -31,7 +31,9 @@ export * from './whatsapp-groups.js';
 export * from './automation-data-v2.js';
 export * from './automation-subflow.js';
 export * from './automation-http-query.js';
+export * from './automation-input.js';
 export * from './automation-ai.js';
 
 export * from './flow-delegation.js';
 export * from './flow-delegation-constants.js';
+export * from './integrations/nico-takeovers.js';

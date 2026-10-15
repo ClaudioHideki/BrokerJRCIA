@@ -1,8 +1,12 @@
 import {createHmac,randomUUID} from 'node:crypto';
+import {AsyncLocalStorage} from 'node:async_hooks';
 import {afterAll,beforeAll,expect,it} from 'vitest';
+import type {OrganizationTransaction} from '../../src/db/tenant-transaction.js';
 import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
 import {createAutomationService} from '../../src/modules/automations/service.js';
 import {createFlowDelegationService} from '../../src/modules/flows/delegation/service.js';
+import {createNativeFlowAdapter} from '../../src/modules/flows/delegation/native-adapter.js';
+import {NativeOwnershipRequestSchema} from '../../src/modules/flows/delegation/native-ownership-contracts.js';
 import {createIntegrationSecrets} from '../../src/modules/integrations/secrets.js';
 import {ChatwootClient} from '../../src/modules/integrations/chatwoot-client.js';
 import {ensureQrChannel} from '../../src/modules/messaging/qr-service.js';
@@ -23,6 +27,17 @@ const full=['flow:read','flow:edit','flow:publish','flow:bind'];
 const graph={nodes:[{id:'s',type:'start',label:'Start',position:{x:0,y:0},data:{}},{id:'e',type:'end',label:'End',position:{x:1,y:0},data:{}}],edges:[{id:'next',source:'s',target:'e',port:'next'}]};
 beforeAll(async()=>{db=await attendanceDatabase();});
 afterAll(async()=>{await db?.dispose();});
+async function syntheticAuthorityRoundtrip(){
+ // checkedAt is sampled before the HTTP adapter. The instantaneous fake must
+ // wait for that instant on the SQL authority clock when Windows/PG differ.
+ // Keep real clocks and deadlines; this bounded SQL barrier models the I/O.
+ const receivedAt=Date.now(),deadline=performance.now()+1000;
+ do{
+  const sqlNow=Number((await db.database.pool.query('SELECT extract(epoch FROM clock_timestamp())*1000 AS now')).rows[0].now);
+  if(sqlNow>=receivedAt)return;
+ }while(performance.now()<deadline);
+ throw new Error('Synthetic authority clocks did not converge within 1 second');
+}
 async function rowLockBarrier(fragment:string){
  const deadline=Date.now()+5000;
  while(Date.now()<deadline){
@@ -88,7 +103,9 @@ it('rejects target projection when the Flow session expires while waiting for it
  const t=await fixture();await approveOriginFixture(db.database,t.org,'STOCK');await t.service.configureExecutorProfile(t.principal,{integrationId:t.integration,expectedRevision:0});
  const blocker=await db.database.pool.connect();try{
   await blocker.query('BEGIN');await blocker.query('SELECT integration_id FROM flow_executor_profiles WHERE organization_id=$1 FOR UPDATE',[t.org]);
-  await db.database.pool.query("UPDATE flow_delegation_sessions SET expires_at=clock_timestamp()+interval '700 milliseconds' WHERE id=$1",[t.session.id]);
+   // Keep the initial guard alive until it reaches the profile lock; expiry is
+   // then observed on the SQL clock while that lock is still held.
+  await db.database.pool.query("UPDATE flow_delegation_sessions SET expires_at=clock_timestamp()+interval '5 seconds' WHERE id=$1",[t.session.id]);
   const pending=t.service.targets(t.access).then(value=>({value}),error=>({error}));await rowLockBarrier('SELECT integration_id,revision FROM flow_executor_profiles');await expiresOnSqlClock('flow_delegation_sessions',t.session.id,'expires_at');await blocker.query('COMMIT');
   expect(await pending).toMatchObject({error:{code:'FLOW_ACCESS_DENIED'}});
  }finally{await blocker.query('ROLLBACK');blocker.release();}
@@ -320,8 +337,139 @@ function nativeAdapter(){
   const row=(await db.database.pool.query('SELECT lease_token,lease_expires_at,lease_expires_at>clock_timestamp() AS lease_live FROM flow_executor_cutovers WHERE organization_id=$1 AND id=$2',[request.organizationId,request.cutoverId])).rows[0];
   if(!row||row.lease_token!==request.leaseToken||(row.lease_expires_at?.toISOString()??null)!==request.leaseExpiresAt||row.lease_token&&!row.lease_live)throw new Error('Synthetic host refused an outdated lease');
  }
- return {adapter:{introspect:async(request:any)=>({...request,accountActive:true,member,featureEnabled:true,role}),fenceAndDrain:async(request:any)=>{await currentLease(request);await onFence?.();const value=proof(request);fences.set(request.cutoverId,value);return value;},observeFence:async(request:any)=>{await currentLease(request);const value=fences.get(request.cutoverId);if(!value||value.cutoverRevision!==request.cutoverRevision)throw new Error('Synthetic host has no accepted fence for this cutover');return value;}},setRole:(value:string)=>{role=value;},revoke:()=>{member=false;},onFence:(fn:()=>Promise<void>)=>{onFence=fn;}};
+  return {adapter:{introspect:async(request:any)=>{await syntheticAuthorityRoundtrip();return {...request,accountActive:true,member,featureEnabled:true,role};},fenceAndDrain:async(request:any)=>{await currentLease(request);await onFence?.();const value=proof(request);fences.set(request.cutoverId,value);return value;},observeFence:async(request:any)=>{await currentLease(request);const value=fences.get(request.cutoverId);if(!value||value.cutoverRevision!==request.cutoverRevision)throw new Error('Synthetic host has no accepted fence for this cutover');return value;}},setRole:(value:string)=>{role=value;},revoke:()=>{member=false;},onFence:(fn:()=>Promise<void>)=>{onFence=fn;}};
 }
+async function nativeBindFixture(remoteTimeoutMs=10000){
+ const t=await fixture(),qr=await qrInbox(t),remote=remoteClient(t),origin=`https://${t.org}.example.test`;
+ const destination=(await db.database.pool.query('SELECT d.revision,a.account_id FROM chatwoot_destinations d JOIN chatwoot_accounts a ON a.organization_id=d.organization_id AND a.base_url=d.base_url WHERE d.organization_id=$1',[t.org])).rows[0];
+ const registrationExpiresAt=new Date(Date.now()+3600000).toISOString();
+ type OwnershipRequest=ReturnType<typeof NativeOwnershipRequestSchema.parse>;
+ const observations:OwnershipRequest[]=[],fences:OwnershipRequest[]=[];
+ let observeHook:((request:OwnershipRequest,index:number)=>Promise<void>)|undefined;
+ let introspectionHook:(()=>Promise<void>)|undefined;
+ const transactionScope=new AsyncLocalStorage<boolean>();
+ const transact=<T>(org:string,work:OrganizationTransaction<T>)=>db.transact(org,tx=>transactionScope.run(true,()=>work(tx)));
+ remote.onRead(async()=>{expect(transactionScope.getStore()).not.toBe(true);});
+ const adapter=createNativeFlowAdapter({timeoutMs:10000,
+  resolveRegistration:async()=>({organizationId:t.org,origin,accountId:Number(destination.account_id),destinationRevision:destination.revision,revision:1,callbackCredential:'c'.repeat(43),expiresAt:registrationExpiresAt}),
+  fetch:async(url,init)=>{
+    expect(transactionScope.getStore()).not.toBe(true);
+   const path=new URL(String(url)).pathname,body=JSON.parse(String(init?.body));
+   if(path.endsWith('/introspect')){
+     await syntheticAuthorityRoundtrip();
+    await introspectionHook?.();
+    return Response.json({...body,accountActive:true,member:true,featureEnabled:true,role:'administrator'});
+   }
+   const request=NativeOwnershipRequestSchema.parse(body),kind=path.endsWith('/ownership/observe')?'observe':'fence';
+   expect(path).toBe('/api/v1/jrc_flow_native/ownership/'+kind);
+   const locker=await db.database.pool.connect();
+   try{
+    await locker.query('BEGIN');
+    await locker.query('SELECT id FROM flow_executor_cutovers WHERE organization_id=$1 AND id=$2 FOR UPDATE NOWAIT',[t.org,request.cutoverId]);
+    await locker.query('COMMIT');
+   }finally{await locker.query('ROLLBACK');locker.release();}
+   const lease=(await db.database.pool.query('SELECT lease_token,lease_expires_at,lease_expires_at>clock_timestamp() AS live FROM flow_executor_cutovers WHERE organization_id=$1 AND id=$2',[t.org,request.cutoverId])).rows[0];
+   expect(lease).toMatchObject({lease_token:request.leaseToken,live:true});
+   expect(lease.lease_expires_at.toISOString()).toBe(request.leaseExpiresAt);
+   if(kind==='observe'){observations.push(request);await observeHook?.(request,observations.length);}else fences.push(request);
+   // Synthetic host proof only; production schema, SQL and adapter remain real.
+   return Response.json({organizationId:t.org,accountId:7,inboxId:19,integrationId:qr.integration,cutoverId:request.cutoverId,
+    cutoverRevision:request.cutoverRevision,expectedOwnerRevision:0,hostFenceRevision:request.cutoverRevision,
+    admissionClosed:true,liveRuns:0,legacyJobs:0,uncertainEffects:0,guardedPaths:[...FLOW_GUARDED_PATHS],hostSourceSha:'a'.repeat(40),hostImageDigest:'sha256:'+'b'.repeat(64)});
+  }});
+ const serviceOptions={transact,nativeAdapter:adapter,client:()=>remote.client,identity:qr.health,remoteTimeoutMs:10000};
+ const service=t.serviceWith(serviceOptions);
+ await approveOriginFixture(db.database,t.org,'JRC_NATIVE');await service.configureExecutorProfile(t.principal,{integrationId:qr.integration,expectedRevision:0});
+ const credential=await service.issueNativeCredential(t.principal,{scopes:full,expiresInSeconds:3600});
+ const session=await service.issueNativeSession({organizationId:t.org,token:credential.token},{externalActorId:'101',nonce:randomUUID(),integrationIds:[qr.integration],scopes:full});
+ const access={organizationId:t.org,token:session.token},draft=await service.create(access,{name:'Strict native bind',graph,integrationIds:[qr.integration]});
+ await service.publish(access,draft.id,{revision:1,expectedScopeRevision:1});
+ const cutover=await service.prepareCutover(access,qr.integration,{expectedOwnerRevision:0});
+ // The short observation budget belongs to the bind under test; setup must
+ // reach a committed DRAINED cutover before starting that timeout scenario.
+ const bindingService=remoteTimeoutMs===10000?service:t.serviceWith({...serviceOptions,remoteTimeoutMs});
+ return {t,qr,service:bindingService,credential,session,access,draft,cutover,observations,fences,
+  bind:()=>bindingService.bind(access,draft.id,{integrationId:qr.integration,cutoverId:cutover.id,version:1,expectedScopeRevision:1,expectedOwnerRevision:0}),
+  onObserve:(hook:NonNullable<typeof observeHook>)=>{observeHook=hook;},onIntrospection:(hook:NonNullable<typeof introspectionHook>)=>{introspectionHook=hook;}};
+}
+it('native bind nomination observes a live committed lease and consumes it with canonical ownership',async()=>{
+ const h=await nativeBindFixture();
+ expect((await db.database.pool.query('SELECT phase,lease_token,lease_expires_at FROM flow_executor_cutovers WHERE id=$1',[h.cutover.id])).rows[0]).toMatchObject({phase:'DRAINED',lease_token:null,lease_expires_at:null});
+ await expect(h.bind()).resolves.toMatchObject({channelId:h.qr.channel,automationId:h.draft.id,ownerRevision:1});
+ expect(h.fences).toHaveLength(1);expect(h.observations).toHaveLength(1);
+ expect((await db.database.pool.query('SELECT phase,lease_token,lease_expires_at FROM flow_executor_cutovers WHERE id=$1',[h.cutover.id])).rows[0]).toEqual({phase:'ACTIVATED',lease_token:null,lease_expires_at:null});
+ expect((await db.database.pool.query('SELECT count(*)::int AS n FROM automation_bindings WHERE organization_id=$1 AND channel_id=$2',[h.t.org,h.qr.channel])).rows[0]).toEqual({n:1});
+});
+it('native bind nomination refuses a concurrent bind without releasing the active attempt',async()=>{
+ const h=await nativeBindFixture();let entered!:()=>void,release!:()=>void;
+ const started=new Promise<void>(resolve=>{entered=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});
+ h.onObserve(async(_request,index)=>{if(index===1){entered();await barrier;}});
+ const first=h.bind();const firstOutcome=first.then(value=>({value}),error=>({error}));
+ try{
+  await Promise.race([started,firstOutcome.then(outcome=>{if('error' in outcome)throw outcome.error;throw new Error('Bind completed before host observation');})]);
+  await expect(h.bind()).rejects.toMatchObject({code:'FLOW_CUTOVER_CHANGED'});
+  expect(h.observations).toHaveLength(1);
+  expect((await db.database.pool.query('SELECT phase,lease_token FROM flow_executor_cutovers WHERE id=$1',[h.cutover.id])).rows[0]).toEqual({phase:'DRAINED',lease_token:h.observations[0]!.leaseToken});
+ }finally{release();}
+ expect(await firstOutcome).toMatchObject({value:{ownerRevision:1}});
+ expect(h.fences).toHaveLength(1);
+});
+it('native bind nomination expires on the SQL clock during host observation without activating',async()=>{
+ const h=await nativeBindFixture();
+ h.onObserve(async()=>{await db.database.pool.query("UPDATE flow_executor_cutovers SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",[h.cutover.id]);});
+ await expect(h.bind()).rejects.toMatchObject({code:'FLOW_CUTOVER_CHANGED'});
+ expect((await db.database.pool.query('SELECT phase,lease_token,admission_closed FROM flow_executor_cutovers WHERE id=$1',[h.cutover.id])).rows[0]).toEqual({phase:'UNKNOWN',lease_token:null,admission_closed:true});
+ expect((await db.database.pool.query('SELECT bot_public_id FROM messaging_channels WHERE id=$1',[h.qr.channel])).rows[0]).toEqual({bot_public_id:null});
+});
+it('native bind nomination revalidates revoked credentials after host observation',async()=>{
+ const h=await nativeBindFixture();
+ h.onObserve(async()=>{await db.database.pool.query('UPDATE flow_delegation_credentials SET revoked_at=clock_timestamp() WHERE id=$1',[h.credential.id]);});
+ await expect(h.bind()).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ expect((await db.database.pool.query('SELECT phase,lease_token,admission_closed FROM flow_executor_cutovers WHERE id=$1',[h.cutover.id])).rows[0]).toEqual({phase:'UNKNOWN',lease_token:null,admission_closed:true});
+ expect((await db.database.pool.query('SELECT count(*)::int AS n FROM automation_bindings WHERE organization_id=$1 AND channel_id=$2',[h.t.org,h.qr.channel])).rows[0]).toEqual({n:0});
+});
+it('native bind nomination keeps UNKNOWN after timeout even when the host response arrives later',async()=>{
+ const h=await nativeBindFixture(1000);let release!:()=>void,returned!:()=>void;
+ const barrier=new Promise<void>(resolve=>{release=resolve;}),late=new Promise<void>(resolve=>{returned=resolve;});
+ h.onObserve(async()=>{await barrier;returned();});
+ try{await expect(h.bind()).rejects.toMatchObject({code:'FLOW_CUTOVER_TIMEOUT'});}finally{release();}
+ await late;await Promise.resolve();await Promise.resolve();
+ expect((await db.database.pool.query('SELECT phase,lease_token,admission_closed FROM flow_executor_cutovers WHERE id=$1',[h.cutover.id])).rows[0]).toEqual({phase:'UNKNOWN',lease_token:null,admission_closed:true});
+ expect((await db.database.pool.query('SELECT bot_public_id FROM messaging_channels WHERE id=$1',[h.qr.channel])).rows[0]).toEqual({bot_public_id:null});
+ expect(h.fences).toHaveLength(1);
+});
+it('native bind nomination does not let an expired attempt clear a newer live lease',async()=>{
+ const h=await nativeBindFixture();let enteredA!:()=>void,enteredB!:()=>void,releaseA!:()=>void,releaseB!:()=>void;
+ const seenA=new Promise<void>(resolve=>{enteredA=resolve;}),seenB=new Promise<void>(resolve=>{enteredB=resolve;});
+ const barrierA=new Promise<void>(resolve=>{releaseA=resolve;}),barrierB=new Promise<void>(resolve=>{releaseB=resolve;});
+ h.onObserve(async(_request,index)=>{if(index===1){enteredA();await barrierA;}else{enteredB();await barrierB;}});
+ const first=h.bind().then(value=>({value}),error=>({error}));let second:Promise<unknown>|undefined;
+ try{
+  await Promise.race([seenA,first.then(outcome=>{if('error' in outcome)throw outcome.error;throw new Error('Bind completed before host observation');})]);
+  await db.database.pool.query("UPDATE flow_executor_cutovers SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",[h.cutover.id]);
+  second=h.bind().then(value=>({value}),error=>({error}));await Promise.race([seenB,second.then(outcome=>{if(outcome&&typeof outcome==='object'&&'error' in outcome)throw outcome.error;throw new Error('Replacement bind completed before observation');})]);
+  releaseA();expect(await first).toMatchObject({error:{code:'FLOW_CUTOVER_CHANGED'}});
+  expect((await db.database.pool.query('SELECT phase,lease_token FROM flow_executor_cutovers WHERE id=$1',[h.cutover.id])).rows[0]).toEqual({phase:'DRAINED',lease_token:h.observations[1]!.leaseToken});
+  releaseB();expect(await second).toMatchObject({value:{ownerRevision:1}});
+ }finally{releaseA();releaseB();await first;await second;}
+ expect((await db.database.pool.query('SELECT count(*)::int AS n FROM automation_bindings WHERE organization_id=$1 AND channel_id=$2',[h.t.org,h.qr.channel])).rows[0]).toEqual({n:1});
+});
+it('native bind nomination releases only its own receipt when authority changes before final SQL',async()=>{
+ const h=await nativeBindFixture();let afterObserve=0;
+ h.onIntrospection(async()=>{
+  if(h.observations.length===1&&++afterObserve===2)await db.database.pool.query('UPDATE flow_delegation_sessions SET revoked_at=clock_timestamp() WHERE id=$1',[h.session.id]);
+ });
+ await expect(h.bind()).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ expect(afterObserve).toBe(2);
+ expect((await db.database.pool.query('SELECT phase,lease_token,admission_closed FROM flow_executor_cutovers WHERE id=$1',[h.cutover.id])).rows[0]).toEqual({phase:'UNKNOWN',lease_token:null,admission_closed:true});
+ expect((await db.database.pool.query('SELECT bot_public_id FROM messaging_channels WHERE id=$1',[h.qr.channel])).rows[0]).toEqual({bot_public_id:null});
+});
+it('native bind nomination preserves an existing UNKNOWN fence without replaying it',async()=>{
+ const h=await nativeBindFixture();await db.database.pool.query("UPDATE flow_executor_cutovers SET phase='UNKNOWN' WHERE id=$1",[h.cutover.id]);
+ await expect(h.bind()).rejects.toMatchObject({code:'FLOW_CUTOVER_CHANGED'});
+ expect(h.observations).toHaveLength(0);expect(h.fences).toHaveLength(1);
+ expect((await db.database.pool.query('SELECT phase,lease_token,admission_closed FROM flow_executor_cutovers WHERE id=$1',[h.cutover.id])).rows[0]).toEqual({phase:'UNKNOWN',lease_token:null,admission_closed:true});
+});
 it('uses a distinct native credential and live actor/inbox decision then consumes its fence in canonical bind',async()=>{
  const t=await fixture(),qr=await qrInbox(t),native=nativeAdapter(),remote=remoteClient(t),service=t.serviceWith({nativeAdapter:native.adapter,client:()=>remote.client,identity:qr.health});
  await approveOriginFixture(db.database,t.org,'JRC_NATIVE');await service.configureExecutorProfile(t.principal,{integrationId:qr.integration,expectedRevision:0});

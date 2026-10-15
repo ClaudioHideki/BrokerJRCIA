@@ -12,8 +12,10 @@ import type { OnboardingService } from '../../modules/integrations/chatwoot-onbo
 import type { ChatwootControlService } from '../../modules/integrations/chatwoot-control-service.js';
 import { InstanceServiceError } from '../../modules/instances/service.js';
 import { OperatorGrantViewSchema } from '@jrc/contracts';
+import { registerNicoTakeoverRoutes } from './nico-takeovers.js';
+import type { NicoTakeovers } from '../../modules/integrations/nico-takeover-types.js';
 
-export interface ChatwootControlRouteOptions extends AuthenticationOptions { service: ChatwootControlAuth; onboarding?: OnboardingService | undefined; facade?: ChatwootControlService | undefined }
+export interface ChatwootControlRouteOptions extends AuthenticationOptions { service: ChatwootControlAuth; onboarding?: OnboardingService | undefined; facade?: ChatwootControlService | undefined; takeovers?: NicoTakeovers | undefined }
 export async function registerChatwootControlRoutes(app: FastifyInstance, options: ChatwootControlRouteOptions) {
   app.decorateRequest('authentication', null);
   app.addHook('onRequest', async (_request, reply) => { reply.header('Cache-Control', 'no-store'); });
@@ -33,6 +35,7 @@ export async function registerChatwootControlRoutes(app: FastifyInstance, option
   const empty = z.strictObject({});
   const mutationHeaders = z.object({ 'idempotency-key': ControlIdempotencyKeySchema }).passthrough();
   const read = [authentication, feature], manage = [authentication, feature, portal];
+  registerNicoTakeoverRoutes(app, options.service, options.takeovers, read);
   app.get('/v1/integrations/chatwoot/control/context', {
     preHandler: read, schema: { querystring: empty, response: { 200: ControlContextSchema } },
   }, req => options.service.context(req.authentication!));

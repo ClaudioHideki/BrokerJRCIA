@@ -38453,6 +38453,1037 @@
         ]
       }
     },
+    "/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/attendance": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integrationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "remoteConversationId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9][0-9]{0,15}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-jrc-external-actor",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9][0-9]{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "accountId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "attendanceRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "controlRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "conversationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "credentialRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "destinationRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "inboxId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "integrationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "mode": {
+                      "enum": [
+                        "BOT",
+                        "HUMAN"
+                      ],
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "ownerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remoteContactId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remoteConversationId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "organizationId",
+                    "integrationId",
+                    "channelId",
+                    "conversationId",
+                    "accountId",
+                    "inboxId",
+                    "remoteConversationId",
+                    "remoteContactId",
+                    "ownerRevision",
+                    "attendanceRevision",
+                    "controlRevision",
+                    "destinationRevision",
+                    "credentialRevision",
+                    "mode"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integrationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "remoteConversationId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9][0-9]{0,15}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-jrc-external-actor",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9][0-9]{0,15}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedAttendanceRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedControlRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedCredentialRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedDestinationRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedOwnerRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "fingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "requestId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "fingerprint",
+                  "expectedOwnerRevision",
+                  "expectedAttendanceRevision",
+                  "expectedControlRevision",
+                  "expectedDestinationRevision",
+                  "expectedCredentialRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "accountId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "attendanceRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "controlRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "conversationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "credentialRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "destinationRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "fingerprint": {
+                      "pattern": "^[a-f0-9]{64}$",
+                      "type": "string"
+                    },
+                    "id": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "inboxId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "integrationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "mode": {
+                      "enum": [
+                        "BOT",
+                        "HUMAN"
+                      ],
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "ownerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remoteContactId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remoteConversationId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "requestId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "state": {
+                      "enum": [
+                        "DRAINING",
+                        "PAUSED",
+                        "STALE",
+                        "COMPLETED",
+                        "CANCELED"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "organizationId",
+                    "integrationId",
+                    "channelId",
+                    "conversationId",
+                    "accountId",
+                    "inboxId",
+                    "remoteConversationId",
+                    "remoteContactId",
+                    "ownerRevision",
+                    "attendanceRevision",
+                    "controlRevision",
+                    "destinationRevision",
+                    "credentialRevision",
+                    "mode",
+                    "id",
+                    "requestId",
+                    "fingerprint",
+                    "state"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers/{takeoverId}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integrationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "remoteConversationId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9][0-9]{0,15}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "takeoverId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-jrc-external-actor",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9][0-9]{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "accountId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "attendanceRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "controlRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "conversationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "credentialRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "destinationRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "fingerprint": {
+                      "pattern": "^[a-f0-9]{64}$",
+                      "type": "string"
+                    },
+                    "id": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "inboxId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "integrationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "mode": {
+                      "enum": [
+                        "BOT",
+                        "HUMAN"
+                      ],
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "ownerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remoteContactId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remoteConversationId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "requestId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "state": {
+                      "enum": [
+                        "DRAINING",
+                        "PAUSED",
+                        "STALE",
+                        "COMPLETED",
+                        "CANCELED"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "organizationId",
+                    "integrationId",
+                    "channelId",
+                    "conversationId",
+                    "accountId",
+                    "inboxId",
+                    "remoteConversationId",
+                    "remoteContactId",
+                    "ownerRevision",
+                    "attendanceRevision",
+                    "controlRevision",
+                    "destinationRevision",
+                    "credentialRevision",
+                    "mode",
+                    "id",
+                    "requestId",
+                    "fingerprint",
+                    "state"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers/{takeoverId}/complete": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integrationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "remoteConversationId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9][0-9]{0,15}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "takeoverId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-jrc-external-actor",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9][0-9]{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "messageId": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "messageId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "accountId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "attendanceRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "controlRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "conversationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "credentialRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "destinationRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "fingerprint": {
+                      "pattern": "^[a-f0-9]{64}$",
+                      "type": "string"
+                    },
+                    "id": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "inboxId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "integrationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "mode": {
+                      "enum": [
+                        "BOT",
+                        "HUMAN"
+                      ],
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "ownerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remoteContactId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remoteConversationId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "requestId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "state": {
+                      "enum": [
+                        "DRAINING",
+                        "PAUSED",
+                        "STALE",
+                        "COMPLETED",
+                        "CANCELED"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "organizationId",
+                    "integrationId",
+                    "channelId",
+                    "conversationId",
+                    "accountId",
+                    "inboxId",
+                    "remoteConversationId",
+                    "remoteContactId",
+                    "ownerRevision",
+                    "attendanceRevision",
+                    "controlRevision",
+                    "destinationRevision",
+                    "credentialRevision",
+                    "mode",
+                    "id",
+                    "requestId",
+                    "fingerprint",
+                    "state"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers/cancel": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integrationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "remoteConversationId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9][0-9]{0,15}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-jrc-external-actor",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9][0-9]{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "fingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "requestId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "fingerprint"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "accountId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "attendanceRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "controlRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "conversationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "credentialRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "destinationRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "fingerprint": {
+                      "pattern": "^[a-f0-9]{64}$",
+                      "type": "string"
+                    },
+                    "id": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "inboxId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "integrationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "mode": {
+                      "enum": [
+                        "BOT",
+                        "HUMAN"
+                      ],
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "ownerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remoteContactId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remoteConversationId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "requestId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "state": {
+                      "enum": [
+                        "DRAINING",
+                        "PAUSED",
+                        "STALE",
+                        "COMPLETED",
+                        "CANCELED"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "organizationId",
+                    "integrationId",
+                    "channelId",
+                    "conversationId",
+                    "accountId",
+                    "inboxId",
+                    "remoteConversationId",
+                    "remoteContactId",
+                    "ownerRevision",
+                    "attendanceRevision",
+                    "controlRevision",
+                    "destinationRevision",
+                    "credentialRevision",
+                    "mode",
+                    "id",
+                    "requestId",
+                    "fingerprint",
+                    "state"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
     "/v1/integrations/chatwoot/control/connections/{integrationId}/disconnect": {
       "post": {
         "parameters": [

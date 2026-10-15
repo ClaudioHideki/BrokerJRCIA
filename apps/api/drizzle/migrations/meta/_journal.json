@@ -421,6 +421,20 @@
       "when": 1792708800000,
       "tag": "0060_consolidated_runtime_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1792795200000,
+      "tag": "0061_automation_input_timeout",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1792881600000,
+      "tag": "0062_nico_takeover_operations",
+      "breakpoints": true
     }
   ]
 }

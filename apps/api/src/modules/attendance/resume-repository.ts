@@ -6,6 +6,7 @@ import { readChatwootAccount, type AccountRow } from '../integrations/chatwoot-c
 import { lockAttendanceChannel, resolveAttendanceScope } from './repository.js';
 import { AttendanceError } from './types.js';
 import { isResumeRootState, validateResumeTarget } from './resume-policy.js';
+import { assertNoNicoTakeoverFence } from './nico-takeover-fence.js';
 
 export interface ResumeSnapshot {
   channelId:string; conversationId:string; ownerRevision:number; localRevision:number; controlRevision:number;
@@ -37,6 +38,7 @@ export async function captureResume(tx:TenantTransaction,org:string,input:Resume
   const conversation=(await tx.query<{channel_id:string}>('SELECT channel_id FROM messaging_conversations WHERE organization_id=$1 AND id=$2',[org,input.conversationId])).rows[0];
   if(!conversation)throw new AttendanceError('CONVERSATION_NOT_FOUND',404);
   await lockAttendanceChannel(tx,org,conversation.channel_id);
+  await assertNoNicoTakeoverFence(tx,org,input.conversationId);
   const c=(await tx.query<{
     channelId:string;localRevision:number;mode:string;deleting:boolean;botId:string;botOrigin:string;feature:boolean;
     ownerRevision:number;executor:string;ownerAutomation:string;ownerVersion:number;remoteBinding:string|null;

@@ -11,6 +11,7 @@ import {createPostgresMessagingRepository} from '../../src/modules/messaging/rep
 import {createPostgresAutomationRepository} from '../../src/modules/automations/repository.js';
 import {createEventRouter,createExecutionService} from '../../src/modules/automations/service.js';
 import {ensureQrChannel} from '../../src/modules/messaging/qr-service.js';
+import {runtimeAuthorityAllows} from '../../src/modules/attendance/runtime-authority.js';
 const roleUrl=(connection:string,role:'jrc_platform'|'jrc_lifecycle')=>{const url=new URL(connection);url.username=role;return url.toString();};
 const key=Buffer.alloc(32,13).toString('base64'),configurationScope='synthetic-g3-scope',phone='5511999990999',group='120363999000001@g.us',author='5511999990001@s.whatsapp.net',other='5511999990002@s.whatsapp.net';
 const node=(id:string,type:string,data:Record<string,unknown>={})=>({id,type,label:id,position:{x:0,y:0},data});
@@ -56,6 +57,19 @@ async function drain(t:Awaited<ReturnType<typeof fixture>>) {
   for(let i=0;i<10;i++){const result=await t.runtime.enqueueEffectsOnce(t.org);if(!result.processed)break;}
   for(let i=0;i<10;i++){const result=await t.runtime.dispatchOnce(t.org);if(!result.processed)break;}
 }
+it('keeps scheduler group authority restricted to its policy, tenant, channel and group',async()=>{
+  const t=await fixture(),otherTenant=await fixture();
+  await t.runtime.configure(t.principal,t.channel,t.input);const started=await t.ingest('/iniciar');await t.runtime.executeOnce(t.org);
+  const conversation=(await db.database.pool.query('select conversation_id from automation_executions where organization_id=$1 and id=$2',[t.org,started.executionId])).rows[0]!.conversation_id;
+  const input={organizationId:t.org,channelId:t.channel,conversationId:conversation,automationId:t.automation,version:1,executionId:started.executionId!};
+  const allowed=(org:string,patch:Partial<typeof input>={},policy?:typeof t.options)=>db.transact(org,tx=>runtimeAuthorityAllows(tx,{...input,...patch},true,policy));
+  expect(await allowed(t.org)).toBe(false);
+  expect(await allowed(t.org,{},t.options)).toBe(true);
+  expect(await allowed(t.org,{channelId:otherTenant.channel},t.options)).toBe(false);
+  expect(await allowed(otherTenant.org,{},t.options)).toBe(false);
+  await db.database.pool.query('update whatsapp_group_catalog_items set selected=false where organization_id=$1 and channel_id=$2 and group_jid=$3',[t.org,t.channel,group]);
+  expect(await allowed(t.org,{},t.options)).toBe(false);
+});
 it('selection alone creates neither group automation permission nor a second executor job',async()=>{
   const t=await fixture();const result=await t.ingest('/iniciar');
   expect(result.executionId).toBeNull();expect(result.reason).toBe('GROUP_NOT_ENABLED');

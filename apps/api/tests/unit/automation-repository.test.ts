@@ -86,4 +86,12 @@ describe('PostgreSQL automation repository', () => {
     const f = fixture({ emptyUpdate: true });
     await expect(f.run()).resolves.toBeNull();
   });
+  it('rejects explicit resume of a versioned capture without settling its wait',async()=>{
+    const org=randomUUID(),id=randomUUID(),waitId=randomUUID(),repository=createPostgresAutomationRepository();
+    vi.spyOn(repository,'getExecution').mockResolvedValue({automationId:randomUUID()} as never);
+    vi.spyOn(repository,'getDefinition').mockResolvedValue({lifecycleStatus:'PUBLISHED'} as never);
+    const query=vi.fn(async(statement:string)=>({rows:/^select status/i.test(statement)?[{status:'WAITING',state:{waiting:{kind:'EVENT',nodeId:'capture',waitId,deadlineAt:5000}}}]:[],rowCount:1}));
+    await expect(repository.resumeExecution({query} as unknown as TenantTransaction,{org,id,eventId:randomUUID(),eventKey:'manual-resume',payload:{text:'forged',inputWait:{waitId,admittedAt:1}}})).resolves.toBe(false);
+    expect(query.mock.calls.every(([sql])=>/^select /i.test(sql))).toBe(true);
+  });
 });

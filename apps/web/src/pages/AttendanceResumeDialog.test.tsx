@@ -12,6 +12,7 @@ it('explains the scope of resuming and keeps keyboard dismissal free from a resu
  expect(await screen.findByText(/Somente a conversa selecionada/)).toBeVisible();
  expect(screen.getByText(/Vincular ou publicar um fluxo não retoma/)).toBeVisible();
  expect(screen.getByText('Continua a espera compatível pela próxima mensagem.')).toBeVisible();
+ expect(screen.getByText(/captura com prazo começa uma nova tentativa/i)).toBeVisible();
  expect(screen.getByText('Volta ao menu escolhido da sessão atual.')).toBeVisible();
  expect(screen.getByText('Começa pela versão publicada, sem reproduzir mensagens antigas.')).toBeVisible();
  const newSession=screen.getByRole('radio',{name:'Nova sessão'}),close=screen.getByRole('button',{name:'Fechar'});

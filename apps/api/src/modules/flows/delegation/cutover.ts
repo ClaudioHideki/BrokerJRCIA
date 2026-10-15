@@ -16,6 +16,10 @@ interface Row {id:string;integration_id:string;channel_id:string;host_kind:'STOC
  qr_identity_revision:number|null;qr_identity_fingerprint:string|null;remote_bot_id:string|null;remote_bot_callback:string|null;lease_token:string|null;lease_live:boolean}
 interface Context {state:Authority;target:Mapping;origin:FlowOriginCapability;profile:{revision:number;host_kind:'STOCK'|'JRC_NATIVE'};identityRevision:number|null;identityFingerprint:string|null;botId:number|null;botCallback:string|null}
 export interface CutoverRequest {integrationId:string;cutoverId:string;expectedOwnerRevision:number;version:number}
+export interface NativeBindReceipt {
+ organizationId:string;integrationId:string;cutoverId:string;cutoverRevision:number;expectedOwnerRevision:number;
+ leaseToken:string;leaseExpiresAt:string;
+}
 type Options<D>={
  transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;
  decision(access:FlowAccess):Promise<D|undefined>;
@@ -98,6 +102,25 @@ export function createDelegatedCutovers<D>(options:Options<D>){
   if(await readOwnerRevision(tx,access.organizationId,c.target.channel_id)!==(ownerAfter??request.expectedOwnerRevision))fail('FLOW_OWNER_CHANGED');
   return {c,row};
  }
+ async function verifyBinding(tx:TenantTransaction,access:FlowAccess,request:CutoverRequest,decision:D|undefined,receipt:NativeBindReceipt|null,ownerAfter?:number){
+  const current=await verify(tx,access,request,decision,ownerAfter);
+  if(current.c.profile.host_kind==='JRC_NATIVE'){
+   const {row}=current;
+   if(!receipt||receipt.organizationId!==access.organizationId||receipt.integrationId!==request.integrationId||receipt.cutoverId!==request.cutoverId||receipt.cutoverRevision!==row.revision||receipt.expectedOwnerRevision!==request.expectedOwnerRevision||receipt.leaseToken!==row.lease_token||!row.lease_live)fail();
+   const live=(await tx.query<{live:boolean}>('SELECT $1::timestamptz>clock_timestamp() AS live',[receipt.leaseExpiresAt])).rows[0]?.live;
+   if(!live)fail();
+  }
+  return current;
+ }
+ async function releaseBinding(access:FlowAccess,request:CutoverRequest,receipt:NativeBindReceipt|null){
+  if(!receipt)return;
+  if(receipt.organizationId!==access.organizationId||receipt.integrationId!==request.integrationId||receipt.cutoverId!==request.cutoverId||receipt.expectedOwnerRevision!==request.expectedOwnerRevision)fail();
+  // Reduction is allowed after revocation; only this exact live or expired
+  // nomination is retired. An activated or replacement attempt is untouched.
+  await options.transact(access.organizationId,tx=>tx.query(`UPDATE flow_executor_cutovers SET phase='UNKNOWN',lease_token=NULL,lease_expires_at=NULL,updated_at=clock_timestamp()
+   WHERE organization_id=$1 AND id=$2 AND integration_id=$3 AND revision=$4 AND lease_token=$5 AND phase='DRAINED'`,
+   [access.organizationId,request.cutoverId,request.integrationId,receipt.cutoverRevision,receipt.leaseToken]));
+ }
  return {
   async prepare(access:FlowAccess,integrationId:string,raw:unknown){
    z.uuid().parse(integrationId);const input=z.strictObject({expectedOwnerRevision:z.number().int().nonnegative()}).parse(raw),token=randomUUID();
@@ -133,7 +156,8 @@ export function createDelegatedCutovers<D>(options:Options<D>){
     await cleanup(access,snapshot.row.id,token);sanitized(error);
    }
   },
-  verify,
+  verify:verifyBinding,
+  releaseBinding,
   async get(access:FlowAccess,integrationId:string){
    z.uuid().parse(integrationId);const decision=await options.decision(access);
    return options.transact(access.organizationId,async tx=>{
@@ -167,16 +191,37 @@ export function createDelegatedCutovers<D>(options:Options<D>){
     return await options.transact(access.organizationId,tx=>settle(tx,access,snapshot,token,snapshot.row.phase,remote.currentDecision,remote.host));
    }catch(error){await cleanup(access,snapshot.row.id,token);sanitized(error);}
   },
-  async beforeTransaction(access:FlowAccess,request:CutoverRequest,decision:D|undefined){
-   const snapshot=await options.transact(access.organizationId,tx=>verify(tx,access,request,decision));
-   await remoteDeadline(options.remoteTimeoutMs,'FLOW_CUTOVER_TIMEOUT',async signal=>{
-    await observed(snapshot.c);checkAborted(signal);
-    if(snapshot.c.profile.host_kind==='JRC_NATIVE')proof(await options.nativeAdapter!.observeFence(hostRequest(access,snapshot.c,snapshot.row),signal),hostRequest(access,snapshot.c,snapshot.row));checkAborted(signal);
+  async beforeTransaction(access:FlowAccess,request:CutoverRequest,decision:D|undefined):Promise<NativeBindReceipt|null>{
+   const token=randomUUID(),snapshot=await options.transact(access.organizationId,async tx=>{
+    const current=await verify(tx,access,request,decision);
+    if(current.c.profile.host_kind!=='JRC_NATIVE')return current;
+    if(current.row.lease_live)fail();
+    const row=(await tx.query<Row>(`UPDATE flow_executor_cutovers SET lease_token=$3,lease_expires_at=LEAST(clock_timestamp()+interval '10 seconds',proof_valid_until),updated_at=clock_timestamp()
+     WHERE organization_id=$1 AND id=$2 AND revision=$4 AND phase='DRAINED' AND proof_valid_until>clock_timestamp()
+      AND (lease_token IS NULL OR lease_expires_at<=clock_timestamp()) RETURNING *`,[access.organizationId,request.cutoverId,token,current.row.revision])).rows[0];
+    if(!row)fail();return {c:current.c,row};
    });
+   const receipt:NativeBindReceipt|null=snapshot.c.profile.host_kind==='JRC_NATIVE'?{organizationId:access.organizationId,integrationId:request.integrationId,cutoverId:request.cutoverId,cutoverRevision:snapshot.row.revision,expectedOwnerRevision:request.expectedOwnerRevision,leaseToken:token,leaseExpiresAt:snapshot.row.lease_expires_at!.toISOString()}:null;
+   try{
+    await remoteDeadline(options.remoteTimeoutMs,'FLOW_CUTOVER_TIMEOUT',async signal=>{
+     await observed(snapshot.c);checkAborted(signal);
+     if(receipt){
+      proof(await options.nativeAdapter!.observeFence(hostRequest(access,snapshot.c,snapshot.row),signal),hostRequest(access,snapshot.c,snapshot.row));checkAborted(signal);
+      const currentDecision=await options.decision(access);checkAborted(signal);
+      await options.transact(access.organizationId,async tx=>{
+       const current=await verifyBinding(tx,access,request,currentDecision,receipt);checkAborted(signal);
+       if(!same(current.c,snapshot.c))fail();
+      });checkAborted(signal);
+     }
+    });
+    return receipt;
+   }catch(error){await releaseBinding(access,request,receipt);sanitized(error);}
   },
-  async activate(tx:TenantTransaction,access:FlowAccess,request:CutoverRequest,decision:D|undefined,result:{ownerRevision:number;id:string;automationId:string}){
-   const {row}=await verify(tx,access,request,decision,result.ownerRevision);
-   const updated=await tx.query("UPDATE flow_executor_cutovers SET phase='ACTIVATED',activated_owner_revision=$3,binding_id=$4,automation_id=$5,updated_at=clock_timestamp() WHERE organization_id=$1 AND id=$2 AND phase='DRAINED' AND revision=$6 AND proof_valid_until>clock_timestamp()",[access.organizationId,row.id,result.ownerRevision,result.id,result.automationId,row.revision]);
+  async activate(tx:TenantTransaction,access:FlowAccess,request:CutoverRequest,decision:D|undefined,result:{ownerRevision:number;id:string;automationId:string},receipt:NativeBindReceipt|null){
+   const {row,c}=await verifyBinding(tx,access,request,decision,receipt,result.ownerRevision);
+   const updated=await tx.query(`UPDATE flow_executor_cutovers SET phase='ACTIVATED',activated_owner_revision=$3,binding_id=$4,automation_id=$5,lease_token=NULL,lease_expires_at=NULL,updated_at=clock_timestamp()
+    WHERE organization_id=$1 AND id=$2 AND phase='DRAINED' AND revision=$6 AND proof_valid_until>clock_timestamp()
+     AND ($7::boolean OR (lease_token=$8 AND lease_expires_at>clock_timestamp() AND $9::timestamptz>clock_timestamp()))`,[access.organizationId,row.id,result.ownerRevision,result.id,result.automationId,row.revision,c.profile.host_kind==='STOCK',receipt?.leaseToken??null,receipt?.leaseExpiresAt??null]);
    if(updated.rowCount!==1)fail();
   },
  };

@@ -19,6 +19,15 @@ it('accepts the stock list DTO without account_id, preserving scoped URL and exa
  const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch:async()=>Response.json({payload:[stock]})});
  expect(await client.canonicalMessage(7,9,51,41)).toMatchObject({id:41,conversation_id:51,inbox_id:9});
 });
+it('normalizes decimal int8 IDs before proving canonical message and sender identity',async()=>{
+ const dto={...message,id:'41',conversation_id:'51',account_id:'7',inbox_id:'9',sender:{id:'42',type:'User'}};
+ const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch:async()=>Response.json({payload:[dto]})});
+ expect(await client.canonicalMessage(7,9,51,41)).toMatchObject({id:41,conversation_id:51,account_id:7,inbox_id:9,sender:{id:42,type:'User'}});
+});
+it.each(['041','1e2','9007199254740992','0','-1'])('rejects noncanonical or unsafe int8 identity %s',async id=>{
+ const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch:async()=>Response.json({payload:[{...message,id}]})});
+ await expect(client.canonicalMessage(7,9,51,41)).rejects.toThrow();
+});
 it('pins the central sender to the authenticated administrator of the requested account',async()=>{
  const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch:async()=>Response.json({id:12,accounts:[{id:7,role:'administrator'}]})});
  expect(await client.centralSender(7)).toBe(12);

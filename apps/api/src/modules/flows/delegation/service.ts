@@ -16,7 +16,7 @@ import type {ChatwootClient} from '../../integrations/chatwoot-client.js';
 import type {ChatwootHealth} from '../../integrations/chatwoot-health.js';
 import {claimIdempotency,completeIdempotencyRecord,hashIdempotencyRequest} from '../../instances/idempotency.js';
 import {FlowDraftCreateSchema,FlowDraftSaveSchema,FlowPublishSchema,FlowBindSchema,FlowSessionCreateSchema,FlowIntrospectionDecisionSchema} from '@jrc/contracts';
-import {createDelegatedCutovers,type CutoverRequest} from './cutover.js';
+import {createDelegatedCutovers,type CutoverRequest,type NativeBindReceipt} from './cutover.js';
 import {createChannelFacade} from '../../channels/facade.js';
 import {remoteDeadline} from './remote.js';
 import {NativeContextQuerySchema,NativeContextResponseSchema} from './native-context.js';
@@ -205,6 +205,7 @@ export function createFlowDelegationService(options:FlowDelegationOptions){
  const cutovers=createDelegatedCutovers({transact:options.transact,decision:nativeDecision,authorize:(tx,access,decision,action='flow:bind')=>authority(tx,access,action,decision),client:options.client,identity:options.identity,nativeAdapter:options.nativeAdapter,knownNativeOrigins:options.knownNativeOrigins,remoteTimeoutMs});
  function scoped(access:FlowAccess,request:Request,existing?:TenantTransaction,existingDecision?:NativeDecision){
   let state:Authority;
+  let bindReceipt:NativeBindReceipt|null=null;
   const delegatedRepository={...repository,
    async listSubflowVersions(tx:TenantTransaction,org:string,rootId:string,input:Parameters<typeof repository.listSubflowVersions>[3]){
     const rows=(await tx.query<Awaited<ReturnType<typeof repository.listSubflowVersions>>['rows'][number]>(`SELECT v.automation_id AS "automationId",d.name,v.version,v.checksum,v.runtime_state_version AS "runtimeStateVersion",v.published_at AS "publishedAt"
@@ -254,12 +255,12 @@ export function createFlowDelegationService(options:FlowDelegationOptions){
   };
   async function transaction<T>(tx:TenantTransaction,work:OrganizationTransaction<T>,decision?:NativeDecision){
    state=await guard(tx,access,request,decision);
-   if(request.bind)await cutovers.verify(tx,access,request.bind,decision);
+   if(request.bind)await cutovers.verify(tx,access,request.bind,decision,bindReceipt);
    let result:T=await work(tx);state=await guard(tx,access,request,decision);
    if(request.bind){
-    if(result&&typeof result==='object'&&'ownerRevision' in result&&'id' in result&&'automationId' in result)await cutovers.activate(tx,access,request.bind,decision,result as {ownerRevision:number;id:string;automationId:string});
-    else if(result&&typeof result==='object'&&'ownerRevision' in result&&'binding' in result&&result.binding)await cutovers.activate(tx,access,request.bind,decision,{...(result.binding as {id:string;automationId:string}),ownerRevision:Number(result.ownerRevision)});
-    else await cutovers.verify(tx,access,request.bind,decision);
+    if(result&&typeof result==='object'&&'ownerRevision' in result&&'id' in result&&'automationId' in result)await cutovers.activate(tx,access,request.bind,decision,result as {ownerRevision:number;id:string;automationId:string},bindReceipt);
+    else if(result&&typeof result==='object'&&'ownerRevision' in result&&'binding' in result&&result.binding)await cutovers.activate(tx,access,request.bind,decision,{...(result.binding as {id:string;automationId:string}),ownerRevision:Number(result.ownerRevision)},bindReceipt);
+    else await cutovers.verify(tx,access,request.bind,decision,bindReceipt);
    }
    if(result&&typeof result==='object'&&'draft' in result&&'id' in result){
     const scope=await definitionScope(tx,access.organizationId,String(result.id),state,request.action,request.scopeRevision);
@@ -278,10 +279,11 @@ export function createFlowDelegationService(options:FlowDelegationOptions){
   const transact=async<T>(org:string,work:OrganizationTransaction<T>)=>{
    if(org!==access.organizationId)fail();if(existing)return transaction(existing,work,existingDecision);
    let decision=await nativeDecision(access);
-   if(request.bind){await cutovers.beforeTransaction(access,request.bind,decision);decision=await nativeDecision(access);}
+   if(request.bind){if(!bindReceipt)bindReceipt=await cutovers.beforeTransaction(access,request.bind,decision);decision=await nativeDecision(access);}
    return options.transact(org,tx=>transaction(tx,work,decision));
   };
-  return {...createAutomationService({...options.automation,repository:delegatedRepository,transact}),_transact:transact};
+  return {...createAutomationService({...options.automation,repository:delegatedRepository,transact}),_transact:transact,
+   _releaseBind:async()=>{if(request.bind)await cutovers.releaseBinding(access,request.bind,bindReceipt);}};
  }
  async function projectTargets(tx:TenantTransaction,org:string,rows:Mapping[]){
   const profiles=(await tx.query<{integration_id:string;revision:number}>('SELECT integration_id,revision FROM flow_executor_profiles WHERE organization_id=$1 AND integration_id=ANY($2::uuid[]) FOR SHARE',[org,rows.map(row=>row.integration_id)])).rows;
@@ -553,12 +555,18 @@ export function createFlowDelegationService(options:FlowDelegationOptions){
     const scope=bound.rows.find(scope=>scope.integration_id===input.integrationId);if(!scope)fail();return state.grants.find(row=>row.integration_id===scope.integration_id)!;
    });
    const delegated=scoped(access,{action:'flow:bind',id,scopeRevision:input.expectedScopeRevision,bind:input,mutation:'FLOW_BOUND'});
-   if(target.transport==='CENTRAL_TRANSPORT'){
-    const facade=createChannelFacade({transact:delegated._transact,instances:{} as never,meta:{} as never,automationStatus:org=>delegated.status(org)});
-    const result=await facade.bindAutomation(access.organizationId,target.channel_id,{automationId:id,version:input.version,expectedOwnerRevision:input.expectedOwnerRevision});
-    return {...result.binding,ownerRevision:result.ownerRevision};
+   let failure:unknown;
+   try{
+    if(target.transport==='CENTRAL_TRANSPORT'){
+     const facade=createChannelFacade({transact:delegated._transact,instances:{} as never,meta:{} as never,automationStatus:org=>delegated.status(org)});
+     const result=await facade.bindAutomation(access.organizationId,target.channel_id,{automationId:id,version:input.version,expectedOwnerRevision:input.expectedOwnerRevision});
+     return {...result.binding,ownerRevision:result.ownerRevision};
+    }
+    return await delegated.bind(access.organizationId,id,{channelId:target.channel_id,version:input.version,expectedOwnerRevision:input.expectedOwnerRevision});
+   }catch(error){failure=error;throw error;}
+   finally{
+    try{await delegated._releaseBind();}catch(error){if(failure!==undefined)throw new AggregateError([failure,error],'Flow bind and nomination cleanup failed');throw error;}
    }
-   return delegated.bind(access.organizationId,id,{channelId:target.channel_id,version:input.version,expectedOwnerRevision:input.expectedOwnerRevision});
   },
   versions:(access:FlowAccess,id:string)=>scoped(access,{action:'flow:read',id}).versions(access.organizationId,id),
   async versionsPage(access:FlowAccess,id:string,raw:unknown={}){

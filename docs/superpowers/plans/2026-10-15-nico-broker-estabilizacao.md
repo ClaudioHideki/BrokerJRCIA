@@ -40,12 +40,12 @@
 - Consumes: conversation.messages com default_scope de Message por created_at ascendente.
 - Produces: public_history, conversation_sample_messages, read_conversation e customer_context conservam seus formatos e limites, selecionando as mensagens recentes da conversa correta.
 
-- [ ] Escrever regressões com mensagens antigas suficientes para exceder 5/30/40; uma mensagem pública recente identificável; mensagens privadas e outra conversa/Account.
-- [ ] Executar os testes no código original e registrar falhas na seleção da janela.
-- [ ] Substituir a ordenação acumulada por reorder(id: :desc) somente nas leituras Message afetadas; manter filtros, limites e reversão cronológica.
-- [ ] Testar a seleção mais recente de incoming_scope no CustomerTurnJob; preservar a estratégia de coalescer entradas na última mensagem e impedir bloqueio por turno antigo superseded.
-- [ ] Executar regressões e testes NICO existentes pertinentes; confirmar que não há dependência Enterprise conflitante.
-- [ ] Commit focado na branch de homologação com registro de versão e testes.
+- [x] Escrever regressões com mensagens antigas suficientes para exceder 5/30/40; uma mensagem pública recente identificável; mensagens privadas e outra conversa/Account.
+- [x] Executar os testes no código original e registrar falhas na seleção da janela.
+- [x] Substituir a ordenação acumulada por reorder(id: :desc) somente nas leituras Message afetadas; manter filtros, limites e reversão cronológica.
+- [x] Testar a seleção mais recente de incoming_scope no CustomerTurnJob; preservar a estratégia de coalescer entradas na última mensagem e impedir bloqueio por turno antigo superseded.
+- [x] Executar regressões e testes NICO existentes pertinentes; confirmar que não há dependência Enterprise conflitante.
+- [x] Commit focado na branch de homologação com registro de versão e testes.
 
 ## Task 2: Estado atual da conversa no Broker
 
@@ -57,12 +57,12 @@
 - Consumes: GET /v1/messaging/conversations/:id e GET /v1/messaging/conversations/:id/messages.
 - Produces: o botão Atualizar histórico atualiza mensagens e o modo da conversa selecionada, sem mutações de atendimento.
 
-- [ ] Escrever teste BOT → HUMAN remoto: clicar Atualizar histórico deve mudar o rótulo e a ação disponível.
-- [ ] Escrever teste de navegação/tenant durante consulta pendente e preservação de rascunho.
-- [ ] Rodar o arquivo antes da implementação e verificar falha de estado obsoleto.
-- [ ] Carregar o estado da conversa junto ao histórico com os mesmos guards de aborto/tenant/navegação; não limpar o rascunho nem retomar bot.
-- [ ] Executar testes Messaging e typecheck; executar npm test e git diff --check antes do commit exigido pelo AGENTS.
-- [ ] Commit focado na branch de homologação.
+- [x] Escrever teste BOT → HUMAN remoto: clicar Atualizar histórico deve mudar o rótulo e a ação disponível.
+- [x] Escrever teste de navegação/tenant durante consulta pendente e preservação de rascunho.
+- [x] Rodar o arquivo antes da implementação e verificar falha de estado obsoleto.
+- [x] Carregar o estado da conversa junto ao histórico com os mesmos guards de aborto/tenant/navegação; não limpar o rascunho nem retomar bot.
+- [x] Executar testes Messaging e typecheck; executar npm test e git diff --check antes do commit exigido pelo AGENTS.
+- [x] Commit focado na branch de homologação.
 
 ## Task 3: Release candidata e acompanhamento do programa
 

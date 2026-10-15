@@ -9,10 +9,10 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('carrega o manifesto real até a migration 0060', async () => {
+  it('carrega o manifesto real até a migration 0062', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(60);
-    expect(migrations.at(-1)?.name).toBe('0060_consolidated_runtime_integrity');
+    expect(migrations).toHaveLength(62);
+    expect(migrations.at(-1)?.name).toBe('0062_nico_takeover_operations');
   });
 
   it('informa a versão aplicada e migrations pendentes sem expor hashes', () => {

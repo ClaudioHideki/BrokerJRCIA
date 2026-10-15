@@ -5,6 +5,7 @@ import { menuOptions, type FlowNode } from './flows.js';
 import {DATA_NODE_TYPES,compatibleDataNodeSchema,dataNodePorts} from './automation-data-v2.js';
 import {compatibleAiNodeSchema} from './automation-ai.js';
 import {compatibleHttpQuerySchema} from './automation-http-query.js';
+import {compatibleInputCaptureSchema,inputCapturePorts} from './automation-input.js';
 
 export const NodeDiagnosticSchema = z.object({
   nodeId: z.string().nullable(), field: z.string(), code: z.string(), message: z.string(),
@@ -38,9 +39,9 @@ const define = (type: string, label: string, category: string, schema: z.ZodType
 export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = [
   define('start', 'Mensagem recebida', 'TRIGGERS', config()),
   define('message', 'Enviar texto', 'CONVERSATION', config({ text })),
-  define('input', 'Capturar resposta', 'INPUTS', config({ variable: safeKey,
+  define('input', 'Capturar resposta', 'INPUTS', compatibleInputCaptureSchema(config({ variable: safeKey,
     text: z.unknown().refine(input => value(input).length <= 4096, 'Pergunta muito longa.').optional(),
-    timeout: z.unknown().refine(input => !(Number(input ?? 0) > 0), 'Timeout importado ainda não suportado.').optional() })),
+    timeout: z.unknown().refine(input => !(Number(input ?? 0) > 0), 'Timeout importado ainda não suportado.').optional() })),inputCapturePorts),
   define('menu', 'Menu textual', 'INPUTS', config({ text, options: z.unknown().refine(options => {
     const parsed = menuOptions({ id: '', label: '', position: { x: 0, y: 0 }, type: 'menu', data: { options } });
     return Array.isArray(options) && parsed.length >= 2 && parsed.length <= 10 && parsed.length === options.length && new Set(parsed.map(option => option.value)).size === parsed.length;

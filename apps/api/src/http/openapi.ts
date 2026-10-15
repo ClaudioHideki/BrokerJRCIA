@@ -362,6 +362,8 @@ function normalizeDocument(document: JsonObject): JsonObject {
             : [{ bearerAuth: [] }];
       if (path.startsWith('/v1/integrations/chatwoot/control/'))
         operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
+      if (path.startsWith('/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/'))
+        operation.security = [{ jrcApiKeyAuth: [] }];
       if (
         path.startsWith("/v1/meta-onboarding") ||
         path.startsWith("/v1/organization/")

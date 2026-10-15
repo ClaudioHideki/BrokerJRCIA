@@ -417,6 +417,7 @@ describe('migrations PostgreSQL', () => {
     expect(result.rows).toEqual([
       // 0034 (2) + 0039 (3) + 0042 (1) + 0044 (1) + 0045 (2).
       ...Array.from({length:9},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      {policyname:'nico_takeover_tenant',roles:['jrc_app'],cmd:'ALL'},
       ...Array.from({length:3},()=>({policyname:'central_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'qr_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'group_catalog_tenant',roles:['jrc_app'],cmd:'ALL'})),
