@@ -2,7 +2,7 @@ import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import { AttendanceError } from './types.js';
 import { hasNicoTakeoverFence } from './nico-takeover-fence.js';
 
-export type AttendanceGateInput = {organizationId:string;channelId:string;conversationId:string};
+export type AttendanceGateInput = {organizationId:string;channelId:string;conversationId:string;effectOutboxId?:string};
 export type AttendanceGate = {allowed:boolean;revision:number;state:'NONE'|'INITIALIZING'|'READY'|'HUMAN'|'PAUSED'|'RECONCILE';cycle:number|null};
 
 /** Caller locks the channel before executions/jobs/conversation. This read never resumes a session. */
@@ -24,12 +24,16 @@ export async function readChatwootAttendanceGate(tx:TenantTransaction,input:Atte
         AND o.inbox_id=c.inbox_id AND o.remote_conversation_id=c.remote_conversation_id AND o.disposition IN ('ECHO_PENDING','RECONCILE'))
        OR EXISTS(SELECT 1 FROM chatwoot_mirror_attempts a WHERE a.organization_id=c.organization_id AND a.integration_id=c.integration_id
         AND a.destination_revision=c.destination_revision AND a.account_id=c.account_id AND a.inbox_id=c.inbox_id
-        AND a.conversation_id=c.conversation_id AND a.cycle=c.cycle AND a.state IN ('DISPATCHED','UNKNOWN'))) AS pending,
+        AND a.conversation_id=c.conversation_id AND a.cycle=c.cycle AND a.state IN ('DISPATCHED','UNKNOWN')
+        AND NOT EXISTS(SELECT 1 FROM automation_conversation_effects effect WHERE effect.organization_id=a.organization_id
+          AND effect.outbox_id=$4::uuid AND effect.protocol_version=2 AND effect.operation='media'
+          AND effect.conversation_id=a.conversation_id AND effect.channel_id=a.channel_id
+          AND effect.messaging_message_id=a.message_id AND effect.state IN ('QUEUED','UNKNOWN')))) AS pending,
       (SELECT s.cycle FROM attendance_sessions s WHERE s.organization_id=c.organization_id AND s.conversation_id=c.conversation_id
         AND s.state<>'RESOLVED') AS current_cycle
     FROM chatwoot_attendance_controls c JOIN messaging_conversations m ON m.organization_id=c.organization_id AND m.id=c.conversation_id
     WHERE c.organization_id=$1 AND c.channel_id=$2 AND c.conversation_id=$3`,
-    [input.organizationId,input.channelId,input.conversationId])).rows[0];
+    [input.organizationId,input.channelId,input.conversationId,input.effectOutboxId??null])).rows[0];
   if(row) return {allowed:row.state==='READY'&&row.local_mode==='BOT'&&row.current_scope&&!row.pending&&(row.current_cycle===null||row.current_cycle===row.cycle),revision:row.revision,state:row.state,cycle:row.cycle};
   const required=Boolean((await tx.query(`SELECT 1 FROM attendance_owners o JOIN chatwoot_connections c
     ON c.organization_id=o.organization_id AND c.channel_id=o.channel_id WHERE o.organization_id=$1 AND o.channel_id=$2 AND o.executor='BROKER'`,

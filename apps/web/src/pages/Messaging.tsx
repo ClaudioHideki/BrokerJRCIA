@@ -28,6 +28,7 @@ import { AttendanceResumeDialog } from './AttendanceResumeDialog.js';
 import {LocalAttendancePanel} from '../attendance/LocalAttendancePanel.js';
 import {QrOutboundObservations} from './QrOutboundObservations.js';
 import {QrDispatchAttempts} from './QrDispatchAttempts.js';
+import {ConversationFacts} from './ConversationFacts.js';
 
 function safeError(error: unknown, fallback: string) {
   const apiError = error instanceof ApiClientError ? error : null;
@@ -882,6 +883,8 @@ export function MessagingPage() {
               </section> : null}
               <section className="panel" aria-labelledby="history-title">
                 <h2 id="history-title">Histórico</h2>
+                {organizationId&&selectedConversation&&!loadingMessages?<ConversationFacts context={selectedConversation.localContext}
+                  organizationId={organizationId} channelId={channelId} conversationId={selectedConversation.id}/>:null}
                 {resumingConversation===selectedConversation?.id?<AttendanceResumeDialog key={`${organizationId}:${resumingConversation}`} conversationId={resumingConversation!} client={client}
                   onClose={()=>setResumingConversation(null)} onConfirmed={()=>{
                     const generation=tenantGeneration.current,controller=new AbortController();controllers.current.add(controller);

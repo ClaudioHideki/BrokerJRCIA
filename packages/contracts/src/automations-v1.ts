@@ -65,6 +65,11 @@ export function validateAutomationGraph(input: unknown): NodeDiagnostic[] {
     const definition = getNodeDefinition(node.type, 1);
     if (!definition) { add(node.id, 'type', 'UNKNOWN_NODE_TYPE', `tipo ${node.type} ainda não suportado.`); continue; }
     if (!definition.runtimeSupported) add(node.id, 'type', 'RUNTIME_UNAVAILABLE', definition.unavailableReason!);
+    if (['tag', 'attribute', 'note', 'resolve', 'media'].includes(node.type)) {
+      const marker = node.type === 'media' ? 'mediaEffectVersion' : 'conversationEffectVersion';
+      if (node.data[marker] !== 2) add(node.id, `data.${marker}`, 'ACTION_RECONFIGURATION_REQUIRED',
+        'Abra este bloco e configure a caixa e os recursos autorizados antes de publicar.');
+    }
     for (const port of definition.ports(node)) if (!connected.has(JSON.stringify([node.id, port]))) add(node.id, `ports.${port}`, 'MISSING_CONNECTION', `conecte a saída ${port}.`);
     const configured = definition.schema.safeParse(node.data);
     if (!configured.success) for (const issue of configured.error.issues) add(node.id, ['data', ...issue.path].join('.'), 'INVALID_CONFIG', issue.message);

@@ -2,6 +2,9 @@ import { writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { mkdir } from "node:fs/promises";
+import { z } from 'zod';
+import { AutomationMediaAssetSchema } from '@jrc/contracts';
+import { SUPPORTED_UPLOAD_MIME_TYPES } from '@jrc/providers';
 
 import type { InstanceService } from "../modules/instances/service.js";
 import type { ProviderAccountService } from "../modules/provider-accounts/service.js";
@@ -336,6 +339,25 @@ function normalizeDocument(document: JsonObject): JsonObject {
       if (path.startsWith("/v1/messaging/"))
         operation.security = [{ bearerAuth: [] }];
       if(path.startsWith('/v1/delegated-flows'))operation.security=[{flowSessionAuth:[]}];
+      if (method === 'post' && /^\/v1\/(?:automations|delegated-flows)\/\{id\}\/channels\/\{channelId\}\/media$/.test(path)) {
+        operation.description = 'Arquivo privado binário de 1 a 16 MiB, sujeito ao limite por MIME e à quota. Não é um grafo JSON nem uma URL pública. A mesma chave exige os mesmos bytes, raiz e caixa; autorização é revalidada durante o armazenamento.';
+        operation.parameters = [
+          ...['id', 'channelId'].map(name => ({ name, in: 'path', required: true, schema: { type: 'string', format: 'uuid' } })),
+          { name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'X-JRC-Media-Mime', in: 'header', required: true, schema: { type: 'string', enum: [...SUPPORTED_UPLOAD_MIME_TYPES] } },
+          { name: 'X-JRC-Media-Kind', in: 'header', required: true, schema: { type: 'string', enum: ['image', 'audio', 'video', 'document'] } },
+          { name: 'X-JRC-Media-Name', in: 'header', required: true, description: 'Nome codificado com encodeURIComponent.', schema: { type: 'string', minLength: 1, maxLength: 765 } },
+        ];
+        operation.requestBody = { required: true, content: { 'application/octet-stream': {
+          schema: { type: 'string', format: 'binary', minLength: 1, maxLength: 16 * 1024 * 1024 },
+        } } };
+        operation.responses = {
+          '201': { description: 'Metadados do arquivo privado na raiz e caixa autorizadas.', content: {
+            'application/json': { schema: z.toJSONSchema(AutomationMediaAssetSchema, { target: 'openapi-3.0' }) },
+          } },
+          ...Object.fromEntries([400, 401, 403, 409, 413, 422, 500, 503].map(status => [String(status), { description: 'Upload recusado ou armazenamento indisponível.' }])),
+        };
+      }
       if(path.startsWith('/v1/flow-delegations'))operation.security=[{bearerAuth:[]}];
       if((path.startsWith('/v1/flow-delegations/native-sessions')||path.startsWith('/v1/flow-delegations/native-cutovers/'))||path==='/v1/flow-delegations/native-context'||method==='get'&&path==='/v1/flow-delegations/native-registration-challenges/{id}'||method==='post'&&path==='/v1/flow-delegations/native-registrations'||path.endsWith('/claim'))operation.security=[{flowCredentialAuth:[]}];
       if(path.startsWith('/v1/flow-delegations/native-installations/'))operation.security=[{flowInstallationGrantAuth:[]}];

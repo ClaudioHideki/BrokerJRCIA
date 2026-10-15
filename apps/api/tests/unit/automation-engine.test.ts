@@ -32,8 +32,13 @@ describe('automation runtime v2 engine',()=>{
       'ai-extract':{...aiCommon,operation:'extract',fields:[{name:'name',type:'string'}]},
       'ai-summarize':{...aiCommon,operation:'summarize'},
     });
+    const action={conversationEffectVersion:2,channelId:'22222222-2222-4222-8222-222222222222',target:'action.result',timeoutMs:10000};
+    const resource={resourceId:'33333333-3333-4333-8333-333333333333',resourceRevision:'a'.repeat(64)};
+    Object.assign(configs,{tag:{...action,...resource,operation:'tag'},attribute:{...action,...resource,operation:'attribute',valueSource:{kind:'LITERAL',value:false}},
+      note:{...action,operation:'note',text:'Nota privada'},resolve:{...action,operation:'resolve',status:'RESOLVED'},
+      media:{mediaEffectVersion:2,channelId:action.channelId,mediaId:resource.resourceId,mediaRevision:1,target:'media.result',timeoutMs:10000,caption:''}});
     const current=node('current',type,configs[type]??{});
-    const nodes=type==='start'?[current,node('end','end')]:['end','handoff'].includes(type)?[node('start','start'),current]:[node('start','start'),current,node('end','end')];
+    const nodes=type==='start'?[current,node('end','end')]:['end','handoff','resolve'].includes(type)?[node('start','start'),current]:[node('start','start'),current,node('end','end')];
     const edges=type==='start'?[]:[{id:'s',source:'start',target:'current',port:'next'}];
     edges.push(...automationNodePorts(current).map(port=>({id:port,source:'current',target:'end',port})));
     const graph={nodes,edges};expect(validateAutomationGraph(graph)).toEqual([]);
@@ -43,7 +48,7 @@ describe('automation runtime v2 engine',()=>{
       return {automationId,version,runtimeStateVersion:2,graph:{nodes:[node('child-start','start'),node('child-message','message',{text:'Filho publicado'}),node('child-end','end')],edges:[{id:'child-next',source:'child-start',target:'child-message',port:'next'},{id:'child-finish',source:'child-message',target:'child-end',port:'next'}]}};
     });
     expect(resolved).toBe(type==='subflow'?1:0);
-    expect(result.effects.every(effect=>effect.kind==='SEND_TEXT'||effect.kind==='HANDOFF'||(type==='http'&&effect.kind==='IO_HTTP')||(aiTypes.includes(type)&&effect.kind==='IO_AI'))).toBe(true);
+    expect(result.effects.every(effect=>effect.kind==='SEND_TEXT'||effect.kind==='HANDOFF'||(type==='http'&&effect.kind==='IO_HTTP')||(aiTypes.includes(type)&&effect.kind==='IO_AI')||(['tag','attribute','note','resolve'].includes(type)&&effect.kind==='IO_CONVERSATION')||(type==='media'&&effect.kind==='SEND_MEDIA'))).toBe(true);
     expect(['WAITING','COMPLETED','HANDOFF']).toContain(result.status);
     if(type==='handoff')expect(result.effects).toEqual([{nodeId:'current',ordinal:0,kind:'HANDOFF',payload:handoffConfig}]);
     if(type==='message')expect(result.effects[0]?.payload.text).toBe('Olá');

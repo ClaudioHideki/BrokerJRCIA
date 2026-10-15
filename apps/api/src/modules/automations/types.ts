@@ -10,7 +10,7 @@ export interface RuntimeState {
   stack:RuntimeFrame[]; waiting?:{kind:'EVENT'|'DELAY'|'IO';nodeId:string;wakeAt?:number;waitId?:string;deadlineAt?:number};
 }
 export type RuntimeJson = null | boolean | number | string | RuntimeJson[] | { [key:string]:RuntimeJson };
-export interface RuntimeEffect { nodeId:string; ordinal:number; kind:'SEND_TEXT'|'HANDOFF'|'IO_HTTP'|'IO_SQL'|'IO_CODE'|'IO_AI'; payload:Record<string,unknown> }
+export interface RuntimeEffect { nodeId:string; ordinal:number; kind:'SEND_TEXT'|'HANDOFF'|'IO_HTTP'|'IO_SQL'|'IO_CODE'|'IO_AI'|'IO_CONVERSATION'|'SEND_MEDIA'; payload:Record<string,unknown> }
 export interface RuntimeTrace { nodeId:string; type:string; label:string; input:Record<string,unknown>; output:Record<string,unknown> }
 export interface RuntimeResult {
   status:'WAITING'|'HANDOFF'|'COMPLETED'; state:RuntimeState; effects:RuntimeEffect[]; trace:RuntimeTrace[];
@@ -18,6 +18,8 @@ export interface RuntimeResult {
 }
 export interface PublishedAutomation { automationId:string; version:number; graph:AutomationGraphV1; runtimeStateVersion?:1|2 }
 export interface RuntimeInput { text:string; eventType:'MESSAGE'|'RESUME'|'TIMER'; now:Date; payload?:Record<string,unknown>;
+  /** Internal simulation reconstruction only; public schemas never accept this callback. */
+  effectWaitId?:(scope:{automationId:string;version:number;nodeId:string;step:number})=>string;
   /** Internal only: constructed from the locked wait/server admission, never an external payload. */
   inputWait?:{waitId:string;admittedAt?:number}; }
 

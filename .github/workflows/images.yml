@@ -54,6 +54,8 @@ jobs:
       - name: Install PDF verification tools required by the unit suite
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends poppler-utils
       - run: npm run build && npm test && npm run test:web:bundle && npm run security:submodule && npm audit --audit-level=high
+      - name: Verify the native Flow editor uses the same committed source
+        run: npm run build:native-flow-editor -- --out .sessions/native-flow-editor-images
       - name: Verify tenant storage and durable automation before building images
         env:
           TEST_DATABASE_ADMIN_URL: postgresql://postgres@127.0.0.1:5432/postgres

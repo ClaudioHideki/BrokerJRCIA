@@ -25,6 +25,16 @@ flowchart LR
 
 O NICO cria a mensagem pelo canal da central depois da pausa confirmada. Não abre outra conexão WhatsApp e não retoma o bot ao concluir ou cancelar. Usuários continuam no JRC; não precisam ser copiados em massa para o Broker. A sessão do operador e os grants atuais limitam as ações delegadas por Account e caixa.
 
+O módulo Flow do JRC usa o mesmo canvas e contratos da console Broker, através de um BFF autenticado pela sessão do operador no JRC. A edição recebe um escopo fixo de Account, usuário, caixas e fluxo; credenciais Broker permanecem no backend. O módulo QR é uma entrada separada para conectar e reconectar os números. Ambos utilizam o motor e transporte do Broker. O runtime NICO continua separado, como assistente autorizado.
+
+Para reproduzir o pacote de editor durante desenvolvimento, a partir do checkout Broker com fonte já commitada:
+
+```sh
+npm run build:native-flow-editor -- --install-jrc CAMINHO_DO_CHECKOUT_JRC_CANDIDATO
+```
+
+O comando exige uma branch `codex/` no checkout JRC, gera `public/jrc-flow-editor` com manifesto e licenças e atualiza o módulo de versão do editor. Esses arquivos entram no commit e na imagem candidata JRC, junto dos módulos e migrations. Não executar no servidor de produção: o servidor recebe a imagem pronta. O CI Broker testa o bundle compilado; o manifesto de composição JRC confere os arquivos instalados. Para habilitar a execução nativa em caixas da central, seguir também a instalação do observer e dos guards registrada no pacote de composição; copiar somente o JavaScript não instala a coordenação dos executores.
+
 ## Preparar o ambiente no Dokploy
 
 1. Criar projetos/serviços candidatos com domínios HTTPS próprios, por exemplo `broker-hml` e `conversas-hml`. Usar a branch candidata e o Compose do mesmo commit da imagem.
@@ -60,6 +70,8 @@ compose -p NOME_DO_COMPOSE_CANDIDATO -f ./infra/dokploy/compose.yaml --profile m
 ```
 
 Esperado: `CURRENT`, `compatible: true`, nenhuma migration pendente e versões esperada/aplicada iguais ao corte da imagem registrado na publicação. Não usar o terminal da API para ler o journal: a role `jrc_app` não tem essa permissão.
+
+Neste corte, a última migração Broker é `0063_conversation_effect_protocol` (inclui0061de captura e0062de tomada NICO). O JRC tem migrações próprias para registro/instalação/ownership nativo, envio NICO, recibos das ações e proteção de configuração por caixa; a imagem Rails e a Sidekiq precisam conter e usar o mesmo conjunto. A imagem NICO runtime não recebe essas migrações.
 
 Depois **apagar todo o campo Advanced → Run Command**, salvar e usar General → Deploy. Isso inicia a aplicação e todos os workers com o comando normal. Não deixar o comando de migração no campo: o container pontual termina e não inicia o sistema.
 
@@ -103,9 +115,9 @@ Para habilitar a Account 4, substituir apenas `3` por `4`. O comando preserva os
 
 O runtime selecionado também precisa aceitar o ID. No serviço **NICO runtime candidato**, configurar `NICO_ALLOWED_ACCOUNTS` com os IDs explicitamente autorizados, separados por vírgula: por exemplo `1,3,4` quando essas três Accounts utilizarem aquela implantação. Preservar os IDs já atendidos; não usar `*` para liberar todos. Essa variável é lida na inicialização: salvar e reimplantar somente o serviço runtime candidato após a alteração. Não exige reconstruir a imagem. `NICO_MODE=provider` exige o provedor da própria Account enviado pelo Rails, além da autenticação de serviço.
 
-Também é possível manter um runtime separado por Account (`NICO_ALLOWED_ACCOUNTS=3` ou `4`) e configurar `NICO_RUNTIME_ROUTES` no Rails e Sidekiq com cada endpoint e seu `token_env`. Nesse caso, incluir todas as Accounts que continuarão atendidas: a ausência de um ID no mapa retorna `account_not_configured`, sem fallback. Guardar cada `NICO_RUNTIME_TOKEN_...` somente no Environment/cofre, com pelo menos32 caracteres; nunca na interface do navegador. O mapa e a lista do runtime são configurações diferentes e ambas precisam corresponder à Account.
+Também é possível manter um runtime separado por Account (`NICO_ALLOWED_ACCOUNTS=3` ou `4`) e configurar `NICO_RUNTIME_ROUTES` no Rails e Sidekiq com cada endpoint e seu `token_env`. Nesse caso, incluir todas as Accounts que continuarão atendidas: a ausência de um ID no mapa retorna `account_not_configured`, sem fallback. Guardar cada `NICO_RUNTIME_TOKEN_...` somente no Environment/cofre, com pelo menos 32 caracteres; nunca na interface do navegador. O mapa e a lista do runtime são configurações diferentes e ambas precisam corresponder à Account.
 
-O comportamento acima foi conferido em `services/nico-runtime/src/server.ts`, `provider-config.ts` e no `JrcNico::RuntimeClient` da base atual. A observação antiga no README do runtime sobre uma única Account em provider não representa a implementação atual da lista explícita. Habilitar a flag no banco sem ajustar uma lista restrita a `1` continuará produzindo `account_not_configured` para3/4.
+O comportamento acima foi conferido em `services/nico-runtime/src/server.ts`, `provider-config.ts` e no `JrcNico::RuntimeClient` da base atual. A observação antiga no README do runtime sobre uma única Account em provider não representa a implementação atual da lista explícita. Habilitar a flag no banco sem ajustar uma lista restrita a `1` continuará produzindo `account_not_configured` para 3/4.
 
 Consulta sem alterações:
 

@@ -38,6 +38,36 @@ function openApiOperations(openapi) {
 }
 
 describe('dados reproduzíveis da auditoria de segurança', () => {
+  it.each(['automations', 'delegated-flows'])('documenta o upload binário P3 de %s separado do grafo', async prefix => {
+    const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
+    const operation = openapi.paths[`/v1/${prefix}/{id}/channels/{channelId}/media`].post;
+    expect(operation.requestBody.content['application/octet-stream'].schema).toMatchObject({ type: 'string', format: 'binary' });
+    expect(operation.parameters.filter(parameter => parameter.in === 'header').map(parameter => parameter.name).sort()).toEqual([
+      'Idempotency-Key', 'X-JRC-Media-Kind', 'X-JRC-Media-Mime', 'X-JRC-Media-Name',
+    ]);
+    expect(operation.responses['201'].content['application/json'].schema.properties).toHaveProperty('revision');
+  });
+  it('classifica os recursos P3 por raiz e caixa nas fronteiras normal e delegada', async () => {
+    const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
+    const inventory = await buildRouteInventory({ rootDirectory: ROOT, openapi });
+    for (const prefix of ['automations', 'delegated-flows']) {
+      for (const [method, suffix] of [
+        ['GET', '/resource-channels'], ['GET', '/channels/{channelId}/action-catalog'],
+        ['POST', '/channels/{channelId}/action-resources'], ['GET', '/channels/{channelId}/media'],
+        ['POST', '/channels/{channelId}/media'], ['POST', '/channels/{channelId}/media/{mediaId}/revoke'],
+      ]) {
+        const route = inventory.find(item => item.method === method && item.path === `/v1/${prefix}/{id}${suffix}`);
+        expect(route).toMatchObject({
+          authentication: prefix === 'automations' ? 'JWT_CURRENT_MEMBERSHIP' : 'OPAQUE_DELEGATED_SESSION_HASH_LOOKUP',
+          permission: prefix === 'automations' ? method === 'GET' ? 'CURRENT_MEMBER' : 'OWNER_ADMIN' : 'CURRENT_ACTOR_EXPLICIT_READ_EDIT_PUBLISH_BIND_SCOPE',
+          tenantRls: true,
+        });
+        expect(route.ownershipCheck).toContain('ROOT');
+        expect(route.ownershipCheck).toContain('CHANNEL');
+        expect(route.cacheHeaders).toContain('Cache-Control');
+      }
+    }
+  });
   it('classifica o catálogo de subfluxos como metadados paginados da empresa e da raiz autorizada', async () => {
     const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
     const inventory = await buildRouteInventory({ rootDirectory: ROOT, openapi });

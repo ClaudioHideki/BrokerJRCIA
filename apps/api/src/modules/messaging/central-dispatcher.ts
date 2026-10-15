@@ -1,7 +1,10 @@
-import { randomBytes,randomUUID } from 'node:crypto';
+import { createHash,randomBytes,randomUUID } from 'node:crypto';
 import type { OrganizationTransaction,TenantTransaction } from '../../db/tenant-transaction.js';
 import type { OutboxRow } from '../automations/repository.js';
-import type { Message } from './types.js';
+import type { Message,MessageContent } from './types.js';
+import type {MediaStore} from './media-store.js';
+import type {BinaryMedia} from '@jrc/providers';
+import {assertQueuedMediaAuthority,confirmQueuedMedia} from '../automations/conversation-media.js';
 import { readCentralTransportBinding,readCentralTransportContext } from './central-transport.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
 import { runtimeAuthorityAllows } from '../attendance/runtime-authority.js';
@@ -15,7 +18,7 @@ type Receipt={id:string;channel_id:string;integration_id:string;conversation_id:
  origin:string;destination_revision:number;credential_version:number;owner_revision:number;control_revision:number;cycle:number;
  execution_id:string;automation_id:string;version:number;state:string;ack_message_id:string|null;remote_message_id:string|null;
  lease_token:string;lease_expires_at:Date|null;created_at:Date;reconcile_attempts:number;dispatch_proof:string;sender_id:string|null};
-type Options={transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;client(account:AccountRow):ChatwootClient;enabled:boolean};
+type Options={transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;client(account:AccountRow):ChatwootClient;enabled:boolean;media?:Pick<MediaStore,'read'>};
 const observationScope=(binding:CentralRuntimeEventBinding)=>({...binding,credentialRevision:binding.credentialVersion});
 const authority=(org:string,r:Receipt)=>({organizationId:org,channelId:r.channel_id,conversationId:r.conversation_id,automationId:r.automation_id,version:r.version});
 const matches=(r:Receipt,b:CentralRuntimeEventBinding)=>r.channel_id===b.channelId&&r.origin===b.origin&&r.destination_revision===b.destinationRevision&&
@@ -45,9 +48,9 @@ export function createCentralDispatcher(options:Options) {
   return transact(org,async tx=>{
    const {binding,account,botId,botCallback}=await readCentralTransportContext(tx,org,r.integration_id);
    if(!matches(r,binding))throw new Error('CENTRAL_CONTEXT_CHANGED');
-   const message=(await tx.query<{content:{type:string;text?:string};state:string}>('SELECT content,state FROM messaging_messages WHERE organization_id=$1 AND id=$2 AND channel_id=$3 AND conversation_id=$4',[org,r.message_id,r.channel_id,r.conversation_id])).rows[0];
-   if(!message||message.content.type!=='TEXT'||typeof message.content.text!=='string')throw new Error('CENTRAL_TEXT_REQUIRED');
-   return {binding,account,botId,botCallback,text:message.content.text};
+   const message=(await tx.query<{content:MessageContent;state:string}>('SELECT content,state FROM messaging_messages WHERE organization_id=$1 AND id=$2 AND channel_id=$3 AND conversation_id=$4',[org,r.message_id,r.channel_id,r.conversation_id])).rows[0];
+   if(!message||!['TEXT','MEDIA'].includes(message.content.type))throw new Error('CENTRAL_CONTENT_REQUIRED');
+   return {binding,account,botId,botCallback,content:message.content,text:message.content.type==='TEXT'?message.content.text:message.content.type==='MEDIA'?message.content.caption??'':''};
   });
  }
  async function uncertain(org:string,r:Receipt,ack?:number) {
@@ -67,6 +70,25 @@ export function createCentralDispatcher(options:Options) {
   });
  }
  async function confirm(org:string,r:Receipt,remoteId:number,canonical:Awaited<ReturnType<ChatwootClient['canonicalMessage']>>) {
+  const prepared=await context(org,r);
+  let attachmentProven=false;
+  if(prepared.content.type==='MEDIA'){
+   if(canonical.attachments?.length!==1)throw Error('CENTRAL_RECEIPT_NOT_PROVEN');
+   const attachment=canonical.attachments[0] as Record<string,unknown>;
+   if(!Number.isSafeInteger(attachment.id)||Number(attachment.id)<=0||attachment.message_id!==canonical.id||
+    attachment.account_id!==prepared.binding.accountId||attachment.file_type!==(prepared.content.kind==='document'?'file':prepared.content.kind))throw Error('CENTRAL_RECEIPT_NOT_PROVEN');
+   const mediaId=prepared.content.mediaId;
+   const stored=await transact(org,async tx=>(await tx.query<{sha256:string;byte_size:number}>(`select m.sha256,m.byte_size from messaging_media m
+    join automation_media_assets a on a.organization_id=m.organization_id and a.media_id=m.id and a.channel_id=m.channel_id
+    join automation_conversation_effects e on e.organization_id=a.organization_id and e.media_asset_id=a.id
+    where e.organization_id=$1 and e.messaging_message_id=$2 and e.channel_id=$3 and e.protocol_version=2 and m.id=$4`,[org,r.message_id,r.channel_id,mediaId])).rows[0]);
+   if(!stored)throw Error('CENTRAL_RECEIPT_NOT_PROVEN');
+   const remote=await options.client(prepared.account).downloadAttachment(prepared.binding.accountId,prepared.binding.inboxId,
+    Number(r.remote_conversation_id),remoteId,Number(attachment.id));
+   if(Number(attachment.file_size)!==Number(stored.byte_size)||remote.bytes.byteLength!==Number(stored.byte_size)||
+    createHash('sha256').update(remote.bytes).digest('hex')!==stored.sha256)throw Error('CENTRAL_RECEIPT_NOT_PROVEN');
+   attachmentProven=true;
+  }
   await transact(org,async tx=>{
    const {binding}=await readCentralTransportBinding(tx,org,r.integration_id,true);
    if(!matches(r,binding))throw new Error('CENTRAL_CONTEXT_CHANGED');
@@ -74,8 +96,9 @@ export function createCentralDispatcher(options:Options) {
    if(!current||current.state==='CONFIRMED')return;
    if(!['DISPATCHED','UNKNOWN'].includes(current.state)||current.ack_message_id!==null&&Number(current.ack_message_id)!==remoteId)throw new Error('CENTRAL_RECEIPT_CONFLICT');
    const message=(await tx.query<{content:{type:string;text:string}}>('SELECT content FROM messaging_messages WHERE organization_id=$1 AND id=$2 FOR UPDATE',[org,r.message_id])).rows[0];
-   if(canonical.id!==remoteId||canonical.message_type!=='outgoing'||canonical.private||canonical.content_type!==undefined&&canonical.content_type!=='text'||canonical.attachments?.length||
-    canonical.content!==message?.content.text||canonical.content_attributes.jrc_broker_message_id!==r.message_id||
+   if(canonical.id!==remoteId||canonical.message_type!=='outgoing'||canonical.private||canonical.content_type!==undefined&&canonical.content_type!=='text'||
+    (prepared.content.type==='MEDIA'?!attachmentProven:Boolean(canonical.attachments?.length))||
+    canonical.content!==prepared.text||!message||canonical.content_attributes.jrc_broker_message_id!==r.message_id||
     canonical.content_attributes.jrc_broker_dispatch_proof!==current.dispatch_proof||!current.sender_id||canonical.sender?.id!==Number(current.sender_id)||
     canonical.sender.type!==undefined&&canonical.sender.type!=='user'||!['sent','delivered','read'].includes(canonical.status??'')||
     canonical.created_at*1000<r.created_at.getTime()-300000)throw new Error('CENTRAL_RECEIPT_NOT_PROVEN');
@@ -84,6 +107,7 @@ export function createCentralDispatcher(options:Options) {
     ON CONFLICT(organization_id,integration_id,message_id) DO NOTHING`,[org,r.integration_id,r.message_id,remoteId]);
    await tx.query(`UPDATE messaging_messages SET state=$3,upstream_message_id=$4,canonical_error_code=NULL,updated_at=now() WHERE organization_id=$1 AND id=$2 AND state IN ('SENDING','UNKNOWN')`,[org,r.message_id,canonical.status==='read'?'READ':canonical.status==='delivered'?'DELIVERED':'SENT',`central:${r.integration_id}:${remoteId}`]);
    await tx.query('DELETE FROM messaging_outbox WHERE organization_id=$1 AND message_id=$2',[org,r.message_id]);
+   await confirmQueuedMedia(tx,org,r.message_id);
   });
  }
  async function reconcile(org:string) {
@@ -121,8 +145,14 @@ export function createCentralDispatcher(options:Options) {
     reconcile_attempts=reconcile_attempts+1 WHERE organization_id=$1 AND id=$2 RETURNING *`,[org,row.id,randomUUID()])).rows[0];
   });
   if(!r)return false;
-  let c:Awaited<ReturnType<typeof context>>,client:ChatwootClient;
+  let c:Awaited<ReturnType<typeof context>>,client:ChatwootClient,file:BinaryMedia|undefined;
   try{c=await context(org,r);client=options.client(c.account);
+   if(c.content.type==='MEDIA'){
+    if(!options.media)throw Error('CENTRAL_MEDIA_UNAVAILABLE');
+    file=await options.media.read(org,c.content.mediaId,{authorize:async tx=>{
+     if(!await assertQueuedMediaAuthority(tx as TenantTransaction,org,r.message_id))throw Error('AUTOMATION_MEDIA_UNAVAILABLE');
+    }});
+   }
    const senderId=await client.centralSender(c.binding.accountId);
    const inboxBot=await client.inboxFlowBot(c.binding.accountId,c.binding.inboxId);
    if((inboxBot?.id??null)!==c.botId||c.botId!==null&&(!c.botCallback||inboxBot?.outgoing_url!==c.botCallback))throw new Error('CENTRAL_REMOTE_BOT_CHANGED');
@@ -131,6 +161,7 @@ export function createCentralDispatcher(options:Options) {
     const {binding,botId,botCallback}=await readCentralTransportBinding(tx,org,r.integration_id,true);
     if(botId!==c.botId||botCallback!==c.botCallback)throw new Error('CENTRAL_CONTEXT_CHANGED');
     if(!matches(r,binding))throw new Error('CENTRAL_CONTEXT_CHANGED');
+    await assertQueuedMediaAuthority(tx,org,r.message_id);
     await initializeChatwootAttendanceMap(tx,observationScope(binding),{conversationId:r.conversation_id,remoteConversationId:Number(r.remote_conversation_id),canonical});
     const gate=await readChatwootAttendanceGate(tx,authority(org,r));
     if(gate.cycle!==r.cycle||gate.state==='HUMAN'||gate.state==='PAUSED'||!await runtimeAuthorityAllows(tx,authority(org,r)))throw new Error('CENTRAL_ATTENDANCE_BLOCKED');
@@ -157,7 +188,11 @@ export function createCentralDispatcher(options:Options) {
   }
   let ack:number|undefined;
   try{
-   ack=await client.sendMessage(c.binding.accountId,Number(r.remote_conversation_id),{text:c.text,incoming:false,brokerMessageId:r.message_id,dispatchProof:r.dispatch_proof});
+   if(c.content.type==='MEDIA'){
+    if(!file)throw Error('CENTRAL_MEDIA_UNAVAILABLE');
+    ack=await client.sendMedia(c.binding.accountId,Number(r.remote_conversation_id),{...file,...(c.text?{caption:c.text}:{})},
+     {incoming:false,brokerMessageId:r.message_id,dispatchProof:r.dispatch_proof});
+   }else ack=await client.sendMessage(c.binding.accountId,Number(r.remote_conversation_id),{text:c.text,incoming:false,brokerMessageId:r.message_id,dispatchProof:r.dispatch_proof});
    await transact(org,tx=>tx.query('UPDATE chatwoot_mirror_attempts SET ack_message_id=$3 WHERE organization_id=$1 AND id=$2 AND state=\'DISPATCHED\'',[org,r.id,ack]));
    const remote=await client.canonicalMessage(c.binding.accountId,c.binding.inboxId,Number(r.remote_conversation_id),ack);
    await confirm(org,r,ack,remote);

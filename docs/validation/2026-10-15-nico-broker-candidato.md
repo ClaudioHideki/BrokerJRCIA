@@ -41,9 +41,46 @@ O lote seguinte reúne timeout de captura0061, tomada NICO0062 e proteção do l
 
 O ensaio PostgreSQL conjunto apresentou timeouts de setup e expiração de leases durante contenção local; não é registrado como aprovado. Na suíte de vínculo nativo,55 de57 casos passaram em uma execução isolada, incluindo os8 novos. Duas fixtures foram corrigidas para testar o intervalo pretendido; os casos de bloqueio de perfil e timeout de vínculo passaram em seleção focal. O caso legado UNKNOWN passou isoladamente em9,74s depois de exceder o lease legítimo em uma execução mais lenta. Nenhum prazo do produto foi aumentado. O gate consolidado será o CI Linux do commit candidato; essas evidências locais não substituem o CI nem a homologação física.
 
-Lote publicado na branch candidata: `3b15ef6648e708e97d5c59a1b7aa625f491559fc`. No [CI38788489196](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/38788489196), build, migrations a partir de banco vazio, typecheck, testes compilados e os2931 testes gerais passaram. A etapa web focal terminou559/560: o teste de acesso direto à saúde verificava a chamada antes do efeito assíncrono. A correção aguarda a chamada com `waitFor`; o CI deste corte não foi aprovado, e nenhuma imagem desse lote foi declarada publicada.
+Lote publicado na branch candidata: `3b15ef6648e708e97d5c59a1b7aa625f491559fc`. No [CI38788489196](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/38788489196), build, migrations a partir de banco vazio, typecheck, testes compilados e os 2.931 testes gerais passaram. A etapa web focal terminou 559/560: o teste de acesso direto à saúde verificava a chamada antes do efeito assíncrono.
 
-A tomada coordenada NICO/Broker, os executores de ações/mídia, timeout do Flow, distribuição QR/Flow e demais critérios P0–P10 continuam no programa. A correção da tela não entrega o protocolo distribuído de tomada, e corrigir histórico não torna todos os módulos NICO homologados.
+A correção `4a7decdd4e57dc2c25e37b6089fa6f2fcfe571f6` aguarda a chamada com `waitFor`. Seu [CI completo38790906620](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/38790906620) concluiu com sucesso, incluindo PostgreSQL/Redis, MinIO, jornadas de navegador, OpenAPI, container, restauração e segurança. Isso comprova o lote 0061/0062 e lease de vínculo daquele commit; os incrementos P3 posteriores têm evidências próprias e ainda não estão nessa fonte nem em uma imagem final publicada.
+
+## Editor compartilhado e nativo do P3
+
+O editor agora recebe um cliente autorizado e o escopo da empresa, sem exigir o login da console Broker dentro do JRC. A configuração de etiqueta, atributo, nota, resolução e mídia escolhe as caixas e recursos pelo nome. As respostas de catálogo e upload ficam presas à organização, fluxo, caixa e revisão selecionados. Resolver encerra o ciclo, inclusive dentro de subfluxo; resultado incerto permanece aguardando reconciliação, sem caminho de continuação.
+
+Evidência focal local: 71 testes do canvas/editor compartilhado e controles de espera aprovados; mais 12 testes do transporte, vínculo e montagem nativos aprovados. O TypeScript web passou. O bundle compilado foi exercitado em navegador local com uma central sintética: abrir o editor, escolher a caixa, editar nota privada, respeitar ausência de permissão de publicação, isolar CSS e encerrar sessão passaram. O ensaio não enviou mensagens e não acessou o JRC do servidor.
+
+Fontes nativas e scripts de build são rastreados no Git, sem dependência de `.sessions` como fonte. O build registra o commit Broker, hashes de entradas e saídas e licenças; uma instalação de release rejeita fonte não commitada. Os assets finais do JRC serão gerados do commit Broker fechado e terão versão para evitar cache do editor anterior. Esta evidência local não publica nem instala uma imagem.
+
+A revisão do editor acrescentou seleção explícita de uma nova revisão de recurso/arquivo e checagem do contrato de revogação de mídia (`revision`). Os nove cenários do editor de ações, oito de transporte de ações e 35 regressões do histórico/modo humano passaram em conjunto (52 casos). O editor compartilhado rejeita um rascunho retornado para outra organização; essa regressão e as jornadas existentes do editor passaram (59 casos no conjunto). Não se ampliaram permissões para contornar erros de configuração.
+
+O detalhe da conversa agora tem uma projeção privada de ações standalone, sem misturar notas com mensagens de transporte: etiquetas por nome, atributos tipados, estado do fluxo e até 100 notas recentes com aviso explícito quando há outras. Contratos/interface/regressões do serviço: 20 casos aprovados. PostgreSQL real com `jrc_app`: quatro casos aprovados, incluindo isolamento por organização/caixa, ausência da projeção em caixas centrais, revisão `int8` exata e nenhum novo registro de mensagem por uma leitura. A consulta é uma única leitura sob a transação tenant existente.
+
+## Corte integrado candidato
+
+O incremento atual acrescenta o protocolo coordenado de envio NICO, timeout persistido de captura, editor compartilhado com escopo delegado e os cinco blocos de etiqueta, atributo, nota privada, mídia e resolução terminal. A imagem NICO runtime não foi alterada: as mudanças do assistente estão no backend e interface do JRC e na coordenação do Broker. A branch e imagem JRC de produção do outro desenvolvedor são preservadas.
+
+| Verificação local deste corte | Evidência |
+| --- | --- |
+| NICO: autorização no commit, cancelamento e vínculo QR/nativo | 30 exemplos Rails/PostgreSQL aprovados |
+| Catálogo, motor puro, simulação e canvas dos cinco blocos | 132 testes aprovados; disponibilidade habilitada |
+| Importação e publicação de ações | 63 casos aprovados; v1 continua legível, sem converter autoridade externa |
+| Recursos, upload, prova e assinatura de arquivo | 17 testes focais aprovados e quatro casos PostgreSQL de recursos |
+| Delegação e armazenamento privado | Três casos de escopo/revogação e um de PUT incerto aprovados; nenhum segundo PUT |
+| Central e persistência | Dez casos PostgreSQL aprovados; fato remoto separado da permissão de continuação |
+| Recuperação final de mídia e claim | Três casos PostgreSQL aprovados: subfluxo, confirmação antes do mirror e claim sem admissão; nenhum reenvio |
+| Metadados de prova | Três casos aprovados; UUID malformado não chega ao cast SQL |
+| Revisão do vínculo nativo | Cinco casos de interface aprovados; rollback permite nova preparação e confirmação exige a intenção correspondente |
+| Build nativo | Falha de verificação preserva os quatro arquivos já instalados; promoção ocorre depois da validação |
+| OpenAPI e inventário | 30 testes afetados aprovados; upload binário documentado nas duas fronteiras |
+| Build e segurança | Compilação TypeScript/web aprovada; 329 rotas, nenhum achado dos scanners |
+
+Os números acima são conjuntos focais e podem sobrepor casos; não devem ser somados como uma suíte única. A execução geral obrigatória, os guards do JRC e o CI do commit final têm registro separado. Os assets de release do editor serão gerados do commit Broker fechado e incluídos no candidato JRC. O [registro P3](2026-10-15-p3-effects-broker.md) detalha as migrações e limites.
+
+A rodada geral local executou405arquivos/3.087casos:3.071passaram e16 falharam em expectativas antigas de inventário/paleta/status HTTP e mocks sequenciais de SQL. As correções mantiveram as restrições e, na execução final dos sete arquivos afetados,85casos passaram. A compilação, o inventário atual e a geração do OpenAPI também passaram. Não se registra a primeira rodada geral como aprovada nem se amplia timeout do produto. A suíte PostgreSQL final de protocolo/recursos/lifecycle aprovou49de50casos; o inventário de policies foi atualizado para incluir somente a policy nova `effect_control_tenant` e passou na seleção focal. O CI do commit final é o gate consolidado.
+
+Esses testes não encerram todo o programa P0–P10 nem comprovam uma implantação do servidor. A conversa física com QR, os ativos Meta, o Chatwoot externo ainda indisponível e a capacidade de 500 empresas/10 mil conexões têm critérios próprios de homologação. Configuração do candidato e comandos por Account constam no roteiro Dokploy.
 
 A publicação das branches e imagens candidatas será registrada com CI e digests efetivos. Nenhuma imagem é considerada publicada por existir um Dockerfile ou um commit. O usuário acompanha o candidato antes de qualquer alteração no Dokploy.
 

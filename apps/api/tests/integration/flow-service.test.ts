@@ -21,10 +21,40 @@ import {validatorCompiler,serializerCompiler} from 'fastify-type-provider-zod';
 import {issueAccessToken} from '@jrc/security';
 import {registerFlowDelegationRoutes} from '../../src/http/routes/flow-delegation.js';
 import {createFlowSessionResolver} from '../../src/modules/flows/delegation/runtime.js';
+import {createMediaStore} from '../../src/modules/messaging/media-store.js';
 let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 const vault=createIntegrationSecrets(Buffer.alloc(32,29).toString('base64'));
 const full=['flow:read','flow:edit','flow:publish','flow:bind'];
 const graph={nodes:[{id:'s',type:'start',label:'Start',position:{x:0,y:0},data:{}},{id:'e',type:'end',label:'End',position:{x:1,y:0},data:{}}],edges:[{id:'next',source:'s',target:'e',port:'next'}]};
+it('P3 resources remain limited to the granted root channels, including another inbox of the same company',async()=>{
+ const t=await fixture(),second=await secondInbox(t),draft=await t.service.create(t.access,{name:'P3 scope',graph,integrationIds:[t.integration]});
+ expect((await t.service.resourceChannels(t.access,draft.id)).data.map(row=>row.id)).toEqual([t.channel]);
+ await expect(t.service.actionCatalog(t.access,draft.id,second.channel)).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ await expect(t.service.mediaCatalog(t.access,draft.id,second.channel)).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ await expect(t.service.revokeMedia(t.access,draft.id,second.channel,randomUUID(),1)).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+});
+it('P3 upload revalidates the delegated session inside the global media facade before storing bytes',async()=>{
+ const t=await fixture(),draft=await t.service.create(t.access,{name:'P3 upload scope',graph,integrationIds:[t.integration]});
+ const store=createMediaStore({encryptionKey:Buffer.alloc(32,1).toString('base64'),transact:db.transact,
+  download:async()=>{throw Error('NO_DOWNLOAD');}});
+ const media={...store,async writeUpload(...args:Parameters<typeof store.writeUpload>){
+  await db.database.pool.query('update flow_delegation_sessions set revoked_at=now() where id=$1',[t.session.id]);
+  return store.writeUpload(...args);
+ }};
+ const service=t.serviceWith({automation:{enabled:true,media}});
+ await expect(service.uploadMedia(t.access,draft.id,t.channel,{bytes:new TextEncoder().encode('arquivo'),mimeType:'text/plain',
+  kind:'document',fileName:'teste.txt',idempotencyKey:randomUUID()})).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ expect((await db.database.pool.query('select count(*)::int as count from messaging_media where organization_id=$1',[t.org])).rows[0].count).toBe(0);
+});
+it('P3 draft cannot smuggle an action resource from an ungranted inbox into the root',async()=>{
+ const t=await fixture(),second=await secondInbox(t),draft=await t.service.create(t.access,{name:'P3 graph scope',graph,integrationIds:[t.integration]});
+ const changed=structuredClone(graph);
+ changed.nodes[1]={id:'action',type:'note',label:'Private',position:{x:1,y:0},data:{conversationEffectVersion:2,
+  operation:'note',channelId:second.channel,text:'Nota',target:'result',timeoutMs:15000}};
+ await expect(t.service.save(t.access,draft.id,{name:'P3 graph scope',graph:changed,revision:1,expectedScopeRevision:1}))
+  .rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ expect((await t.service.get(t.access,draft.id)).draft.revision).toBe(1);
+});
 beforeAll(async()=>{db=await attendanceDatabase();});
 afterAll(async()=>{await db?.dispose();});
 async function syntheticAuthorityRoundtrip(){

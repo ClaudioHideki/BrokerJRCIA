@@ -9,6 +9,7 @@ import { isExpectedResumeControl } from '../attendance/resume-expected-control.j
 import { IntegrationError } from './integration-error.js';
 import { classifyChatwootAttendanceEvent, type ChatwootAttendanceEvent } from './chatwoot-attendance-events.js';
 import { parseChatwootReply } from './chatwoot-events.js';
+import {candidateConversationEffect,recordEffectControlStep} from '../automations/conversation-effect-proof.js';
 
 export type ChatwootObservationScope=AttendanceScope & {credentialRevision:number};
 type Disposition='WAITING_MAP'|'ECHO_PENDING'|'APPLIED'|'IGNORED'|'RECONCILE';
@@ -114,6 +115,8 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
           event.senderId])).rows[0]?.id??null;
     }
   }
+  const effectCandidate=await candidateConversationEffect(tx,s,event,raw);
+  if(effectCandidate?.confirmed&&event.kind!=='CONVERSATION_CONTROL')event={...event,kind:'BROKER_ECHO',interruptsBot:false,mayForwardReply:false};
   let reply:Record<string,unknown>|null=null;
   if(event.mayForwardReply){
     const attributes={...record(original.content_attributes)}; delete attributes.jrc_broker_message_id;
@@ -126,14 +129,18 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
       [s.organizationId,s.integrationId,event.remoteConversationId])).rows[0];
     if(map){await createControl(tx,s,map.conversation_id,event.remoteConversationId);control=await controlForRemote(tx,s,event.remoteConversationId);}
   }
-  const disposition:Disposition=candidate?'ECHO_PENDING':event.kind==='BROKER_ECHO'||!event.interruptsBot&&event.kind!=='CONVERSATION_CONTROL'?'IGNORED':control?'APPLIED':'WAITING_MAP';
+  const disposition:Disposition=candidate||effectCandidate&&!effectCandidate.confirmed?'ECHO_PENDING':event.kind==='BROKER_ECHO'||!event.interruptsBot&&event.kind!=='CONVERSATION_CONTROL'?'IGNORED':control?'APPLIED':'WAITING_MAP';
   const observation=(await tx.query<Observation>(`INSERT INTO chatwoot_attendance_observations(organization_id,id,integration_id,channel_id,destination_revision,credential_revision,
-    account_id,inbox_id,remote_conversation_id,event_key,event,disposition,mirror_attempt_id,reply_payload,conversation_id,cycle)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id,event,disposition,reply_payload,conversation_id,cycle`,
+    account_id,inbox_id,remote_conversation_id,event_key,event,disposition,mirror_attempt_id,reply_payload,conversation_id,cycle,effect_outbox_id)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id,event,disposition,reply_payload,conversation_id,cycle`,
     [s.organizationId,randomUUID(),s.integrationId,s.channelId,s.destinationRevision,s.credentialRevision,s.accountId,s.inboxId,event.remoteConversationId,key,
-      JSON.stringify(event),disposition,candidate,reply?JSON.stringify(reply):null,control?.conversation_id??null,control?.cycle??null])).rows[0]!;
-  if(candidate){
-    if(control)await tx.query('UPDATE chatwoot_attendance_controls SET revision=revision+1,updated_at=now() WHERE organization_id=$1 AND conversation_id=$2',[s.organizationId,control.conversation_id]);
+      JSON.stringify(event),disposition,candidate,reply?JSON.stringify(reply):null,control?.conversation_id??null,control?.cycle??null,effectCandidate?.id??null])).rows[0]!;
+  if(disposition==='ECHO_PENDING'){
+    const effectId=effectCandidate?.id??(candidate?(await tx.query<{outbox_id:string}>(`select e.outbox_id from automation_conversation_effects e
+      join chatwoot_mirror_attempts a on a.organization_id=e.organization_id and a.message_id=e.messaging_message_id
+      where e.organization_id=$1 and a.id=$2 and e.protocol_version=2 and e.operation='media'`,[s.organizationId,candidate])).rows[0]?.outbox_id:undefined);
+    if(control&&effectId)await recordEffectControlStep(tx,s.organizationId,effectId,control.conversation_id,observation.id,'PENDING');
+    else if(control)await tx.query('UPDATE chatwoot_attendance_controls SET revision=revision+1,updated_at=now() WHERE organization_id=$1 AND conversation_id=$2',[s.organizationId,control.conversation_id]);
   } else if(control&&disposition!=='IGNORED')await applyObservation(tx,s,observation,control);
   else if(disposition==='WAITING_MAP')await queueReply(tx,s,observation);
   return {observationId:observation.id,duplicate:false,disposition};
@@ -203,7 +210,13 @@ export async function confirmChatwootMirrorAttempt(tx:TenantTransaction,s:Chatwo
     } else if(control)await applyObservation(tx,s,observation,control);
     else await tx.query("UPDATE chatwoot_attendance_observations SET disposition='WAITING_MAP',mirror_attempt_id=null WHERE organization_id=$1 AND id=$2",[s.organizationId,observation.id]);
   }
-  if(pending.length&&control)await tx.query('UPDATE chatwoot_attendance_controls SET revision=revision+1,updated_at=now() WHERE organization_id=$1 AND conversation_id=$2',[s.organizationId,control.conversation_id]);
+  if(pending.length&&control){
+    const effect=(await tx.query<{outbox_id:string}>(`select e.outbox_id from automation_conversation_effects e
+      join chatwoot_mirror_attempts a on a.organization_id=e.organization_id and a.message_id=e.messaging_message_id
+      where e.organization_id=$1 and a.id=$2 and e.protocol_version=2 and e.operation='media'`,[s.organizationId,attempt.id])).rows[0];
+    if(effect)await recordEffectControlStep(tx,s.organizationId,effect.outbox_id,control.conversation_id,pending[pending.length-1]!.id,'CONFIRMED');
+    else await tx.query('UPDATE chatwoot_attendance_controls SET revision=revision+1,updated_at=now() WHERE organization_id=$1 AND conversation_id=$2',[s.organizationId,control.conversation_id]);
+  }
 }
 
 /** A timeout is uncertainty, never proof that the remote POST did not happen. */

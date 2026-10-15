@@ -55,7 +55,21 @@ export function convertAutomationArtifact(requestedSource:ImportSource|'AUTO',ra
    report.notes.push('Referência removida de data.credentialId; selecione uma credencial local desta empresa antes de publicar.');
   }
  }
- const reviewNeeded=conversionReviewNeeded||credentialRemappingRequired;
+ let actionRemappingRequired=false;
+ for(const node of converted.graph.nodes){
+  const marker=node.type==='media'?'mediaEffectVersion':'conversationEffectVersion';
+  if(!['tag','attribute','note','resolve','media'].includes(node.type)||![1,2].includes(Number(node.data[marker])))continue;
+  const fields=node.type==='media'?['channelId','mediaId','mediaRevision']:['channelId','resourceId','resourceRevision'];
+  if(!fields.some(field=>Object.hasOwn(node.data,field)))continue;
+  const data={...node.data};for(const field of fields)delete data[field];node.data=data;
+  actionRemappingRequired=true;
+  const report=converted.nodes.find(item=>item.sourceId===node.id);
+  if(report){
+   if(report.classification==='EXACT')report.classification='PARTIAL';
+   report.notes.push('Selecione uma caixa local e seus recursos ou arquivos autorizados antes de publicar. As referências da origem foram removidas.');
+  }
+ }
+ const reviewNeeded=conversionReviewNeeded||credentialRemappingRequired||actionRemappingRequired;
  if(conversionReviewNeeded&&converted.graph.nodes.length>=150&&!converted.graph.nodes.some(node=>node.type==='unsupported')){
   // At capacity, keep the artifact valid while retaining a mandatory review blocker.
   const last=converted.graph.nodes.at(-1)!,report=converted.nodes.at(-1);
@@ -63,7 +77,7 @@ export function convertAutomationArtifact(requestedSource:ImportSource|'AUTO',ra
   if(report){report.classification='UNSUPPORTED';report.targetType=null;report.notes.push('Revisar importação antes de publicar.');}
  }
  const summary={source,total:converted.nodes.length,exact:converted.nodes.filter(node=>node.classification==='EXACT').length,partial:converted.nodes.filter(node=>node.classification==='PARTIAL').length,unsupported:converted.nodes.filter(node=>node.classification==='UNSUPPORTED').length,credentialsRemoved,autoPublished:false,manualReviewRequired:reviewNeeded};
- // Missing credential configuration already prevents publication. A remapping
+ // Missing local credentials/resources already prevent publication. Remapping
  // alone must not add or replace unrelated nodes, even at the graph size limit.
  if(conversionReviewNeeded&&converted.graph.nodes.length<150){
   let id='import-review';while(converted.graph.nodes.some(node=>node.id===id))id+='-review';

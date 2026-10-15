@@ -4,6 +4,7 @@ import {
   MediaError,
   safeMediaName,
   validateMedia,
+  validateUploadMedia,
   type BinaryMedia,
   type MediaKind,
 } from "@jrc/providers";
@@ -14,6 +15,7 @@ import type {
 import { createIntegrationSecrets } from "../integrations/secrets.js";
 import type { DurablePrivateMediaStore, PrivateMediaReadControl } from "./durable-private-media.js";
 const descriptor = z.discriminatedUnion("source", [
+  z.object({source:z.literal('UPLOAD'),descriptor:z.strictObject({rootAutomationId:z.uuid(),idempotencyKey:z.uuid(),sha256:z.string().regex(/^[a-f0-9]{64}$/u)})}),
   z.object({
     source: z.literal("QR"),
     descriptor: z.strictObject({ messageId: z.string().min(1).max(256) }),
@@ -38,7 +40,7 @@ export interface MediaAsset {
   id: string;
   organization_id: string;
   channel_id: string;
-  source: "QR" | "META" | "CHATWOOT";
+  source: "QR" | "META" | "CHATWOOT" | "UPLOAD";
   source_key: string;
   kind: MediaKind;
   file_name: string;
@@ -102,6 +104,36 @@ export function createMediaStore(options: MediaStoreOptions) {
     .max(1_099_511_627_776)
     .parse(options.maxStorageBytes ?? 1_073_741_824);
   return {
+    async writeUpload(org:string,channel:string,identity:{rootAutomationId:string;idempotencyKey:string},input:BinaryMedia,control?:PrivateMediaReadControl):Promise<string>{
+      const file={...input,bytes:new Uint8Array(input.bytes),fileName:safeMediaName(input.fileName)};validateUploadMedia(file);
+      const sha256=createHash('sha256').update(file.bytes).digest('hex'),sourceKey=`${identity.rootAutomationId}:${identity.idempotencyKey}`;
+      const uploadDescriptor={...identity,sha256};descriptor.parse({source:'UPLOAD',descriptor:uploadDescriptor});
+      const id=await tx(org,async t=>{
+        await control?.authorize?.(t);
+        if(!(await t.query<{open:boolean}>('select media_private_channel_open($1,$2) as open',[org,channel])).rows[0]?.open)throw new MediaError('RESOURCE_DELETING');
+        const id=await registerPendingMedia(t,org,channel,{source:'UPLOAD',sourceKey,kind:file.kind,fileName:file.fileName,descriptor:uploadDescriptor});
+        const existing=(await t.query<MediaAsset>('select * from messaging_media where organization_id=$1 and id=$2',[org,id])).rows[0];
+        if(!existing||JSON.stringify(existing.descriptor)!==JSON.stringify(uploadDescriptor)&&existing.descriptor.sha256!==sha256||existing.kind!==file.kind||existing.file_name!==file.fileName)throw new MediaError('MEDIA_UPLOAD_IDEMPOTENCY_CONFLICT');
+        return id;
+      });
+      if(privateStore){
+        const ready=await tx(org,async t=>{await control?.authorize?.(t);return (await t.query<{status:string;sha256:string;mime_type:string}>('select status,sha256,mime_type from messaging_media where organization_id=$1 and id=$2',[org,id])).rows[0];});
+        if(ready?.status==='READY'){if(ready.sha256!==sha256||ready.mime_type!==file.mimeType)throw new MediaError('MEDIA_UPLOAD_IDEMPOTENCY_CONFLICT');return id;}
+        const staged=await privateStore.stage(org,id,file,{...(control?.authorize?{authorize:control.authorize}:{})});await privateStore.dispatchPut(org,staged.objectId);
+        await tx(org,async t=>{await control?.authorize?.(t);});return id;
+      }
+      await tx(org,async t=>{
+        await control?.authorize?.(t);
+        if(!(await t.query<{open:boolean}>('select media_private_channel_open($1,$2) as open',[org,channel])).rows[0]?.open)throw new MediaError('RESOURCE_DELETING');
+        await t.query("select pg_advisory_xact_lock(hashtextextended('media-storage:'||$1,0))",[org]);
+        const existing=(await t.query<{status:string;sha256:string;mime_type:string}>('select status,sha256,mime_type from messaging_media where organization_id=$1 and id=$2 for update',[org,id])).rows[0];
+        if(existing?.status==='READY'){if(existing.sha256!==sha256||existing.mime_type!==file.mimeType)throw new MediaError('MEDIA_UPLOAD_IDEMPOTENCY_CONFLICT');return;}
+        const used=Number((await t.query<{bytes:string}>(`select coalesce((select sum(byte_size) from messaging_media where organization_id=$1 and storage_backend='INLINE_V1'),0)+coalesce((select sum(reserved_bytes) from media_private_objects where organization_id=$1),0) as bytes`,[org])).rows[0]!.bytes);
+        if(used+file.bytes.byteLength>maximum)throw new MediaError('MEDIA_STORAGE_LIMIT');
+        const encrypted=vault.encrypt(`${org}:media:${id}`,Buffer.from(file.bytes).toString('base64'));
+        await t.query(`update messaging_media set encrypted_data=$3,byte_size=$4,sha256=$5,mime_type=$6,status='READY',last_error=NULL,updated_at=now() where organization_id=$1 and id=$2 and source='UPLOAD' and status='PENDING'`,[org,id,encrypted,file.bytes.byteLength,sha256,file.mimeType]);
+      });return id;
+    },
     async read(org: string, id: string, control?: PrivateMediaReadControl): Promise<BinaryMedia> {
       if (privateStore) return privateStore.read(org, id, control);
       const row = await tx(
@@ -162,7 +194,7 @@ export function createMediaStore(options: MediaStoreOptions) {
         );
         const candidate = (
           await t.query<{ id: string }>(
-            "SELECT id FROM messaging_media WHERE organization_id=$1 AND storage_backend='INLINE_V1' AND private_object_id IS NULL AND status='PENDING' AND available_at<=now() ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1",
+            "SELECT id FROM messaging_media WHERE organization_id=$1 AND storage_backend='INLINE_V1' AND private_object_id IS NULL AND status='PENDING' AND source<>'UPLOAD' AND available_at<=now() ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1",
             [org],
           )
         ).rows[0];

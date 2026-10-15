@@ -1,7 +1,9 @@
 import { AttendanceError } from '../../modules/attendance/types.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { AUTOMATION_NODE_CATALOG_V1, AutomationGraphV1Schema, IdempotencyHeadersSchema, nodeDiagnosticsToStrings, type NodeDiagnostic } from '@jrc/contracts';
+import { AUTOMATION_NODE_CATALOG_V1, AutomationGraphV1Schema, IdempotencyHeadersSchema, ActionResourceWriteSchema,
+  ActionCatalogPageSchema, AutomationResourceChannelsSchema, AutomationMediaAssetSchema, nodeDiagnosticsToStrings, type NodeDiagnostic } from '@jrc/contracts';
+import { MediaError, SUPPORTED_UPLOAD_MIME_TYPES } from '@jrc/providers';
 import {tenantOperationalProblem} from '../../modules/tenancy/operational-limits.js';
 import { z } from 'zod';
 import { SimulationInputSchema } from '../../modules/automations/simulation.js';
@@ -22,12 +24,33 @@ export async function registerAutomationRoutes(app:FastifyInstance,options:Autom
   app.decorateRequest('authentication',null);app.addHook('onRequest',async(_request,reply)=>{reply.header('Cache-Control','no-store');});
   app.setErrorHandler((error,request,reply)=>{const operational=tenantOperationalProblem(error,request.id);if(operational)return reply.code(operational.status).type('application/problem+json').send(operational);if(error instanceof AttendanceError)return problem(reply,request,error.statusCode,error.code);if(error instanceof AutomationError)return problem(reply,request,error.statusCode,error.code,error.details);
     if(error instanceof IdempotencyConflictError)return problem(reply,request,409,error.code);
+    if(error instanceof MediaError)return problem(reply,request,error.code==='MEDIA_SIZE_LIMIT'?413:422,error.code);
     const candidate=error as {validation?:unknown;statusCode?:number};const status=candidate.validation||error instanceof z.ZodError?400:candidate.statusCode===413?413:500;return problem(reply,request,status,status===400?'INVALID_REQUEST':'AUTOMATION_UNAVAILABLE');});
   const auth=authenticateRequest(options),guard=(write:boolean)=>async(request:FastifyRequest,reply:FastifyReply)=>{const identity=request.authentication;
     const role=identity?.kind==='JWT'?await options.resolveCurrentRole(identity.actorId,identity.organizationId):null;
     if(!role||(write&&!['OWNER','ADMIN'].includes(role)))return problem(reply,request,403,'FORBIDDEN');};
   const read=[auth,guard(false)],write=[auth,guard(true)],api=app.withTypeProvider<ZodTypeProvider>();
   const org=(request:FastifyRequest)=>request.authentication!.organizationId;
+  const catalogQuery=z.strictObject({pageSize:z.coerce.number().int().min(1).max(200).optional(),cursor:z.string().regex(/^[A-Za-z0-9_-]{1,256}$/u).optional()});
+  const catalogInput=(query:z.infer<typeof catalogQuery>)=>({...(query.pageSize===undefined?{}:{pageSize:query.pageSize}),...(query.cursor===undefined?{}:{cursor:query.cursor})});
+  const resourceParams=params.extend({channelId:z.uuid()}),mediaParams=resourceParams.extend({mediaId:z.uuid()});
+  api.get('/v1/automations/:id/resource-channels',{preHandler:read,schema:{params,querystring:catalogQuery,response:{200:AutomationResourceChannelsSchema}}},request=>options.service.resourceChannels(org(request),request.params.id,catalogInput(request.query)));
+  api.get('/v1/automations/:id/channels/:channelId/action-catalog',{preHandler:read,schema:{params:resourceParams,querystring:catalogQuery,response:{200:ActionCatalogPageSchema}}},request=>options.service.actionCatalog(org(request),request.params.id,request.params.channelId,catalogInput(request.query)));
+  api.post('/v1/automations/:id/channels/:channelId/action-resources',{preHandler:write,schema:{params:resourceParams,querystring:empty,body:ActionResourceWriteSchema}},request=>options.service.saveActionResource(org(request),request.params.id,request.params.channelId,request.body));
+  api.get('/v1/automations/:id/channels/:channelId/media',{preHandler:read,schema:{params:resourceParams,querystring:empty}},request=>options.service.mediaCatalog(org(request),request.params.id,request.params.channelId));
+  api.post('/v1/automations/:id/channels/:channelId/media/:mediaId/revoke',{preHandler:write,schema:{params:mediaParams,querystring:empty,body:z.strictObject({revision:z.number().int().positive()})}},request=>options.service.revokeMedia(org(request),request.params.id,request.params.channelId,request.params.mediaId,request.body.revision));
+  if(!app.hasContentTypeParser('application/octet-stream'))app.addContentTypeParser('application/octet-stream',{parseAs:'buffer',bodyLimit:16*1024*1024},(_request,body,done)=>done(null,body));
+  app.post('/v1/automations/:id/channels/:channelId/media',{onRequest:write,preHandler:guard(true),bodyLimit:16*1024*1024},async(request,reply)=>{
+    const input=resourceParams.parse(request.params);
+    const headers=z.object({'content-type':z.literal('application/octet-stream'),'x-jrc-media-mime':z.enum(SUPPORTED_UPLOAD_MIME_TYPES),
+      'x-jrc-media-kind':z.enum(['image','audio','video','document']),'x-jrc-media-name':z.string().min(1).max(765),'idempotency-key':z.uuid()}).parse(request.headers);
+    empty.parse(request.query);
+    if(!Buffer.isBuffer(request.body)||!request.body.byteLength)throw new AutomationError('AUTOMATION_MEDIA_UPLOAD_INVALID',400);
+    let fileName:string;try{fileName=decodeURIComponent(headers['x-jrc-media-name']);}catch{throw new AutomationError('AUTOMATION_MEDIA_UPLOAD_INVALID',400);}
+    const uploaded=AutomationMediaAssetSchema.parse(await options.service.uploadMedia(org(request),input.id,input.channelId,{bytes:new Uint8Array(request.body),mimeType:headers['x-jrc-media-mime'],fileName,kind:headers['x-jrc-media-kind'],idempotencyKey:headers['idempotency-key']}));
+    await guard(true)(request,reply);if(reply.sent)return reply;
+    return reply.code(201).send(uploaded);
+  });
   api.get('/v1/automations/status',{preHandler:read,schema:{querystring:empty}},async request=>options.service.status(org(request),(await options.resolveCurrentRole(request.authentication!.actorId!,org(request)))??'VIEWER'));
   api.get('/v1/automation-nodes',{preHandler:read,schema:{querystring:empty}},()=>({schemaVersion:1,data:AUTOMATION_NODE_CATALOG_V1}));
   api.get('/v1/automations',{preHandler:read,schema:{querystring:z.strictObject({pageSize:z.coerce.number().int().min(1).max(200).optional(),cursor:z.string().min(1).max(256).optional()})}},request=>options.service.list(org(request),{

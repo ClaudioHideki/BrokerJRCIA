@@ -16,7 +16,7 @@ it('keeps import graph bytes independent from control response bounds',async()=>
 });
 it('accepts bounded raw media only under opaque Flow session authority and rejects extra tenant headers',async()=>{
  const h=await harness(),key=randomUUID(),mediaHeaders={...headers,'content-type':'application/octet-stream','x-jrc-media-mime':'image/png','x-jrc-media-kind':'image','x-jrc-media-name':'imagem.png','idempotency-key':key},url=`/v1/delegated-flows/${id}/channels/${channel}/media`;
- expect((await h.app.inject({method:'POST',url,headers:mediaHeaders,payload:Buffer.from([0,1,2])})).statusCode).toBe(200);expect(h.service.uploadMedia).toHaveBeenCalledWith(access,id,channel,{bytes:Buffer.from([0,1,2]),mimeType:'image/png',kind:'image',fileName:'imagem.png',idempotencyKey:key});
+ expect((await h.app.inject({method:'POST',url,headers:mediaHeaders,payload:Buffer.from([0,1,2])})).statusCode).toBe(201);expect(h.service.uploadMedia).toHaveBeenCalledWith(access,id,channel,{bytes:Buffer.from([0,1,2]),mimeType:'image/png',kind:'image',fileName:'imagem.png',idempotencyKey:key});
  expect((await h.app.inject({method:'POST',url,headers:{...mediaHeaders,'x-organization-id':org},payload:Buffer.from([0,1,2])})).statusCode).toBe(400);
  expect((await h.app.inject({method:'POST',url,headers:{...mediaHeaders,authorization:'Bearer '+'c'.repeat(43)},payload:Buffer.from([0,1,2])})).statusCode).toBe(401);
 });

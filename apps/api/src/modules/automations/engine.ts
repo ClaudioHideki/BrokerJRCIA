@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { FlowGraphSchema, AutomationHandoffConfigSchema, hasNativeHandoffConfig, automationNodePorts, menuOptions,InputCaptureConfigSchema,
+  ConversationEffectConfigSchema, MediaEffectConfigSchema, ConversationEffectWaitSchema,
   type AutomationGraphV1, type FlowNode } from '@jrc/contracts';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
 import { executeDataNode } from './data-nodes.js';
@@ -65,6 +66,22 @@ export async function executeAutomation(
       if(input.eventType!=='TIMER'||(wakeAt&&input.now.getTime()<wakeAt.getTime()))return finish({status:'WAITING',state,effects,trace,wait:{kind:'DELAY',nodeId:waiting.id,...(wakeAt?{wakeAt}:{})}});
       current=next(published.graph,waiting.id)??null;
     }else if(state.waiting.kind==='IO'){
+      if(waiting.data.conversationEffectVersion===2||waiting.data.mediaEffectVersion===2){
+        const saved=state.waiting;
+        if(!saved.waitId)throw new Error('AUTOMATION_EFFECT_WAIT_INVALID');
+        const pending=()=>finish({status:'WAITING',state,effects,trace,wait:{kind:'IO',nodeId:waiting.id,waitId:saved.waitId!}});
+        if(input.eventType!=='RESUME'||input.payload?.waitId!==saved.waitId)return pending();
+        const outcome=input.payload.outcome;
+        if(!['success','error','timeout'].includes(String(outcome))){
+          trace.push({nodeId:waiting.id,type:waiting.type,label:waiting.label,input:{},output:{outcome:'unknown',pending:true}});
+          return pending();
+        }
+        if(waiting.type==='resolve'){
+          if(outcome!=='success')throw new Error('AUTOMATION_CONVERSATION_RESOLVE_FAILED');
+          state.nodeId=null;state.stack=[];delete state.waiting;
+          return finish({status:'COMPLETED',state,effects,trace});
+        }
+      }
       if(input.eventType!=='RESUME')return finish({status:'WAITING',state,effects,trace,wait:{kind:'IO',nodeId:waiting.id}});
       const target=string(waiting.data.target),output=input.payload?.output;
       if(safeKey(target))variables[target]=stateVersion===1?runtimeJson(runtimeText(runtimeJson(output??null))):runtimeJson(output);
@@ -171,6 +188,18 @@ export async function executeAutomation(
         if(!current)throw new Error('AUTOMATION_DATA_RETURN_MISSING');continue;
       }
       record.output=executeDataNode(node.type,node.data,variables,stateVersion===2?'json':'legacy');
+    }
+    if(node.data.conversationEffectVersion===2||node.data.mediaEffectVersion===2){
+      const config=node.type==='media'?MediaEffectConfigSchema.parse(node.data):ConversationEffectConfigSchema.parse(node.data);
+      if(node.type!=='media'&&(!('operation' in config)||config.operation!==node.type))throw new Error('AUTOMATION_EFFECT_CONFIG_INVALID');
+      const waitId=input.effectWaitId?.({automationId:state.automationId,version:state.version,nodeId:node.id,step:state.steps})??randomUUID();
+      ConversationEffectWaitSchema.parse({nodeId:node.id,operation:node.type,waitId});
+      const kind=node.type==='media'?'SEND_MEDIA':'IO_CONVERSATION';
+      const payload={...config,nodeType:node.type,runtimeStateVersion:stateVersion,variables,waitId,
+        definitionAutomationId:state.automationId,definitionVersion:state.version};
+      record.output={queued:true,kind,waitId};effects.push({nodeId:node.id,ordinal:effects.length,kind,payload});
+      state.nodeId=node.id;state.waiting={kind:'IO',nodeId:node.id,waitId};
+      return finish({status:'WAITING',state,effects,trace,wait:{kind:'IO',nodeId:node.id,waitId}});
     }
     if(ioTypes.has(node.type)){
       const kind=node.type==='http'?'IO_HTTP':node.type==='sql'?'IO_SQL':node.type==='code'?'IO_CODE':'IO_AI';

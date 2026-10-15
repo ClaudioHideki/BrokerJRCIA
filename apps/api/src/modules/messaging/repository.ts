@@ -6,6 +6,7 @@ import { beginQrDispatchAttempt, completeQrDispatchAttempt, recoverQrOutboundObs
 import {canAdvanceMessageState,lockMessageStatusKey as lockMetaStatusKey} from './message-state.js';
 export {canAdvanceMessageState} from './message-state.js';
 import { AUTOMATION_ORIGIN } from '@jrc/contracts';
+import {assertQueuedMediaAuthority} from '../automations/conversation-media.js';
 import type { QueryResultRow } from "pg";
 
 import type { TenantTransaction } from "../../db/tenant-transaction.js";
@@ -1274,6 +1275,9 @@ export function createPostgresMessagingRepository(): MessagingRepository {
         return { eligible: false, reason: "ORGANIZATION_NOT_ACTIVE" };
       }
       const channel=(await transaction.query<{channel_id:string}>('SELECT channel_id FROM messaging_messages WHERE organization_id=$1 AND id=$2',[input.organizationId,input.messageId])).rows[0];
+      let automationMediaAllowed=true;
+      try{await assertQueuedMediaAuthority(transaction,input.organizationId,input.messageId);}
+      catch(error){if(!(error instanceof Error)||!error.message.startsWith('AUTOMATION_'))throw error;automationMediaAllowed=false;}
       if(channel)await lockAttendanceChannelRead(transaction,input.organizationId,channel.channel_id);
       const selected = first(
         await transaction.query<ClaimDatabaseRow>(
@@ -1353,7 +1357,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
         selected.mode === "HUMAN"
       )
         reason = "CONVERSATION_PAUSED";
-      else if ((selected as ClaimDatabaseRow & {flowAllowed?:boolean}).flowAllowed===false)
+      else if (!automationMediaAllowed||(selected as ClaimDatabaseRow & {flowAllowed?:boolean}).flowAllowed===false)
         reason = "FLOW_REVOKED";
       else {
         const updated = first(

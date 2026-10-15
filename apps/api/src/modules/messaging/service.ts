@@ -24,6 +24,7 @@ import { recordManualAttendanceTakeover } from '../attendance/manual-takeover.js
 import { readChatwootAttendanceGate } from '../attendance/control-service.js';
 import { AttendanceError } from '../attendance/types.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
+import { readLocalConversationContext } from './conversation-facts.js';
 import { abandonQrOutboundObservation, listQrOutboundObservations, abandonQrDispatchAttempt, listQrDispatchAttempts } from './qr-outbound-observation.js';
 import {
   claimIdempotency,
@@ -356,7 +357,8 @@ export function createMessagingService(
         if(!channel || channel.organizationId!==organizationId || conversation.organizationId!==organizationId)
           throw new MessagingRepositoryError('CONVERSATION_NOT_FOUND',404);
         const {id,channelId,contactId,mode}=conversation;
-        return {id,channelId,contactId,mode};
+        const localContext=await readLocalConversationContext(tx,organizationId,channelId,id);
+        return {id,channelId,contactId,mode,...(localContext?{localContext}:{})};
       });
     },
     async sendTemplate(organizationId, channelId, rawInput, idempotencyKey) {

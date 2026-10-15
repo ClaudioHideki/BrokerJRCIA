@@ -17,6 +17,7 @@ import { createLocalHandoffService } from '../modules/attendance/local-handoff.j
 import type { OrganizationTransaction } from '../db/tenant-transaction.js';
 import { lockAttendanceChannel } from '../modules/attendance/repository.js';
 import { reserveCentralAutomationSend } from '../modules/messaging/central-dispatcher.js';
+import {createConversationEffectRuntime} from '../modules/automations/conversation-runtime.js';
 
 export function loadAutomationWorkerConfig(environment:NodeJS.ProcessEnv){const databaseUrl=z.string().url().parse(environment.DATABASE_URL);
   if(new URL(databaseUrl).username!=='jrc_app')throw new Error('AUTOMATION_WORKER_REQUIRES_APP_ROLE');return {databaseUrl,intervalMs:z.coerce.number().int().min(100).max(60000).default(1000).parse(environment.AUTOMATION_WORKER_INTERVAL_MS)};}
@@ -79,9 +80,12 @@ export async function runAutomationWorker(environment:NodeJS.ProcessEnv=process.
   const handoff=integrations.dashboardClient&&integrations.chatwoot?createNativeHandoffService({transact,client:integrations.dashboardClient,
     attendanceService:{validateTarget:integrations.chatwoot.validateHumanDestination,catalog:integrations.chatwoot.attendanceCatalog}}):undefined;
   const outbox=createOutboxDispatcher({transact,repository,enabled},createAutomationEffectDispatcher({transact,messaging:createPostgresMessagingRepository(),...(handoff?{handoff}:{})}));
+  const conversationEffects=integrations.conversationEffects??createConversationEffectRuntime({transact,...(integrations.media?{media:integrations.media}:{}),
+    ...(integrations.dashboardClient?{client:integrations.dashboardClient}:{})});
+  const conversationOutbox=createOutboxDispatcher({transact,repository,enabled},conversationEffects.dispatcher,['IO_CONVERSATION','SEND_MEDIA']);
   const abort=new AbortController(),stop=()=>abort.abort();process.once('SIGINT',stop);process.once('SIGTERM',stop);
   try{do{await scanOperationalOrganizations(async(cursor,batchSize)=>(await pool.query<{organization_id:string}>('select * from operational_worker_organizations($1,$2)',[cursor,batchSize])).rows.map(row=>row.organization_id),
-    async org=>{await transact(org,tx=>recordAutomationHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId,enabled));if(enabled)await integrations.groupAutomation?.refreshCatalogsOnce?.(org);if(enabled)await resume.runOnce(org);await execution.runOnce(org);if(enabled&&handoff)await handoff.reconcileOnce(org);if(enabled)await integrations.groupAutomation?.enqueueEffectsOnce(org);await outbox.runOnce(org);},abort.signal,
+    async org=>{await transact(org,tx=>recordAutomationHeartbeat(tx,org,'AUTOMATION_WORKER',instanceId,enabled));if(enabled)await integrations.groupAutomation?.refreshCatalogsOnce?.(org);if(enabled)await resume.runOnce(org);await execution.runOnce(org);if(enabled&&handoff)await handoff.reconcileOnce(org);if(enabled)await integrations.groupAutomation?.enqueueEffectsOnce(org);await outbox.runOnce(org);if(enabled)await conversationEffects.reconcileOnce(org);await conversationOutbox.runOnce(org);},abort.signal,
     (_error,org)=>process.stderr.write(JSON.stringify({event:'AUTOMATION_WORKER_ORGANIZATION_FAILED',organizationId:org})+'\n'));
     if(watch&&!abort.signal.aborted)await setTimeout(config.intervalMs,undefined,{signal:abort.signal}).catch(()=>undefined);
   }while(watch&&!abort.signal.aborted);}finally{process.off('SIGINT',stop);process.off('SIGTERM',stop);await pool.end();}}

@@ -1,0 +1,5 @@
+:host { display:block; min-width:0; }
+.native-flow-app { min-height:0; padding:1rem; border:1px solid var(--jrc-border); border-radius:.75rem; }
+.native-flow-app .automation-cards { margin-top:1rem; }
+.native-flow-app .automation-narrow>label { display:grid; gap:.5rem; margin:1rem 0; }
+.native-flow-app .automation-narrow>button { margin:.5rem .5rem .5rem 0; }

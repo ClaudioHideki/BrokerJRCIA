@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AUTOMATION_ORIGIN, AutomationGraphV1Schema, AutomationHandoffConfigSchema, AutomationSubflowCatalogPageSchema, nodeDiagnosticsToStrings, publishedDependencyPolicy, type AutomationGraphV1 } from '@jrc/contracts';
+import { AUTOMATION_ORIGIN, AutomationGraphV1Schema, AutomationHandoffConfigSchema, AutomationSubflowCatalogPageSchema, nodeDiagnosticsToStrings, publishedDependencyPolicy, type AutomationGraphV1, type ActionResourceWrite } from '@jrc/contracts';
 import { z } from 'zod';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import { executeAutomation, validateAutomationGraph } from './engine.js';
@@ -18,9 +18,11 @@ import {AutomationError} from './errors.js';
 import {prepareSubflowSnapshot,type SubflowSnapshot} from './subflow-dependencies.js';
 import {assertAiPolicies,readAiCredentialCatalog} from './ai-policy.js';
 import {assertHttpQueryPolicies,readHttpCredentialCatalog} from './http-query-policy.js';
+import {createConversationResourceService,assertConversationResourcePolicies,type ConversationCatalogPort} from './conversation-resources.js';
+import type {MediaStore} from '../messaging/media-store.js';
 
 export {AutomationError} from './errors.js';
-export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean;runtimeReady?(org:string):Promise<boolean>;handoffReadiness?:HandoffReadiness}
+export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean;runtimeReady?(org:string):Promise<boolean>;handoffReadiness?:HandoffReadiness;media?:Pick<MediaStore,'writeUpload'|'read'>;conversationCatalog?:ConversationCatalogPort;resourceAuthorization?:(tx:TenantTransaction,org:string,root:string,channel:string)=>Promise<void>}
 export async function requireAutomationDraftAccess(tx:TenantTransaction,org:string){
  const access=await readAutomationAccess(tx,org);
  if(access?.status!=='ACTIVE')throw new AutomationError('ORGANIZATION_NOT_ACTIVE',403);
@@ -57,13 +59,16 @@ const readSubflowCursor=(value:string)=>{
 
 export function createAutomationService(options:AutomationServiceOptions){
   const repository=options.repository??createPostgresAutomationRepository(),messaging=options.messaging??createPostgresMessagingRepository(),enabled=options.enabled??true;
+  const resources=createConversationResourceService(options);
   const available=async(org:string)=>{if(!enabled)throw new AutomationError('AUTOMATION_RUNTIME_DISABLED',409);if(options.runtimeReady&&!await options.runtimeReady(org))throw new AutomationError('AUTOMATION_DEPENDENCY_UNAVAILABLE',503);};
   const getDefinition=async(tx:TenantTransaction,org:string,id:string,lock=false)=>{
     const row=await repository.getDefinition(tx,org,id,lock);if(!row)throw new AutomationError('AUTOMATION_NOT_FOUND',404);return row;};
   const resolveVersion=async(tx:TenantTransaction,org:string,id:string,number:number):Promise<PublishedAutomation>=>{
     const row=await repository.getVersion(tx,org,id,number);if(!row)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return {automationId:id,version:number,graph:row.graph,runtimeStateVersion:row.runtimeStateVersion??1};};
-  const validateDependencies=async(tx:TenantTransaction,org:string,rootId:string,graph:AutomationGraphV1)=>{
-    const snapshot=await prepareSubflowSnapshot(tx,org,{automationId:rootId,version:1,graph,runtimeStateVersion:2},repository,'NEW');await assertHttpQueryPolicies(tx,org,snapshot);await assertAiPolicies(tx,org,snapshot);return snapshot;
+  const validateDependencies=async(tx:TenantTransaction,org:string,rootId:string,graph:AutomationGraphV1,verifyResources=true)=>{
+    const snapshot=await prepareSubflowSnapshot(tx,org,{automationId:rootId,version:1,graph,runtimeStateVersion:2},repository,'NEW');await assertHttpQueryPolicies(tx,org,snapshot);await assertAiPolicies(tx,org,snapshot);
+    if(verifyResources)for(const value of snapshot.versions)await assertConversationResourcePolicies(tx,org,value.automationId,[value.graph]);
+    return snapshot;
   };
   // Remote checks run before the committing transaction. Published dependencies
   // are immutable; draft revision and local destination snapshots are checked again.
@@ -92,6 +97,12 @@ export function createAutomationService(options:AutomationServiceOptions){
     return {async assertCurrent(tx){for(const check of checks)await check.assertCurrent(tx);}};
   };
   return {
+    resourceChannels:(org:string,id:string,input:{pageSize?:number;cursor?:string}={})=>resources.resourceChannels(org,id,input),
+    actionCatalog:(org:string,id:string,channel:string,input:{pageSize?:number;cursor?:string}={})=>resources.actionCatalog(org,id,channel,input),
+    saveActionResource:(org:string,id:string,channel:string,input:ActionResourceWrite)=>resources.saveResource(org,id,channel,input),
+    uploadMedia:(org:string,id:string,channel:string,input:Parameters<typeof resources.uploadMedia>[3])=>resources.uploadMedia(org,id,channel,input),
+    mediaCatalog:(org:string,id:string,channel:string)=>resources.mediaCatalog(org,id,channel),
+    revokeMedia:(org:string,id:string,channel:string,assetId:string,revision:number)=>resources.revokeMedia(org,id,channel,assetId,revision),
     status:async(org:string,role='OWNER')=>{const access=await options.transact(org,tx=>readAutomationAccess(tx,org));let ready=true;if(enabled&&options.runtimeReady)try{ready=await options.runtimeReady(org);}catch{ready=false;}return automationAvailability(access,enabled,role,ready);},
     aiCredentialCatalog:(org:string,id:string,input:{pageSize?:number;cursor?:string}={})=>options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const root=await getDefinition(tx,org,id);if(root.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);return readAiCredentialCatalog(tx,org,id,input);}),
     httpCredentialCatalog:(org:string,id:string,input:{pageSize?:number;cursor?:string}={})=>options.transact(org,async tx=>{
@@ -132,18 +143,22 @@ export function createAutomationService(options:AutomationServiceOptions){
     simulate:(org:string,id:string,input:SimulationInput)=>options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);
       const dependencies=await prepareSubflowSnapshot(tx,org,{automationId:id,version:row.activeVersion??1,graph:row.draftGraph,runtimeStateVersion:2},repository,'NEW');
       await assertHttpQueryPolicies(tx,org,dependencies);await assertAiPolicies(tx,org,dependencies);
+      for(const value of dependencies.versions)await assertConversationResourcePolicies(tx,org,value.automationId,[value.graph]);
       try{return await simulateConversation(dependencies.root,input,dependencies.resolve);}catch(error){
         if(error instanceof Error&&error.message.startsWith('AUTOMATION_SIMULATION_'))throw new AutomationError(error.message,409);
         throw error;
       }}),
     publish:async(org:string,id:string,revision:number)=>{await available(org);
       const snapshot=await options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
-        const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);const dependencies=await validateDependencies(tx,org,id,row.draftGraph);return {row,dependencies};});
+        const errors=validateAutomationGraph(row.draftGraph);if(errors.length)throw new AutomationError('AUTOMATION_INVALID',422,errors);const dependencies=await validateDependencies(tx,org,id,row.draftGraph,false);return {row,dependencies};});
+      await resources.refreshGraphs(org,snapshot.dependencies.versions.map(value=>value.graph));
       const readiness=await prepareHandoffs(org,snapshot.dependencies.root.graph,undefined,snapshot.dependencies);
       return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);if(row.draftRevision!==revision)throw new AutomationError('AUTOMATION_CHANGED',409);
       await readiness.assertCurrent(tx);
       const dependencies=await validateDependencies(tx,org,id,row.draftGraph),graph=dependencies.root.graph;
-      const next=(row.activeVersion??0)+1,checksum=createHash('sha256').update(canonical(graph)).digest('hex');const published=await repository.insertVersion(tx,{org,id,version:next,graph,checksum,runtimeStateVersion:2});await repository.activateVersion(tx,org,id,next);return version(published);});},
+      const next=(row.activeVersion??0)+1,checksum=createHash('sha256').update(canonical(graph)).digest('hex');const published=await repository.insertVersion(tx,{org,id,version:next,graph,checksum,runtimeStateVersion:2});
+      await assertConversationResourcePolicies(tx,org,id,[graph],{automationId:id,version:next});
+      await repository.activateVersion(tx,org,id,next);return version(published);});},
     setArchived:(org:string,id:string,archived:boolean,actorId?:string)=>{return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);
       let row=await getDefinition(tx,org,id);
       if((row.lifecycleStatus==='ARCHIVED')===archived)return definition(row);
@@ -178,18 +193,24 @@ export function createAutomationService(options:AutomationServiceOptions){
     bindings:(org:string,id:string)=>options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listBindings(tx,org,id)).map(row=>({...row,createdAt:iso(row.createdAt),updatedAt:iso(row.updatedAt),schemaVersion:1}))};}),
     bind:async(org:string,id:string,input:{channelId:string;version?:number;humanDestinationId?:string|null;expectedOwnerRevision?:number})=>{await available(org);
       const prepared=await options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);const selected=input.version??row.activeVersion;if(!selected)throw new AutomationError('AUTOMATION_NOT_PUBLISHED',409);const version=await repository.getVersion(tx,org,id,selected);if(!version)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return version;});
-      const readiness=await prepareHandoffs(org,prepared.graph,input.channelId);
+      const resourceSnapshot=await options.transact(org,tx=>prepareSubflowSnapshot(tx,org,{automationId:id,version:prepared.version,graph:prepared.graph,runtimeStateVersion:prepared.runtimeStateVersion??1},repository,'HISTORICAL'));
+      await resources.refreshGraphs(org,resourceSnapshot.versions.map(value=>value.graph));
+      const readiness=await prepareHandoffs(org,prepared.graph,input.channelId,resourceSnapshot);
       return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);const selected=input.version??row.activeVersion;if(selected!==prepared.version)throw new AutomationError('AUTOMATION_CHANGED',409);if(!await repository.getVersion(tx,org,id,selected))throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);
       await readiness.assertCurrent(tx);
+      for(const value of resourceSnapshot.versions)await assertConversationResourcePolicies(tx,org,value.automationId,[value.graph]);
       const channel=await messaging.findChannel(tx,org,input.channelId);if(!channel)throw new AutomationError('CHANNEL_NOT_FOUND',404);
       const result=await transitionChannelOwner(tx,org,{...input,botPublicId:id,botOriginReference:AUTOMATION_ORIGIN,version:selected});const binding=result.binding!;
       return {...binding,ownerRevision:result.ownerRevision,createdAt:iso(binding.createdAt),updatedAt:iso(binding.updatedAt),schemaVersion:1};});},
     setBindingStatus:async(org:string,bindingId:string,input:{status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number;expectedOwnerRevision?:number},automationId:string)=>{
       let readiness:PreparedHandoffReadiness|undefined;
+      let resourceSnapshot:SubflowSnapshot|undefined;
       if(input.status==='ACTIVE'){
         await available(org);
         const snapshot=await options.transact(org,async tx=>{const binding=(await repository.listBindings(tx,org,automationId)).find(item=>item.id===bindingId);if(!binding)throw new AutomationError('AUTOMATION_BINDING_NOT_FOUND',404);if(binding.revision!==input.revision)throw new AutomationError('AUTOMATION_BINDING_CHANGED',409);const version=await repository.getVersion(tx,org,automationId,binding.version);if(!version)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return {binding,version};});
-        readiness=await prepareHandoffs(org,snapshot.version.graph,snapshot.binding.channelId);
+        resourceSnapshot=await options.transact(org,tx=>prepareSubflowSnapshot(tx,org,{automationId,version:snapshot.version.version,graph:snapshot.version.graph,runtimeStateVersion:snapshot.version.runtimeStateVersion??1},repository,'HISTORICAL'));
+        await resources.refreshGraphs(org,resourceSnapshot.versions.map(value=>value.graph));
+        readiness=await prepareHandoffs(org,snapshot.version.graph,snapshot.binding.channelId,resourceSnapshot);
       }
       return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);if(input.status==='ACTIVE')await requireAutomationDraftAccess(tx,org);
       const automation=await getDefinition(tx,org,automationId,true);if(automation.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);
@@ -197,6 +218,7 @@ export function createAutomationService(options:AutomationServiceOptions){
       if(!current)throw new AutomationError('AUTOMATION_BINDING_NOT_FOUND',404);
       if(current.status==='DISABLED'&&input.status!=='DISABLED')throw new AutomationError('AUTOMATION_BINDING_DISABLED',409);
       await readiness?.assertCurrent(tx);
+      if(resourceSnapshot)for(const value of resourceSnapshot.versions)await assertConversationResourcePolicies(tx,org,value.automationId,[value.graph]);
       const result=await transitionChannelOwner(tx,org,{channelId:current.channelId,botPublicId:input.status==='DISABLED'?null:automationId,botOriginReference:input.status==='DISABLED'?null:AUTOMATION_ORIGIN,
         version:current.version,humanDestinationId:current.humanDestinationId,bindingId,bindingRevision:input.revision,bindingStatus:input.status,...(input.expectedOwnerRevision===undefined?{}:{expectedOwnerRevision:input.expectedOwnerRevision})});
       const row=result.binding??(await repository.listBindings(tx,org,automationId)).find(item=>item.id===bindingId)!;
@@ -265,8 +287,8 @@ export function createOutboxDispatcher(options:AutomationServiceOptions,external
   // The row is already UNKNOWN before the external call. A process crash can therefore never cause a blind replay.
   let result:OutboxDispatchResult;try{result=await external.dispatch(item);}catch{result={kind:'UNKNOWN',error:'AUTOMATION_EFFECT_UNKNOWN'};}
   if(result.kind==='UNKNOWN'){const diagnostic=unknownOutboxDiagnostic(result.error);await options.transact(org,tx=>repository.recordUnknownOutbox(tx,org,item.id,leaseToken,diagnostic));return {processed:true,id:item.id,status:'UNKNOWN' as const};}
-  if(result.kind==='SENT')await options.transact(org,async tx=>{if(result.commit)await result.commit(tx);if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});await settleTerminal(tx,org,item,leaseToken,result);});
+  if(result.kind==='SENT')await options.transact(org,async tx=>{if(result.commit)await result.commit(tx);if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload,...(item.kind==='IO_CONVERSATION'||item.kind==='SEND_MEDIA'?{effectReceiptId:item.id}:{})});await settleTerminal(tx,org,item,leaseToken,result);});
   else if(result.kind==='NOT_SENT')await options.transact(org,tx=>repository.settleOutbox(tx,org,item.id,leaseToken,{status:'PENDING',error:result.error,availableAt:result.retryAt}));
-  else await options.transact(org,async tx=>{if(result.commit)await result.commit(tx);if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload});await settleTerminal(tx,org,item,leaseToken,result);});
+  else await options.transact(org,async tx=>{if(result.commit)await result.commit(tx);if(result.resumePayload)await repository.resumeExecution(tx,{org,id:item.executionId,eventId:randomUUID(),eventKey:`io:${item.id}`,payload:result.resumePayload,...(item.kind==='IO_CONVERSATION'||item.kind==='SEND_MEDIA'?{effectReceiptId:item.id}:{})});await settleTerminal(tx,org,item,leaseToken,result);});
   return {processed:true,id:item.id,status:result.kind};
 }};}

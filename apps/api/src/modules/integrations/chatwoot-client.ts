@@ -1,4 +1,9 @@
 import { z } from "zod";
+import { ConversationAttributeDefinitionSchema } from '@jrc/contracts';
+import {
+  CONVERSATION_EFFECT_PROTOCOL, ConversationEffectContextSchema,
+  ConversationEffectReceiptSchema, ConversationEffectRequestSchema,
+} from '../automations/conversation-effect-protocol.js';
 import { createChatwootSafeFetch } from './chatwoot-safe-http.js';
 import {
   MediaError,
@@ -12,6 +17,22 @@ import {
 const integer = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const canonicalInteger = z.union([integer, z.string().regex(/^[1-9]\d{0,15}$/).transform(Number).pipe(integer)]);
 const catalogName=z.string().max(1000);
+const effectIdentity = z.uuid().regex(/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+const effectCapabilities = z.strictObject({
+  protocol: z.literal(CONVERSATION_EFFECT_PROTOCOL), account_id: integer, inbox_id: integer,
+  control_revision_supported: z.boolean(),
+  operations: z.array(z.enum(['tag', 'attribute', 'note', 'resolve'])).max(4),
+  resources: z.array(z.strictObject({ id: integer, kind: z.enum(['LABEL', 'ATTRIBUTE']),
+    name: z.string().min(1).max(120), key: z.string().min(1).max(100),
+    revision: z.string().regex(/^[a-f0-9]{64}$/), definition: ConversationAttributeDefinitionSchema.nullable(),
+  }).refine(resource => (resource.kind === 'ATTRIBUTE') === (resource.definition !== null))).max(2000),
+}).refine(value => new Set(value.operations).size === value.operations.length)
+  .refine(value => value.control_revision_supported || value.operations.length === 0 && value.resources.length === 0);
+function parseEffect<T>(schema: z.ZodType<T>, value: unknown, mutation = false): T {
+  const result = schema.safeParse(value);
+  if (!result.success) throw new ChatwootError('CHATWOOT_INVALID_RESPONSE', !mutation, mutation);
+  return result.data;
+}
 const workingHour=z.object({day_of_week:z.number().int().min(0).max(6),closed_all_day:z.boolean(),open_all_day:z.boolean().optional(),
   open_hour:z.number().int().min(0).max(23).nullable().optional(),open_minutes:z.number().int().min(0).max(59).nullable().optional(),
   close_hour:z.number().int().min(0).max(23).nullable().optional(),close_minutes:z.number().int().min(0).max(59).nullable().optional()});
@@ -149,6 +170,47 @@ export class ChatwootClient {
   }
   private account(id: number) {
     return `/api/v1/accounts/${integer.parse(id)}`;
+  }
+  withRequestTimeout(timeoutMs: number): ChatwootClient {
+    return new ChatwootClient({ ...this.options, fetch: this.fetch,
+      timeoutMs: z.number().int().min(100).max(30_000).parse(timeoutMs) });
+  }
+  async flowEffectCapabilities(accountId: number, inboxId: number) {
+    const data = parseEffect(effectCapabilities, await this.request('GET',
+      `${this.account(accountId)}/jrc_flow_effects/capabilities?inbox_id=${integer.parse(inboxId)}`));
+    if (data.account_id !== accountId || data.inbox_id !== inboxId) throw new ChatwootError('CHATWOOT_BINDING_MISMATCH', true);
+    return data;
+  }
+  async flowEffectContext(accountId: number, inboxId: number, conversationId: number) {
+    integer.parse(inboxId);
+    const data = parseEffect(ConversationEffectContextSchema, await this.request('GET',
+      `${this.account(accountId)}/conversations/${integer.parse(conversationId)}/jrc_flow_effects/context`));
+    if (data.account_id !== accountId || data.inbox_id !== inboxId || data.conversation_id !== conversationId) {
+      throw new ChatwootError('CHATWOOT_BINDING_MISMATCH', true);
+    }
+    return data;
+  }
+  async applyFlowEffect(accountId: number, conversationId: number, raw: unknown) {
+    const input = ConversationEffectRequestSchema.parse(raw);
+    const data = parseEffect(ConversationEffectReceiptSchema, await this.request('POST',
+      `${this.account(accountId)}/conversations/${integer.parse(conversationId)}/jrc_flow_effects`, input), true);
+    if (data.account_id !== accountId || data.inbox_id !== Number(input.inbox_id) || data.conversation_id !== conversationId ||
+        data.organization_id !== input.organization_id || data.operation_id !== input.operation_id) {
+      throw new ChatwootError('CHATWOOT_BINDING_MISMATCH', false, true);
+    }
+    return data;
+  }
+  async flowEffectReceipt(accountId: number, conversationId: number,
+    input: { organizationId: string; operationId: string; dispatchProof: string }) {
+    const query = new URLSearchParams({ organization_id: effectIdentity.parse(input.organizationId),
+      dispatch_proof: effectIdentity.parse(input.dispatchProof) });
+    const data = parseEffect(ConversationEffectReceiptSchema, await this.request('GET',
+      `${this.account(accountId)}/conversations/${integer.parse(conversationId)}/jrc_flow_effects/${effectIdentity.parse(input.operationId)}?${query}`));
+    if (data.account_id !== accountId || data.conversation_id !== conversationId ||
+        data.organization_id !== input.organizationId || data.operation_id !== input.operationId) {
+      throw new ChatwootError('CHATWOOT_BINDING_MISMATCH', true);
+    }
+    return data;
   }
   async verifyAccount(accountId: number): Promise<void> {
     const profile = record(await this.request("GET", "/api/v1/profile"));
@@ -623,7 +685,7 @@ export class ChatwootClient {
     accountId: number,
     conversationId: number,
     file: BinaryMedia,
-    input: { incoming: boolean; brokerMessageId: string; messageOrigin?:'EXTERNAL_OBSERVED' },
+    input: { incoming: boolean; brokerMessageId: string; messageOrigin?:'EXTERNAL_OBSERVED'; dispatchProof?:string },
   ): Promise<number> {
     validateMedia(file);
     const form = new FormData();
@@ -633,6 +695,7 @@ export class ChatwootClient {
     form.set(
       "content_attributes",
       JSON.stringify({ jrc_broker_message_id: input.brokerMessageId,
+        ...(input.dispatchProof?{jrc_broker_dispatch_proof:z.string().regex(/^[A-Za-z0-9_-]{43}$/).parse(input.dispatchProof)}:{}),
         ...(input.messageOrigin==='EXTERNAL_OBSERVED'?{jrc_broker_message_origin:input.messageOrigin}:{}) }),
     );
     form.append(

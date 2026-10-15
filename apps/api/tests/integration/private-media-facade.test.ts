@@ -52,6 +52,18 @@ function setup(maxStorageBytes = 100) {
   return { objectStore, privateStore, facade, bytes, actions, downloads };
 }
 
+it('P3 private upload preserves an uncertain PUT and confirms it by inspection without a second upload or provider download',async()=>{
+ const t=await seedAttendanceTenant(db.database,false),h=setup(),store=h.facade();
+ const upload={bytes:new TextEncoder().encode('Arquivo privado'),mimeType:'text/plain',kind:'document' as const,fileName:'teste.txt'};
+ h.objectStore.put=async(ref,body)=>{h.actions.push('PUT');h.bytes.set(ref.operationId,new Uint8Array(body));
+  return {outcome:'UNKNOWN',code:'OBJECT_REQUEST_UNVERIFIED'};};
+ const id=await store.writeUpload(t.org,t.channel,{rootAutomationId:t.automation,idempotencyKey:randomUUID()},upload);
+ expect(await media(id)).toMatchObject({source:'UPLOAD',status:'STORING',storage_backend:'PRIVATE_OBJECT'});
+ await h.facade().runOnce(t.org);
+ expect(await h.facade().read(t.org,id)).toEqual(upload);
+ expect(h.actions).toEqual(['PUT','INSPECT','GET']);expect(h.downloads).toEqual([]);
+});
+
 it('preserves the existing inline facade read/runOnce/retry API without a private store', async () => {
   const t = await seedAttendanceTenant(db.database, false), id = await registration(t), h = setup(), store = h.facade(false);
   expect(await store.runOnce(t.org)).toBeUndefined();

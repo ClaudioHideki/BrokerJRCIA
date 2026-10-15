@@ -37,3 +37,4 @@ export * from './automation-ai.js';
 export * from './flow-delegation.js';
 export * from './flow-delegation-constants.js';
 export * from './integrations/nico-takeovers.js';
+export * from './automation-conversation-effects.js';

@@ -79,6 +79,20 @@ jobs:
       - name: Inspect the production web bundle
         run: npm run test:web:bundle
 
+      - name: Build and inspect the shared native Flow editor from this commit
+        run: npm run build:native-flow-editor -- --out .sessions/native-flow-editor-ci
+
+      - name: Exercise the compiled native editor inside an isolated host
+        run: node scripts/test-native-flow-editor.mjs .sessions/native-flow-editor-ci
+
+      - name: Retain the native editor and its exact source manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-flow-editor-${{ github.sha }}
+          path: .sessions/native-flow-editor-ci/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Apply migrations from an empty PostgreSQL database
         run: npm run db:migrate:test
 

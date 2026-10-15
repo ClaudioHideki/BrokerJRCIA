@@ -439,7 +439,8 @@ describe('PostgresMessagingRepository outbox lifecycle', () => {
   it('muda para SENDING somente na revalidação imediatamente anterior ao HTTP', async () => {
     const sendingMessage = { ...MESSAGE, state: 'SENDING' as const };
     const sendingClaim = { ...CLAIM, message: sendingMessage };
-    const transaction = transactionReturning([{
+    // Ordinary text has no queued P3 media intent before claim revalidation.
+    const transaction = transactionReturning([], [{
       ...CLAIM,
       requiresOptIn: true,
       consentStatus: 'OPTED_IN',
@@ -456,7 +457,8 @@ describe('PostgresMessagingRepository outbox lifecycle', () => {
   });
 
   it('falha claim de texto quando contato revoga consentimento antes do HTTP', async () => {
-    const transaction = transactionReturning([{
+    // The media admission lookup is empty; consent still comes from the claim.
+    const transaction = transactionReturning([], [{
       ...CLAIM,
       contact: { ...CONTACT, consentStatus: 'OPTED_OUT' },
       requiresOptIn: false,

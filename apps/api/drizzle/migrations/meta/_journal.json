@@ -435,6 +435,13 @@
       "when": 1792881600000,
       "tag": "0062_nico_takeover_operations",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1792968000000,
+      "tag": "0063_conversation_effect_protocol",
+      "breakpoints": true
     }
   ]
 }

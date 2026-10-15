@@ -1,6 +1,6 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {z} from 'zod';
-import {AUTOMATION_NODE_CATALOG_V1,AutomationGraphV1Schema,type AutomationGraphV1} from '@jrc/contracts';
+import {AUTOMATION_NODE_CATALOG_V1,AutomationGraphV1Schema,type AutomationGraphV1,type ActionResourceWrite} from '@jrc/contracts';
 import {SimulationInputSchema} from '../../automations/simulation.js';
 import {convertAutomationArtifact} from '../../automation-integrations/importer.js';
 import {createChatwootAttendanceService} from '../../integrations/chatwoot-attendance-service.js';
@@ -177,6 +177,9 @@ export function createFlowDelegationService(options:FlowDelegationOptions){
  }
  async function graphScope(tx:TenantTransaction,org:string,graph:AutomationGraphV1,state:Authority,allowed:Mapping[],seen=new Set<string>()){
   for(const node of graph.nodes){
+   if(['tag','attribute','note','resolve','media'].includes(node.type)&&
+     (node.data.conversationEffectVersion!==undefined||node.data.mediaEffectVersion!==undefined)&&
+     typeof node.data.channelId==='string'&&node.data.channelId!==''&&!allowed.some(scope=>scope.channel_id===node.data.channelId))fail();
    if(node.type==='handoff'&&node.data.destination&&typeof node.data.destination==='object'){
     const target=node.data.destination as Record<string,unknown>;
     const match=allowed.find(scope=>target.kind==='LOCAL'?scope.channel_id===target.channelId&&target.organizationId===org:scope.integration_id===target.integrationId);
@@ -284,6 +287,22 @@ export function createFlowDelegationService(options:FlowDelegationOptions){
   };
   return {...createAutomationService({...options.automation,repository:delegatedRepository,transact}),_transact:transact,
    _releaseBind:async()=>{if(request.bind)await cutovers.releaseBinding(access,request.bind,bindReceipt);}};
+ }
+ async function resourceScoped(access:FlowAccess,id:string,channelId:string,action:'flow:read'|'flow:edit'){
+  z.uuid().parse(channelId);
+  const request={action,id},decision=await nativeDecision(access),common=scoped(access,request);
+  const resourceAuthorization=async(tx:TenantTransaction,org:string,root:string,channel:string)=>{
+   if(org!==access.organizationId||root!==id||channel!==channelId)fail();
+   await guard(tx,access,request,decision);
+   const allowed=await tx.query('SELECT channel_id FROM automation_definition_scopes WHERE organization_id=$1 AND automation_id=$2 AND channel_id=$3 FOR SHARE',[org,id,channelId]);
+   if(allowed.rows.length!==1)fail();
+  };
+  const transact=async<T>(org:string,work:OrganizationTransaction<T>)=>common._transact(org,async tx=>{
+   const allowed=await tx.query('SELECT channel_id FROM automation_definition_scopes WHERE organization_id=$1 AND automation_id=$2 AND channel_id=$3 FOR SHARE',[org,id,channelId]);
+   if(allowed.rows.length!==1)fail();
+   return work(tx);
+  });
+  return createAutomationService({...options.automation,repository,transact,resourceAuthorization});
  }
  async function projectTargets(tx:TenantTransaction,org:string,rows:Mapping[]){
   const profiles=(await tx.query<{integration_id:string;revision:number}>('SELECT integration_id,revision FROM flow_executor_profiles WHERE organization_id=$1 AND integration_id=ANY($2::uuid[]) FOR SHARE',[org,rows.map(row=>row.integration_id)])).rows;
@@ -474,16 +493,15 @@ export function createFlowDelegationService(options:FlowDelegationOptions){
    if(!common.aiCredentialCatalog)throw new AutomationError('AUTOMATION_AI_CATALOG_UNAVAILABLE',503);
    return common.aiCredentialCatalog(access.organizationId,id,input);
   },
+  resourceChannels:(access:FlowAccess,id:string,input:{pageSize?:number;cursor?:string}={})=>scoped(access,{action:'flow:read',id}).resourceChannels(access.organizationId,id,input),
+  actionCatalog:async(access:FlowAccess,id:string,channelId:string,input:{pageSize?:number;cursor?:string}={})=>(await resourceScoped(access,id,channelId,'flow:read')).actionCatalog(access.organizationId,id,channelId,input),
+  saveActionResource:async(access:FlowAccess,id:string,channelId:string,input:ActionResourceWrite)=>(await resourceScoped(access,id,channelId,'flow:edit')).saveActionResource(access.organizationId,id,channelId,input),
+  mediaCatalog:async(access:FlowAccess,id:string,channelId:string)=>(await resourceScoped(access,id,channelId,'flow:read')).mediaCatalog(access.organizationId,id,channelId),
+  revokeMedia:async(access:FlowAccess,id:string,channelId:string,assetId:string,revision:number)=>(await resourceScoped(access,id,channelId,'flow:edit')).revokeMedia(access.organizationId,id,channelId,assetId,revision),
   async uploadMedia(access:FlowAccess,id:string,channelId:string,input:{bytes:Uint8Array;mimeType:string;fileName:string;kind:'image'|'audio'|'video'|'document';idempotencyKey:string}){
    z.uuid().parse(channelId);z.uuid().parse(input.idempotencyKey);
    if(input.bytes.byteLength>16*1024*1024)throw new AutomationError('AUTOMATION_MEDIA_TOO_LARGE',413);
-   const common=scoped(access,{action:'flow:edit',id}),transact=async<T>(org:string,work:OrganizationTransaction<T>)=>common._transact(org,async tx=>{
-    const allowed=await tx.query('SELECT channel_id FROM automation_definition_scopes WHERE organization_id=$1 AND automation_id=$2 AND channel_id=$3 FOR SHARE',[org,id,channelId]);
-    if(allowed.rows.length!==1)fail();return work(tx);
-   });
-   const uploader=createAutomationService({...options.automation,repository:createPostgresAutomationRepository(),transact}) as ReturnType<typeof createAutomationService>&{uploadMedia?:(org:string,id:string,channelId:string,uploadInput:typeof input)=>Promise<unknown>};
-   if(!uploader.uploadMedia)throw new AutomationError('AUTOMATION_MEDIA_UNAVAILABLE',503);
-   return uploader.uploadMedia(access.organizationId,id,channelId,input);
+   return (await resourceScoped(access,id,channelId,'flow:edit')).uploadMedia(access.organizationId,id,channelId,input);
   },
   async handoffConnections(access:FlowAccess,id:string){
    if(!options.chatwootStatus)fail('FLOW_ACCOUNT_CLIENT_REQUIRED',503);

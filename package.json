@@ -14,6 +14,7 @@
     "dev:web": "npm --workspace @jrc/web run dev -- --host 127.0.0.1 --port 4317",
     "build": "tsc -b && npm --workspace @jrc/web run build",
     "build:web": "npm --workspace @jrc/web run build",
+    "build:native-flow-editor": "node scripts/build-native-flow-editor.mjs",
     "clean": "tsc -b --clean",
     "db:migrate:test": "node apps/api/dist/db/migrate.js",
     "db:schema:status": "node apps/api/dist/db/schema-status.js",

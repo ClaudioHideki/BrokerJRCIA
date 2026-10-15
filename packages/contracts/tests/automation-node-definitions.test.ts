@@ -38,7 +38,7 @@ describe('canonical automation node definitions', () => {
     for(const type of documented)expect(getNodeDefinition(type!,1)).toMatchObject({runtimeSupported:true,capabilitiesRequired:[],unavailableReason:null});
   });
   it('recognizes versioned legacy nodes independently of creation availability', () => {
-    for (const type of ['sql', 'code', 'ai-agent', 'media', 'tag', 'attribute', 'note', 'resolve']) {
+    for (const type of ['sql', 'code', 'ai-agent']) {
       const definition = getNodeDefinition(type, 1);
       expect(definition, type).not.toBeNull();
       expect(definition?.availability).toBe('UNAVAILABLE');
@@ -46,6 +46,9 @@ describe('canonical automation node definitions', () => {
     }
     expect(getNodeDefinition('message', 2)).toBeNull();
     expect(getNodeDefinition('unknown', 1)).toBeNull();
+  });
+  it.each(['media','tag','attribute','note','resolve'])('offers the implemented %s while checking the selected box capability at runtime',type=>{
+    expect(getNodeDefinition(type,1)).toMatchObject({availability:'AVAILABLE',runtimeSupported:true,capabilitiesRequired:[],unavailableReason:null});
   });
   it('uses exactly the contract ports for every definition', () => {
     for (const definition of AUTOMATION_NODE_DEFINITIONS) {

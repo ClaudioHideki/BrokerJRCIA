@@ -40,6 +40,9 @@ import { automationRuntimeEnabled } from '../automations/availability.js';
 import { createWhatsAppGroupEvents } from '../whatsapp-groups/events.js';
 import { createGroupAutomationRuntime } from '../whatsapp-groups/automation-runtime.js';
 import { createWhatsAppGroupCatalog } from '../whatsapp-groups/service.js';
+import {createConversationEffectRuntime} from '../automations/conversation-runtime.js';
+import {assertQueuedMediaAuthority} from '../automations/conversation-media.js';
+import type {TenantTransaction} from '../../db/tenant-transaction.js';
 
 type QrConfig = Pick<
   QrServiceOptions,
@@ -270,7 +273,9 @@ export function createIntegrationRuntime(
       throw new MediaError("MEDIA_NOT_CONFIGURED");
     const content = claim.message.content;
     const file = {
-      ...(await media.read(claim.message.organizationId, content.mediaId)),
+      ...(await media.read(claim.message.organizationId, content.mediaId,{authorize:async tx=>{
+        await assertQueuedMediaAuthority(tx as TenantTransaction,claim.message.organizationId,claim.message.id);
+      }})),
       ...(content.caption ? { caption: content.caption } : {}),
     };
     if (claim.channel.provider === "BAILEYS") {
@@ -309,7 +314,10 @@ export function createIntegrationRuntime(
         if(JSON.stringify(current.binding)!==JSON.stringify(binding)||current.botId!==snapshot.botId||current.botCallback!==snapshot.botCallback)throw new Error('CENTRAL_CONTEXT_CHANGED');});
       return {conversation,message,inboxBot:bot};
     }}):undefined;
+  const conversationEffects=createConversationEffectRuntime({transact,...(media?{media}:{}),...(centralEnvironment?{client:centralEnvironment.client}:{})});
   return {
+    conversationEffects,
+    conversationCatalog:conversationEffects.catalog,
     qr,
     fleet,
     groupAutomation,
@@ -317,7 +325,7 @@ export function createIntegrationRuntime(
     chatwoot,
     centralIngress,
     centralCutover:centralEnvironment?createCentralCutoverService({transact,client:centralEnvironment.client,vault:centralEnvironment.vault,callback:centralEnvironment.callback}):undefined,
-    centralDispatcher:centralEnvironment?createCentralDispatcher({transact,client:centralEnvironment.client,enabled:automationRuntimeEnabled(environment)}):undefined,
+    centralDispatcher:centralEnvironment?createCentralDispatcher({transact,client:centralEnvironment.client,...(media?{media}:{}),enabled:automationRuntimeEnabled(environment)}):undefined,
     flowChatwoot: options ? createFlowChatwootService({ ...options, async resolveBinding(id) {
       return (await pool.query<{ organization_id: string }>('SELECT * FROM resolve_flow_chatwoot_binding($1)', [id])).rows[0]?.organization_id;
     } }) : undefined,

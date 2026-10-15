@@ -10,6 +10,17 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/automations/{id}/resource-channels',
+  'GET /v1/automations/{id}/channels/{channelId}/action-catalog',
+  'POST /v1/automations/{id}/channels/{channelId}/action-resources',
+  'GET /v1/automations/{id}/channels/{channelId}/media',
+  'POST /v1/automations/{id}/channels/{channelId}/media',
+  'POST /v1/automations/{id}/channels/{channelId}/media/{mediaId}/revoke',
+  'GET /v1/delegated-flows/{id}/resource-channels',
+  'GET /v1/delegated-flows/{id}/channels/{channelId}/action-catalog',
+  'POST /v1/delegated-flows/{id}/channels/{channelId}/action-resources',
+  'GET /v1/delegated-flows/{id}/channels/{channelId}/media',
+  'POST /v1/delegated-flows/{id}/channels/{channelId}/media/{mediaId}/revoke',
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/attendance',
   'POST /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers',
   'POST /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/takeovers/cancel',

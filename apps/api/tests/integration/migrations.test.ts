@@ -426,6 +426,7 @@ describe('migrations PostgreSQL', () => {
       ...Array.from({length:13},()=>({policyname:'tenant_scope',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'automation_ai_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:7},()=>({policyname:'automation_effect_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      {policyname:'effect_control_tenant',roles:['jrc_app'],cmd:'ALL'},
       ...Array.from({length:2},()=>({policyname:'group_central_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...['evolution_engines_migrator','evolution_binding_migrator','evolution_io_migrator','evolution_backoff_migrator',
         'evolution_history_maintenance','evolution_cleanup_history_maintenance','evolution_cleanup_io_maintenance','evolution_io_history_maintenance']

@@ -87,11 +87,23 @@ export const SubmittedTemplateSchema = z.strictObject({
   category: z.string(),
   status: z.string(),
 });
+export const LocalConversationContextSchema = z.strictObject({
+  scope: z.strictObject({ organizationId: z.uuid(), channelId: z.uuid(), conversationId: z.uuid() }),
+  revision: z.string().regex(/^[1-9][0-9]{0,18}$/),
+  status: z.enum(['OPEN', 'RESOLVED']),
+  labels: z.array(z.strictObject({ id: z.uuid(), name: z.string().min(1).max(120) })).max(1000),
+  attributes: z.array(z.strictObject({ key: z.string().min(1).max(100), name: z.string().min(1).max(120),
+    value: z.union([z.string().max(65536), z.number(), z.boolean()]) })).max(10000),
+  privateNotes: z.array(z.strictObject({ id: z.uuid(), text: z.string().min(1).max(4096), createdAt: z.iso.datetime() })).max(100),
+  notesTruncated: z.boolean(),
+});
+export type LocalConversationContext = z.infer<typeof LocalConversationContextSchema>;
 export const ConversationViewSchema = z.object({
   id: z.uuid(),
   channelId: z.uuid(),
   contactId: z.uuid(),
   mode: z.enum(["BOT", "HUMAN"]),
+  localContext: LocalConversationContextSchema.optional(),
 });
 export const ConversationsResponseSchema = z.object({
   data: z.array(ConversationViewSchema),

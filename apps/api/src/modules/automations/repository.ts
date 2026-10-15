@@ -6,6 +6,7 @@ import { runtimeAuthorityAllows } from '../attendance/runtime-authority.js';
 import { AttendanceError } from '../attendance/types.js';
 import { unknownOutboxDiagnostic } from './outbox-diagnostics.js';
 import type {GroupPhysicalPolicy} from '../whatsapp-groups/automation-authority.js';
+import { z } from 'zod';
 
 export interface DefinitionRow {id:string;organizationId:string;name:string;lifecycleStatus:'DRAFT'|'PUBLISHED'|'ARCHIVED';draftGraph:AutomationGraphV1;draftRevision:number;activeVersion:number|null;updatedAt:Date}
 export interface DefinitionPageCursor {updatedAt:string;id:string}
@@ -14,7 +15,7 @@ export interface VersionRow {automationId:string;organizationId:string;version:n
 export interface SubflowCatalogCursor {automationId:string;version:number}
 export interface BindingRow {id:string;organizationId:string;automationId:string;version:number;channelId:string;humanDestinationId:string|null;status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number;createdAt:Date;updatedAt:Date}
 export interface ExecutionRow {id:string;organizationId:string;automationId:string;version:number;bindingId:string;channelId:string;conversationId:string|null;status:string;currentNodeId:string|null;correlationId:string;state:RuntimeState;input:Record<string,unknown>;errorCode:string|null;attempts:number;startedAt:Date;updatedAt:Date;completedAt:Date|null;leaseToken:string|null}
-export type OutboxKind='SEND_TEXT'|'HANDOFF'|'RESUME_EVENT'|'IO_HTTP'|'IO_SQL'|'IO_CODE'|'IO_AI';
+export type OutboxKind='SEND_TEXT'|'HANDOFF'|'RESUME_EVENT'|'IO_HTTP'|'IO_SQL'|'IO_CODE'|'IO_AI'|'IO_CONVERSATION'|'SEND_MEDIA';
 export interface OutboxRow {id:string;organizationId:string;executionId:string;channelId:string;conversationId:string|null;nodeId:string;ordinal:number;kind:OutboxKind;payload:Record<string,unknown>;attempts:number;leaseToken:string}
 export type HandoffTerminalResult={status:'SENT';remoteReference?:string}|{status:'FAILED';error:string};
 export interface NodeExecutionRow {id:string;nodeId:string;ordinal:number;status:string;input:Record<string,unknown>;output:Record<string,unknown>;errorCode:string|null;startedAt:Date;completedAt:Date|null}
@@ -76,7 +77,7 @@ export interface AutomationRepository {
  reconcileUnknownOutbox(tx:TenantTransaction,input:{org:string;executionId:string;outboxId:string;actorId:string;outcome:'CONFIRMED_SENT'|'CONFIRMED_NOT_SENT'|'UNRESOLVED';evidenceCode:string;providerReference?:string}):Promise<boolean>;
  cancelExecution(tx:TenantTransaction,org:string,id:string):Promise<boolean>;
  retryExecution(tx:TenantTransaction,org:string,id:string):Promise<boolean>;
- resumeExecution(tx:TenantTransaction,row:{org:string;id:string;eventId:string;eventKey:string;payload:Record<string,unknown>}):Promise<boolean>;
+ resumeExecution(tx:TenantTransaction,row:{org:string;id:string;eventId:string;eventKey:string;payload:Record<string,unknown>;effectReceiptId?:string}):Promise<boolean>;
  releaseDueWaits(tx:TenantTransaction,org:string,limit:number):Promise<number>;
  claimOutbox(tx:TenantTransaction,org:string,leaseToken:string,leaseMs:number,kinds:OutboxKind[],recipientKind?:'GROUP'):Promise<OutboxRow|null>;
  settleOutbox(tx:TenantTransaction,org:string,id:string,leaseToken:string,result:{status:'SENT'|'PENDING'|'FAILED';remoteReference?:string;error?:string;availableAt?:Date}):Promise<boolean>;
@@ -163,7 +164,13 @@ export function createPostgresAutomationRepository(policy?:GroupPhysicalPolicy):
       [execution.organizationId,execution.id,node.nodeId,node.output.automationId,Number(node.output.version),node.output.correlationId,JSON.stringify(node.input),JSON.stringify(node.output.variables??{})]);
     // The array is the execution order. Older producers used ordinal=0 for every
     // node; never trust that value to be globally unique within a turn.
-    for(const [effectOrdinal,effect] of result.effects.entries())await tx.query(`insert into automation_outbox(organization_id,execution_id,node_id,ordinal,kind,payload) values($1,$2,$3,$4,$5,$6) on conflict(organization_id,execution_id,node_id,ordinal) do nothing`,[execution.organizationId,execution.id,effect.nodeId,turnOffset+effectOrdinal,effect.kind,JSON.stringify(effect.payload)]);
+    for(const [effectOrdinal,effect] of result.effects.entries()){
+      const conversationEffect=effect.kind==='IO_CONVERSATION'||effect.kind==='SEND_MEDIA';
+      const effectId=conversationEffect?z.uuid().parse(effect.payload.waitId):null;
+      if(conversationEffect&&(result.wait?.waitId!==effectId||result.wait.kind!=='IO'||result.state.waiting?.waitId!==effectId))
+        throw new Error('AUTOMATION_EFFECT_WAIT_INVALID');
+      await tx.query(`insert into automation_outbox(id,organization_id,execution_id,node_id,ordinal,kind,payload) values(coalesce($1::uuid,gen_random_uuid()),$2,$3,$4,$5,$6,$7) on conflict(organization_id,execution_id,node_id,ordinal) do nothing`,[effectId,execution.organizationId,execution.id,effect.nodeId,turnOffset+effectOrdinal,effect.kind,JSON.stringify(effect.payload)]);
+    }
     if(result.wait)await tx.query(`insert into automation_waits(id,organization_id,execution_id,node_id,kind,wake_at,deadline_at,state) values(coalesce($1::uuid,gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8)`,[result.wait.waitId??null,execution.organizationId,execution.id,result.wait.nodeId,result.wait.kind,result.wait.wakeAt??null,result.wait.deadlineAt??null,JSON.stringify(result.state)]);
     await tx.query(`update automation_executions set status=$4,current_node_id=$5,state=$6,updated_at=now(),completed_at=case when $4 in ('COMPLETED','HANDOFF') then now() else null end,lease_token=null,lease_expires_at=null,error_code=null where organization_id=$1 and id=$2 and lease_token=$3`,[execution.organizationId,execution.id,execution.leaseToken,result.status,result.state.nodeId,JSON.stringify(result.state)]);
     if(result.wait?.kind==='EVENT')await promoteAttendanceInput(tx,execution.organizationId,execution.id,policy);
@@ -183,6 +190,7 @@ export function createPostgresAutomationRepository(policy?:GroupPhysicalPolicy):
     // provider reference is not authority to mark success or replay its POSTs.
     if(row.boundedAi&&input.outcome!=='UNRESOLVED')throw new AttendanceError('AUTOMATION_AI_USAGE_RECONCILIATION_REQUIRED',409);
     if(row.kind==='HANDOFF')throw new AttendanceError('ATTENDANCE_HANDOFF_REMOTE_RECONCILIATION_REQUIRED',409);
+    if(['IO_CONVERSATION','SEND_MEDIA'].includes(row.kind)&&input.outcome!=='UNRESOLVED')throw new AttendanceError('AUTOMATION_EFFECT_RECEIPT_REQUIRED',409);
     await tx.query(`insert into automation_reconciliations(organization_id,execution_id,outbox_id,actor_id,outcome,evidence_code,provider_reference) values($1,$2,$3,$4,$5,$6,$7)`,[input.org,input.executionId,input.outboxId,input.actorId,input.outcome,input.evidenceCode,input.providerReference??null]);
     if(input.outcome==='CONFIRMED_SENT')await tx.query(`update automation_outbox set status='SENT',remote_reference=coalesce($4,remote_reference),lease_token=null,lease_expires_at=null,updated_at=now() where organization_id=$1 and execution_id=$2 and id=$3`,[input.org,input.executionId,input.outboxId,input.providerReference??null]);
     if(input.outcome==='CONFIRMED_NOT_SENT')await tx.query(`update automation_outbox set status='PENDING',available_at=now(),lease_token=null,lease_expires_at=null,last_error='MANUAL_RETRY_AFTER_RECONCILIATION',updated_at=now() where organization_id=$1 and execution_id=$2 and id=$3`,[input.org,input.executionId,input.outboxId]);
@@ -200,6 +208,13 @@ export function createPostgresAutomationRepository(policy?:GroupPhysicalPolicy):
   async resumeExecution(tx,row){const execution=await this.getExecution(tx,row.org,row.id);if(execution){const definition=await this.getDefinition(tx,row.org,execution.automationId,true);if(definition?.lifecycleStatus==='ARCHIVED')return false;}if(!execution)return false;const locked=(await tx.query<{status:string;state:RuntimeState}>('select status,state from automation_executions where organization_id=$1 and id=$2 for update',[row.org,row.id])).rows[0];if(!locked||!['WAITING','HANDOFF'].includes(locked.status))return false;
     // A capture is settled only by an admitted MESSAGE or its own deadline.
     if(locked.state?.waiting?.kind==='EVENT'&&locked.state.waiting.waitId!==undefined)return false;
+    if(locked.state?.waiting?.kind==='IO'&&locked.state.waiting.waitId!==undefined){
+      const waitId=locked.state.waiting.waitId;
+      if(row.effectReceiptId!==waitId||row.payload.waitId!==waitId||row.eventKey!==`io:${waitId}`)return false;
+      const receipt=(await tx.query<{state:string}>(`select state from automation_conversation_effects
+        where organization_id=$1 and outbox_id=$2 and execution_id=$3 and protocol_version=2`,[row.org,waitId,row.id])).rows[0];
+      if(!receipt||(row.payload.outcome==='success'?receipt.state!=='CONFIRMED':!['error','timeout'].includes(String(row.payload.outcome))||receipt.state!=='REJECTED'))return false;
+    }
     const inserted=await this.insertEvent(tx,{org:row.org,id:row.eventId,eventKey:row.eventKey,type:'EXPLICIT_RESUME',payload:row.payload});if(!inserted)return true;await tx.query(`update automation_executions set status='QUEUED',input=$3,updated_at=now(),completed_at=null where organization_id=$1 and id=$2`,[row.org,row.id,JSON.stringify({...row.payload,eventType:'RESUME'})]);await tx.query(`update automation_waits set status='RESUMED',resume_event_key=$3,resumed_at=now() where organization_id=$1 and execution_id=$2 and status='WAITING'`,[row.org,row.id,row.eventKey]);await tx.query(`update automation_events set execution_id=$3,status='CONSUMED',consumed_at=now() where organization_id=$1 and id=$2`,[row.org,row.eventId,row.id]);return true;},
   async releaseDueWaits(tx,org,limit){
     // Lock executions before waits, matching cancel/resume. A canceled execution cannot be requeued.

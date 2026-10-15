@@ -12,6 +12,7 @@ import {IdempotencyConflictError} from '../../modules/instances/idempotency.js';
 import {tenantOperationalProblem} from '../../modules/tenancy/operational-limits.js';
 import {FlowDelegationError,type createFlowDelegationService,type FlowAccess,type BrokerPrincipal} from '../../modules/flows/delegation/service.js';
 import * as c from '@jrc/contracts';
+import {MediaError,SUPPORTED_UPLOAD_MIME_TYPES} from '@jrc/providers';
 export interface FlowDelegationRouteOptions extends AuthenticationOptions {
  service:ReturnType<typeof createFlowDelegationService>;
  resolveCurrentRole(userId:string,organizationId:string):Promise<Role|null>;
@@ -25,7 +26,7 @@ const problem=(reply:FastifyReply,request:FastifyRequest,status:number,code:stri
 export async function registerFlowDelegationRoutes(app:FastifyInstance,options:FlowDelegationRouteOptions){
  app.addHook('onRoute',route=>{route.bodyLimit??=16_384;});
  app.addHook('onSend',async(request,reply,payload)=>{
-  const path=request.routeOptions.url??'',graph=path.startsWith('/v1/delegated-flows')&&(/\/(?:simulate|import-preview|publish|versions(?:-page)?)$/.test(path)||path==='/v1/delegated-flows'||path==='/v1/delegated-flows/:id');
+  const path=request.routeOptions.url??'',graph=path.startsWith('/v1/delegated-flows')&&(/\/(?:simulate|import-preview|publish|versions(?:-page)?|action-catalog|resource-channels|media)$/.test(path)||path==='/v1/delegated-flows'||path==='/v1/delegated-flows/:id');
   const limit=graph?2_200_000:16_384;
   if((typeof payload==='string'||Buffer.isBuffer(payload))&&Buffer.byteLength(payload)>limit){reply.code(502).type('application/problem+json');return JSON.stringify({type:'about:blank',title:'FLOW_RESPONSE_TOO_LARGE',status:502,code:'FLOW_RESPONSE_TOO_LARGE',requestId:request.id});}
   return payload;
@@ -37,6 +38,7 @@ export async function registerFlowDelegationRoutes(app:FastifyInstance,options:F
   if(error instanceof FlowDelegationError&&safeCodes.has(error.code))return problem(reply,request,error.statusCode,error.code);
   if(error instanceof AutomationError||error instanceof AttendanceError)return problem(reply,request,error.statusCode,error.code);
   if(error instanceof IdempotencyConflictError)return problem(reply,request,409,error.code);
+  if(error instanceof MediaError)return problem(reply,request,error.code==='MEDIA_SIZE_LIMIT'?413:422,error.code);
   const invalid=error instanceof z.ZodError||Boolean((error as {validation?:unknown}).validation);
   return problem(reply,request,invalid?400:500,invalid?'INVALID_REQUEST':'FLOW_UNAVAILABLE');
  });
@@ -72,13 +74,19 @@ export async function registerFlowDelegationRoutes(app:FastifyInstance,options:F
   const access=(req:FastifyRequest)=>accesses.get(req)!;
   const api=scope.withTypeProvider<ZodTypeProvider>(),base='/v1/delegated-flows';
   scope.addContentTypeParser('application/octet-stream',{parseAs:'buffer',bodyLimit:16*1024*1024},(_request,body,done)=>done(null,body));
-  api.post(base+'/:id/channels/:channelId/media',{bodyLimit:16*1024*1024,schema:{params:z.strictObject({id:z.uuid(),channelId:z.uuid()}),querystring:empty,headers:z.object({'content-type':z.literal('application/octet-stream'),'x-jrc-media-mime':z.string().min(1).max(100),'x-jrc-media-kind':z.enum(['image','audio','video','document']),'x-jrc-media-name':z.string().min(1).max(765),'idempotency-key':z.uuid()})}},req=>{
-   if(!Buffer.isBuffer(req.body))throw new FlowDelegationError('FLOW_INVALID_REQUEST',400);
+  api.post(base+'/:id/channels/:channelId/media',{bodyLimit:16*1024*1024,schema:{params:z.strictObject({id:z.uuid(),channelId:z.uuid()}),querystring:empty,headers:z.object({'content-type':z.literal('application/octet-stream'),'x-jrc-media-mime':z.enum(SUPPORTED_UPLOAD_MIME_TYPES),'x-jrc-media-kind':z.enum(['image','audio','video','document']),'x-jrc-media-name':z.string().min(1).max(765),'idempotency-key':z.uuid()}),response:{201:c.AutomationMediaAssetSchema}}},async(req,reply)=>{
+   if(!Buffer.isBuffer(req.body)||!req.body.byteLength)throw new FlowDelegationError('FLOW_INVALID_REQUEST',400);
    let fileName:string;try{fileName=decodeURIComponent(req.headers['x-jrc-media-name']);}catch{throw new FlowDelegationError('FLOW_INVALID_REQUEST',400);}
-   return options.service.uploadMedia(access(req),req.params.id,req.params.channelId,{bytes:req.body,mimeType:req.headers['x-jrc-media-mime'],kind:req.headers['x-jrc-media-kind'],fileName,idempotencyKey:req.headers['idempotency-key']});
+   return reply.code(201).send(await options.service.uploadMedia(access(req),req.params.id,req.params.channelId,{bytes:req.body,mimeType:req.headers['x-jrc-media-mime'],kind:req.headers['x-jrc-media-kind'],fileName,idempotencyKey:req.headers['idempotency-key']}));
   });
   const catalogQuery=z.strictObject({pageSize:z.coerce.number().int().min(1).max(200).default(25),cursor:z.string().regex(/^[A-Za-z0-9_-]{1,256}$/).optional()});
   const catalogInput=(query:z.infer<typeof catalogQuery>)=>({pageSize:query.pageSize,...(query.cursor===undefined?{}:{cursor:query.cursor})});
+  const actionParams=params.extend({channelId:z.uuid()}),assetParams=actionParams.extend({mediaId:z.uuid()});
+  api.get(base+'/:id/resource-channels',{schema:{params,querystring:catalogQuery,response:{200:c.AutomationResourceChannelsSchema}}},req=>options.service.resourceChannels(access(req),req.params.id,catalogInput(req.query)));
+  api.get(base+'/:id/channels/:channelId/action-catalog',{schema:{params:actionParams,querystring:catalogQuery,response:{200:c.ActionCatalogPageSchema}}},req=>options.service.actionCatalog(access(req),req.params.id,req.params.channelId,catalogInput(req.query)));
+  api.post(base+'/:id/channels/:channelId/action-resources',{schema:{params:actionParams,querystring:empty,body:c.ActionResourceWriteSchema}},req=>options.service.saveActionResource(access(req),req.params.id,req.params.channelId,req.body));
+  api.get(base+'/:id/channels/:channelId/media',{schema:{params:actionParams,querystring:empty}},req=>options.service.mediaCatalog(access(req),req.params.id,req.params.channelId));
+  api.post(base+'/:id/channels/:channelId/media/:mediaId/revoke',{schema:{params:assetParams,querystring:empty,body:z.strictObject({revision:z.number().int().positive()})}},req=>options.service.revokeMedia(access(req),req.params.id,req.params.channelId,req.params.mediaId,req.body.revision));
   api.get(base+'/status',{schema:{querystring:empty}},req=>options.service.status(access(req)));
   api.get(base+'/nodes',{schema:{querystring:empty}},req=>options.service.nodes(access(req)));
   api.post(base+'/import-preview',{bodyLimit:2_200_000,schema:{querystring:empty,body:z.strictObject({source:z.enum(['AUTO','JRC','N8N','TYPEBOT']),content:z.string().max(2097152),integrationIds:z.array(z.uuid()).min(1).max(100)})}},req=>options.service.importPreview(access(req),req.body));

@@ -1,5 +1,6 @@
 export * from './contracts/admin.js';
 export * from './media.js';
+export * from './media-upload.js';
 export * from './contracts/provider.js';
 export * from './contracts/types.js';
 export * from './evolution/client.js';

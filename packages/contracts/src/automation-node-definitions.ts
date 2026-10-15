@@ -6,6 +6,7 @@ import {DATA_NODE_TYPES,compatibleDataNodeSchema,dataNodePorts} from './automati
 import {compatibleAiNodeSchema} from './automation-ai.js';
 import {compatibleHttpQuerySchema} from './automation-http-query.js';
 import {compatibleInputCaptureSchema,inputCapturePorts} from './automation-input.js';
+import {compatibleConversationEffectSchema,conversationEffectPorts} from './automation-conversation-effects.js';
 
 export const NodeDiagnosticSchema = z.object({
   nodeId: z.string().nullable(), field: z.string(), code: z.string(), message: z.string(),
@@ -61,12 +62,12 @@ export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = 
   define('subflow', 'Subflow versionado', 'LOGIC', config({ automationId: credentialId, version: z.coerce.number().int().positive(), timeoutMs: z.preprocess(input => input ?? 10000, z.coerce.number().int().min(100).max(30000)).optional() }), next),
   define('handoff', 'Atendimento humano', 'HUMAN', CompatibleAutomationHandoffConfigSchema, terminal),
   define('end', 'Encerrar', 'LOGIC', config(), terminal),
-  define('media', 'Enviar mídia', 'CONVERSATION', config({ url: z.url(), mediaType: z.enum(['image', 'audio', 'video', 'document']) }), io, 'R6/U3b (mídia por capacidade)', false),
+  define('media', 'Enviar mídia', 'CONVERSATION', compatibleConversationEffectSchema('media',config({ url: z.url(), mediaType: z.enum(['image', 'audio', 'video', 'document']) })), node=>conversationEffectPorts(node.data,node.type)),
   define('schedule', 'Horário', 'LOGIC', ScheduleNodeConfigSchema, () => ['open', 'closed']),
-  define('tag', 'Adicionar etiqueta', 'HUMAN', config({ tag: z.string().min(1) }), io, 'R3/R6/U3b (catálogo e ação de etiqueta)', false),
-  define('attribute', 'Definir atributo', 'HUMAN', config({ name: z.string().min(1), value: z.unknown().refine(input => input !== undefined, 'Informe um valor.') }), io, 'R3/R6/U3b (atributos autorizados)', false),
-  define('note', 'Nota interna', 'HUMAN', config({ text }), io, 'R6/U3b (nota na central)', false),
-  define('resolve', 'Resolver atendimento', 'HUMAN', config(), io, 'R5/R6/U3b (resolução na central)', false),
+  define('tag', 'Adicionar etiqueta', 'HUMAN', compatibleConversationEffectSchema('tag',config({ tag: z.string().min(1) })), node=>conversationEffectPorts(node.data,node.type)),
+  define('attribute', 'Definir atributo', 'HUMAN', compatibleConversationEffectSchema('attribute',config({ name: z.string().min(1), value: z.unknown().refine(input => input !== undefined, 'Informe um valor.') })), node=>conversationEffectPorts(node.data,node.type)),
+  define('note', 'Nota interna', 'HUMAN', compatibleConversationEffectSchema('note',config({ text })), node=>conversationEffectPorts(node.data,node.type)),
+  define('resolve', 'Resolver e encerrar', 'HUMAN', compatibleConversationEffectSchema('resolve',config()), node=>conversationEffectPorts(node.data,node.type)),
 ];
 export function getNodeDefinition(type: string, version: number): AutomationNodeDefinition | null {
   return AUTOMATION_NODE_DEFINITIONS.find(definition => definition.type === type && definition.version === version) ?? null;

@@ -24,6 +24,7 @@ export interface PrivateMediaReadControl {
   authorize?: (tx: Tx) => Promise<void>;
 }
 export interface PrivateMediaStageControl {
+  authorize?: (tx: Tx) => Promise<void>;
   /** Required for DOWNLOADING; a stale downloader cannot consume a newer claim. */
   downloadLeaseToken?: string;
 }
@@ -97,6 +98,7 @@ export function createDurablePrivateMediaStore(options: DurablePrivateMediaOptio
     const ciphertext = vault.encrypt(`${org}:media:${mediaId}`, Buffer.from(file.bytes).toString('base64'));
     const cipher = new Uint8Array(Buffer.from(ciphertext, 'utf8'));
     return transact(org, async tx => {
+      await inputControl?.authorize?.(tx);
       const peek = (await tx.query<MediaRow>('SELECT * FROM messaging_media WHERE organization_id=$1 AND id=$2', [org, mediaId])).rows[0];
       if (!peek) invalid('MEDIA_NOT_FOUND'); if (!await scope(tx, org, peek.channel_id)) invalid('RESOURCE_DELETING');
       await tx.query("SELECT pg_advisory_xact_lock(hashtextextended('media-storage:'||$1,0))", [org]);

@@ -28,7 +28,12 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 | subflow | AVAILABLE | SubflowEditor: nome e versão publicada, com paginação | snapshot imutável comum a validação, simulação, publicação e worker; retorno next |
 | handoff | AVAILABLE | HandoffEditor: catálogo da caixa e time ou agente | engine: HANDOFF_PENDING simulado; worker: confirmação remota |
 | end | AVAILABLE | FlowCanvas: nome | engine: fim da execução do bot |
+| media | AVAILABLE | ConversationActionEditor: caixa, arquivo privado e revisão, legenda | SEND_MEDIA: confirmação do transporte; simulação sintética success/error/timeout |
 | schedule | AVAILABLE | ScheduleEditor: fuso, semana e exceções por data | engine: open/closed pelo instante fornecido; simulação com relógio virtual |
+| tag | AVAILABLE | ConversationActionEditor: caixa e etiqueta por nome/revisão | IO_CONVERSATION: catálogo e aplicação confirmados; success/error/timeout |
+| attribute | AVAILABLE | ConversationActionEditor: caixa, atributo tipado e revisão | IO_CONVERSATION: preserva false/zero e outros campos; success/error/timeout |
+| note | AVAILABLE | ConversationActionEditor: caixa e texto privado | IO_CONVERSATION: nota privada standalone ou central; success/error/timeout |
+| resolve | AVAILABLE | ConversationActionEditor: caixa e Resolver e encerrar | IO_CONVERSATION: resolução confirmada encerra o ciclo inteiro |
 
 Os formulários simples acima são os existentes; o menu visual com adicionar/remover/reordenar opções faz parte de U3a. `end` encerra o bot, não resolve a conversa na central.
 
@@ -39,9 +44,10 @@ Os quatro blocos de IA delimitada usam `aiConfigVersion: 1`, credencial e revisa
 | Tipos | Criação | Pendência |
 | --- | --- | --- |
 | sql, code, ai-agent | UNAVAILABLE | Fora do escopo de criação Broker; compatibilidade histórica mantida |
-| media, tag, attribute, note, resolve | UNAVAILABLE | R3–R7/U3b: catálogo, executor, formulário e simulação pendentes |
 
-Evidências automatizadas: `packages/contracts/tests/automation-node-definitions.test.ts` verifica catálogo/portas/campos/matriz; `apps/api/tests/unit/automation-engine.test.ts` executa cada tipo AVAILABLE pelo mesmo motor puro usado na simulação e preserva SQL histórico; `apps/api/tests/unit/automation-conversation-simulation.test.ts` verifica continuação conversacional; `apps/web/src/pages/AutomationStudio.test.tsx` abre cada formulário AVAILABLE e verifica diagnóstico por ID. HTTP e cliente validam transporte de diagnósticos.
+Evidências automatizadas: `packages/contracts/tests/automation-node-definitions.test.ts` verifica catálogo/portas/campos/matriz; `apps/api/tests/unit/automation-engine.test.ts` executa cada tipo AVAILABLE pelo mesmo motor puro usado na simulação e preserva SQL histórico; `apps/api/tests/unit/automation-action-simulation-v2.test.ts` verifica continuação conversacional; `apps/web/src/pages/AutomationStudio.test.tsx` abre cada formulário AVAILABLE e verifica diagnóstico por ID. HTTP e cliente validam transporte de diagnósticos.
+
+O corte P3 usa `conversationEffectVersion: 2` nas quatro ações e `mediaEffectVersion: 2` na mídia. `tag`, `attribute`, `note` e `media` expõem success/error/timeout; resultado incerto permanece em reconciliação, sem novo POST ou ramo UNKNOWN executável. **Resolver e encerrar** é terminal após confirmação. Recursos e arquivos são selecionados na caixa autorizada, com revisão fixada. Ações centrais exigem o addon autenticado `jrc-conversation-effects/2`; notas standalone ficam na projeção privada do atendimento. Definições históricas v1 permanecem legíveis e exigem reconfiguração para nova publicação. Consulte a [evidência do incremento](../validation/2026-10-15-p3-effects-broker.md).
 
 `validateAutomationGraph` retorna `{nodeId, field, code, message}[]`. Erros globais usam `nodeId: null`. A API de validação retorna `diagnostics` e mantém `errors` via `nodeDiagnosticsToStrings`. Problemas HTTP retornam `diagnostics`, `details` estruturados e `legacyErrors`. Clientes antigos só com strings passam por `legacyStringsToNodeDiagnostics`, sem inferência insegura do ID pelo nome. A migração legada usa explicitamente o adaptador para seu relatório histórico de strings.
 
