@@ -13,6 +13,7 @@ import {
   BindChatwootAccountSchema,
   ConnectChatwootSchema,
   IntegrationJobsSchema,
+  IntegrationDeliverySummarySchema,
   ReconcileIntegrationJobSchema,
   ApproveDestinationSchema,
   ChatwootDestinationSchema,
@@ -521,6 +522,10 @@ export async function registerPlatformRoutes(
       scoped.get(base + "/inboxes", { schema }, async (req) => {
         const { org, service } = await integration(req);
         return service.inboxes(org);
+      });
+      scoped.get(base+'/jobs/summary', {schema:{...schema,response:{200:IntegrationDeliverySummarySchema}}},async(req)=>{
+        const {org,service}=await integration(req);
+        return service.jobsSummary(org);
       });
       scoped.get(
         base + "/jobs",

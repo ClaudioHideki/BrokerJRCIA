@@ -7,13 +7,21 @@ const apps: ReturnType<typeof buildApp>[] = [];
 async function harness(role: 'OWNER'|'VIEWER' = 'OWNER') {
   const status = vi.fn().mockResolvedValue({ configured: true, baseUrl: 'https://conversas.test', provisioningAvailable: false, account: null, connections: [], jobs: {}, encrypted_token: 'secret-must-not-leak' });
   const bindAccount = vi.fn().mockImplementation(() => status());
-  const service = { status, bindAccount } as unknown as ChatwootService;
+  const jobsSummary = vi.fn().mockResolvedValue({data:[]});
+  const service = { status, bindAccount, jobsSummary } as unknown as ChatwootService;
   const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ async verifyPasswordOrDummy() { return false; } }),
     integrations: { service, jwtSecret: secret, authenticateApiKey: async () => null, resolveCurrentRole: async () => role } });
   apps.push(app);
-  return { app, status, bindAccount, headers: { authorization: 'Bearer ' + await issueAccessToken({ userId: id, organizationId: org, role }, secret) } };
+  return { app, status, bindAccount, jobsSummary, headers: { authorization: 'Bearer ' + await issueAccessToken({ userId: id, organizationId: org, role }, secret) } };
 }
 afterEach(async () => { await Promise.all(apps.splice(0).map(a => a.close())); });
+it('reads delivery diagnostics only in the authenticated tenant, including for viewers',async()=>{
+ const h=await harness('VIEWER');
+ expect((await h.app.inject({url:'/v1/integrations/chatwoot/jobs/summary',headers:h.headers})).statusCode).toBe(200);
+ expect(h.jobsSummary).toHaveBeenCalledExactlyOnceWith(org);
+ expect((await h.app.inject({url:'/v1/integrations/chatwoot/jobs/summary'})).statusCode).toBe(401);
+ expect((await h.app.inject({url:'/v1/integrations/chatwoot/jobs/summary?organizationId=forged',headers:h.headers})).statusCode).toBe(400);
+});
 it('isola organização pelo JWT e não retorna segredos internos', async () => {
   const h = await harness();
   const response = await h.app.inject({ url: '/v1/integrations/chatwoot', headers: h.headers });

@@ -6,6 +6,7 @@ import {
   ChatwootStatusSchema,
   ConnectChatwootSchema,
   IntegrationJobsSchema,
+  IntegrationDeliverySummarySchema,
   ReconcileIntegrationJobSchema,
   MessagingChannelViewSchema,
   PROBLEM_CONTENT_TYPE,
@@ -292,6 +293,9 @@ export async function registerIntegrationRoutes(
         actor(request),
       ),
   );
+  api.get('/v1/integrations/chatwoot/jobs/summary',{
+    preHandler:read,schema:{querystring:empty,response:{200:IntegrationDeliverySummarySchema}},
+  },request=>service().jobsSummary(org(request)));
   api.get(
     "/v1/integrations/chatwoot/jobs",
     {

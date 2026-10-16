@@ -1,0 +1,22 @@
+{
+  "authorization": "Continuacao do programa e implementacao da matriz completa autorizadas pelo usuario em 16/10/2026.",
+  "base": "807c35c78f8a4f1ada678ec6b5a0bd17ddb9f5e7",
+  "changes": [
+    "GET jobs/summary agrega todo o backlog FAILED/UNKNOWN da empresa, sem limite das ultimas 100 tarefas. Projeta somente codigo permitido, total e periodo; erros desconhecidos viram OTHER.",
+    "Rotas tenant e plataforma reutilizam autorizacao existente e RLS. A UI consulta sob demanda, limpa totais apos falha e descarta resposta de contexto anterior. Nenhuma mutacao ou replay.",
+    "Modelo portavel de recepcao com seis assuntos, menu, captura versionada e timeout de 15 minutos. Nao consulta ERP, nao inclui credenciais nem IDs de conta, caixa, time ou agente.",
+    "Criacao conserva idempotencia e gera apenas rascunho. Destinos humanos reais devem ser escolhidos pelo catalogo autorizado antes de publicar; a verificacao de handoff existente permanece obrigatoria."
+  ],
+  "verification": {
+    "tdd": "Ausencia da rota, componente, modelo e seletor reproduzidas antes da implementacao; casos posteriormente aprovados.",
+    "postgres": "7 testes em banco local descartavel, incluindo 125 falhas, codigos privados reduzidos a OTHER e tenant B intacto. Limpeza de fixture usa apenas a conexao administrativa de teste; nenhum grant de runtime foi ampliado.",
+    "contractsAndInventory": "38 testes aprovados de HTTP/OpenAPI, inventario e isolamento de resposta tardia.",
+    "editorAndEngine": "69 testes aprovados no corte inicial da URA/editor; 22 testes finais aprovados incluindo timeout, diagnostico e geracao/verificacao dos artefatos de seguranca.",
+    "generalRegression": "npm test executado: 402 arquivos e 3088 casos aprovados; 17 falhas em 5 arquivos decorreram do cadastro das novas rotas no inventario/OpenAPI. Esses cadastros foram corrigidos e todos os cinco arquivos afetados passaram nas selecoes seguintes. Nao declarar uma nova execucao global integral verde por inferencia.",
+    "build": "npm run build aprovado, incluindo TypeScript e Vite. Aviso de tamanho de chunk existente, sem erro de compilacao.",
+    "review": "Revisao estatica independente dos deltas de diagnostico, paginacao JRC e URA sem achados concretos; limites registrados no acompanhamento.",
+    "production": "Nao homologado fisicamente nem instalado por este incremento. CI e digests de publicacao sao etapas separadas."
+  },
+  "deployment": {"migration":"Nenhuma; baseline 0065 preservada","env":"Nenhuma variavel nova","compose":"Nenhum servico ou volume novo","jrc":"Paginacao publicada somente no candidato separado 8edb1f3; producao JRC preservada"},
+  "remaining": ["Reconciliar incidentes reais de entrega", "Importador historico completo com checkpoint", "Configurar e homologar destinos da URA", "Instalar/homologar modulos nativos no JRC candidato", "Tenant B e Chatwoot externo", "Midia/grupos restantes", "Ativos Meta e transporte de chamadas", "Campanhas, infraestrutura e P10"]
+}

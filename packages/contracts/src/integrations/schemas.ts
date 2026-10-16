@@ -66,6 +66,16 @@ export const ConnectChatwootSchema = z
     (v) => Boolean(v.channelId) !== Boolean(v.instanceId),
     "Choose one connection",
   );
+export const IntegrationDeliveryIssueCodeSchema = z.enum([
+  'CHATWOOT_ATTENDANCE_POLICY_REQUIRES_CONFIGURATION', 'GROUP_CENTRAL_SCOPE_CHANGED',
+  'CHATWOOT_INVALID_RESPONSE', 'CHATWOOT_REQUEST_REJECTED', 'MEDIA_DOWNLOAD_FAILED',
+  'MEDIA_TYPE_UNSUPPORTED', 'CHATWOOT_OUTCOME_UNKNOWN', 'OTHER',
+]);
+export const IntegrationDeliverySummarySchema = z.object({data:z.array(z.object({
+  status:z.enum(['FAILED','UNKNOWN']),code:IntegrationDeliveryIssueCodeSchema,
+  total:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  firstSeenAt:z.iso.datetime(),lastSeenAt:z.iso.datetime(),
+}))});
 export const IntegrationJobsSchema = z.object({
   data: z.array(
     z.object({

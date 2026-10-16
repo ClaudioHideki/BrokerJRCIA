@@ -92,6 +92,26 @@ describe('tenant Chatwoot destinations with real PostgreSQL and two HTTP fixture
       expect((await service.inboxes(t.org)).data[0]?.name).toBe(`Inbox ${t.origin.includes('//a.') ? 'a' : 'b'}`);
     }
   });
+  it('summarizes more than 100 historical failures without leaking another tenant or private errors',async()=>{
+    const a=tenants[0]!,b=tenants[1]!;
+    const before=await service.jobsSummary(b.org);
+    await withOrganizationTransaction(pool,a.org,async tx=>{
+      const integration=(await tx.query('SELECT id FROM chatwoot_connections WHERE organization_id=$1',[a.org])).rows[0].id;
+      await tx.query(`INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,status,last_error)
+        SELECT $1,$2,'MIRROR_MESSAGE','summary-fixture-'||n,'FAILED','GROUP_CENTRAL_SCOPE_CHANGED' FROM generate_series(1,125) n`,[a.org,integration]);
+      await tx.query(`INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,status,last_error)
+        VALUES($1,$2,'MIRROR_MESSAGE','summary-private','UNKNOWN','private-fixture-do-not-expose')`,[a.org,integration]);
+    });
+    try{
+      const summary=await service.jobsSummary(a.org);
+      expect(summary.data).toContainEqual(expect.objectContaining({status:'FAILED',code:'GROUP_CENTRAL_SCOPE_CHANGED',total:125}));
+      expect(summary.data).toContainEqual(expect.objectContaining({status:'UNKNOWN',code:'OTHER',total:1}));
+      expect(JSON.stringify(summary)).not.toContain('private-fixture');
+      expect(await service.jobsSummary(b.org)).toEqual(before);
+    }finally{
+      await db.pool.query("DELETE FROM integration_jobs WHERE organization_id=$1 AND dedupe_key LIKE 'summary-%'",[a.org]);
+    }
+  });
   it('keeps the previous credential after rejection and increments its version only after successful rotation', async () => {
     const t = tenants[0]!;
     const before = await withOrganizationTransaction(pool, t.org, tx => readChatwootAccount(tx, t.org));

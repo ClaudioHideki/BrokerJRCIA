@@ -367,7 +367,7 @@ const ROUTE_POLICIES = Object.freeze({
     true, 'REVIEWED_DESTINATION_REVISION', 'NONE', 'DEDICATED_PLATFORM_ROLE_AND_DESTINATION_REVISION',
   ),
   ...Object.fromEntries(
-    ["GET /v1/integrations/chatwoot", "GET /v1/integrations/chatwoot/jobs"].map(
+    ["GET /v1/integrations/chatwoot", "GET /v1/integrations/chatwoot/jobs", "GET /v1/integrations/chatwoot/jobs/summary"].map(
       (route) => [
         route,
         policy(
@@ -472,6 +472,7 @@ const ROUTE_POLICIES = Object.freeze({
       "POST /v1/platform/organizations/{id}/chatwoot/connections/{resourceId}/retry",
       "GET /v1/platform/organizations/{id}/chatwoot/inboxes",
       "GET /v1/platform/organizations/{id}/chatwoot/jobs",
+      "GET /v1/platform/organizations/{id}/chatwoot/jobs/summary",
       "GET /v1/platform/organizations/{id}/chatwoot/sources",
       "POST /v1/platform/organizations/{id}/chatwoot/jobs/{resourceId}/reconcile",
       "POST /v1/platform/organizations/{id}/chatwoot/jobs/{resourceId}/retry",

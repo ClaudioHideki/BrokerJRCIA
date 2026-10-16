@@ -24,6 +24,21 @@ function client(request: ApiClient['request']): ApiClient {
 beforeEach(() => sessionStorage.clear());
 
 describe('NewAutomation retry', () => {
+  it('creates the operator reception as a draft without publishing or binding it',async()=>{
+    const request=vi.fn(async(path:string,_init?:RequestInit)=>path==='/v1/automations/status'?{enabled:true}:definition);
+    render(<SessionProvider client={client(request as ApiClient['request'])}><MemoryRouter initialEntries={['/automations/new']}><Routes>
+      <Route path="/automations/new" element={<NewAutomationPage/>}/><Route path="/automations/:id/edit" element={<p>Draft editor</p>}/>
+    </Routes></MemoryRouter></SessionProvider>);
+    fireEvent.change(await screen.findByLabelText('Modelo inicial'),{target:{value:'OPERATOR_RECEPTION'}});
+    fireEvent.change(screen.getByLabelText('Nome da automação'),{target:{value:'Recepcao sintetica'}});
+    await waitFor(()=>expect(screen.getByRole('button',{name:'Criar e abrir editor'})).toBeEnabled());
+    fireEvent.click(screen.getByRole('button',{name:'Criar e abrir editor'}));
+    expect(await screen.findByText('Draft editor')).toBeVisible();
+    const creation=request.mock.calls.find(call=>call[0]==='/v1/automations')!;
+    const graph=JSON.parse(String((creation[1] as RequestInit).body)).graph;
+    expect(graph.nodes.filter((node:{type:string})=>node.type==='handoff')).toHaveLength(6);
+    expect(request.mock.calls.some(call=>/\/publish|\/bindings/.test(call[0]))).toBe(false);
+  });
   it('keeps the box context after creating a draft without binding it',async()=>{
     const box='22222222-2222-4222-8222-222222222222';
     const request=vi.fn(async(path:string)=>path==='/v1/automations/status'?{enabled:true}:definition) as ApiClient['request'];

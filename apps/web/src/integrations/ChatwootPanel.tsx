@@ -13,6 +13,7 @@ import { DashboardAppSetup } from './DashboardAppSetup.js';
 import { ChatwootControlPanel } from './ChatwootControlPanel.js';
 import { NativeJrcSetup } from './NativeJrcSetup.js';
 import { ChatwootOnboarding } from './ChatwootOnboarding.js';
+import {DeliveryDiagnostics} from './DeliveryDiagnostics.js';
 
 export type IntegrationRequest = (
   path: string,
@@ -799,6 +800,7 @@ export function ChatwootPanel({
           </section>
           <section className="panel">
             <h3>3. Entregas e acompanhamento</h3>
+            <DeliveryDiagnostics request={request}/>
             <p>
               Últimas 100 tarefas. Uma confirmação pendente precisa ser
               conferida antes de repetir a entrega.

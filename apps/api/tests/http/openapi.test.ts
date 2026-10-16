@@ -10,6 +10,8 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/integrations/chatwoot/jobs/summary',
+  'GET /v1/platform/organizations/{id}/chatwoot/jobs/summary',
   'GET /v1/automations/{id}/resource-channels',
   'GET /v1/automations/{id}/channels/{channelId}/action-catalog',
   'POST /v1/automations/{id}/channels/{channelId}/action-resources',

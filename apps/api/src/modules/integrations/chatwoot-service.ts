@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import {readDeliverySummary} from './delivery-summary.js';
 import { createChatwootAttendanceService } from './chatwoot-attendance-service.js';
 import type { ChatwootStatus } from "@jrc/contracts";
 import type {
@@ -700,6 +701,9 @@ export function createChatwootService(options: ChatwootOptions) {
           VALUES($1,$2,$3,now(),$4,$5) ON CONFLICT(organization_id,integration_id) DO UPDATE SET
           callback_verified_at=now(),callback_destination_revision=$4,callback_credential_version=$5`, [org, id, c.channel_id, a.destination?.revision ?? null, a.credential_version]);
       });
+    },
+    async jobsSummary(org:string){
+      return tx(org,t=>readDeliverySummary(t,org));
     },
     async jobs(org: string) {
       return tx(org, async (t) => ({
