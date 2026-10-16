@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-16",
+  "scope": "Compatibilidade de leitura do catalogo de agentes da central",
+  "productionObservation": "Catalogo falhava com ZodError invalid_format em [11,email], reproduzido via servico real com impressao apenas de codigo e caminho.",
+  "rootCause": "Formato estrito de e-mail aplicado a metadado de exibicao de agente existente, impedindo a leitura de todo o catalogo de destinos.",
+  "change": "agents e inboxAgents usam schema limitado a 10000 registros, IDs inteiros positivos, nomes ate 1000 e e-mails de exibicao ate 320 caracteres; parseCatalog sanitiza respostas invalidas. Nenhuma identidade e inventada ou alterada.",
+  "authorizationBoundary": "IDs, conta, caixa e membership continuam sendo a autoridade. platformUser e os contratos de provisionamento/autenticacao continuam exigindo e-mail valido. O catalogo de atendimento nao retorna e-mails.",
+  "verification": {
+    "red": "Tres regressoes falharam antes da correcao: e-mail de servico e sanitizacao em ambas as leituras.",
+    "unit": "10 testes de cliente e transporte aprovados.",
+    "postgres": "10 testes do catalogo aprovados, incluindo agente de servico, remocao de e-mail da resposta, restricao de membership e isolamento. Catalogo/onboarding: 15 testes aprovados antes da adicao do novo caso de regressao.",
+    "typescript": "tsc -b aprovado.",
+    "fullLocal": "npm test -- --maxWorkers=4: 407 arquivos/3116 casos aprovados; um caso Compose excedeu 15s. Reexecucao isolada do arquivo sem mudar limite ou produto: 4/4 aprovados em 4.24s. Nao declarar nova rodada global verde por inferencia.",
+    "review": "Revisao estatica independente sem achados concretos; testes nao repetidos pelo revisor."
+  },
+  "deployment": {"migration": "Nenhuma", "env": "Nenhuma variavel nova", "compose": "Nenhuma alteracao", "server": "Ainda nao instalado neste fechamento"}
+}

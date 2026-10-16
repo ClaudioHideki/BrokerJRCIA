@@ -40,6 +40,15 @@ it('rejects another tenant integration before sending any remote request',async(
   await expect(h.service.attendanceCatalog(h.tenant.org,h.other.integration)).rejects.toMatchObject({code:'INTEGRATION_NOT_FOUND'});
   expect(h.fetch).not.toHaveBeenCalled();
 });
+it('keeps existing service accounts with display-only emails without changing inbox membership',async()=>{
+  const h=await harness();
+  h.payloads['/api/v1/accounts/7/agents']=[{id:12,name:'Service account',email:'service@internal'},{id:13,name:'Outside inbox',email:'outside@internal'}];
+  h.payloads['/api/v1/accounts/7/inbox_members/9']={payload:[{id:12,name:'Service account',email:'service@internal'}]};
+  const catalog=await h.service.attendanceCatalog(h.tenant.org,h.tenant.integration);
+  expect(catalog.agents).toEqual([{id:12,name:'Service account',inboxMember:true},{id:13,name:'Outside inbox',inboxMember:false}]);
+  expect(JSON.stringify(catalog)).not.toContain('@internal');
+  await expect(h.service.validateHumanDestination(h.tenant.scope,{teamId:null,agentId:13})).rejects.toMatchObject({code:'ATTENDANCE_AGENT_NOT_IN_INBOX'});
+});
 it('rejects destination or credential changes while the remote catalog is being read',async()=>{
   for(const change of ['credential','destination']){
     const h=await harness();let altered=false;const original=h.fetch.getMockImplementation()!;

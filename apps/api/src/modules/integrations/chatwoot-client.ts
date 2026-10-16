@@ -17,6 +17,8 @@ import {
 const integer = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const canonicalInteger = z.union([integer, z.string().regex(/^[1-9]\d{0,15}$/).transform(Number).pipe(integer)]);
 const catalogName=z.string().max(1000);
+// Existing remote email is display metadata; authorization uses the account-scoped ID.
+const catalogAgents=z.array(z.object({id:integer,name:catalogName,email:z.string().max(320)})).max(10000);
 const effectIdentity = z.uuid().regex(/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
 const effectCapabilities = z.strictObject({
   protocol: z.literal(CONVERSATION_EFFECT_PROTOCOL), account_id: integer, inbox_id: integer,
@@ -330,10 +332,7 @@ export class ChatwootClient {
     });
   }
   async agents(accountId: number) {
-    return z
-      .array(z.object({ id: integer, name: z.string(), email: z.email() }))
-      .max(10000)
-      .parse(await this.request("GET", this.account(accountId) + "/agents"));
+    return parseCatalog(catalogAgents, await this.request("GET", this.account(accountId) + "/agents"));
   }
   async teams(accountId:number) {
     const teams=parseCatalog(z.array(z.object({id:integer,name:catalogName,account_id:integer,allow_auto_assign:z.boolean().optional()})).max(10000),
@@ -367,10 +366,7 @@ export class ChatwootClient {
         this.account(accountId) + `/inbox_members/${integer.parse(inboxId)}`,
       ),
     );
-    return z
-      .array(z.object({ id: integer, name: z.string(), email: z.email() }))
-      .max(10000)
-      .parse(result.payload);
+    return parseCatalog(catalogAgents, result.payload);
   }
   async createAccount(name: string, organizationId: string): Promise<number> {
     const result = record(
