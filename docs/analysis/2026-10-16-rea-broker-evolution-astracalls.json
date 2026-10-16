@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-16",
+  "purpose": "Comparação de arquitetura e primeiro incremento próprio do Broker a partir de análise estática das referências públicas.",
+  "status": "IMPLEMENTACAO_LOCAL; NAO_IMPLANTADO",
+  "tool": {
+    "name": "rea-agents",
+    "version": "6.5.0",
+    "source": "https://github.com/morluto/rea",
+    "installation": "Ferramenta isolada fora das dependências de produção do Broker; instalação sem scripts de lifecycle.",
+    "execution": "CLI de análise de JavaScript/TypeScript como texto inerte, sem executar as aplicações de referência.",
+    "evidenceDirectory": ".tools/rea-evidence-20261016, relativo ao workspace pai, fora do repositório do produto",
+    "limits": "Seleção de fontes, não auditoria integral dos repositórios. Relações dinâmicas e arquivos não selecionados permanecem desconhecidos. AST não comprova operação em produção. Backend Go do AstraCalls foi lido diretamente, não analisado pelo parser JavaScript."
+  },
+  "sources": [
+    {
+      "name": "Evolution API",
+      "repository": "https://github.com/evolution-foundation/evolution-api",
+      "commit": "fa09d37892cdbb1d65a250155d293d92230c5b30",
+      "evidenceId": "ev_37e65417e4f384d212e4443ce07b1d6ac62ec10719957d605712a504064de7e9",
+      "selected": [
+        "src/api/integrations/chatbot/chatwoot/services/chatwoot.service.ts",
+        "src/api/integrations/chatbot/chatwoot/utils/chatwoot-import-helper.ts",
+        "src/api/integrations/channel/whatsapp/baileysMessage.processor.ts"
+      ],
+      "unselectedFiles": 430,
+      "findings": [
+        "Histórico possui caminho próprio, ordenação temporal e identificação de origem para deduplicação.",
+        "O importador consultado acessa diretamente o banco Chatwoot; esse acoplamento não serve como requisito para clientes externos do Broker.",
+        "Habilitar sincronização de histórico na engine não implementa a ingestão de histórico no Broker."
+      ]
+    },
+    {
+      "name": "AstraCalls",
+      "repository": "https://github.com/AstraOnlineWeb/AstraCalls",
+      "commit": "47d3622ea687a6b24b0c82090eb50cec84948a43",
+      "evidenceId": "ev_b0cfbe9f3d853f2e98403c14af44ee94e7a660087a97efb8fccacb9e6349561d",
+      "selected": ["src/services/chatwoot.ts", "src/components/domain/session/SessionPairing.tsx", "src/components/domain/session/ChatwootDialog.tsx"],
+      "unselectedFiles": 86,
+      "additionalManualSources": ["cmd/server/chatwoot.go", "cmd/server/chatwoot_history.go", "cmd/server/chatwoot_outbox.go"],
+      "findings": [
+        "Importação de histórico é explícita, limitada, ordenada e usa identificação de origem; o caminho lido exclui grupos.",
+        "Existe outbox Chatwoot persistida em PostgreSQL, com backoff e limite de tentativas.",
+        "LID é resolvido por mapeamento da engine; identidade sem número resolvido não vira telefone inventado.",
+        "Chamadas exigem um caminho de mídia/sinalização próprio, não apenas um bloco visual do Flow."
+      ]
+    },
+    {
+      "name": "Broker Flow",
+      "baseCommit": "fc4ae8a1f3c940dc8ab2d1e369f3b658eab463a3",
+      "evidenceId": "ev_62b6f9043d2cbf260c90ab16cbfc632dc2c968fbc386b45abaa8ff7d97ab614a",
+      "root": "apps/api/src/modules/automations",
+      "selected": ["engine.ts", "service.ts", "availability.ts"],
+      "unselectedFiles": 24,
+      "additionalManualSources": ["packages/contracts/src/automation-node-definitions.ts", "apps/api/src/modules/messaging/qr-events.ts", "apps/api/src/modules/integrations/chatwoot-worker.ts"],
+      "findings": [
+        "O motor e a publicação devem continuar únicos para console Broker e editor delegado na central.",
+        "A paleta diferencia blocos disponíveis de capacidades ainda não liberadas; todos os nodes não foram homologados fisicamente.",
+        "Ingestão histórica deve ser separada do evento novo para não disparar bot ou enviar mensagens antigas.",
+        "Resultados externos UNKNOWN continuam exigindo reconciliação; não foram convertidos em retries cegos."
+      ]
+    }
+  ],
+  "implemented": [
+    {
+      "id": "GROUP_CENTRAL_REFRESH",
+      "problem": "Catálogo de grupos selecionados expirava quando o Flow estava desligado, interrompendo o espelhamento na central.",
+      "change": "Renovação independente do bot para canais QR com seleção de grupos e central aprovada/READY, instância conectada e empresa ativa.",
+      "safety": "Lease existente, limite de um canal por organização por visita, revisão de identidade e revalidação de autorização após a consulta externa. Sem ativar grupos ou bot automaticamente. Nenhuma chamada de envio no refresh.",
+      "scheduling": "Uma varredura paginada de manutenção por processo, concorrente à entrega de mensagens, sem acumular varreduras. Respeita sharding, isola falhas e aguarda trabalho ativo antes de fechar o pool.",
+      "tests": "PostgreSQL real com role de aplicação: Flow desligado, renovação e mirror, revogação durante I/O e seleção/conexão/destino desconectados. Testes de concorrência: provider lento não bloqueia entrega; visita segunda empresa; não sobrepõe varreduras; rejeição não prende manutenção."
+    },
+    {
+      "id": "CENTRAL_DELIVERY_HEALTH",
+      "problem": "Workers ativos não significavam que o histórico estava chegando à central.",
+      "change": "Saúde operacional inclui totais tenant-scoped de integration_jobs FAILED e UNKNOWN e apresenta estado DEGRADED quando há ocorrências.",
+      "safety": "Não reenvia, altera ou apaga jobs. Histórico com falha permanece visível até tratamento explícito.",
+      "tests": "Falhas/UNKNOWN degradam a saúde mesmo com todos os workers ativos; teste PostgreSQL confirma contagem de resultado incerto."
+    }
+  ],
+  "remainingEngineering": [
+    {
+      "priority": 1,
+      "area": "Identidade QR/LID e completude do ingresso",
+      "work": "Mapeamento durável por empresa/instância/revisão de identidade, eventos pendentes e reconciliação de LID sem número. Proibir fusão por nome e isolamento cross-tenant.",
+      "acceptance": "Eventos novos sem PN resolvido não desaparecem; resolução posterior preserva identidade e idempotência. Comparar recebidos, normalizados, persistidos e espelhados."
+    },
+    {
+      "priority": 2,
+      "area": "Histórico e mensagens do aparelho",
+      "work": "Importador com cursor, orçamento, checkpoint, ordem temporal e deduplicação. Usar API da central, sem acesso ao banco externo. Separar histórico de gatilho do Flow e distinguir fromMe de mensagens produzidas pelo Broker.",
+      "acceptance": "Importação interrompida retoma sem duplicar contatos, mensagens ou enviar respostas automáticas para histórico."
+    },
+    {
+      "priority": 3,
+      "area": "Grupos e mídia",
+      "work": "Completar mídia no normalizador de grupos e ciclo privado de download/armazenamento/entrega; diagnóstico por grupo e revisão de permissões.",
+      "acceptance": "Texto/mídia/estado têm deduplicação, isolamento, seleção explícita e ausência de respostas do bot em grupos não autorizados."
+    },
+    {
+      "priority": 4,
+      "area": "Flow e configuração comercial",
+      "work": "Assistente de configuração com empresa, conexão, central, caixa, Flow publicado, contatos de homologação e diagnóstico. Homologar cada node disponível com seu efeito real e transferência/retomada humana.",
+      "acceptance": "Administrador consegue configurar pelo nome e acompanhar o mesmo ciclo no WhatsApp, Broker e central. Simulação não substitui envio, mídia ou handoff real."
+    },
+    {
+      "priority": 5,
+      "area": "Reconexão, frota e capacidade",
+      "work": "Exercitar falha de engine, redis, banco e storage; medir filas, leases, orçamento de consultas e reconexão com jitter. Dimensionar shards/engines por medições.",
+      "acceptance": "500 empresas/10 mil conexões são objetivo de carga ainda não comprovado. Relatório deve conter taxa sustentada, p95/p99, atrasos, memória, I/O e recuperação sem duplicação."
+    },
+    {
+      "priority": 6,
+      "area": "Meta, chamadas e central externa",
+      "work": "Homologação Meta com ativos reais, templates/janela/cobrança; suporte de chamadas conforme engine/provedor e credenciais. Matriz de versões de Chatwoot via Account API.",
+      "acceptance": "Nenhuma promessa de equivalência total com Evolution/AstraCalls sem ensaios. Chatwoot externo e ativos Meta ainda não disponibilizados; não impedem implementar o contrato e testes sintéticos."
+    }
+  ],
+  "deploymentImpact": {
+    "migration": "Nenhuma nova migração; mantém baseline existente 0064.",
+    "env": "Sem novas variáveis obrigatórias.",
+    "compose": "Sem mudança de serviços ou volumes.",
+    "jrcAndNico": "Nenhuma mudança nesta entrega; candidatos desses sistemas continuam separados.",
+    "production": "Código deste incremento não aplicado ao servidor. O bot de teste permanece com novas entradas pausadas conforme validação anterior; refresh de grupos não o ativa."
+  },
+  "licenseBoundary": "Referências públicas examinadas preservando licenças; nenhum trecho de implementação Evolution/AstraCalls foi copiado ao produto. Alterações do Broker foram escritas e testadas no próprio código.",
+  "validation": {
+    "build": "PASS",
+    "integrationFocused": "81 testes aprovados de catálogo, automação e central de grupos, incluindo 9 casos de central.",
+    "unitRegressionBeforeSchedulingReview": "405 arquivos e 3092 testes aprovados.",
+    "finalRegression": "PASS: 406 arquivos, 3094 testes, 322.09 segundos; inclui o ajuste de manutenção após revisão.",
+    "review": "Revisão independente pediu separar consulta lenta da entrega; corrigido e revisão final sem problemas importantes.",
+    "physicalProduction": "Não reexecutada neste incremento. Evidência anterior não equivale a validar o código novo no servidor."
+  }
+}

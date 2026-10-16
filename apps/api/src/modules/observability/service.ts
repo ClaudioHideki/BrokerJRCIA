@@ -6,6 +6,7 @@ export interface HealthComponent {key:string;label:string;state:HealthState;code
 interface SnapshotRow {
   queueDepth:number;oldestOutboxSeconds:number|null;failedExecutions:number;unknownExecutions:number;
   metaReady:number;evolutionReady:number;chatwootReady:number;chatwootDegraded:number;
+  integrationFailures:number;integrationUnknown:number;
 }
 interface HeartbeatRow {component:string;status:'UP'|'DEGRADED';observedAt:Date;detailCode?:string|null}
 export interface ObservabilityRepository {
@@ -22,6 +23,8 @@ export function createPostgresObservabilityRepository():ObservabilityRepository{
   greatest((select extract(epoch from now()-min(created_at))::int from messaging_outbox where organization_id=$1),(select extract(epoch from now()-min(created_at))::int from automation_outbox where organization_id=$1 and status in ('PENDING','UNKNOWN'))) as "oldestOutboxSeconds",
   (select count(*)::int from automation_executions where organization_id=$1 and status='FAILED') as "failedExecutions",
   (select count(*)::int from automation_executions where organization_id=$1 and status='UNKNOWN') as "unknownExecutions",
+  (select count(*)::int from integration_jobs where organization_id=$1 and status='FAILED') as "integrationFailures",
+  (select count(*)::int from integration_jobs where organization_id=$1 and status='UNKNOWN') as "integrationUnknown",
   (select count(*)::int from meta_connections where organization_id=$1 and status='READY') as "metaReady",
   (select count(*)::int from instances where organization_id=$1 and status='CONNECTED') as "evolutionReady",
   (select count(*)::int from chatwoot_destinations where organization_id=$1 and approval_status='APPROVED') as "chatwootReady",
@@ -47,6 +50,8 @@ export function createObservabilityService(options:ObservabilityOptions){const r
     component('QUEUE','Fila',snapshot.queueDepth>1000?'DEGRADED':'UP',snapshot.queueDepth>1000?'QUEUE_DEPTH_HIGH':'QUEUE_DEPTH_NORMAL',observedAt,snapshot.queueDepth,'items'),
     component('OUTBOX_AGE','Idade da outbox',(snapshot.oldestOutboxSeconds??0)>300?'DEGRADED':'UP',(snapshot.oldestOutboxSeconds??0)>300?'OUTBOX_AGED':'OUTBOX_FRESH',observedAt,snapshot.oldestOutboxSeconds??0,'seconds'),
     component('FAILED_EXECUTIONS','Execuções com falha',snapshot.failedExecutions?'DEGRADED':'UP',snapshot.failedExecutions?'EXECUTIONS_FAILED':'NO_FAILED_EXECUTIONS',observedAt,snapshot.failedExecutions,'executions'),
+    component('INTEGRATION_FAILURES','Entregas à central com falha',snapshot.integrationFailures?'DEGRADED':'UP',snapshot.integrationFailures?'INTEGRATION_JOBS_FAILED':'NO_FAILED_INTEGRATION_JOBS',observedAt,snapshot.integrationFailures,'items'),
+    component('INTEGRATION_UNCERTAINTY','Entregas à central incertas',snapshot.integrationUnknown?'DEGRADED':'UP',snapshot.integrationUnknown?'INTEGRATION_OUTCOME_UNKNOWN':'NO_UNKNOWN_INTEGRATION_JOBS',observedAt,snapshot.integrationUnknown,'items'),
     component('UNKNOWN_EXECUTIONS','Execuções incertas',snapshot.unknownExecutions?'DEGRADED':'UP',snapshot.unknownExecutions?'UNKNOWN_GROWTH':'NO_UNKNOWN_EXECUTIONS',observedAt,snapshot.unknownExecutions,'executions')];
    return {schemaVersion:1,observedAt,overall:components.some(c=>c.state==='DOWN')?'DOWN':components.some(c=>c.state==='DEGRADED'||c.state==='UNKNOWN')?'DEGRADED':'UP',components,alerts:components.filter(c=>c.state!=='UP').map(c=>({code:c.code,component:c.key,state:c.state}))};
  }};

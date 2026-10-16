@@ -321,6 +321,7 @@ export function createIntegrationRuntime(
     qr,
     fleet,
     groupAutomation,
+    refreshCentralGroupCatalogs:groupCatalog?.refreshDueForCentral,
     groupPolicy,
     chatwoot,
     centralIngress,

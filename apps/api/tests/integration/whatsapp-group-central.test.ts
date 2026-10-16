@@ -7,6 +7,8 @@ import {createGroupAutomationRuntime,type GroupRuntimeOptions,type GroupControlI
 import {normalizeQrEvent} from '../../src/modules/messaging/qr-events.js';
 import {createChatwootService,chatwootEnvironment,type ChatwootOptions} from '../../src/modules/integrations/chatwoot-service.js';
 import {createChatwootWorker} from '../../src/modules/integrations/chatwoot-worker.js';
+import {createWhatsAppGroupCatalog} from '../../src/modules/whatsapp-groups/service.js';
+import {createPostgresObservabilityRepository} from '../../src/modules/observability/service.js';
 const key=Buffer.alloc(32,13).toString('base64'),configurationScope='synthetic-g3-scope',phone='5511999990999',group='120363999000001@g.us',author='5511999990001@s.whatsapp.net',other='5511999990002@s.whatsapp.net';
 const node=(id:string,type:string,data:Record<string,unknown>={})=>({id,type,label:id,position:{x:0,y:0},data});
 const graph={nodes:[node('start','start'),node('hello','message',{text:'Bem-vindo ao grupo'}),node('menu','menu',{text:'Escolha',variable:'opcao',options:[{value:'1',label:'Resposta'}]}),node('answer','message',{text:'Resposta do fluxo'}),node('end','end')],
@@ -96,6 +98,7 @@ it('mirrors a selected group without an individual contact and returns an authen
 it('keeps a group mirror with an unknown receipt durable across worker restarts without another POST',async()=>{
  const t=await fixture();const c=await central(t,true);await t.ingest('observed only');
  expect(await c.run()).toEqual(expect.arrayContaining([expect.objectContaining({kind:'MIRROR_MESSAGE',status:'UNKNOWN',last_error:'CHATWOOT_OUTCOME_UNKNOWN'})]));
+ expect(await db.transact(t.org,tx=>createPostgresObservabilityRepository().snapshot(tx,t.org))).toMatchObject({integrationFailures:0,integrationUnknown:1});
  const posts=c.calls.filter(x=>x.path.endsWith('/messages')&&x.method==='POST').length;expect(posts).toBe(1);
  await c.restart();expect(await c.run()).toEqual(expect.arrayContaining([expect.objectContaining({kind:'MIRROR_MESSAGE',status:'UNKNOWN',last_error:'CHATWOOT_OUTCOME_UNKNOWN'})]));
  expect(c.calls.filter(x=>x.path.endsWith('/messages')&&x.method==='POST')).toHaveLength(posts);
@@ -110,4 +113,46 @@ it('does not dispatch a queued human group reply after destination authorization
   WHERE o.organization_id=$1 AND m.source='OPERATOR' AND m.state='ACCEPTED'`,[t.org])).rows).toEqual([{n:1}]);
  await db.database.pool.query("UPDATE chatwoot_destinations SET approval_status='REVOKED' WHERE organization_id=$1",[t.org]);
  expect(await t.runtime.dispatchOnce(t.org)).toEqual({processed:false});expect(t.sends).toEqual([]);
+});
+
+it('renews an expired selected group for central mirroring with Flow disabled and no group bot',async()=>{
+ const t=await fixture();const c=await central(t);
+ await db.database.pool.query('UPDATE flow_features SET enabled=false WHERE organization_id=$1',[t.org]);
+ await db.database.pool.query("UPDATE whatsapp_group_catalogs SET observed_at=clock_timestamp()-interval '6 minutes',valid_until=clock_timestamp()-interval '1 minute',last_attempt_at=clock_timestamp()-interval '2 minutes' WHERE organization_id=$1",[t.org]);
+ let reads=0;
+ const catalog=createWhatsAppGroupCatalog({encryptionKey:key,transact:db.transact,
+  readIdentity:async()=>({connected:true,phone}),
+  readGroups:async()=>{reads++;return[{groupJid:group,subject:'Synthetic group',participantCount:2,restrict:false,announce:false,isCommunity:false,isCommunityAnnounce:false,linkedParent:null}];}});
+ expect(await catalog.refreshDueForCentral(t.org)).toMatchObject({processed:true,status:'CURRENT',channelId:t.channel});
+ expect(reads).toBe(1);
+ expect((await db.database.pool.query('SELECT count(*)::int AS n FROM whatsapp_group_automation_controls WHERE organization_id=$1',[t.org])).rows[0].n).toBe(0);
+ await t.ingest('Selected group mirror after idle period');
+ expect(await c.run()).toEqual(expect.arrayContaining([expect.objectContaining({kind:'MIRROR_MESSAGE',status:'SUCCEEDED'})]));
+ expect(t.sends).toEqual([]);
+ expect(await catalog.refreshDueForCentral(t.org)).toEqual({processed:false});
+ expect(reads).toBe(1);
+});
+
+it('does not publish a central group refresh after the destination is revoked during provider I/O',async()=>{
+ const t=await fixture();await central(t);
+ await db.database.pool.query("UPDATE whatsapp_group_catalogs SET observed_at=clock_timestamp()-interval '6 minutes',valid_until=clock_timestamp()-interval '1 minute',last_attempt_at=clock_timestamp()-interval '2 minutes' WHERE organization_id=$1",[t.org]);
+ const catalog=createWhatsAppGroupCatalog({encryptionKey:key,transact:db.transact,
+  readIdentity:async()=>({connected:true,phone}),
+  readGroups:async()=>{await db.database.pool.query("UPDATE chatwoot_destinations SET approval_status='REVOKED' WHERE organization_id=$1",[t.org]);return[];}});
+ expect(await catalog.refreshDueForCentral(t.org)).toMatchObject({processed:true,status:'FAILED',code:'GROUP_ACCESS_DENIED'});
+ expect((await db.database.pool.query('SELECT valid_until>clock_timestamp() AS current FROM whatsapp_group_catalogs WHERE organization_id=$1',[t.org])).rows[0].current).toBe(false);
+});
+
+it.each([
+ "UPDATE chatwoot_connections SET status='DISABLED' WHERE organization_id=$1",
+ "UPDATE chatwoot_destinations SET approval_status='REVOKED' WHERE organization_id=$1",
+ "UPDATE whatsapp_group_catalog_items SET selected=false WHERE organization_id=$1",
+ "UPDATE instances SET status='DISCONNECTED' WHERE organization_id=$1",
+])('does not poll a central group catalog outside current scope: %s',async sql=>{
+ const t=await fixture();await central(t);
+ await db.database.pool.query("UPDATE whatsapp_group_catalogs SET observed_at=clock_timestamp()-interval '6 minutes',valid_until=clock_timestamp()-interval '1 minute',last_attempt_at=clock_timestamp()-interval '2 minutes' WHERE organization_id=$1",[t.org]);
+ await db.database.pool.query(sql,[t.org]);
+ const catalog=createWhatsAppGroupCatalog({encryptionKey:key,transact:db.transact,
+  readIdentity:async()=>{throw Error('Must not contact provider');},readGroups:async()=>{throw Error('Must not contact provider');}});
+ expect(await catalog.refreshDueForCentral(t.org)).toEqual({processed:false});
 });

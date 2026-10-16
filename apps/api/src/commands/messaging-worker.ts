@@ -1,4 +1,5 @@
 import {createEvolutionFleetRuntime} from '../modules/evolution-fleet/runtime.js';
+import {createCentralCatalogMaintenance} from './central-catalog-maintenance.js';
 import { pathToFileURL } from "node:url";
 import { createFlowService } from '../modules/flows/service.js';
 import { createHash } from "node:crypto";
@@ -125,6 +126,15 @@ export async function runMessagingWorker(
     control,
   );
   const shutdown = new AbortController();
+  const catalogMaintenance=createCentralCatalogMaintenance({
+    signal:shutdown.signal,
+    loadPage:async(after,limit)=>config.mode==='automatic'
+      ? (await pool.query<{organization_id:string}>('SELECT * FROM messaging_worker_organizations($1,$2)',[after,limit])).rows.map(row=>row.organization_id)
+      : config.organizations.slice(after?config.organizations.indexOf(after)+1:0,(after?config.organizations.indexOf(after)+1:0)+limit),
+    refresh:async org=>{await integrations.refreshCentralGroupCatalogs?.(org);},
+    belongsToShard:org=>belongsToWorkerShard(org,config.shard,config.shards),
+    onError:()=>{process.stderr.write('CENTRAL_GROUP_CATALOG_REFRESH_FAILED\n');},
+  });
   const stop = () => shutdown.abort();
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
@@ -145,6 +155,7 @@ export async function runMessagingWorker(
         : {}),
     });
     do {
+      if(integrations.refreshCentralGroupCatalogs)catalogMaintenance.start();
       if (environment.WORKER_HEARTBEAT_FILE)
         await writeFile(environment.WORKER_HEARTBEAT_FILE, String(Date.now()), {
           mode: 0o600,
@@ -206,6 +217,8 @@ export async function runMessagingWorker(
       }
     } while (watch && !shutdown.signal.aborted);
   } finally {
+    shutdown.abort();
+    await catalogMaintenance.finish();
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
     await pool.end();
