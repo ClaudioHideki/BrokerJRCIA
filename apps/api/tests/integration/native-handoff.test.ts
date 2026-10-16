@@ -40,6 +40,7 @@ describe('native handoff durable PostgreSQL state',()=>{
     const requests:{path:string;method:string;body:Record<string,unknown>}[]=[];
     let deferredOpening:Record<string,unknown>|null=null,delayOpening:'OPENED'|'ASSIGNMENT_DISPATCHED'|null=null;
     let callback=true,timeout:'open'|'assign'|null=null,beforeOpen:(()=>Promise<void>)|null=null,afterOpen:(()=>Promise<void>)|null=null;
+    let teamAutoAssignment=false,teamAssignee:number|null=12,teamMembers=[12];
     const record=()=>db.transact(t.org,tx=>recordChatwootAttendanceEvent(tx,scope,{...canonical,event:'conversation_updated',account:{id:7}}));
     const human=()=>db.transact(t.org,tx=>recordChatwootAttendanceEvent(tx,scope,{event:'message_created',id:91,account:{id:7},inbox:{id:9},conversation:{id:51,inbox_id:9},message_type:'outgoing',private:true,sender:{id:12,type:'user'}}));
     const fetch=vi.fn(async(input:URL|string|Request,init?:RequestInit)=>{
@@ -53,7 +54,8 @@ describe('native handoff durable PostgreSQL state',()=>{
       else if(path.endsWith('/inboxes/9'))response={id:9,name:'Synthetic',channel_type:'Channel::Api',greeting_enabled:false,enable_auto_assignment:false};
       else if(path.endsWith('/agents'))response=[{id:12,name:'Synthetic',email:'synthetic@example.test'}];
       else if(path.endsWith('/inbox_members/9'))response={payload:[{id:12,name:'Synthetic',email:'synthetic@example.test'}]};
-      else if(path.endsWith('/teams'))response=[{id:4,name:'Support',account_id:7,allow_auto_assign:false}];
+      else if(path.endsWith('/teams'))response=[{id:4,name:'Support',account_id:7,allow_auto_assign:teamAutoAssignment}];
+      else if(path.endsWith('/teams/4/team_members'))response=teamMembers.map(id=>({id,name:'Synthetic'}));
       else if(path.endsWith('/labels'))response={payload:[]};
       else if(path.endsWith('/custom_attribute_definitions'))response=[];
       else if(path.endsWith('/agent_bot'))response={agent_bot:null};
@@ -63,7 +65,8 @@ describe('native handoff durable PostgreSQL state',()=>{
         if(callback){if(delayOpening)deferredOpening={...structuredClone(canonical),event:'conversation_updated',account:{id:7}};else await record();}if(afterOpen)await afterOpen();if(timeout==='open')throw new Error('Synthetic timeout');response={};
       }else if(path.endsWith('/assignments')){
         if(delayOpening==='ASSIGNMENT_DISPATCHED'&&deferredOpening){await db.transact(t.org,tx=>recordChatwootAttendanceEvent(tx,scope,deferredOpening));deferredOpening=null;}
-        if(Object.hasOwn(body,'team_id')){canonical.meta.team=body.team_id===null?null:{id:Number(body.team_id)};expect(body).not.toHaveProperty('assignee_id');}
+        if(Object.hasOwn(body,'team_id')){canonical.meta.team=body.team_id===null?null:{id:Number(body.team_id)};expect(body).not.toHaveProperty('assignee_id');
+          if(teamAutoAssignment&&canonical.meta.team&&teamAssignee!==null){canonical.meta.assignee={id:teamAssignee,type:'user'};canonical.meta.assignee_type='User';}}
         else if(body.assignee_id===null){canonical.meta.assignee=null;canonical.meta.assignee_type=null;}
         else {canonical.meta.assignee={id:Number(body.assignee_id),type:'user'};canonical.meta.assignee_type='User';}
         canonical.updated_at++;if(callback)await record();if(timeout==='assign')throw new Error('Synthetic timeout');response={};
@@ -80,8 +83,32 @@ describe('native handoff durable PostgreSQL state',()=>{
       conversation:(await db.database.pool.query('SELECT mode FROM messaging_conversations WHERE id=$1',[t.conversation])).rows[0]});
     const expire=async()=>{await db.database.pool.query("UPDATE automation_outbox SET lease_expires_at=now()-interval '1 second' WHERE id=$1",[outbox]);await db.database.pool.query("UPDATE attendance_handoff_operations SET next_check_at=now()-interval '1 second' WHERE organization_id=$1",[t.org]);};
     return {...t,binding,execution,outbox,item,fetch,service,requests,state,human,expire,canonical,record,
+      setTeamDistribution:(enabled:boolean,agentId:number|null=12)=>{teamAutoAssignment=enabled;teamAssignee=agentId;},
+      setTeamMembers:(ids:number[])=>{teamMembers=ids;},
       setCallback:(value:boolean)=>{callback=value;},delayOpening:(value:typeof delayOpening)=>{delayOpening=value;},setTimeout:(value:typeof timeout)=>{timeout=value;},beforeOpen:(fn:()=>Promise<void>)=>{beforeOpen=fn;},afterOpen:(fn:()=>Promise<void>)=>{afterOpen=fn;}};
   }
+  it('cooperates with automatic team distribution and preserves the human callback in the real ledger',async()=>{
+    const t=await fixture();t.setTeamDistribution(true);
+    expect(await t.service().dispatch(t.item)).toMatchObject({kind:'SENT'});
+    const state=await t.state();
+    expect(state.operation).toMatchObject({state:'APPLIED',phase:'CONFIRMED'});
+    expect(state.session.state).toBe('HUMAN_ACTIVE');expect(state.conversation.mode).toBe('HUMAN');
+    expect(t.requests.some(r=>r.path.endsWith('/teams/4/team_members'))).toBe(true);
+    expect(t.requests.filter(r=>r.method==='POST')).toHaveLength(2);
+  });
+  it('does not confirm an actual team assignee who is absent from the authenticated team membership',async()=>{
+    const t=await fixture();t.setTeamDistribution(true);t.setTeamMembers([]);
+    await expect(t.service().dispatch(t.item)).rejects.toThrow('HANDOFF_REMOTE_OUTCOME_UNKNOWN');
+    const state=await t.state();expect(state.operation.state).toBe('UNKNOWN');expect(state.session.state).toBe('HUMAN_ACTIVE');
+    expect(state.operation.last_error).toBe('ATTENDANCE_AGENT_NOT_IN_TEAM');
+  });
+  it('reconciles automatic team distribution after timeout without replaying any mutation',async()=>{
+    const t=await fixture();t.setTeamDistribution(true);t.setTimeout('assign');
+    await expect(t.service().dispatch(t.item)).rejects.toThrow('HANDOFF_REMOTE_OUTCOME_UNKNOWN');
+    await t.expire();expect(await t.service().reconcileOnce(t.org)).toMatchObject({state:'APPLIED'});
+    expect(t.requests.filter(r=>r.method==='POST')).toHaveLength(2);
+    expect((await t.state()).session.state).toBe('HUMAN_ACTIVE');
+  });
   it('runs a persisted menu journey through the real engine and worker into canonical team handoff with a synthetic transport receipt',async()=>{
     const t=await fixture(),node=(id:string,type:string,data:Record<string,unknown>={})=>({id,type,label:id,position:{x:0,y:0},data});
     const graph={nodes:[node('start','start'),node('menu','menu',{text:'Escolha',variable:'choice',options:[{value:'1',label:'Suporte'},{value:'2',label:'Encerrar'}]}),node('name','input',{text:'Qual seu nome?',variable:'nome'}),node('handoff','handoff',t.item.payload),node('end','end')],

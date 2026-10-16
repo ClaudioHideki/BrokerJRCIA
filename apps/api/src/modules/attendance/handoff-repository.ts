@@ -69,22 +69,22 @@ async function observationAllowsSettlement(tx:TenantTransaction,op:HandoffOperat
     WHERE o.organization_id=$1 AND o.integration_id=$3 AND o.destination_revision=$4 AND o.account_id=$5 AND o.inbox_id=$6
       AND o.remote_conversation_id=$7 AND o.created_at>=h.created_at
     ORDER BY o.created_at,o.id`,[op.organizationId,op.id,s.scope.integrationId,s.scope.destinationRevision,s.scope.accountId,s.scope.inboxId,s.remoteConversationId])).rows;
-  let expected=0;
+  let expected=0,human=false;
   for(const row of rows){
     const e=row.event;
     if(['WAITING_MAP','ECHO_PENDING','RECONCILE'].includes(row.disposition))return false;
     if(!e.interruptsBot)continue;
     if(e.kind!=='CONVERSATION_CONTROL'||e.status!=='open')return false;
-    if(s.target.teamId!==null?(e.teamId!==s.target.teamId||e.assignee?.kind!=='NONE'):
+    if(s.target.teamId!==null?(e.teamId!==s.target.teamId||!['NONE','HUMAN'].includes(e.assignee?.kind??'')):
       (e.teamId!==null||e.assignee?.kind!=='HUMAN'||e.assignee.id!==s.target.agentId)){
       // The opening callback is recognized only by the admission hook. It is
       // IGNORED, leaves control unchanged, and cannot forgive a revision here.
       if(e.teamId===null&&e.assignee?.kind==='NONE'&&row.disposition==='IGNORED')continue;
       return false;
     }
-    if(row.disposition==='APPLIED')expected++;
+    if(row.disposition==='APPLIED'){expected++;human||=e.assignee?.kind==='HUMAN';}
   }
-  return expected;
+  return expected?{control:expected,session:human?1:0}:false;
 }
 
 export function createPostgresHandoffRepository():HandoffRepository {
@@ -172,7 +172,7 @@ export function createPostgresHandoffRepository():HandoffRepository {
         throw new NativeHandoffError('HANDOFF_CONTEXT_CHANGED');
       if(c.controlRevision!==s.controlRevision||c.controlState!=='PAUSED'||c.sessionRevision!==s.sessionRevision||c.sessionState!=='HANDOFF_PENDING') {
         const expected=settlement&&op.phase!=='PREPARED'?await observationAllowsSettlement(tx,op):false;
-        if(!expected||c.controlRevision!==s.controlRevision+expected||c.sessionRevision!==s.sessionRevision+(s.target.agentId!==null?1:0)||
+        if(!expected||c.controlRevision!==s.controlRevision+expected.control||c.sessionRevision!==s.sessionRevision+expected.session||
           !['HUMAN','PAUSED'].includes(c.controlState??'')||!['HANDOFF_PENDING','HUMAN_ACTIVE'].includes(c.sessionState??''))
           throw new NativeHandoffError('HANDOFF_HUMAN_CONTROL_CHANGED');
       }

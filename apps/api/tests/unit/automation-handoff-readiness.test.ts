@@ -39,7 +39,7 @@ describe('remote handoff readiness',()=>{
     [{inboxPolicy:{greetingEnabled:false,autoAssignmentEnabled:null}},'ATTENDANCE_DISABLE_INBOX_AUTO_ASSIGNMENT'],
     [{remoteBot:{id:2}},'ATTENDANCE_REMOVE_COMPETING_AGENT_BOT'],
     [{capabilities:{agentBot:'UNSUPPORTED'}},'ATTENDANCE_REMOVE_COMPETING_AGENT_BOT'],
-    [{teams:[{id:3,autoAssignment:true}]},'ATTENDANCE_DISABLE_TEAM_AUTO_ASSIGNMENT'],
+    [{teams:[{id:3,autoAssignment:null}]},'ATTENDANCE_DISABLE_TEAM_AUTO_ASSIGNMENT'],
   ])('blocks unsafe or unverified remote policy %j',async(patch,error)=>{
     const h=setup(),base=await h.catalog();h.catalog.mockResolvedValue({...base,...patch} as never);
     await expect(h.service.prepare(org,graph)).rejects.toThrow(error as string);expect(h.validateTarget).not.toHaveBeenCalled();
@@ -49,5 +49,11 @@ describe('remote handoff readiness',()=>{
     await expect(h.service.prepare(org,graph)).rejects.toThrow('CHATWOOT_CONTEXT_CHANGED');
     h.catalog.mockResolvedValue(base);h.validateTarget.mockRejectedValue(new Error('ATTENDANCE_TEAM_NOT_FOUND'));
     await expect(h.service.prepare(org,graph)).rejects.toThrow('ATTENDANCE_TEAM_NOT_FOUND');
+  });
+  it('accepts a known automatically distributing team without changing the remote policy',async()=>{
+    const h=setup(),base=await h.catalog();h.catalog.mockResolvedValue({...base,teams:[{id:3,autoAssignment:true}]} as never);
+    const prepared=await h.service.prepare(org,graph,channel);
+    await prepared.assertCurrent(h.tx as never);
+    expect(h.validateTarget).toHaveBeenCalledWith(scope,config.target);
   });
 });

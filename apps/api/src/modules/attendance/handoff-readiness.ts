@@ -48,7 +48,7 @@ export function createHandoffReadiness(options:Options):HandoffReadiness {
       if(catalog.inboxPolicy.greetingEnabled!==false)throw new AttendanceError('ATTENDANCE_DISABLE_INBOX_GREETING',409);
       if(catalog.inboxPolicy.autoAssignmentEnabled!==false)throw new AttendanceError('ATTENDANCE_DISABLE_INBOX_AUTO_ASSIGNMENT',409);
       if(catalog.capabilities.agentBot!=='SUPPORTED'||catalog.remoteBot!==null&&catalog.remoteBot.id!==catalog.brokerBotId)throw new AttendanceError('ATTENDANCE_REMOVE_COMPETING_AGENT_BOT',409);
-      if(config.target.teamId!==null&&catalog.teams.find(team=>team.id===config.target.teamId)?.autoAssignment!==false)
+      if(config.target.teamId!==null&&typeof catalog.teams.find(team=>team.id===config.target.teamId)?.autoAssignment!=='boolean')
         throw new AttendanceError('ATTENDANCE_DISABLE_TEAM_AUTO_ASSIGNMENT',409);
       const target=await options.validateTarget(snapshot.scope,config.target);
       if(!sameScope(snapshot.scope,target.scope)||snapshot.credentialRevision!==target.credentialRevision)throw new AttendanceError('CHATWOOT_CONTEXT_CHANGED',409);

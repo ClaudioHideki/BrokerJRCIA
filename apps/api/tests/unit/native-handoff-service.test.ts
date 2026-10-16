@@ -30,6 +30,35 @@ function fixture() {
 }
 
 describe('durable native handoff',()=>{
+  it('confirms a distributing team only after validating the actual human in that team and inbox',async()=>{
+    const f=fixture(),catalog=await f.attendanceService.catalog();
+    f.attendanceService.catalog.mockResolvedValue({...catalog,teams:[{id:3,name:'Synthetic',autoAssignment:true}]} as AttendanceCatalog);
+    f.client.assignAttendanceConversation.mockImplementationOnce(async()=>{f.canonical.meta.team={id:3};f.canonical.meta.assignee={id:4,type:'user'};});
+    expect(await f.service().dispatch(f.item)).toMatchObject({kind:'SENT'});
+    expect(f.attendanceService.validateTarget).toHaveBeenLastCalledWith(f.operation.snapshot!.scope,{teamId:3,agentId:4});
+    expect(f.repository.confirm).toHaveBeenCalledOnce();
+  });
+  it.each(['ATTENDANCE_AGENT_NOT_IN_TEAM','ATTENDANCE_AGENT_NOT_IN_INBOX'])('does not confirm an unverified actual team agent: %s',async code=>{
+    const f=fixture();
+    f.client.assignAttendanceConversation.mockImplementationOnce(async()=>{f.canonical.meta.team={id:3};f.canonical.meta.assignee={id:4,type:'user'};});
+    f.attendanceService.validateTarget.mockResolvedValueOnce({credentialRevision:4}).mockRejectedValueOnce(new Error(code));
+    await expect(f.service().dispatch(f.item)).rejects.toThrow('HANDOFF_REMOTE_OUTCOME_UNKNOWN');
+    expect(f.operation.error).toBe(code);expect(f.repository.confirm).not.toHaveBeenCalled();
+  });
+  it('does not confirm if credential revision changes while checking the actual team agent',async()=>{
+    const f=fixture();
+    f.client.assignAttendanceConversation.mockImplementationOnce(async()=>{f.canonical.meta.team={id:3};f.canonical.meta.assignee={id:4,type:'user'};});
+    f.attendanceService.validateTarget.mockResolvedValueOnce({credentialRevision:4}).mockResolvedValueOnce({credentialRevision:5});
+    await expect(f.service().dispatch(f.item)).rejects.toThrow('HANDOFF_REMOTE_OUTCOME_UNKNOWN');
+    expect(f.operation.error).toBe('HANDOFF_CONTEXT_CHANGED');expect(f.repository.confirm).not.toHaveBeenCalled();
+  });
+  it('reconciles a timed out team assignment with a verified human by reads only',async()=>{
+    const f=fixture();f.client.assignAttendanceConversation.mockImplementationOnce(async()=>{f.canonical.meta.team={id:3};f.canonical.meta.assignee={id:4,type:'user'};throw new Error('TIMEOUT');});
+    await expect(f.service().dispatch(f.item)).rejects.toThrow('HANDOFF_REMOTE_OUTCOME_UNKNOWN');f.restart();
+    expect(await f.service().reconcileOnce('tenant-a')).toMatchObject({state:'APPLIED'});
+    expect(f.client.assignAttendanceConversation).toHaveBeenCalledTimes(1);expect(f.client.handoffFlowConversation).toHaveBeenCalledTimes(1);
+    expect(f.attendanceService.validateTarget).toHaveBeenLastCalledWith(f.operation.snapshot!.scope,{teamId:3,agentId:4});
+  });
   it('pauses durably, opens then assigns, and returns SENT only after canonical target/open readback',async()=>{
     const f=fixture(),result=await f.service().dispatch(f.item);
     expect(result).toMatchObject({kind:'SENT'});expect(f.operation.state).toBe('APPLIED');

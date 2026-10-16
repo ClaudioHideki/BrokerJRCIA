@@ -33,7 +33,7 @@ function confirmed(op:HandoffOperation,value:Canonical) {
     &&(value.meta.assignee_type==null||value.meta.assignee_type==='User')
     &&(value.meta.assignee?.type==='user'||value.meta.assignee_type==='User');
   if(value.status!=='open'||(target.teamId!==null?
-    value.meta.team?.id!==target.teamId||value.meta.assignee!==null||value.meta.assignee_type!=null:
+    value.meta.team?.id!==target.teamId||(value.meta.assignee!==null?!human:value.meta.assignee_type!=null):
     value.meta.assignee?.id!==target.agentId||!human||value.meta.team!==null))throw new NativeHandoffError('HANDOFF_REMOTE_RESULT_UNCONFIRMED');
 }
 function policy(op:HandoffOperation,catalog:AttendanceCatalog) {
@@ -42,7 +42,7 @@ function policy(op:HandoffOperation,catalog:AttendanceCatalog) {
     throw new NativeHandoffError('HANDOFF_CONTEXT_CHANGED');
   if(catalog.inboxPolicy?.greetingEnabled!==false||catalog.inboxPolicy?.autoAssignmentEnabled!==false||
     catalog.capabilities?.agentBot!=='SUPPORTED'||catalog.remoteBot!==null&&catalog.remoteBot.id!==catalog.brokerBotId||
-    s.target.teamId!==null&&!catalog.teams.some(team=>team.id===s.target.teamId&&team.autoAssignment===false)||
+    s.target.teamId!==null&&!catalog.teams.some(team=>team.id===s.target.teamId&&typeof team.autoAssignment==='boolean')||
     s.target.agentId!==null&&!catalog.agents.some(agent=>agent.id===s.target.agentId&&agent.inboxMember))
     throw new NativeHandoffError('HANDOFF_INBOX_POLICY_UNSAFE');
 }
@@ -58,6 +58,14 @@ export function createNativeHandoffService(options:Options) {
     const account=await guard(op,lease,settlement),s=op.snapshot!;
     const value=await options.client(account).attendanceConversation(s.scope.accountId,s.remoteConversationId);
     await guard(op,lease,settlement);return value;
+  }
+  async function confirmObservedTarget(op:HandoffOperation,value:Canonical) {
+    confirmed(op,value);
+    const snapshot=op.snapshot!;
+    if(snapshot.target.teamId!==null&&value.meta.assignee!==null){
+      const validated=await options.attendanceService.validateTarget(snapshot.scope,{teamId:snapshot.target.teamId,agentId:value.meta.assignee.id});
+      if(validated.credentialRevision!==snapshot.credentialRevision)throw new NativeHandoffError('HANDOFF_CONTEXT_CHANGED');
+    }
   }
   return {
     async dispatch(item:OutboxRow):Promise<OutboxDispatchResult> {
@@ -90,7 +98,7 @@ export function createNativeHandoffService(options:Options) {
           const account=await repository.guard(t,op,true);op=await repository.stage(t,op,'ASSIGNMENT_DISPATCHED');return account;
         });
         await options.client(account).assignAttendanceConversation(s.scope.accountId,s.remoteConversationId,s.target);
-        confirmed(op,await canonical(op,true,true));
+        await confirmObservedTarget(op,await canonical(op,true,true));
         await options.transact(op.organizationId,t=>repository.confirm(t,op));
         return {kind:'SENT',remoteReference:`chatwoot-handoff:${op.id}`};
       } catch(error) {
@@ -109,7 +117,7 @@ export function createNativeHandoffService(options:Options) {
         // Reads only. An UNKNOWN open/assignment is never automatically replayed,
         // nor does observing one phase authorize the next phase after a restart.
         const value=await canonical(op,false,true);
-        confirmed(op,value);
+        await confirmObservedTarget(op,value);
         await options.transact(org,t=>repository.confirm(t,op,'CANONICAL_RECONCILIATION'));return {processed:true,id:op.id,state:'APPLIED'};
       } catch(error) {
         await fail(op,errorCode(error),true);return {processed:true,id:op.id,state:'UNKNOWN'};
