@@ -7,6 +7,16 @@ test('Meta e Typebot sintéticos: template, entrega, resposta ordenada e atendim
   await page.goto('/mensagens');
   await expect(page.getByRole('heading', { name: 'Conversas', exact: true })).toBeVisible();
   const selectMeta = () => page.getByLabel('Canal WhatsApp', { exact: true }).selectOption(process.env.JRC_E2E_META_CHANNEL_ID!);
+  const historyPanel = page.locator('#history-title').locator('..');
+  const refreshHistory = async () => {
+    const refresh = page.getByRole('button', { name: 'Atualizar histórico', exact: true });
+    await expect(refresh).toBeEnabled();
+    const loaded = page.waitForResponse(response => response.request().method() === 'GET' && /\/v1\/messaging\/conversations\/[^/]+\/messages(?:\?|$)/.test(response.url()));
+    await refresh.click();
+    expect((await loaded).status()).toBe(200);
+    await expect(refresh).toBeEnabled();
+    return historyPanel.innerText();
+  };
   await selectMeta();
   await page.getByLabel('Modelo aprovado').selectOption({ label: 'e2e_boas_vindas · pt_BR' });
   await page.getByLabel('Variável 1', { exact: true }).fill('Cliente sintético');
@@ -16,7 +26,7 @@ test('Meta e Typebot sintéticos: template, entrega, resposta ordenada e atendim
   expect(sentResponse.status()).toBe(202);
   const sentMessage = await sentResponse.json() as { id: string };
   await expect.poll(async () => {
-    await page.reload(); await selectMeta();
+    await refreshHistory();
     return page.locator(`[data-message-id="${sentMessage.id}"]`).innerText();
   }).toContain('DELIVERED');
   // Restore BOT because projects share the isolated fixture but run sequentially.
@@ -30,8 +40,8 @@ test('Meta e Typebot sintéticos: template, entrega, resposta ordenada e atendim
   const signature = `sha256=${createHmac('sha256', process.env.JRC_E2E_META_SECRET!).update(body).digest('hex')}`;
   const response = await request.post('http://127.0.0.1:3310/v1/webhooks/meta', { data: body, headers: { 'content-type': 'application/json', 'x-hub-signature-256': signature } });
   expect(response.status()).toBe(200);
-  await expect.poll(async () => { await page.reload(); await selectMeta(); return page.locator('#history-title').locator('..').innerText(); }).toContain(`Resposta sintética Typebot: ${incomingText}`);
-  const history = await page.locator('#history-title').locator('..').innerText();
+  await expect.poll(refreshHistory).toContain(`Resposta sintética Typebot: ${incomingText}`);
+  const history = await historyPanel.innerText();
   expect(history.indexOf(`Resposta sintética Typebot: ${incomingText}`)).toBeLessThan(history.lastIndexOf('Segunda mensagem sintética'));
   await page.getByRole('button', { name: 'Assumir atendimento' }).click();
   await expect(page.getByText('Modo: Atendimento humano')).toBeVisible();
