@@ -17,3 +17,11 @@ O resultado canônico pode conter o time selecionado e um agente humano. Antes d
 Limite: o Chatwoot externo não oferece compare-and-set para atribuição. Leitura canônica confirma o resultado, não autoria exclusiva. Nenhuma mutação é repetida durante reconciliação; resultado exato já concluído manualmente pode ser reconhecido como CANONICAL_RECONCILIATION. Apenas abertura sem destino concluído continua incerta.
 
 Este é um incremento local do programa. Não houve push, publicação de imagem, deploy ou ativação de automação. O fechamento completo e a homologação no novo servidor permanecem pendentes.
+
+## Correção decorrente da revisão
+
+A revisão identificou troca do agente observado durante o GET de membros do time. A regressão reproduziu retorno SENT indevido. O alvo canônico validado passa a ser transitório da tentativa; antes de confirmar, o ledger compara a última atribuição APPLIED ao alvo validado sob lock. Mudança concorrente deixa UNKNOWN; uma nova tentativa lê e valida o alvo atual, sem repetir POST. GREEN: 33 testes PostgreSQL e typecheck aprovado.
+
+A nova execução geral terminou com 407 arquivos aprovados e um timeout no teste independente de geração de relatório de segurança (3122 testes aprovados). A reexecução focal desse arquivo é registrada separadamente; não é um erro da transferência nem foi alterado seu timeout.
+
+Reexecução isolada do arquivo de relatório: 6 testes aprovados em 50,51 s. Nenhuma alteração de código/timeout desse arquivo. A execução geral anterior à correção já havia passado integralmente; a posterior teve somente o timeout documentado acima.

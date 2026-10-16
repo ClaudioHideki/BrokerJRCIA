@@ -40,7 +40,7 @@ describe('native handoff durable PostgreSQL state',()=>{
     const requests:{path:string;method:string;body:Record<string,unknown>}[]=[];
     let deferredOpening:Record<string,unknown>|null=null,delayOpening:'OPENED'|'ASSIGNMENT_DISPATCHED'|null=null;
     let callback=true,timeout:'open'|'assign'|null=null,beforeOpen:(()=>Promise<void>)|null=null,afterOpen:(()=>Promise<void>)|null=null;
-    let teamAutoAssignment=false,teamAssignee:number|null=12,teamMembers=[12];
+    let teamAutoAssignment=false,teamAssignee:number|null=12,teamMembers=[12],duringTeamMembers:(()=>Promise<void>)|null=null;
     const record=()=>db.transact(t.org,tx=>recordChatwootAttendanceEvent(tx,scope,{...canonical,event:'conversation_updated',account:{id:7}}));
     const human=()=>db.transact(t.org,tx=>recordChatwootAttendanceEvent(tx,scope,{event:'message_created',id:91,account:{id:7},inbox:{id:9},conversation:{id:51,inbox_id:9},message_type:'outgoing',private:true,sender:{id:12,type:'user'}}));
     const fetch=vi.fn(async(input:URL|string|Request,init?:RequestInit)=>{
@@ -55,7 +55,7 @@ describe('native handoff durable PostgreSQL state',()=>{
       else if(path.endsWith('/agents'))response=[{id:12,name:'Synthetic',email:'synthetic@example.test'}];
       else if(path.endsWith('/inbox_members/9'))response={payload:[{id:12,name:'Synthetic',email:'synthetic@example.test'}]};
       else if(path.endsWith('/teams'))response=[{id:4,name:'Support',account_id:7,allow_auto_assign:teamAutoAssignment}];
-      else if(path.endsWith('/teams/4/team_members'))response=teamMembers.map(id=>({id,name:'Synthetic'}));
+      else if(path.endsWith('/teams/4/team_members')){if(duringTeamMembers)await duringTeamMembers();response=teamMembers.map(id=>({id,name:'Synthetic'}));}
       else if(path.endsWith('/labels'))response={payload:[]};
       else if(path.endsWith('/custom_attribute_definitions'))response=[];
       else if(path.endsWith('/agent_bot'))response={agent_bot:null};
@@ -85,6 +85,7 @@ describe('native handoff durable PostgreSQL state',()=>{
     return {...t,binding,execution,outbox,item,fetch,service,requests,state,human,expire,canonical,record,
       setTeamDistribution:(enabled:boolean,agentId:number|null=12)=>{teamAutoAssignment=enabled;teamAssignee=agentId;},
       setTeamMembers:(ids:number[])=>{teamMembers=ids;},
+      duringTeamMembers:(fn:()=>Promise<void>)=>{duringTeamMembers=fn;},
       setCallback:(value:boolean)=>{callback=value;},delayOpening:(value:typeof delayOpening)=>{delayOpening=value;},setTimeout:(value:typeof timeout)=>{timeout=value;},beforeOpen:(fn:()=>Promise<void>)=>{beforeOpen=fn;},afterOpen:(fn:()=>Promise<void>)=>{afterOpen=fn;}};
   }
   it('cooperates with automatic team distribution and preserves the human callback in the real ledger',async()=>{
@@ -101,6 +102,19 @@ describe('native handoff durable PostgreSQL state',()=>{
     await expect(t.service().dispatch(t.item)).rejects.toThrow('HANDOFF_REMOTE_OUTCOME_UNKNOWN');
     const state=await t.state();expect(state.operation.state).toBe('UNKNOWN');expect(state.session.state).toBe('HUMAN_ACTIVE');
     expect(state.operation.last_error).toBe('ATTENDANCE_AGENT_NOT_IN_TEAM');
+  });
+  it('does not confirm a competing assignee observed during membership validation',async()=>{
+    const t=await fixture();t.setTeamDistribution(true);
+    t.duringTeamMembers(async()=>{
+      t.canonical.meta.assignee={id:13,type:'user'};t.canonical.updated_at++;
+      await t.record();
+    });
+    await expect(t.service().dispatch(t.item)).rejects.toThrow('HANDOFF_REMOTE_OUTCOME_UNKNOWN');
+    const state=await t.state();expect(state.operation.state).toBe('UNKNOWN');
+    expect(state.operation.last_error).toBe('HANDOFF_HUMAN_CONTROL_CHANGED');
+    expect(state.session.state).toBe('HUMAN_ACTIVE');expect(state.conversation.mode).toBe('HUMAN');
+    await t.expire();expect(await t.service().reconcileOnce(t.org)).toMatchObject({state:'UNKNOWN'});
+    expect(t.requests.filter(r=>r.method==='POST')).toHaveLength(2);
   });
   it('reconciles automatic team distribution after timeout without replaying any mutation',async()=>{
     const t=await fixture();t.setTeamDistribution(true);t.setTimeout('assign');

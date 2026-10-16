@@ -66,6 +66,7 @@ export function createNativeHandoffService(options:Options) {
       const validated=await options.attendanceService.validateTarget(snapshot.scope,{teamId:snapshot.target.teamId,agentId:value.meta.assignee.id});
       if(validated.credentialRevision!==snapshot.credentialRevision)throw new NativeHandoffError('HANDOFF_CONTEXT_CHANGED');
     }
+    op.settlementTarget={teamId:value.meta.team?.id??null,agentId:value.meta.assignee?.id??null};
   }
   return {
     async dispatch(item:OutboxRow):Promise<OutboxDispatchResult> {

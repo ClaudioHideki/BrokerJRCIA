@@ -14,6 +14,8 @@ export interface HandoffSnapshot {
 export interface HandoffOperation {
   id:string; organizationId:string; outboxId:string; executionId:string; channelId:string; conversationId:string;
   leaseToken:string; snapshot:HandoffSnapshot|null; phase:HandoffPhase; state:HandoffState; error:string|null;
+  /** Transient canonical target validated by this attempt; never rehydrated from storage. */
+  settlementTarget?:HumanTarget;
 }
 export type HandoffPreparation={operation:HandoffOperation;fresh:boolean}|{result:OutboxDispatchResult};
 export interface HandoffRepository {

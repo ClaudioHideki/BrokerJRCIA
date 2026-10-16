@@ -69,7 +69,7 @@ async function observationAllowsSettlement(tx:TenantTransaction,op:HandoffOperat
     WHERE o.organization_id=$1 AND o.integration_id=$3 AND o.destination_revision=$4 AND o.account_id=$5 AND o.inbox_id=$6
       AND o.remote_conversation_id=$7 AND o.created_at>=h.created_at
     ORDER BY o.created_at,o.id`,[op.organizationId,op.id,s.scope.integrationId,s.scope.destinationRevision,s.scope.accountId,s.scope.inboxId,s.remoteConversationId])).rows;
-  let expected=0,human=false;
+  let expected=0,human=false,target:{teamId:number|null;agentId:number|null}|undefined;
   for(const row of rows){
     const e=row.event;
     if(['WAITING_MAP','ECHO_PENDING','RECONCILE'].includes(row.disposition))return false;
@@ -82,9 +82,12 @@ async function observationAllowsSettlement(tx:TenantTransaction,op:HandoffOperat
       if(e.teamId===null&&e.assignee?.kind==='NONE'&&row.disposition==='IGNORED')continue;
       return false;
     }
-    if(row.disposition==='APPLIED'){expected++;human||=e.assignee?.kind==='HUMAN';}
+    if(row.disposition==='APPLIED'){
+      expected++;human||=e.assignee?.kind==='HUMAN';
+      target={teamId:e.teamId??null,agentId:e.assignee?.kind==='HUMAN'?e.assignee.id??null:null};
+    }
   }
-  return expected?{control:expected,session:human?1:0}:false;
+  return expected?{control:expected,session:human?1:0,target}:false;
 }
 
 export function createPostgresHandoffRepository():HandoffRepository {
@@ -172,7 +175,8 @@ export function createPostgresHandoffRepository():HandoffRepository {
         throw new NativeHandoffError('HANDOFF_CONTEXT_CHANGED');
       if(c.controlRevision!==s.controlRevision||c.controlState!=='PAUSED'||c.sessionRevision!==s.sessionRevision||c.sessionState!=='HANDOFF_PENDING') {
         const expected=settlement&&op.phase!=='PREPARED'?await observationAllowsSettlement(tx,op):false;
-        if(!expected||c.controlRevision!==s.controlRevision+expected.control||c.sessionRevision!==s.sessionRevision+expected.session||
+        if(!expected||op.settlementTarget&&(expected.target?.teamId!==op.settlementTarget.teamId||expected.target?.agentId!==op.settlementTarget.agentId)||
+          c.controlRevision!==s.controlRevision+expected.control||c.sessionRevision!==s.sessionRevision+expected.session||
           !['HUMAN','PAUSED'].includes(c.controlState??'')||!['HANDOFF_PENDING','HUMAN_ACTIVE'].includes(c.sessionState??''))
           throw new NativeHandoffError('HANDOFF_HUMAN_CONTROL_CHANGED');
       }
@@ -200,6 +204,7 @@ export function createPostgresHandoffRepository():HandoffRepository {
         WHERE organization_id=$1 AND id=$2 AND status='UNKNOWN'`,[op.organizationId,op.outboxId,error,uncertain]);
     },
     async confirm(tx,op,evidence='DISPATCH_READBACK') {
+      if(!op.settlementTarget)throw new NativeHandoffError('HANDOFF_REMOTE_RESULT_UNCONFIRMED');
       await this.guard(tx,op,false,true);
       await tx.query(`UPDATE attendance_handoff_operations SET state='APPLIED',phase='CONFIRMED',confirmed_by=$3,last_error=NULL,updated_at=now() WHERE organization_id=$1 AND id=$2`,[op.organizationId,op.id,evidence]);
       await tx.query(`UPDATE automation_outbox SET status='SENT',remote_reference=$3,last_error=NULL,lease_token=NULL,lease_expires_at=NULL,updated_at=now()
