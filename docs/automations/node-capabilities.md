@@ -9,6 +9,7 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 | input | AVAILABLE | InputEditor: pergunta, variável e prazo opcional explícito | engine: espera/resposta; prazo persistido e saída timeout |
 | menu | AVAILABLE | FlowCanvas: texto/opções/variável | engine: espera/opção numerada |
 | condition | AVAILABLE | FlowCanvas: campo/comparação/valor | engine: yes/no |
+| switch | AVAILABLE | SwitchEditor: variável e casos escalares tipados com identidade estável | engine/simulação: igualdade estrita; case-ID/default; até20 casos |
 | variable | AVAILABLE | FlowCanvas: variável/valor | engine: interpolação no estado |
 | data-set | AVAILABLE | DataNodeEditor: fonte, destino, erro e campos tipados | engine/simulação: transformação local tipada; success/error |
 | data-rename | AVAILABLE | DataNodeEditor: fonte, destino, erro e campos tipados | engine/simulação: transformação local tipada; success/error |
@@ -36,6 +37,8 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 | resolve | AVAILABLE | ConversationActionEditor: caixa e Resolver e encerrar | IO_CONVERSATION: resolução confirmada encerra o ciclo inteiro |
 
 Os formulários simples acima são os existentes; o menu visual com adicionar/remover/reordenar opções faz parte de U3a. `end` encerra o bot, não resolve a conversa na central.
+
+`switchVersion:1` distingue texto, número finito, booleano e null. A variável ausente, objeto/lista ou valor não encontrado segue `default`, cuja ligação é obrigatória. Não interpreta expressões. Renomear caso conserva sua saída; remover preserva a ligação para revisão, e um caso novo não reutiliza o ID removido. A condição textual anterior não muda. Veja [verificação candidata](../validation/2026-10-16-flow-typed-switch.md).
 
 Capturas novas usam `inputConfigVersion: 1` e podem configurar `timeoutSeconds` inteiro de 1 a 604800, com as saídas `next` e `timeout` conectadas. Sem prazo, aguardam a próxima mensagem. O prazo persiste entre reinícios, e uma resposta admitida pelo servidor até inclusive o limite vence; o timeout não preenche a variável. A retomada humana confirmada em **Continuar de onde parou** cria uma nova tentativa com o prazo integral configurado. Capturas históricas sem marcador conservam a semântica e metadados anteriores. Studio usa tempo virtual para simular o prazo, sem esperar tempo real. Consulte o [desenho e as regras de concorrência](../superpowers/specs/2026-10-15-input-timeout-design.md).
 

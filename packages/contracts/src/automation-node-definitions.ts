@@ -7,6 +7,7 @@ import {compatibleAiNodeSchema} from './automation-ai.js';
 import {compatibleHttpQuerySchema} from './automation-http-query.js';
 import {compatibleInputCaptureSchema,inputCapturePorts} from './automation-input.js';
 import {compatibleConversationEffectSchema,conversationEffectPorts} from './automation-conversation-effects.js';
+import {SwitchNodeConfigSchema,switchNodePorts} from './automation-switch.js';
 
 export const NodeDiagnosticSchema = z.object({
   nodeId: z.string().nullable(), field: z.string(), code: z.string(), message: z.string(),
@@ -48,6 +49,7 @@ export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = 
     return Array.isArray(options) && parsed.length >= 2 && parsed.length <= 10 && parsed.length === options.length && new Set(parsed.map(option => option.value)).size === parsed.length;
   }, 'Configure de 2 a 10 opções numeradas e únicas.') }), node => menuOptions(node).map(option => `option-${option.value}`)),
   define('condition', 'Condição', 'LOGIC', config({ field: safeKey, operator: z.enum(['equals', 'not_equals', 'contains', 'starts_with', 'present']) }), () => ['yes', 'no']),
+  define('switch','Decidir por vários valores','LOGIC',SwitchNodeConfigSchema,node=>switchNodePorts(node.data)),
   define('variable', 'Definir variável', 'DATA', config({ variable: safeKey })),
   ...DATA_NODE_TYPES.map(type =>
     define(type, ({ 'data-set': 'Definir dado', 'data-rename': 'Renomear dado', 'data-pick': 'Selecionar campos', 'data-merge': 'Mesclar objetos', 'data-map': 'Mapear lista', 'data-filter': 'Filtrar lista', 'json-parse': 'Ler JSON', 'json-stringify': 'Gerar JSON', expression: 'Expressão segura' } as Record<string, string>)[type]!, 'DATA',

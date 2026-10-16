@@ -66,6 +66,12 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Salvar', exact: true }).isEnabled(), true);
   assert.equal(await page.locator('#host-title').evaluate(el => getComputedStyle(el).color), 'rgb(90, 50, 10)');
   assert.equal(await page.getByRole('button', { name: 'Publicar', exact: true }).evaluate(el => getComputedStyle(el).fontSize) === '41px', false);
+  await page.getByRole('button', { name: /Decidir por vários valores/ }).click();
+  await page.getByLabel('Tipo do caso 1').selectOption('number');
+  await page.getByLabel('Valor do caso 1').fill('1');
+  await page.getByLabel('Nome da saída 1').fill('Comercial');
+  await page.getByLabel('Destino Comercial').selectOption({label:'Fim'});
+  assert.equal(await page.getByLabel('Destino Comercial').inputValue(), 'end');
   const calls = await page.evaluate(() => window.nativeFlowCalls);
   assert.ok(calls.some(call => call.path.endsWith('/resource-channels')));
   assert.ok(calls.every(call => call.method === 'get' && call.path.startsWith(`/api/v1/accounts/3/jrc_flow_delegation/sessions/${handle}/flows`)));
@@ -73,7 +79,7 @@ try {
   assert.equal(await page.locator('#native').evaluate(el => el.shadowRoot.childElementCount), 0);
   assert.deepEqual(errors, []);
   assert.deepEqual(external, []);
-  console.log(JSON.stringify({ nativeBundle: 'PASS', scenarios: ['shared-editor', 'named-box', 'private-note-draft', 'publish-scope', 'shadow-css', 'session-close'], externalRequests: external.length }));
+  console.log(JSON.stringify({ nativeBundle: 'PASS', scenarios: ['shared-editor', 'named-box', 'private-note-draft', 'typed-switch', 'publish-scope', 'shadow-css', 'session-close'], externalRequests: external.length }));
 } finally {
   await browser?.close(); await new Promise(resolve => server.close(resolve));
 }

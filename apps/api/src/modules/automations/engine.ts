@@ -5,6 +5,7 @@ import { FlowGraphSchema, AutomationHandoffConfigSchema, hasNativeHandoffConfig,
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
 import { executeDataNode } from './data-nodes.js';
 import {getDataNodeV2Schema,isDataNodeType,publishedDependencyPolicy,SUBFLOW_MAX_DEPTH} from '@jrc/contracts';
+import {SwitchNodeConfigSchema,selectSwitchPort} from '@jrc/contracts';
 import { isBusinessOpen } from './business-hours.js';
 import { assertRuntimeState, isRuntimeKey as safeKey, renderRuntimeText as renderFlowText,
   renderRuntimeValue, runtimeJson, runtimeStateVersion, runtimeText } from './runtime-state.js';
@@ -208,6 +209,10 @@ export async function executeAutomation(
     }
     if(node.type==='variable'){const key=string(node.data.variable);if(safeKey(key))variables[key]=stateVersion===2?renderRuntimeValue(node.data.value,variables):renderFlowText(node.data.value,variables);}
     let port='next';
+    if(node.type==='switch'){
+      port=selectSwitchPort(SwitchNodeConfigSchema.parse(node.data),variables);
+      record.output={port};
+    }
     if(node.type==='schedule'){
       const open=isBusinessOpen(node.data,input.now);
       record.output={open,timezone:node.data.timezone,at:input.now.toISOString()};

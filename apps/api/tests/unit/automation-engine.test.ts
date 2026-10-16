@@ -17,7 +17,7 @@ describe('automation runtime v2 engine',()=>{
     }
   });
   it.each(AUTOMATION_NODE_DEFINITIONS.filter(definition=>definition.availability==='AVAILABLE').map(definition=>definition.type))('executes and simulates available %s without external IO',async type=>{
-    const configs:Record<string,Record<string,unknown>>={handoff:handoffConfig,message:{text:'Olá'},input:{variable:'answer',text:'Nome?'},menu:{text:'Escolha',options:[{value:'1',label:'A'},{value:'2',label:'B'}]},condition:{field:'message',operator:'equals',value:'oi'},variable:{variable:'name',value:'Ana'},delay:{seconds:5}};
+    const configs:Record<string,Record<string,unknown>>={handoff:handoffConfig,message:{text:'Olá'},input:{variable:'answer',text:'Nome?'},menu:{text:'Escolha',options:[{value:'1',label:'A'},{value:'2',label:'B'}]},condition:{field:'message',operator:'equals',value:'oi'},switch:{switchVersion:1,variable:'message',cases:[{id:'first',label:'Primeiro',value:'oi'}]},variable:{variable:'name',value:'Ana'},delay:{seconds:5}};
     const common={configVersion:2,target:'result',errorVariable:'failure'};
     Object.assign(configs,{'data-set':{...common,valueSource:{kind:'LITERAL',value:{active:false}}},'data-rename':{...common,source:'message'},'data-pick':{...common,source:'message',keys:['name']},'data-merge':{...common,sources:['message','second']},'data-map':{...common,source:'message',field:'name'},'data-filter':{...common,source:'message',field:'name',operator:'equals',valueSource:{kind:'LITERAL',value:'A'}},'json-parse':{...common,source:'message'},'json-stringify':{...common,source:'message'},expression:{...common,source:'message',operation:'UPPER'}});
     configs.schedule={timezone:'UTC',weekly:[{day:1,start:'09:00',end:'18:00'}]};
