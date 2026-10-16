@@ -24,6 +24,8 @@ O bloco usa o mesmo contrato, motor, simulação e FlowCanvas do Broker. Superf�
 - Pacotes compilados:1 teste aprovado e1 ignorado porque exige APP_DATABASE_URL/AUTH_DATABASE_URL/REDIS_URL. O build foi refeito pelo próprio comando. O skip não comprova inicialização com esses serviços.
 - Editor embutido: teste de navegador local na candidata JRC antiga reproduziu ausência do botão do switch, preservando os demais cenários. É necessário reinstalar o pacote a partir deste fonte commitado e verificar sua procedência no JRC candidato; isso não altera produção.
 
+Atualização concluída do pacote candidato:198 inputs de build verificados contra o commit51dbab1f26120a0235f7e6b92ac37c1261573ba1; sourceCommitted:true. Smoke de navegador exclusivamente local GREEN nos sete cenários shared-editor, named-box, private-note-draft, typed-switch, publish-scope, shadow-css e session-close, sem requisições externas. Manifestos de composição JRC gerados e verificados. Detalhes no repositório candidato JRC, `docs/validation/2026-10-16-shared-editor-switch.md`. O Flow Ruby legado conserva seu formato distinto; não foi convertido automaticamente.
+
 ## Limites
 
 Não é agente IA, construtor de consultas ERP ou switch com expressões arbitrárias. É uma decisão determinística sobre dados já disponíveis no fluxo. Um teste sintético não homologa o chatbot na central ou no WhatsApp. Publicação de imagem e teste no novo servidor ficam para o corte consolidado autorizado. Sem migration, Compose, ENV ou credencial novos neste incremento.
