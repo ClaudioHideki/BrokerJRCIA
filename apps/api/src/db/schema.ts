@@ -1011,6 +1011,43 @@ export const whatsappGroupCatalogItems = pgTable('whatsapp_group_catalog_items',
   check('whatsapp_group_catalog_items_automation_enabled_check',sql`NOT ${t.automationEnabled}`),
 ]);
 
+export const qrIdentityScopes=pgTable('qr_identity_scopes',{
+  organizationId:uuid('organization_id').notNull(),channelId:uuid('channel_id').notNull(),instanceId:uuid('instance_id').notNull(),
+  scopeId:uuid('scope_id').notNull().defaultRandom(),ownerFingerprint:text('owner_fingerprint'),upstreamInstanceKey:text('upstream_instance_key').notNull(),
+  bindingFingerprint:text('binding_fingerprint').notNull(),
+  updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[primaryKey({columns:[t.organizationId,t.channelId]}),
+  foreignKey({columns:[t.organizationId,t.channelId],foreignColumns:[messagingChannels.organizationId,messagingChannels.id]}),
+  foreignKey({columns:[t.organizationId,t.instanceId],foreignColumns:[instances.organizationId,instances.id]}),
+  check('qr_identity_scopes_owner_fingerprint_check',sql`${t.ownerFingerprint} IS NULL OR ${t.ownerFingerprint} ~ '^[a-f0-9]{64}$'`),
+  check('qr_identity_scopes_binding_fingerprint_check',sql`${t.bindingFingerprint} ~ '^[a-f0-9]{64}$'`),
+]);
+export const qrContactAliases=pgTable('qr_contact_aliases',{
+  organizationId:uuid('organization_id').notNull(),channelId:uuid('channel_id').notNull(),scopeId:uuid('scope_id').notNull(),
+  lid:text('lid').notNull(),phone:text('phone').notNull(),status:text('status').notNull().default('CONFIRMED'),
+  updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[primaryKey({columns:[t.organizationId,t.channelId,t.scopeId,t.lid]}),
+  foreignKey({columns:[t.organizationId,t.channelId],foreignColumns:[messagingChannels.organizationId,messagingChannels.id]}),
+  check('qr_contact_aliases_status_check',sql`${t.status} IN ('CONFIRMED','CONFLICT')`),
+  check('qr_contact_aliases_lid_check',sql`${t.lid} ~ '^[0-9]{1,30}@lid$'`),
+  check('qr_contact_aliases_phone_check',sql`${t.phone} ~ '^[1-9][0-9]{7,14}$'`),
+]);
+export const qrIdentityPendingEvents=pgTable('qr_identity_pending_events',{
+  organizationId:uuid('organization_id').notNull(),channelId:uuid('channel_id').notNull(),scopeId:uuid('scope_id'),lid:text('lid').notNull(),
+  providerMessageId:text('provider_message_id').notNull(),event:jsonb('event'),bodyHash:text('body_hash').notNull(),
+  occurredAt:timestamp('occurred_at',{withTimezone:true}).notNull(),status:text('status').notNull().default('WAITING'),
+  reason:text('reason').notNull().default('LID_NUMBER_UNRESOLVED'),...timestamps,
+},t=>[primaryKey({columns:[t.organizationId,t.channelId,t.providerMessageId]}),
+  foreignKey({columns:[t.organizationId,t.channelId],foreignColumns:[messagingChannels.organizationId,messagingChannels.id]}),
+  check('qr_identity_pending_shape',sql`${t.status} IN ('WAITING','RESOLVED','CONFLICT','STALE') AND (${t.status}<>'RESOLVED' OR ${t.event} IS NULL)
+    AND (${t.event} IS NULL OR (jsonb_typeof(${t.event})='object' AND octet_length(${t.event}::text)<=24576))`),
+  check('qr_identity_pending_events_lid_check',sql`${t.lid} ~ '^[0-9]{1,30}@lid$'`),
+  check('qr_identity_pending_events_provider_message_id_check',sql`length(${t.providerMessageId}) BETWEEN 1 AND 256`),
+  check('qr_identity_pending_events_body_hash_check',sql`${t.bodyHash} ~ '^[a-f0-9]{64}$'`),
+  index('qr_identity_pending_due').on(t.organizationId,t.channelId,t.scopeId,t.lid,t.occurredAt,t.providerMessageId).where(sql`${t.status}='WAITING'`),
+  index('qr_identity_pending_unresolved').on(t.organizationId,t.channelId,t.status).where(sql`${t.status} IN ('WAITING','CONFLICT','STALE')`),
+]);
+
 export * from "./platform-schema.js";
 export * from "./tenancy-schema.js";
 export * from "./meta-onboarding-schema.js";

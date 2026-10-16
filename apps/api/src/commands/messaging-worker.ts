@@ -198,6 +198,9 @@ export async function runMessagingWorker(
             await integrations.chatwootWorker?.runOnce(organizationId);
             await integrations.flowChatwoot?.runOnce(organizationId);
             await integrations.onboarding?.runOnce(organizationId);
+            // Identity reconciliation must not prevent ordinary delivery if a
+            // pending channel's engine has since been disabled or reassigned.
+            await integrations.qr?.runIdentityOnce(organizationId);
             if (environment.WORKER_HEARTBEAT_FILE)
               await writeFile(
                 environment.WORKER_HEARTBEAT_FILE,

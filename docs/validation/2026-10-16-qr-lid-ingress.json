@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-16",
+  "increment": "Recebimento QR: identidade LID e recuperação persistente",
+  "baseCommit": "65b21640c7c7458acb4a6159164d4d48e7935e45",
+  "runtimeBaseline": "0065_qr_identity_pending",
+  "problem": "O normalizador rejeitava mensagens LID sem remoteJidAlt antes da gravação e podia rejeitar também o restante de um lote válido.",
+  "behavior": [
+    "Mensagens compatíveis sem número são preservadas antes de confirmar o webhook, sem criar telefone fictício nem contato por nome.",
+    "Pares LID/PN observados no webhook autenticado alimentam aliases por organização, canal, instância, identidade do número conectado e fingerprint da engine/geração/destino. O caminho legado usa a origem normalizada.",
+    "Mensagens novas com alias já confirmado seguem o caminho normal do bot. Replay de pendências apenas completa o histórico e não agenda resposta atrasada.",
+    "O conteúdo validado da pendência e a mensagem canônica são liquidados na mesma transação; falha desfaz a recuperação inteira.",
+    "Mensagens enviadas pelo aparelho e mídia preservam o caminho de observações/arquivos existente, sem serem convertidas em entrada de contato.",
+    "Aprender os pares do lote inteiro precede a resolução: pares contraditórios entram em CONFLICT, inclusive o primeiro do lote.",
+    "Trocar identidade, instância ou vinculação de engine invalida o escopo anterior. Sender diferente num evento comum invalida aliases mesmo antes do callback de conexão. Reatribuição de engine também é detectada pelo worker antes de qualquer webhook novo.",
+    "O worker recupera no máximo 100 fatos por visita, com ordenação temporal e verificação de canal conectado, empresa ativa e vínculo de engine atual.",
+    "Saúde operacional apresenta Mensagens aguardando identificação quando há WAITING, STALE ou CONFLICT. Nenhum job externo incerto é reenviado por esta correção."
+  ],
+  "persistence": {
+    "tables": ["qr_identity_scopes", "qr_contact_aliases", "qr_identity_pending_events"],
+    "privacy": "Somente campos normalizados de texto/metadados de mídia são preservados; não são gravados o envelope bruto, token, segredo, base64 ou sessão Baileys. Identidade do proprietário é um HMAC. Ao resolver, o conteúdo da pendência é removido e permanece o recibo de deduplicação.",
+    "isolation": "FORCE RLS, política tenant, FKs compostas, grants restritos e integração ao purge de organização/canal.",
+    "admission": "Até 10 mil pendências não resolvidas por canal; ao atingir o limite, novas pendências retornam erro de disponibilidade em vez de confirmar descarte silencioso. Duplicatas continuam idempotentes.",
+    "readiness": "Schema 0064 não é declarado pronto para este binário. O probe exige as tabelas 0065, RLS, proprietário, grants, trigger de lifecycle, constraint e índice."
+  },
+  "limits": [
+    "A resolução deste incremento usa pares realmente observados na engine; não inventa um endpoint de consulta LID ausente no contrato da Evolution preservada.",
+    "Sem sender do proprietário verificável, a pendência não recebe automaticamente um escopo posterior. Conflitos e fatos de uma identidade antiga requerem reconciliação; não são associados a um contato por aproximação.",
+    "Não implementa importação messages.set, mídia de grupos, chamadas ou homologação Meta/Chatwoot externo. Esses incrementos permanecem separados.",
+    "A correção não recupera retroativamente payloads que o binário antigo rejeitou e não armazenou. Histórico da engine precisa de importação própria."
+  ],
+  "verification": {
+    "tdd": "Falha original QR_EVENT_INVALID reproduzida no normalizador; integração reproduziu ausência de persistência antes do novo caminho. Casos da revisão reproduziram bot ignorado para alias conhecido e escopo antigo preservado em mensagem PN.",
+    "build": "PASS",
+    "postgresql": "PASS: 15 testes finais, incluindo persistência/restart, deduplicação, escopo, conflito, troca de owner/engine, backlog, mídia fromMe, rollback e purge autorizado. As regressões de migrations, ponte QR/Chatwoot, observações de saída e readiness também foram exercitadas em rodadas focais.",
+    "upgrade": "PASS: 0064 populado para 0065, sem alteração de canais/contatos/conversas; readiness antes/depois, cada grant necessário e trigger de lifecycle. O teste de ausência de INSERT reproduziu e corrigiu o uso indevido da lista de privilégios como condição ANY.",
+    "regression": "PASS no corte final: 406 arquivos e 3.097 testes, 375.90 segundos, maxWorkers=4. A rodada anterior teve expectativas de baseline antigas e timeouts em processos auxiliares durante carga concorrente; expectativas corrigidas e nenhuma ampliação de timeout do produto.",
+    "review": "Revisão independente encerrada sem P1/P2 adicionais. Casos de bot, troca de owner e geração da engine foram reproduzidos e corrigidos antes da aprovação final.",
+    "production": "Não instalado nem homologado no servidor nesta implementação."
+  },
+  "release": {
+    "env": "Sem novas variáveis obrigatórias.",
+    "compose": "Sem novos serviços, portas ou volumes.",
+    "migration": "Executar o serviço migrate do perfil maintenance com a nova imagem API antes de iniciar os serviços que a usam; exigir schema CURRENT e estrutura compatível. API, workers e migrador usam o mesmo digest API.",
+    "jrcAndNico": "Nenhum arquivo ou imagem desses repositórios foi alterado.",
+    "rollback": "Migração aditiva. Não remover as tabelas de pendências ao reverter um binário. Uma retomada futura deve preservar os recibos e o conteúdo ainda não resolvido."
+  }
+}

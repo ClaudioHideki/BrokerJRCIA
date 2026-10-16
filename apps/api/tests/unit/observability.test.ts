@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { createObservabilityService, type ObservabilityRepository } from '../../src/modules/observability/service.js';
 
 describe('operational observability',()=>{
+ it('shows unresolved QR identity facts instead of reporting a healthy intake',async()=>{
+  const now=new Date(),repository:ObservabilityRepository={snapshot:vi.fn().mockResolvedValue({queueDepth:0,oldestOutboxSeconds:null,failedExecutions:0,unknownExecutions:0,metaReady:1,evolutionReady:1,chatwootReady:1,chatwootDegraded:0,integrationFailures:0,integrationUnknown:0,identityPending:2}),
+   heartbeats:async()=>['MESSAGING_WORKER','AUTOMATION_WORKER','AUTOMATION_IO_WORKER','SCHEDULER'].map(component=>({component,status:'UP' as const,observedAt:now}))};
+  const health=await createObservabilityService({repository,transact:async(_org,work)=>work({} as never),probeRedis:async()=>true,now:()=>now}).health('11111111-1111-4111-8111-111111111111');
+  expect(health.components.find(item=>item.key==='QR_IDENTITY_PENDING')).toMatchObject({state:'DEGRADED',metric:2,code:'QR_IDENTITY_RECONCILIATION_REQUIRED'});
+ });
  it.each([{failed:179,unknown:0,key:'INTEGRATION_FAILURES',code:'INTEGRATION_JOBS_FAILED',metric:179},
   {failed:0,unknown:1,key:'INTEGRATION_UNCERTAINTY',code:'INTEGRATION_OUTCOME_UNKNOWN',metric:1}])('reports integration delivery failures separately from healthy workers: $code',async input=>{
   const now=new Date(),repository:ObservabilityRepository={snapshot:vi.fn().mockResolvedValue({queueDepth:0,oldestOutboxSeconds:null,failedExecutions:0,unknownExecutions:0,metaReady:1,evolutionReady:1,chatwootReady:1,chatwootDegraded:0,integrationFailures:input.failed,integrationUnknown:input.unknown}),

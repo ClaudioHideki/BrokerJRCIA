@@ -4,6 +4,20 @@ import { normalizeQrEvent } from '../../src/modules/messaging/qr-events.js';
 const envelope = (data: unknown, event = 'messages.upsert') => ({ event, instance: 'jrc-private-instance', data });
 const message = { key: { id: 'qr-message-1', remoteJid: '15550000001@s.whatsapp.net', fromMe: false }, messageTimestamp: 1789470000, pushName: 'Contato de teste', message: { conversation: 'Olá JRC' } };
 describe('eventos QR canônicos', () => {
+  it('preserves a valid unresolved LID message without inventing a phone or rejecting the whole batch',()=>{
+    const unresolved={...message,key:{...message.key,remoteJid:'123:7@lid'}};
+    const events=normalizeQrEvent(envelope([unresolved,{...message,key:{...message.key,id:'second'}}]),'jrc-private-instance');
+    expect(events[0]).toMatchObject({kind:'identity-pending',lid:'123@lid',event:{kind:'message',upstreamMessageId:'qr-message-1',content:{type:'TEXT',text:'Olá JRC'}}});
+    expect(events[0]).not.toHaveProperty('externalId');
+    expect(events[1]).toMatchObject({kind:'message',upstreamMessageId:'second',externalId:'15550000001'});
+  });
+  it('keeps the authenticated LID/PN pair in both addressing modes',()=>{
+    for(const key of [{remoteJid:'123@lid',remoteJidAlt:'15550000002@s.whatsapp.net'},
+      {remoteJid:'15550000002@s.whatsapp.net',remoteJidAlt:'123@lid'}]){
+      expect(normalizeQrEvent(envelope({...message,key:{...message.key,...key}}),'jrc-private-instance')[0])
+        .toMatchObject({kind:'message',externalId:'15550000002',lid:'123@lid'});
+    }
+  });
   it('uses only the authenticated instance owner identifier for identity observations', () => {
     expect(normalizeQrEvent(envelope({ state: 'open', wuid: '15555550100:9@s.whatsapp.net', phone: '15555550199' }, 'connection.update'), 'jrc-private-instance'))
       .toEqual([{ kind: 'connection', state: 'CONNECTED', identity: '15555550100' }]);

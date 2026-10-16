@@ -4,21 +4,14 @@ import type { MediaRegistration } from "./media-store.js";
 import { safeMediaName } from "@jrc/providers";
 import { normalizeQrGroupEvents, type QrGroupEvent } from './qr-group-events.js';
 
-export type QrEvent =
-  | QrGroupEvent
-  | {kind:'group-text';groupJid:string;upstreamMessageId:string;fromMe:boolean;participantJid:string|null;
-      participantJidAlt:string|null;content:{type:'TEXT';text:string};occurredAt:Date}
-  | {kind:'group-status';groupJid:string;upstreamMessageId:string;state:'SENT'|'DELIVERED'|'READ'|'FAILED'}
-  | { kind: "connection"; state: "CONNECTED" | "DISCONNECTED"; identity?: string }
-  | {
+export type QrContactEvent = ({
       kind: "message" | "outbound";
       upstreamMessageId: string;
       externalId: string;
       displayName: string | null;
       content: MessageContent;
       occurredAt: Date;
-    }
-  | {
+    } | {
       kind: "media" | "outbound-media";
       upstreamMessageId: string;
       externalId: string;
@@ -26,7 +19,17 @@ export type QrEvent =
       media: MediaRegistration;
       caption: string;
       occurredAt: Date;
-    }
+    }) & {lid?:string;recoveredIdentity?:boolean};
+type WithoutPhone<T> = T extends unknown ? Omit<T,'externalId'> : never;
+export type QrUnresolvedContactEvent=WithoutPhone<QrContactEvent>;
+export type QrEvent =
+  | QrContactEvent
+  | {kind:'identity-pending';lid:string;event:QrUnresolvedContactEvent}
+  | QrGroupEvent
+  | {kind:'group-text';groupJid:string;upstreamMessageId:string;fromMe:boolean;participantJid:string|null;
+      participantJidAlt:string|null;content:{type:'TEXT';text:string};occurredAt:Date}
+  | {kind:'group-status';groupJid:string;upstreamMessageId:string;state:'SENT'|'DELIVERED'|'READ'|'FAILED'}
+  | { kind: "connection"; state: "CONNECTED" | "DISCONNECTED"; identity?: string }
   | {
       kind: "status";
       upstreamMessageId: string;
@@ -40,9 +43,12 @@ const id = z.string().min(1).max(256);
 const text = z.string().min(1).max(4096);
 const groupJid=z.string().max(128).regex(/^\d+(?:-\d+)?@g\.us$/u);
 const participantJid=z.string().max(128).regex(/^(?:[1-9]\d{6,14}(?::\d+)?@s\.whatsapp\.net|\d+(?::\d+)?@lid)$/u);
-function phone(jid: unknown): string | undefined {
+export function qrPhone(jid: unknown): string | undefined {
   if (typeof jid !== "string") return;
   return /^([1-9]\d{7,14})(?::\d+)?@s\.whatsapp\.net$/u.exec(jid)?.[1];
+}
+function lidAddress(jid:unknown):string|undefined{
+  return typeof jid==='string' && /^\d{1,30}(?::\d{1,10})?@lid$/u.test(jid)?jid.replace(/:\d+(?=@)/u,''):undefined;
 }
 /** Inputs are authenticated by the route; tenant and instance are resolved from stored bindings. */
 export function normalizeQrEvent(
@@ -56,7 +62,7 @@ export function normalizeQrEvent(
   if (['groups.upsert', 'groups.update', 'group.participants.update', 'group-participants.update'].includes(event))
     return normalizeQrGroupEvents(payload, expectedInstance);
   if (event === "connection.update") {
-    const data = object(envelope.data), state = data.state, identity = phone(data.wuid);
+    const data = object(envelope.data), state = data.state, identity = qrPhone(data.wuid);
     return state === "open"
       ? [{ kind: "connection", state: "CONNECTED", ...(identity ? { identity } : {}) }]
       : state === "close"
@@ -123,8 +129,12 @@ export function normalizeQrEvent(
         /@(g\.us|broadcast|newsletter)$/u.test(key.remoteJid)
       )
         return [];
-      const externalId = phone(key.remoteJid) ?? phone(key.remoteJidAlt);
-      if (!externalId) throw new Error("QR_EVENT_INVALID");
+      const externalId = qrPhone(key.remoteJid) ?? qrPhone(key.remoteJidAlt);
+      const lid=lidAddress(key.remoteJid)??lidAddress(key.remoteJidAlt);
+      if (!externalId&&!lid) throw new Error("QR_EVENT_INVALID");
+      const contactEvent=(value:QrUnresolvedContactEvent):QrEvent=>externalId
+        ? {...value,externalId,...(lid?{lid}:{})} as QrContactEvent
+        : {kind:'identity-pending',lid:lid!,event:value};
       const seconds = z.coerce
         .number()
         .int()
@@ -159,10 +169,9 @@ export function normalizeQrEvent(
         if (kind) {
           const media = object(message[kind + "Message"]);
           return [
-            {
+            contactEvent({
               kind: key.fromMe === true ? "outbound-media" : "media",
               upstreamMessageId: id.parse(key.id),
-              externalId,
               displayName:
                 key.fromMe !== true && typeof data.pushName === "string"
                   ? data.pushName.slice(0, 256)
@@ -181,23 +190,22 @@ export function normalizeQrEvent(
                 ),
                 descriptor: { messageId: id.parse(key.id) },
               },
-            },
+            }),
           ];
         }
       }
       if (body === undefined) throw new Error("QR_CONTENT_UNSUPPORTED");
       return [
-        {
+        contactEvent({
           kind: key.fromMe === true ? "outbound" : "message",
           upstreamMessageId: id.parse(key.id),
-          externalId,
           displayName:
             key.fromMe !== true && typeof data.pushName === "string"
               ? data.pushName.slice(0, 256)
               : null,
           content: { type: "TEXT", text: text.parse(body) },
           occurredAt,
-        },
+        }),
       ];
     });
   } catch (error) {

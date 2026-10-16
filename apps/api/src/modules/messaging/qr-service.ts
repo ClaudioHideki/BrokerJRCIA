@@ -1,4 +1,4 @@
-import type {EvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
+import type {EvolutionFleetRuntime,EngineSnapshot} from '../evolution-fleet/runtime.js';
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { EvolutionMessagingClient } from "@jrc/providers";
 import type {
@@ -6,7 +6,8 @@ import type {
   TenantTransaction,
 } from "../../db/tenant-transaction.js";
 import { createPostgresMessagingRepository } from "./repository.js";
-import { normalizeQrEvent } from "./qr-events.js";
+import { normalizeQrEvent,qrPhone,type QrContactEvent } from "./qr-events.js";
+import {observeQrIdentityScope,resolveQrIdentityEvents,recoverQrIdentityEvents} from './qr-identity.js';
 import type { MessagingChannel,OutboxClaim } from "./types.js";
 import { requireActiveOrganization } from "../tenancy/operational-limits.js";
 import { registerPendingMedia } from "./media-store.js";
@@ -66,6 +67,25 @@ export async function ensureQrChannel(
 export function createQrMessagingService(options: QrServiceOptions) {
   if (options.signingKey.length < 32) throw error("INVALID_QR_SIGNING_KEY");
   const repository = createPostgresMessagingRepository();
+  const bindingFingerprint=(engine?:EngineSnapshot)=>createHmac('sha256',options.signingKey).update(JSON.stringify(engine
+    ? ['qr-engine:v1',engine.engineId,engine.generation,engine.destinationFingerprint,engine.traditional]
+    : ['qr-engine:v1',new URL(options.baseUrl).origin])).digest('hex');
+  async function persistContactEvent(tx:TenantTransaction,channel:MessagingChannel,event:QrContactEvent){
+    const org=channel.organizationId,channelId=channel.id;
+    const observed=event.kind==='outbound'||event.kind==='outbound-media';
+    if(observed)await lockAttendanceChannel(tx,org,channelId);
+    else await repository.findChannel(tx,org,channelId,{lock:true});
+    const contact=await repository.upsertContact(tx,{id:randomUUID(),organizationId:org,externalId:event.externalId,
+      displayName:event.displayName,consentStatus:'UNKNOWN',consentUpdatedAt:null});
+    const conversation=await repository.getOrCreateConversation(tx,{id:randomUUID(),organizationId:org,channelId,contactId:contact.id});
+    const content:MessageContent='media' in event?{type:'MEDIA',mediaId:await registerPendingMedia(tx,org,channelId,event.media),
+      kind:event.media.kind,fileName:event.media.fileName,caption:event.caption}:event.content;
+    if(observed){await recordQrOutboundObservation(tx,{organizationId:org,channelId,conversationId:conversation.id,
+      upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt});return;}
+    await repository.recordIncoming(tx,{id:randomUUID(),organizationId:org,channelId,conversationId:conversation.id,
+      webhookEventKey:`qr:${event.upstreamMessageId}`,upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt,
+      ...(event.recoveredIdentity?{scheduleBot:false}:{})});
+  }
   const secret = (org: string, channel: string) =>
     createHmac("sha256", options.signingKey)
       .update(`qr-webhook\0${org}\0${channel}`)
@@ -89,6 +109,33 @@ export function createQrMessagingService(options: QrServiceOptions) {
     });
   }
   return {
+    async runIdentityOnce(org:string){
+      const due=await options.transact(org,async tx=>(await tx.query<{channel_id:string;upstream_instance_key:string}>(`SELECT p.channel_id,i.upstream_instance_key
+        FROM qr_identity_pending_events p JOIN qr_identity_scopes s ON s.organization_id=p.organization_id AND s.channel_id=p.channel_id AND s.scope_id=p.scope_id
+        JOIN qr_contact_aliases a ON a.organization_id=p.organization_id AND a.channel_id=p.channel_id AND a.scope_id=p.scope_id AND a.lid=p.lid AND a.status='CONFIRMED'
+        JOIN messaging_channels c ON c.organization_id=p.organization_id AND c.id=p.channel_id AND c.instance_id=s.instance_id
+        JOIN instances i ON i.organization_id=c.organization_id AND i.id=c.instance_id AND i.upstream_instance_key=s.upstream_instance_key
+        JOIN organizations o ON o.id=p.organization_id AND o.status='ACTIVE'
+        WHERE p.organization_id=$1 AND p.status='WAITING' AND c.deleting_at IS NULL AND i.archived_at IS NULL AND i.status='CONNECTED'
+        ORDER BY p.occurred_at,p.provider_message_id LIMIT 1`,[org])).rows[0]);
+      if(!due)return{processed:0};
+      const engine=await options.fleet?.capture(org,due.upstream_instance_key);
+      return options.transact(org,async tx=>{
+        await lockAttendanceChannel(tx,org,due.channel_id);await requireActiveOrganization(tx,org);
+        if(engine)await options.fleet!.assert(engine,tx,true);
+        const channel=await repository.findChannel(tx,org,due.channel_id);if(!channel||channel.provider!=='BAILEYS'||!channel.instanceId)return{processed:0};
+        const fingerprint=bindingFingerprint(engine);
+        const previous=(await tx.query<{binding_fingerprint:string}>('SELECT binding_fingerprint FROM qr_identity_scopes WHERE organization_id=$1 AND channel_id=$2',[org,channel.id])).rows[0];
+        if(previous&&previous.binding_fingerprint!==fingerprint){
+          await observeQrIdentityScope(tx,{organizationId:org,channelId:channel.id,instanceId:channel.instanceId,instanceKey:due.upstream_instance_key,
+            signingKey:options.signingKey,bindingFingerprint:fingerprint},undefined,true);
+          return{processed:0};
+        }
+        const recovered=await recoverQrIdentityEvents(tx,{organizationId:org,channelId:channel.id,bindingFingerprint:fingerprint});
+        for(const event of recovered)await persistContactEvent(tx,channel,event);
+        return{processed:recovered.length};
+      });
+    },
     async captureBinding(channel:MessagingChannel){
       if(!options.fleet)return undefined;
       const info=await instance(channel),snapshot=await options.fleet.capture(channel.organizationId,info.upstream_instance_key);
@@ -146,7 +193,10 @@ export function createQrMessagingService(options: QrServiceOptions) {
       const authority=options.fleet?await options.transact(binding.organizationId,async tx=>{
         const row=(await tx.query<{upstream_instance_key:string}>('SELECT upstream_instance_key FROM instances WHERE organization_id=$1 AND id=$2',[binding.organizationId,binding.instanceId])).rows[0];
         if(!row)throw error('QR_WEBHOOK_UNAUTHORIZED',401);return row;
-      }).then(row=>options.fleet!.webhook(binding.organizationId,row.upstream_instance_key,channelId)):undefined;
+      }).then(async row=>{
+        const snapshot=await options.fleet!.capture(binding.organizationId,row.upstream_instance_key);
+        return{...await options.fleet!.webhook(binding.organizationId,row.upstream_instance_key,channelId),snapshot};
+      }):undefined;
       const expected = Buffer.from(
         `Bearer ${authority?.token??secret(binding.organizationId, channelId)}`,
       );
@@ -158,6 +208,7 @@ export function createQrMessagingService(options: QrServiceOptions) {
         throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
       await options.transact(binding.organizationId, async (tx) => {
         await authority?.assert(tx);
+        if(authority?.snapshot)await options.fleet!.assert(authority.snapshot,tx);
         const channel = await repository.findChannel(
           tx,
           binding.organizationId,
@@ -171,11 +222,13 @@ export function createQrMessagingService(options: QrServiceOptions) {
         ).rows[0];
         if (!channel || !row || channel.instanceId !== binding.instanceId)
           throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
-        const events=normalizeQrEvent(payload,row.upstream_instance_key);
+        let events=normalizeQrEvent(payload,row.upstream_instance_key);
         if(authority?.reconciliationOnly&&events.some(event=>!['status','group-status'].includes(event.kind)))throw error('EVOLUTION_ENGINE_DISABLED',409);
+        const envelope=payload&&typeof payload==='object'?payload as Record<string,unknown>:{};
+        const ownerPhone=qrPhone(envelope.sender);
         // Acquire the exclusive lock before any per-message read lock in a mixed batch.
         // Otherwise two incoming/outgoing batches could both try to upgrade a SHARE lock.
-        if(events.some(event=>['connection','group','group-text','group-status','outbound','outbound-media','status'].includes(event.kind))) {
+        if(ownerPhone||events.some(event=>['connection','group','group-text','group-status','outbound','outbound-media','status','identity-pending'].includes(event.kind)||'lid' in event&&event.lid)) {
           await lockAttendanceChannel(tx,binding.organizationId,channelId);
           const current = (await tx.query<{ upstream_instance_key: string }>(`SELECT i.upstream_instance_key FROM messaging_channels c
             JOIN instances i ON i.organization_id=c.organization_id AND i.id=c.instance_id
@@ -184,6 +237,11 @@ export function createQrMessagingService(options: QrServiceOptions) {
           if (!current || current.upstream_instance_key !== row.upstream_instance_key)
             throw error('QR_WEBHOOK_UNAUTHORIZED',401);
         }
+        const identityInput={organizationId:binding.organizationId,channelId,instanceId:binding.instanceId,
+          instanceKey:row.upstream_instance_key,signingKey:options.signingKey,bindingFingerprint:bindingFingerprint(authority?.snapshot)};
+        for(const event of events)if(event.kind==='connection'&&event.state==='CONNECTED')
+          await observeQrIdentityScope(tx,identityInput,event.identity,true);
+        events=await resolveQrIdentityEvents(tx,identityInput,events,ownerPhone);
         const groupEvents=events.filter(event=>event.kind==='group');
         if(groupEvents.length)await options.groups?.ingest(tx,binding.organizationId,channelId,groupEvents);
         for (const event of events) {
@@ -213,53 +271,8 @@ export function createQrMessagingService(options: QrServiceOptions) {
             });
             continue;
           }
-          const observed=event.kind==='outbound'||event.kind==='outbound-media';
-          if(observed)await lockAttendanceChannel(tx,binding.organizationId,channelId);
-          else await repository.findChannel(tx,binding.organizationId,channelId,{lock:true});
-          const contact = await repository.upsertContact(tx, {
-            id: randomUUID(),
-            organizationId: binding.organizationId,
-            externalId: event.externalId,
-            displayName: event.displayName,
-            consentStatus: "UNKNOWN",
-            consentUpdatedAt: null,
-          });
-          const conversation = await repository.getOrCreateConversation(tx, {
-            id: randomUUID(),
-            organizationId: binding.organizationId,
-            channelId,
-            contactId: contact.id,
-          });
-          const content: MessageContent =
-            'media' in event
-              ? {
-                  type: "MEDIA",
-                  mediaId: await registerPendingMedia(
-                    tx,
-                    binding.organizationId,
-                    channelId,
-                    event.media,
-                  ),
-                  kind: event.media.kind,
-                  fileName: event.media.fileName,
-                  caption: event.caption,
-                }
-              : event.content;
-          if(observed) {
-            await recordQrOutboundObservation(tx,{organizationId:binding.organizationId,channelId,conversationId:conversation.id,
-              upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt});
-            continue;
-          }
-          await repository.recordIncoming(tx, {
-            id: randomUUID(),
-            organizationId: binding.organizationId,
-            channelId,
-            conversationId: conversation.id,
-            webhookEventKey: `qr:${event.upstreamMessageId}`,
-            upstreamMessageId: event.upstreamMessageId,
-            content,
-            occurredAt: event.occurredAt,
-          });
+          if(event.kind==='identity-pending')throw error('QR_IDENTITY_UNEXPECTED');
+          await persistContactEvent(tx,channel,event);
         }
       });
     },

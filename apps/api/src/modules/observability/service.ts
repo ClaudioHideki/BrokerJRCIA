@@ -7,6 +7,7 @@ interface SnapshotRow {
   queueDepth:number;oldestOutboxSeconds:number|null;failedExecutions:number;unknownExecutions:number;
   metaReady:number;evolutionReady:number;chatwootReady:number;chatwootDegraded:number;
   integrationFailures:number;integrationUnknown:number;
+  identityPending?:number;
 }
 interface HeartbeatRow {component:string;status:'UP'|'DEGRADED';observedAt:Date;detailCode?:string|null}
 export interface ObservabilityRepository {
@@ -25,6 +26,7 @@ export function createPostgresObservabilityRepository():ObservabilityRepository{
   (select count(*)::int from automation_executions where organization_id=$1 and status='UNKNOWN') as "unknownExecutions",
   (select count(*)::int from integration_jobs where organization_id=$1 and status='FAILED') as "integrationFailures",
   (select count(*)::int from integration_jobs where organization_id=$1 and status='UNKNOWN') as "integrationUnknown",
+  (select count(*)::int from qr_identity_pending_events where organization_id=$1 and status IN ('WAITING','CONFLICT','STALE')) as "identityPending",
   (select count(*)::int from meta_connections where organization_id=$1 and status='READY') as "metaReady",
   (select count(*)::int from instances where organization_id=$1 and status='CONNECTED') as "evolutionReady",
   (select count(*)::int from chatwoot_destinations where organization_id=$1 and approval_status='APPROVED') as "chatwootReady",
@@ -52,6 +54,7 @@ export function createObservabilityService(options:ObservabilityOptions){const r
     component('FAILED_EXECUTIONS','Execuções com falha',snapshot.failedExecutions?'DEGRADED':'UP',snapshot.failedExecutions?'EXECUTIONS_FAILED':'NO_FAILED_EXECUTIONS',observedAt,snapshot.failedExecutions,'executions'),
     component('INTEGRATION_FAILURES','Entregas à central com falha',snapshot.integrationFailures?'DEGRADED':'UP',snapshot.integrationFailures?'INTEGRATION_JOBS_FAILED':'NO_FAILED_INTEGRATION_JOBS',observedAt,snapshot.integrationFailures,'items'),
     component('INTEGRATION_UNCERTAINTY','Entregas à central incertas',snapshot.integrationUnknown?'DEGRADED':'UP',snapshot.integrationUnknown?'INTEGRATION_OUTCOME_UNKNOWN':'NO_UNKNOWN_INTEGRATION_JOBS',observedAt,snapshot.integrationUnknown,'items'),
+    component('QR_IDENTITY_PENDING','Mensagens aguardando identificação',snapshot.identityPending?'DEGRADED':'UP',snapshot.identityPending?'QR_IDENTITY_RECONCILIATION_REQUIRED':'NO_QR_IDENTITY_PENDING',observedAt,snapshot.identityPending??0,'items'),
     component('UNKNOWN_EXECUTIONS','Execuções incertas',snapshot.unknownExecutions?'DEGRADED':'UP',snapshot.unknownExecutions?'UNKNOWN_GROWTH':'NO_UNKNOWN_EXECUTIONS',observedAt,snapshot.unknownExecutions,'executions')];
    return {schemaVersion:1,observedAt,overall:components.some(c=>c.state==='DOWN')?'DOWN':components.some(c=>c.state==='DEGRADED'||c.state==='UNKNOWN')?'DEGRADED':'UP',components,alerts:components.filter(c=>c.state!=='UP').map(c=>({code:c.code,component:c.key,state:c.state}))};
  }};

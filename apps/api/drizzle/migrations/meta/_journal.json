@@ -449,6 +449,13 @@
       "when": 1793054400000,
       "tag": "0064_native_flow_guard_coverage",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1793140800000,
+      "tag": "0065_qr_identity_pending",
+      "breakpoints": true
     }
   ]
 }
