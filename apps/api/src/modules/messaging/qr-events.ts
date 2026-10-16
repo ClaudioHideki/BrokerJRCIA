@@ -19,7 +19,7 @@ export type QrContactEvent = ({
       media: MediaRegistration;
       caption: string;
       occurredAt: Date;
-    }) & {lid?:string;recoveredIdentity?:boolean};
+    }) & {lid?:string;recoveredIdentity?:boolean;historical?:boolean};
 type WithoutPhone<T> = T extends unknown ? Omit<T,'externalId'> : never;
 export type QrUnresolvedContactEvent=WithoutPhone<QrContactEvent>;
 export type QrEvent =
@@ -49,6 +49,33 @@ export function qrPhone(jid: unknown): string | undefined {
 }
 function lidAddress(jid:unknown):string|undefined{
   return typeof jid==='string' && /^\d{1,30}(?::\d{1,10})?@lid$/u.test(jid)?jid.replace(/:\d+(?=@)/u,''):undefined;
+}
+/** Separate, bounded history path. Never infer history from the age of a live event.
+ * Full-history subscriptions remain opt-in work for the paginated importer.
+ * Unsupported history rejects the batch rather than acknowledging discarded facts.
+ */
+export function normalizeQrHistoryEvent(payload:unknown,expectedInstance:string):Array<QrContactEvent|Extract<QrEvent,{kind:'identity-pending'}>>{
+  const envelope=object(payload);
+  if(envelope.instance!==expectedInstance)throw new Error('QR_INSTANCE_MISMATCH');
+  if(String(envelope.event).toLowerCase().replace(/_/gu,'.')!=='messages.set')throw new Error('QR_HISTORY_EVENT_INVALID');
+  if(!Array.isArray(envelope.data))throw new Error('QR_HISTORY_EVENT_INVALID');
+  if(envelope.data.length>100)throw new Error('QR_HISTORY_BATCH_LIMIT');
+  for(const item of envelope.data){
+    const key=object(object(item).key);
+    if(typeof key.fromMe!=='boolean'||typeof key.remoteJid!=='string')throw new Error('QR_HISTORY_EVENT_INVALID');
+    if(/@(g\.us|broadcast|newsletter)$/u.test(key.remoteJid))throw new Error('QR_HISTORY_CONTENT_UNSUPPORTED');
+  }
+  const events=normalizeQrEvent({...envelope,event:'messages.upsert'},expectedInstance);
+  const history=events.map(event=>{
+    if(event.kind==='identity-pending'){
+      if(event.event.kind!=='message'&&event.event.kind!=='outbound')throw new Error('QR_HISTORY_CONTENT_UNSUPPORTED');
+      return{...event,event:{...event.event,historical:true}};
+    }
+    if(event.kind!=='message'&&event.kind!=='outbound')throw new Error('QR_HISTORY_CONTENT_UNSUPPORTED');
+    return{...event,historical:true};
+  });
+  const value=(event:typeof history[number])=>event.kind==='identity-pending'?event.event:event;
+  return history.sort((a,b)=>value(a).occurredAt.getTime()-value(b).occurredAt.getTime()||value(a).upstreamMessageId.localeCompare(value(b).upstreamMessageId));
 }
 /** Inputs are authenticated by the route; tenant and instance are resolved from stored bindings. */
 export function normalizeQrEvent(

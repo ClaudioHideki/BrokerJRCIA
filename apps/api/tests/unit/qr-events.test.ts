@@ -1,9 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeQrEvent } from '../../src/modules/messaging/qr-events.js';
+import { normalizeQrEvent, normalizeQrHistoryEvent } from '../../src/modules/messaging/qr-events.js';
 
 const envelope = (data: unknown, event = 'messages.upsert') => ({ event, instance: 'jrc-private-instance', data });
 const message = { key: { id: 'qr-message-1', remoteJid: '15550000001@s.whatsapp.net', fromMe: false }, messageTimestamp: 1789470000, pushName: 'Contato de teste', message: { conversation: 'Olá JRC' } };
 describe('eventos QR canônicos', () => {
+  it('normalizes historical text chronologically with explicit provenance and original direction',()=>{
+    const history=normalizeQrHistoryEvent(envelope([
+      {...message,key:{...message.key,id:'later',fromMe:true},messageTimestamp:1789470100},message
+    ],'messages.set'),'jrc-private-instance');
+    expect(history.map(e=>e.kind==='identity-pending'?e.event.upstreamMessageId:e.upstreamMessageId)).toEqual(['qr-message-1','later']);
+    expect(history).toMatchObject([{kind:'message',historical:true},{kind:'outbound',historical:true}]);
+    expect(normalizeQrEvent(envelope(message),'jrc-private-instance')[0]).not.toHaveProperty('historical');
+  });
+  it('bounds history before normalization and never interprets another event as historical',()=>{
+    expect(()=>normalizeQrHistoryEvent(envelope(Array(101).fill(message),'messages.set'),'jrc-private-instance')).toThrow('QR_HISTORY_BATCH_LIMIT');
+    expect(()=>normalizeQrHistoryEvent(envelope(message),'jrc-private-instance')).toThrow('QR_HISTORY_EVENT_INVALID');
+  });
+  it('requires an explicit direction for historical facts',()=>{
+    const {fromMe:_fromMe,...key}=message.key;
+    expect(()=>normalizeQrHistoryEvent(envelope([{...message,key}],'messages.set'),'jrc-private-instance')).toThrow('QR_HISTORY_EVENT_INVALID');
+  });
+  it('rejects group media before the live normalizer can silently omit it from a mixed history batch',()=>{
+    const groupMedia={...message,key:{...message.key,remoteJid:'100-200@g.us',participant:'15550000001@s.whatsapp.net'},message:{imageMessage:{caption:'Synthetic'}}};
+    expect(()=>normalizeQrHistoryEvent(envelope([message,groupMedia],'messages.set'),'jrc-private-instance')).toThrow('QR_HISTORY_CONTENT_UNSUPPORTED');
+  });
   it('preserves a valid unresolved LID message without inventing a phone or rejecting the whole batch',()=>{
     const unresolved={...message,key:{...message.key,remoteJid:'123:7@lid'}};
     const events=normalizeQrEvent(envelope([unresolved,{...message,key:{...message.key,id:'second'}}]),'jrc-private-instance');

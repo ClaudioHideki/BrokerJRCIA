@@ -6,9 +6,10 @@ import type {
   TenantTransaction,
 } from "../../db/tenant-transaction.js";
 import { createPostgresMessagingRepository } from "./repository.js";
-import { normalizeQrEvent,qrPhone,type QrContactEvent } from "./qr-events.js";
+import { normalizeQrEvent,normalizeQrHistoryEvent,qrPhone,type QrContactEvent } from "./qr-events.js";
+import {canAdvanceMessageState,lockMessageStatusKey} from './message-state.js';
 import {observeQrIdentityScope,resolveQrIdentityEvents,recoverQrIdentityEvents} from './qr-identity.js';
-import type { MessagingChannel,OutboxClaim } from "./types.js";
+import type { MessagingChannel,MessageState,OutboxClaim } from "./types.js";
 import { requireActiveOrganization } from "../tenancy/operational-limits.js";
 import { registerPendingMedia } from "./media-store.js";
 import type { MessageContent } from "./types.js";
@@ -75,16 +76,42 @@ export function createQrMessagingService(options: QrServiceOptions) {
     const observed=event.kind==='outbound'||event.kind==='outbound-media';
     if(observed)await lockAttendanceChannel(tx,org,channelId);
     else await repository.findChannel(tx,org,channelId,{lock:true});
-    const contact=await repository.upsertContact(tx,{id:randomUUID(),organizationId:org,externalId:event.externalId,
-      displayName:event.displayName,consentStatus:'UNKNOWN',consentUpdatedAt:null});
+    // An old pushName cannot replace the current contact identity/name.
+    const contact=event.historical
+      ? (await tx.query<{id:string}>(`INSERT INTO messaging_contacts(id,organization_id,external_id,display_name,consent_status)
+          VALUES($1,$2,$3,$4,'UNKNOWN') ON CONFLICT(organization_id,external_id) DO NOTHING RETURNING id`,[randomUUID(),org,event.externalId,event.displayName])).rows[0]
+        ?? (await tx.query<{id:string}>('SELECT id FROM messaging_contacts WHERE organization_id=$1 AND external_id=$2',[org,event.externalId])).rows[0]!
+      : await repository.upsertContact(tx,{id:randomUUID(),organizationId:org,externalId:event.externalId,
+          displayName:event.displayName,consentStatus:'UNKNOWN',consentUpdatedAt:null});
     const conversation=await repository.getOrCreateConversation(tx,{id:randomUUID(),organizationId:org,channelId,contactId:contact.id});
+    if(event.historical){
+      await lockMessageStatusKey(tx,org,channelId,event.upstreamMessageId);
+      const existing=(await tx.query<{direction:string;conversation_id:string}>(`SELECT direction,conversation_id FROM messaging_messages
+        WHERE organization_id=$1 AND channel_id=$2 AND provider_scope='' AND upstream_message_id=$3`,[org,channelId,event.upstreamMessageId])).rows[0];
+      if(existing){
+        if(existing.direction!==(observed?'OUTGOING':'INCOMING')||existing.conversation_id!==conversation.id)throw error('QR_HISTORY_ID_CONFLICT',409);
+        return;
+      }
+      if(observed){
+        const uncertain=(await tx.query(`SELECT 1 FROM qr_dispatch_attempts WHERE organization_id=$1 AND conversation_id=$2 AND state IN ('DISPATCHED','UNKNOWN','ABANDONED') LIMIT 1`,[org,conversation.id])).rowCount;
+        if(uncertain)throw error('QR_HISTORY_ACK_PENDING',503);
+        let state:MessageState='SENT';
+        const statuses=(await tx.query<{state:MessageState}>(`SELECT state FROM messaging_status_events
+          WHERE organization_id=$1 AND channel_id=$2 AND upstream_message_id=$3 AND provider_scope='' ORDER BY occurred_at,id`,[org,channelId,event.upstreamMessageId])).rows;
+        for(const status of statuses)if(canAdvanceMessageState(state,status.state))state=status.state;
+        await tx.query(`INSERT INTO messaging_messages(id,organization_id,channel_id,conversation_id,direction,source,upstream_message_id,content,state,created_at,updated_at)
+          VALUES($1,$2,$3,$4,'OUTGOING','EXTERNAL_OBSERVED',$5,$6,$8,$7,$7)`,
+        [randomUUID(),org,channelId,conversation.id,event.upstreamMessageId,'content' in event?event.content:null,event.occurredAt,state]);
+        return;
+      }
+    }
     const content:MessageContent='media' in event?{type:'MEDIA',mediaId:await registerPendingMedia(tx,org,channelId,event.media),
       kind:event.media.kind,fileName:event.media.fileName,caption:event.caption}:event.content;
     if(observed){await recordQrOutboundObservation(tx,{organizationId:org,channelId,conversationId:conversation.id,
       upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt});return;}
     await repository.recordIncoming(tx,{id:randomUUID(),organizationId:org,channelId,conversationId:conversation.id,
       webhookEventKey:`qr:${event.upstreamMessageId}`,upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt,
-      ...(event.recoveredIdentity?{scheduleBot:false}:{})});
+      ...(event.recoveredIdentity||event.historical?{scheduleBot:false}:{})});
   }
   const secret = (org: string, channel: string) =>
     createHmac("sha256", options.signingKey)
@@ -222,13 +249,14 @@ export function createQrMessagingService(options: QrServiceOptions) {
         ).rows[0];
         if (!channel || !row || channel.instanceId !== binding.instanceId)
           throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
-        let events=normalizeQrEvent(payload,row.upstream_instance_key);
-        if(authority?.reconciliationOnly&&events.some(event=>!['status','group-status'].includes(event.kind)))throw error('EVOLUTION_ENGINE_DISABLED',409);
         const envelope=payload&&typeof payload==='object'?payload as Record<string,unknown>:{};
+        const historical=String(envelope.event).toLowerCase().replace(/_/gu,'.')==='messages.set';
+        let events=historical?normalizeQrHistoryEvent(payload,row.upstream_instance_key):normalizeQrEvent(payload,row.upstream_instance_key);
+        if(authority?.reconciliationOnly&&events.some(event=>!['status','group-status'].includes(event.kind)))throw error('EVOLUTION_ENGINE_DISABLED',409);
         const ownerPhone=qrPhone(envelope.sender);
         // Acquire the exclusive lock before any per-message read lock in a mixed batch.
         // Otherwise two incoming/outgoing batches could both try to upgrade a SHARE lock.
-        if(ownerPhone||events.some(event=>['connection','group','group-text','group-status','outbound','outbound-media','status','identity-pending'].includes(event.kind)||'lid' in event&&event.lid)) {
+        if(historical||ownerPhone||events.some(event=>['connection','group','group-text','group-status','outbound','outbound-media','status','identity-pending'].includes(event.kind)||'lid' in event&&event.lid)) {
           await lockAttendanceChannel(tx,binding.organizationId,channelId);
           const current = (await tx.query<{ upstream_instance_key: string }>(`SELECT i.upstream_instance_key FROM messaging_channels c
             JOIN instances i ON i.organization_id=c.organization_id AND i.id=c.instance_id

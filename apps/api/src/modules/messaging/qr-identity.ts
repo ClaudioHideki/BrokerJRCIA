@@ -28,7 +28,8 @@ export async function observeQrIdentityScope(tx:TenantTransaction,input:Identity
 
 async function preserve(tx:TenantTransaction,input:IdentityContext,scope:string|null,lid:string,event:QrUnresolvedContactEvent,status:'WAITING'|'CONFLICT'){
   const {lid:_lid,recoveredIdentity:_recovered,...content}=event;
-  const body=JSON.stringify(content),hash=createHash('sha256').update(body).digest('hex');
+  const {historical:_historical,...hashContent}=content;
+  const body=JSON.stringify(content),hash=createHash('sha256').update(JSON.stringify(hashContent)).digest('hex');
   const exists=(await tx.query(`SELECT 1 FROM qr_identity_pending_events WHERE organization_id=$1 AND channel_id=$2 AND provider_message_id=$3`,[input.organizationId,input.channelId,event.upstreamMessageId])).rowCount;
   if(!exists&&(await tx.query<{n:number}>(`SELECT count(*)::int AS n FROM qr_identity_pending_events WHERE organization_id=$1 AND channel_id=$2 AND status IN ('WAITING','CONFLICT','STALE')`,[input.organizationId,input.channelId])).rows[0]!.n>=10000)
     throw Object.assign(new Error('QR_IDENTITY_BACKLOG_FULL'),{code:'QR_IDENTITY_BACKLOG_FULL',status:503});
@@ -53,7 +54,7 @@ export async function resolveQrIdentityEvents(tx:TenantTransaction,input:Identit
   // Learn the entire authenticated batch before resolving any message. Two
   // contradictory pairs in one batch must quarantine both, including the first.
   for(const event of events){
-    if(contactKinds.has(event.kind)&&'lid' in event&&event.lid&&scope){
+    if(contactKinds.has(event.kind)&&'lid' in event&&event.lid&&scope&&!(event as QrContactEvent).historical){
       const contact=event as QrContactEvent;
       const alias=(await tx.query<{status:string}>(`INSERT INTO qr_contact_aliases(organization_id,channel_id,scope_id,lid,phone)
         VALUES($1,$2,$3,$4,$5) ON CONFLICT(organization_id,channel_id,scope_id,lid) DO UPDATE
@@ -69,7 +70,7 @@ export async function resolveQrIdentityEvents(tx:TenantTransaction,input:Identit
     WHERE organization_id=$1 AND channel_id=$2 AND scope_id=$3 AND lid=ANY($4::text[])`,[input.organizationId,input.channelId,scope,
       events.flatMap(event=>event.kind==='identity-pending'?[event.lid]:'lid' in event&&event.lid?[event.lid]:[])])).rows.map(row=>[row.lid,row] as const):[]);
   for(const event of events){
-    if(event.kind==='identity-pending'||contactKinds.has(event.kind)&&'lid' in event&&event.lid&&scope){
+    if(event.kind==='identity-pending'||contactKinds.has(event.kind)&&'lid' in event&&event.lid&&scope&&!(event as QrContactEvent).historical){
       const lid=event.kind==='identity-pending'?event.lid:(event as QrContactEvent).lid!;
       const pending=event.kind==='identity-pending'?event.event:((({externalId:_phone,...rest})=>rest)(event as QrContactEvent));
       const existing=(await tx.query('SELECT 1 FROM qr_identity_pending_events WHERE organization_id=$1 AND channel_id=$2 AND provider_message_id=$3',[input.organizationId,input.channelId,pending.upstreamMessageId])).rowCount;

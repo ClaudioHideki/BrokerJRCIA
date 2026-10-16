@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-16",
+  "baseCommit": "f1ae2499e3e1e6423b1c123e13147e0a50630460",
+  "scope": "Ingresso histórico autenticado de texto messages.set, limitado a 100 itens por lote. Primeiro incremento; não é importador completo nem certificado de homologação em produção.",
+  "behavior": [
+    "Texto recebido e enviado preserva direção, timestamp e provider ID; itens são ordenados por data e ID dentro do lote.",
+    "A transação confirma todos os itens ou desfaz o lote inteiro; repetição e eco ao vivo preservam uma mensagem canônica.",
+    "Histórico não agenda bot, não cria envio WhatsApp e não pausa o atendimento.",
+    "Saída histórica aplica recibos anteriores, preserva tentativas UNKNOWN e recusa classificação enquanto houver tentativa incerta.",
+    "LID histórico não ensina mapeamento antigo. Pendências conservam a indicação histórica após resolução por evidência nova.",
+    "Nome antigo não sobrescreve contato atual, inclusive quando outro cadastro aparece entre consulta e inserção.",
+    "Mídia e grupos históricos, direção ausente e lotes excessivos são recusados antes do commit, sem descarte silencioso."
+  ],
+  "validation": {
+    "finalBuild": "npm run build: PASS no código final; aviso existente de bundle web acima de 500 kB.",
+    "tdd": "Falhas reproduzidas antes das correções: histórico ignorado, direção ausente, mídia de grupo descartada, READ anterior ignorado e corrida de nome do contato.",
+    "generalRegression": "npm test -- --maxWorkers=4: 406 arquivos, 3101 testes aprovados em 397.97s. Esta rodada foi iniciada antes do último ajuste SQL de preservação de nomes; o ajuste recebeu o teste PostgreSQL final abaixo.",
+    "focusedUnit": "npm test -- apps/api/tests/unit/qr-events.test.ts --maxWorkers=1: 16 testes aprovados.",
+    "finalPostgres": "40 testes aprovados em 28.90s, maxWorkers=1: qr-history-ingress (9), qr-identity-resolution (14), qr-chatwoot-storage (17). Inclui a preservação atômica de nome no código final.",
+    "contention": "A primeira rodada PostgreSQL concorrente com a regressão excedeu 30s em um teste de backlog de identidade. Rodada serial final aprovada sem ampliar timeout.",
+    "review": "Revisão independente identificou mídia de grupo descartada e recibo anterior ignorado; ambos corrigidos com reprodução RED e verificação GREEN. Sem revisor reexecutar as aplicações externas.",
+    "production": "Não implantado nem testado fisicamente no servidor neste incremento. Nenhuma mensagem enviada a contatos reais."
+  },
+  "deployment": {
+    "baseline": "0065_qr_identity_pending, herdado do incremento anterior; nenhuma migration adicional nesta entrega.",
+    "envAndCompose": "Sem variáveis, serviços, volumes ou portas adicionais.",
+    "subscription": "Não acrescenta MESSAGES_SET automaticamente às assinaturas atuais da Evolution. A ativação de importação fica para o importador paginado, com orçamento, checkpoint e interface.",
+    "image": "Nenhuma nova imagem publicada ou instalada nesta execução.",
+    "jrcAndNico": "Sem alterações nos repositórios/imagens do JRC Conversas e NICO."
+  },
+  "remaining": [
+    "Importação sob demanda via engine com paginação, orçamento e checkpoint persistido; dividir páginas antes do ingresso limitado e apresentar progresso/erros.",
+    "Proveniência histórica e ordenação global nas interfaces e no adaptador remoto, além da ordenação interna do lote.",
+    "Mídia e grupos históricos, política de retenção e retomada de importação.",
+    "Homologação física WhatsApp/Broker/central e versões externas de Chatwoot."
+  ]
+}

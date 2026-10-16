@@ -1,0 +1,19 @@
+{
+  "scope": "Primeiro incremento de histórico: ingestão autenticada e limitada de texto messages.set, sem ativar sua assinatura automaticamente nas conexões existentes.",
+  "authority": "Programa Broker independente aprovado; continuação autorizada pelo usuário em 16/10.",
+  "design": [
+    "Normalizar histórico separadamente, ordenar por data e ID e rejeitar lotes acima de 100 mensagens antes de escrever.",
+    "Preservar direção, data e provider ID; reutilizar deduplicação e outbox da central, nunca a outbox de envio WhatsApp.",
+    "Histórico não agenda bot, não interrompe atendimento, não aprende mapeamentos antigos de LID e não altera contatos existentes por pushName antigo.",
+    "LID sem número usa a pendência durável existente e conserva a indicação histórica na recuperação.",
+    "Saída histórica com tentativa de envio incerta exige reconciliação antes de aceitar a importação.",
+    "Mídia e grupos históricos permanecem explicitamente fora deste incremento; importação sob demanda com cursor/checkpoint e interface continua pendente."
+  ],
+  "steps": [
+    "RED: normalização histórica, ordem, direção, limites e mensagem ao vivo inalterada.",
+    "RED: PostgreSQL real, repetição e colisão com eventos ao vivo, controle do bot preservado e isolamento.",
+    "GREEN: normalizador e persistência histórica na rota autenticada existente.",
+    "Verificar build, testes focados, regressão, revisão e diff antes de integrar."
+  ],
+  "deployment": "Sem novas variáveis ou migration. Não instalar no servidor nem ativar sincronização automaticamente neste incremento."
+}
