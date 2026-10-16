@@ -20,6 +20,7 @@ import { lockAttendanceChannel } from '../attendance/repository.js';
 import { beginChatwootMirrorAttempt,confirmChatwootMirrorAttempt,failChatwootMirrorAttempt,initializeChatwootAttendanceMap,mayForwardChatwootAttendanceReply,
   type ChatwootObservationScope } from './chatwoot-attendance-store.js';
 import type { ChatwootAttendanceEvent } from './chatwoot-attendance-events.js';
+import {preparePhysicalConversationCycle} from './chatwoot-conversation-cycle.js';
 
 interface Job {
   id: string;
@@ -234,6 +235,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
         !(await isOrganizationActive(t, job.organization_id))
       )
         throw new IntegrationError("INTEGRATION_PAUSED", 409);
+      if(remote&&(!binding.account||!binding.connection||currentAccount?.base_url!==binding.account.base_url||
+        currentAccount.account_id!==binding.account.account_id||currentAccount.credential_version!==binding.account.credential_version||
+        currentAccount.destination?.revision!==binding.account.destination?.revision||connection.inbox_id!==binding.connection.inbox_id||connection.channel_id!==binding.connection.channel_id))
+        throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
       if (!(await t.query<{ ready: boolean }>('SELECT chatwoot_channel_identity_ready($1,$2) AS ready', [job.organization_id, connection.channel_id])).rows[0]?.ready)
         throw new IntegrationError('INTEGRATION_PAUSED', 409);
       let map = (
@@ -252,12 +257,21 @@ export function createChatwootWorker(options: ChatwootOptions) {
           consentStatus: "UNKNOWN",
           consentUpdatedAt: null,
         });
-        const conversation = await repo.getOrCreateConversation(t, {
+        let conversation = await repo.getOrCreateConversation(t, {
           id: randomUUID(),
           organizationId: job.organization_id,
           channelId: connection.channel_id,
           contactId: contact.id,
         });
+        const cycle=await preparePhysicalConversationCycle(t,{organizationId:job.organization_id,channelId:connection.channel_id,integrationId:job.integration_id,
+          conversationId:conversation.id,remoteConversationId:data.conversationId,remoteContactId:remote.meta.sender.id,sourceId:remoteSource,humanPublicReply:data.attendanceKind==='HUMAN_PUBLIC'});
+        if(cycle.waiting){
+          await t.query(`UPDATE integration_jobs SET status='PENDING',attempts=greatest(0,attempts-1),last_error=$4,
+            available_at=now()+interval '30 seconds',lease_token=NULL,lease_expires_at=NULL,updated_at=now()
+            WHERE organization_id=$1 AND id=$2 AND lease_token=$3`,[job.organization_id,job.id,job.lease_token,cycle.waiting]);
+          return;
+        }
+        if(cycle.conversationId!==conversation.id)conversation=(await repo.findConversation(t,job.organization_id,cycle.conversationId))!;
         const inserted = await t.query(
           `INSERT INTO chatwoot_conversations(organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING conversation_id`,
           [
@@ -333,6 +347,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
           channelId: connection.channel_id,
           conversationId: map.conversation_id,
           source: "OPERATOR",
+          chatwootReplyProof:{jobId:job.id,leaseToken:job.lease_token},
           content,
           idempotencyKey: data.content ? replyKey : `${replyKey}:${index}`,
           bodyHash: createHash("sha256")

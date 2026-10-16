@@ -3,6 +3,8 @@ import { AttendanceResumeContextSchema,ResumeOperationViewSchema,type Attendance
 import { ApiClientError,type ApiClient } from '../api/client.js';
 import { AttendanceDiagnosticNotice } from './AttendanceDiagnosticNotice.js';
 const operationError:Record<string,string>={
+  ATTENDANCE_CONVERSATION_SUPERSEDED:'Esta conversa pertence a um atendimento anterior. Abra a conversa atual desta caixa para continuar.',
+  ATTENDANCE_PREVIOUS_CYCLE_SEND_PENDING:'Uma resposta humana do atendimento anterior ainda aguarda confirmação de entrega. Confira a entrega antes de retomar o bot.',
   ATTENDANCE_DISABLE_INBOX_AUTO_ASSIGNMENT:'Desative a atribuição automática da caixa na central antes de retomar.',
   ATTENDANCE_DISABLE_INBOX_GREETING:'Desative a saudação automática da caixa na central antes de retomar.',
   ATTENDANCE_REMOVE_COMPETING_AGENT_BOT:'Desconecte o outro robô desta caixa antes de usar o Broker.',

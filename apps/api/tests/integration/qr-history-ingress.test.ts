@@ -28,6 +28,20 @@ async function fixture(){
   return{...tenant,channel,service,auth,item,envelope,read};
 }
 describe('historical QR text ingress',()=>{
+  it('deduplicates historical messages from an earlier physical cycle without changing their original conversation',async()=>{
+    const t=await fixture();await t.service().ingest(t.channel,t.auth,t.envelope(t.item('previous-cycle')));
+    const original=(await t.read()).conversations[0].id;
+    await db.transact(t.org,tx=>tx.query('UPDATE messaging_conversations SET remote_conversation_key=$3 WHERE organization_id=$1 AND id=$2',
+      [t.org,original,`chatwoot-cycle:${randomUUID()}:51`]));
+    await t.service().ingest(t.channel,t.auth,t.envelope(t.item('current-cycle')));
+    await expect(t.service().ingest(t.channel,t.auth,t.envelope(t.item('previous-cycle')))).resolves.toBeUndefined();
+    const rows=await t.read();expect(rows.messages).toHaveLength(2);
+    expect(rows.messages.find(row=>row.upstream_message_id==='previous-cycle').conversation_id).toBe(original);
+    expect(rows.messages.find(row=>row.upstream_message_id==='current-cycle').conversation_id).not.toBe(original);
+    const conflicting=t.item('previous-cycle');conflicting.key.remoteJid='15550000002@s.whatsapp.net';
+    await expect(t.service().ingest(t.channel,t.auth,t.envelope(conflicting))).rejects.toThrow('QR_HISTORY_ID_CONFLICT');
+    expect((await t.read()).messages).toHaveLength(2);
+  });
   it('applies an already persisted READ receipt when the historical outgoing message arrives later',async()=>{
     const t=await fixture();
     await t.service().ingest(t.channel,t.auth,t.envelope({keyId:'read-before-history',status:'READ'},'messages.update'));

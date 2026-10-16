@@ -7,6 +7,8 @@ import {canAdvanceMessageState,lockMessageStatusKey as lockMetaStatusKey} from '
 export {canAdvanceMessageState} from './message-state.js';
 import { AUTOMATION_ORIGIN } from '@jrc/contracts';
 import {assertQueuedMediaAuthority} from '../automations/conversation-media.js';
+import {isSupersededPhysicalCycle,currentPhysicalCycle} from '../attendance/conversation-cycle-fence.js';
+import {interruptChatwootAttendance} from '../attendance/control-service.js';
 import type { QueryResultRow } from "pg";
 
 import type { TenantTransaction } from "../../db/tenant-transaction.js";
@@ -39,6 +41,7 @@ export type MessagingRepositoryErrorCode =
   | "CONTACT_SUPPRESSED"
   | "CONTACT_CONSENT_REQUIRED"
   | "CONVERSATION_PAUSED"
+  | "CONVERSATION_SUPERSEDED"
   | "IDEMPOTENCY_CONFLICT"
   | "BOT_OWNERSHIP_CONFLICT"
   | "MESSAGE_NOT_FOUND"
@@ -74,6 +77,8 @@ export interface EnqueueOutgoingInput {
   idempotencyKey: string;
   bodyHash: string;
   policy: { requireOptIn: boolean };
+  /** Only an authenticated, leased Chatwoot reply job may send through an old cycle. */
+  chatwootReplyProof?:{jobId:string;leaseToken:string};
 }
 
 interface MessageDatabaseRow extends QueryResultRow, Message {
@@ -813,6 +818,23 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       const policy = first(policyResult);
       if (!policy)
         throw new MessagingRepositoryError("CONVERSATION_NOT_FOUND", 404);
+      if(await isSupersededPhysicalCycle(transaction,input.organizationId,input.conversationId)){
+        const proof=input.chatwootReplyProof;
+        if(input.source!=='OPERATOR'||!proof||!(await transaction.query(`SELECT 1 FROM integration_jobs j
+          JOIN chatwoot_conversations cm ON cm.organization_id=j.organization_id AND cm.integration_id=j.integration_id
+          JOIN chatwoot_connections c ON c.organization_id=cm.organization_id AND c.id=cm.integration_id
+          WHERE j.organization_id=$1 AND j.id=$2 AND j.lease_token=$3 AND j.kind='CHATWOOT_REPLY' AND j.status='RUNNING'
+            AND j.lease_expires_at>now() AND j.payload->>'attendanceKind'='HUMAN_PUBLIC' AND cm.conversation_id=$4 AND c.channel_id=$5
+            AND j.payload->>'conversationId'=cm.remote_conversation_id::text`,
+        [input.organizationId,proof.jobId,proof.leaseToken,input.conversationId,input.channelId])).rowCount)
+          throw new MessagingRepositoryError('CONVERSATION_SUPERSEDED',409);
+        // The leased Chatwoot reply caller already holds the channel lock.
+        const current=await currentPhysicalCycle(transaction,input.organizationId,input.conversationId);
+        if(!current)throw new MessagingRepositoryError('CONVERSATION_SUPERSEDED',409);
+        await interruptChatwootAttendance(transaction,{organizationId:input.organizationId,channelId:current.channelId,conversationId:current.id},true);
+        await transaction.query(`UPDATE chatwoot_attendance_controls SET state='HUMAN',revision=revision+1,updated_at=now()
+          WHERE organization_id=$1 AND conversation_id=$2 AND state<>'HUMAN'`,[input.organizationId,current.id]);
+      }
       if (policy.suppressedAt) {
         throw new MessagingRepositoryError("CONTACT_SUPPRESSED", 422);
       }

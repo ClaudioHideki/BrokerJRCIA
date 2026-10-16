@@ -74,6 +74,7 @@ it('requires migration 0031 for app-role readiness after a valid 0030 upgrade', 
       }
     };
     expect(await probeWithout('drop trigger instance_archive_operations on provider_operations')).toBe(false);
+    expect(await probeWithout('drop index messaging_conversations_contact_cycles')).toBe(false);
     expect(await probeWithout('alter table provider_operations disable trigger instance_archive_operations')).toBe(false);
     expect(await probeWithout('alter table automation_bindings drop constraint automation_binding_destination')).toBe(false);
     expect(await probeWithout('drop policy platform_boundary on economic_groups')).toBe(false);

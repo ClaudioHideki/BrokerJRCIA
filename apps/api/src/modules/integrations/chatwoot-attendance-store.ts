@@ -4,6 +4,7 @@ import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { AttendanceScope } from '@jrc/contracts';
 import { lockAttendanceChannel } from '../attendance/repository.js';
 import { interruptChatwootAttendance } from '../attendance/control-service.js';
+import {currentPhysicalCycle} from '../attendance/conversation-cycle-fence.js';
 import { isExpectedHandoffOpening } from '../attendance/handoff-expected-control.js';
 import { isExpectedResumeControl } from '../attendance/resume-expected-control.js';
 import { IntegrationError } from './integration-error.js';
@@ -75,6 +76,14 @@ async function applyObservation(tx:TenantTransaction,s:ChatwootObservationScope,
   if(hasControl&&!stale){
     const human=e.kind==='HUMAN_PUBLIC'||e.kind==='HUMAN_PRIVATE'||(e.kind==='CONVERSATION_CONTROL'&&e.assignee.kind==='HUMAN');
     await interruptChatwootAttendance(tx,{organizationId:s.organizationId,channelId:s.channelId,conversationId:control.conversation_id},human);
+    if(e.kind==='HUMAN_PUBLIC'||e.kind==='HUMAN_PRIVATE'){
+      const current=await currentPhysicalCycle(tx,s.organizationId,control.conversation_id);
+      if(current){
+        await interruptChatwootAttendance(tx,{organizationId:s.organizationId,channelId:current.channelId,conversationId:current.id},true);
+        await tx.query(`UPDATE chatwoot_attendance_controls SET state='HUMAN',revision=revision+1,updated_at=now()
+          WHERE organization_id=$1 AND conversation_id=$2 AND state<>'HUMAN'`,[s.organizationId,current.id]);
+      }
+    }
     await tx.query(`UPDATE chatwoot_attendance_controls SET state=CASE WHEN state='HUMAN' OR $3 THEN 'HUMAN' ELSE 'PAUSED' END,
       revision=revision+1,last_observation_id=$4,observed_remote_updated_at=coalesce($5,observed_remote_updated_at),updated_at=now()
       WHERE organization_id=$1 AND conversation_id=$2`,[s.organizationId,control.conversation_id,human,observation.id,e.kind==='CONVERSATION_CONTROL'?e.remoteUpdatedAt:null]);

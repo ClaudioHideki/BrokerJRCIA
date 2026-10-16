@@ -33,7 +33,9 @@ import {ConversationFacts} from './ConversationFacts.js';
 function safeError(error: unknown, fallback: string) {
   const apiError = error instanceof ApiClientError ? error : null;
   return {
-    text: apiError?.message ?? fallback,
+    text: apiError?.code==='CONVERSATION_SUPERSEDED'
+      ? 'Este atendimento foi substituído por uma nova conversa na central. Abra a conversa atual desta caixa para responder.'
+      : apiError?.message ?? fallback,
     ...(apiError?.requestId ? { requestId: apiError.requestId } : {}),
   };
 }

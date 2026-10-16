@@ -5,7 +5,7 @@ import {flowDelegationRuntimeSql,nativeFlowGuardCoverageRuntimeSql} from './flow
 import {whatsappGroupRuntimeSql} from './whatsapp-group-runtime-schema.js';
 import {nicoTakeoverRuntimeSql} from './nico-takeover-runtime-schema.js';
 import {qrIdentityRuntimeSql} from './qr-identity-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0065_qr_identity_pending';
+export const RUNTIME_SCHEMA_BASELINE = '0066_physical_conversation_cycles';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -420,6 +420,15 @@ const requiredObjectsSql = `SELECT
   AND NOT EXISTS(SELECT 1 FROM (VALUES ('bot_id'),('bot_callback'),('capabilities_observed_at'),('callback_verified_at'),('callback_credential_version'),('callback_destination_revision')) AS required(column_name)
     WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.central_transport_bindings') AND attname=required.column_name AND attnum>0 AND NOT attisdropped))
   AND EXISTS(SELECT 1 FROM pg_catalog.pg_proc WHERE oid=pg_catalog.to_regprocedure('public.lifecycle_pending_count_before_central_cutover(uuid,uuid,uuid)') AND prosecdef)
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
+    WHERE i.indexrelid=pg_catalog.to_regclass('public.messaging_conversations_contact_cycles')
+      AND i.indrelid=pg_catalog.to_regclass('public.messaging_conversations') AND i.indisvalid AND i.indisready
+      AND i.indpred IS NULL AND i.indexprs IS NULL AND i.indnkeyatts=4 AND i.indnatts=4
+      AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'
+      AND (SELECT array_agg(a.attname::text ORDER BY k.ordinality)
+        FROM unnest(i.indkey) WITH ORDINALITY k(attnum,ordinality)
+        JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum)
+        =ARRAY['organization_id','channel_id','contact_id','id'])
   AND (${flowDelegationRuntimeSql}) AND (${nativeFlowGuardCoverageRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AND (${consolidatedRuntimeSql}) AND (${inputTimeoutRuntimeSql}) AND (${nicoTakeoverRuntimeSql}) AND (${conversationEffectsRuntimeSql}) AND (${qrIdentityRuntimeSql}) AS ready`;
 
 export async function probeRequiredRuntimeSchema(query: SchemaProbeQuery): Promise<boolean> {

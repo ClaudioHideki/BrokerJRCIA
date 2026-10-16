@@ -4,6 +4,7 @@ import type { ChatwootControlPrincipal } from './chatwoot-control-auth.js';
 import { readChatwootAccount } from './chatwoot-context.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
 import { IntegrationError } from './integration-error.js';
+import {isSupersededPhysicalCycle,hasHistoricalHumanSend} from '../attendance/conversation-cycle-fence.js';
 
 export type TakeoverSnapshot = NicoTakeoverSnapshot & {
   origin: string; executor: string; remoteBinding: string | null; transport: string;
@@ -52,6 +53,7 @@ export async function captureTakeover(tx: TenantTransaction, p: ChatwootControlP
       AND c.status='READY' AND a.status='READY' AND d.approval_status='APPROVED' AND ch.deleting_at IS NULL
     FOR SHARE OF c,a,d,map`, [org, integration, remote])).rows[0];
   if (!row) throw new IntegrationError('NICO_TAKEOVER_CONVERSATION_NOT_FOUND', 404);
+  if(await isSupersededPhysicalCycle(tx,org,row.conversation_id))throw new IntegrationError('NICO_TAKEOVER_CONVERSATION_SUPERSEDED',409);
   if (Number(row.account_id) !== p.accountId || row.revision !== p.destinationRevision || !row.control_scope)
     throw new IntegrationError('NICO_TAKEOVER_CONTEXT_CHANGED', 409);
   const account = await readChatwootAccount(tx, org);
@@ -86,6 +88,7 @@ export async function cancelUndispatchedTakeoverWork(tx: TenantTransaction, org:
 
 /** In-flight/uncertain effects are never converted into successful cancellation. */
 export async function takeoverHasUnsettledWork(tx: TenantTransaction, org: string, conversation: string) {
+  if(await hasHistoricalHumanSend(tx,org,conversation))return true;
   const result = await tx.query(`SELECT 1 FROM automation_outbox x JOIN automation_executions e ON e.organization_id=x.organization_id AND e.id=x.execution_id
       WHERE e.organization_id=$1 AND e.conversation_id=$2 AND x.status IN ('SENDING','UNKNOWN')
     UNION ALL SELECT 1 FROM messaging_messages WHERE organization_id=$1 AND conversation_id=$2 AND source='AUTOMATION' AND state IN ('SENDING','UNKNOWN')

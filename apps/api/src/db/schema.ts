@@ -556,6 +556,7 @@ export const messagingConversations = pgTable(
     ...timestamps,
   },
   (table) => [
+    index('messaging_conversations_contact_cycles').on(table.organizationId,table.channelId,table.contactId,table.id),
     unique("messaging_conversations_org_id_unique").on(
       table.organizationId,
       table.id,

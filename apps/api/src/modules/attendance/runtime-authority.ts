@@ -3,11 +3,13 @@ import { AUTOMATION_ORIGIN } from '@jrc/contracts';
 import { readChatwootAttendanceGate } from './control-service.js';
 import { hasNicoTakeoverFence } from './nico-takeover-fence.js';
 import {groupAuthorityAllows,type GroupPhysicalPolicy} from '../whatsapp-groups/automation-authority.js';
+import {isSupersededPhysicalCycle,hasHistoricalHumanSend} from './conversation-cycle-fence.js';
 
 /** Caller has locked channel, then execution. The external dispatch rechecks separately. */
 export async function runtimeAuthorityAllows(tx:TenantTransaction, input:{
   organizationId:string;channelId:string;conversationId:string|null;automationId:string;version:number;executionId?:string;
 }, checkRemote=true,policy?:GroupPhysicalPolicy):Promise<boolean> {
+  if(input.conversationId&&(await isSupersededPhysicalCycle(tx,input.organizationId,input.conversationId)||await hasHistoricalHumanSend(tx,input.organizationId,input.conversationId)))return false;
   if(input.conversationId&&await hasNicoTakeoverFence(tx,input.organizationId,input.conversationId))return false;
   if(input.conversationId && (await tx.query("SELECT 1 FROM messaging_conversations WHERE organization_id=$1 AND id=$2 AND recipient_kind='GROUP'",[input.organizationId,input.conversationId])).rowCount)
     return await groupAuthorityAllows(tx,input,policy)&&(!checkRemote||(await readChatwootAttendanceGate(tx,{organizationId:input.organizationId,channelId:input.channelId,conversationId:input.conversationId})).allowed);

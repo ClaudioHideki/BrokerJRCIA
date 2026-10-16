@@ -170,6 +170,7 @@ describe('PostgresMessagingRepository idempotency behavior', () => {
     const transaction = transactionReturning(
       [],
       [{ consentStatus: 'OPTED_IN', suppressedAt: null, mode: 'BOT' }],
+      [], // The locked conversation is not a superseded physical cycle.
       [MESSAGE],
     );
 
@@ -205,7 +206,7 @@ describe('PostgresMessagingRepository idempotency behavior', () => {
       code: 'CONVERSATION_PAUSED',
     },
   ])('rejeita enqueue por $code', async ({ policy, source, code }) => {
-    const transaction = transactionReturning([], [policy]);
+    const transaction = transactionReturning([], [policy], []);
 
     const promise = createPostgresMessagingRepository().enqueueOutgoing(transaction, {
       id: MESSAGE_ID,
@@ -225,7 +226,7 @@ describe('PostgresMessagingRepository idempotency behavior', () => {
   it('rejeita OPTED_OUT mesmo quando texto não exige opt-in explícito', async () => {
     const transaction = transactionReturning([], [{
       consentStatus: 'OPTED_OUT', suppressedAt: null, mode: 'BOT',
-    }]);
+    }], []);
     await expect(createPostgresMessagingRepository().enqueueOutgoing(transaction, {
       id: MESSAGE_ID,
       organizationId: ORGANIZATION_ID,

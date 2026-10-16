@@ -15,6 +15,7 @@ import { registerPendingMedia } from "./media-store.js";
 import type { MessageContent } from "./types.js";
 import type { ChatwootHealth } from '../integrations/chatwoot-health.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
+import {SUPERSEDED_PHYSICAL_CYCLE_PREFIX} from '../attendance/conversation-cycle-fence.js';
 import { recordQrOutboundObservation } from './qr-outbound-observation.js';
 import type { createWhatsAppGroupEvents } from '../whatsapp-groups/events.js';
 import type { createGroupAutomationRuntime } from '../whatsapp-groups/automation-runtime.js';
@@ -86,10 +87,12 @@ export function createQrMessagingService(options: QrServiceOptions) {
     const conversation=await repository.getOrCreateConversation(tx,{id:randomUUID(),organizationId:org,channelId,contactId:contact.id});
     if(event.historical){
       await lockMessageStatusKey(tx,org,channelId,event.upstreamMessageId);
-      const existing=(await tx.query<{direction:string;conversation_id:string}>(`SELECT direction,conversation_id FROM messaging_messages
-        WHERE organization_id=$1 AND channel_id=$2 AND provider_scope='' AND upstream_message_id=$3`,[org,channelId,event.upstreamMessageId])).rows[0];
+      const existing=(await tx.query<{direction:string;conversation_id:string;contact_id:string|null;remote_conversation_key:string|null}>(`SELECT m.direction,m.conversation_id,c.contact_id,c.remote_conversation_key
+        FROM messaging_messages m JOIN messaging_conversations c ON c.organization_id=m.organization_id AND c.id=m.conversation_id
+        WHERE m.organization_id=$1 AND m.channel_id=$2 AND m.provider_scope='' AND m.upstream_message_id=$3`,[org,channelId,event.upstreamMessageId])).rows[0];
       if(existing){
-        if(existing.direction!==(observed?'OUTGOING':'INCOMING')||existing.conversation_id!==conversation.id)throw error('QR_HISTORY_ID_CONFLICT',409);
+        const samePhysicalHistory=existing.contact_id===contact.id&&existing.remote_conversation_key?.startsWith(SUPERSEDED_PHYSICAL_CYCLE_PREFIX);
+        if(existing.direction!==(observed?'OUTGOING':'INCOMING')||(existing.conversation_id!==conversation.id&&!samePhysicalHistory))throw error('QR_HISTORY_ID_CONFLICT',409);
         return;
       }
       if(observed){

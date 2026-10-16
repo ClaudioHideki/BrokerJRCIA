@@ -1,10 +1,19 @@
 // @vitest-environment jsdom
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { expect,it,vi } from 'vitest';
-import type { ApiClient } from '../api/client.js';
+import { ApiClientError,type ApiClient } from '../api/client.js';
 import { AttendanceResumeDialog } from './AttendanceResumeDialog.js';
 const id='81555d45-b1a2-4a3f-ab95-c1459b0df0d0';
 const context={diagnostic:{allowed:false,reason:'HUMAN_CONTROL',controlRevision:8,cycle:1},ownerRevision:3,hasActiveSession:false,hasCompatibleCursor:false,menuNodes:[],operation:null};
+it.each([
+ ['ATTENDANCE_CONVERSATION_SUPERSEDED',/Abra a conversa atual desta caixa/],
+ ['ATTENDANCE_PREVIOUS_CYCLE_SEND_PENDING',/resposta humana do atendimento anterior/],
+])('explains %s without claiming the bot resumed',async(code,message)=>{
+ const request=vi.fn(async(path:string)=>{if(path.endsWith('/resume-context'))return context;throw new ApiClientError('Falha',409,undefined,code as string);});
+ const confirmed=vi.fn();render(<AttendanceResumeDialog conversationId={id} client={{request} as unknown as ApiClient} onConfirmed={confirmed} onClose={vi.fn()}/>);
+ await screen.findByText(/não possui uma sessão/i);fireEvent.click(screen.getByRole('radio',{name:/Nova sessão/i}));fireEvent.click(screen.getByRole('button',{name:'Confirmar retomada'}));
+ expect(await screen.findByText(message as RegExp)).toBeVisible();expect(confirmed).not.toHaveBeenCalled();
+});
 it('explains the scope of resuming and keeps keyboard dismissal free from a resume mutation',async()=>{
  const request=vi.fn().mockResolvedValue(context),closed=vi.fn();
  render(<AttendanceResumeDialog conversationId={id} client={{request} as unknown as ApiClient} onConfirmed={vi.fn()} onClose={closed}/>);
