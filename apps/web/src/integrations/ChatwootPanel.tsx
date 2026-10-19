@@ -35,6 +35,7 @@ interface Inbox {
 const states: Record<string, string> = {
   READY: "Configurada",
   PENDING: "Pendente",
+  HISTORY_PENDING: 'Histórico aguardando importação',
   RUNNING: "Processando",
   FAILED: "Falha",
   UNKNOWN: "Conferência necessária",
@@ -49,6 +50,8 @@ const stages: Record<string, string> = {
   DONE: "Concluído",
 };
 const errors: Record<string, string> = {
+  CHATWOOT_HISTORY_UNSUPPORTED:'Esta central precisa do adaptador de importação histórica. O Broker preservou as mensagens sem enviá-las como novas.',
+  CHATWOOT_HISTORY_UNAVAILABLE:'A importação histórica na central será consultada novamente com a mesma identificação, sem novo envio ao cliente.',
   INTEGRATION_PAUSE_REQUIRED:'Pause a integração antes de remover o vínculo.',
   INTEGRATION_HAS_HISTORY:'Este vínculo já possui histórico ou operações. Mantenha-o pausado para preservar os registros; a exclusão definitiva exige o processo de retenção da empresa.',
   CHATWOOT_DESTINATION_REQUIRED: 'Escolha uma instalação e solicite a aprovação da equipe JRC.',
@@ -338,7 +341,7 @@ export function ChatwootPanel({
             <Metric
               label="Entregas pendentes"
               value={String(
-                (data.jobs.PENDING ?? 0) + (data.jobs.RUNNING ?? 0),
+                (data.jobs.PENDING ?? 0) + (data.jobs.HISTORY_PENDING ?? 0) + (data.jobs.RUNNING ?? 0),
               )}
               note="Fila persistente"
               icon="messages"
@@ -845,7 +848,7 @@ export function ChatwootPanel({
                         {j.messageId && <small>Mensagem {j.messageId}</small>}
                       </td>
                       <td>
-                        {j.kind === "CHATWOOT_REPLY"
+                        {j.historical ? 'Histórico → JRC Conversas' : j.kind === "CHATWOOT_REPLY"
                           ? "Atendente → WhatsApp"
                           : "WhatsApp → JRC Conversas"}
                       </td>

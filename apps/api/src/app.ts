@@ -70,6 +70,8 @@ import {
   type ChannelRouteOptions,
 } from "./http/routes/channels.js";
 import { createChannelFacade } from "./modules/channels/facade.js";
+import {createHistoryImportService} from './modules/history-import/service.js';
+import {createHistorySourceRuntime} from './modules/history-import/runtime.js';
 import {
   registerTenantOperationsRoutes,
   type TenantOperationsOptions,
@@ -516,7 +518,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     );
     if(whatsappGroups&&integrationRuntime.groupAutomation)whatsappGroups.automation=integrationRuntime.groupAutomation;
     if(integrationRuntime.chatwoot){const originalStatus=integrationRuntime.chatwoot.status;const projection=projectFlowDestinationStatus({transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work),knownNativeOrigins:flowOriginOptions.knownNativeOrigins});integrationRuntime.chatwoot.status=async org=>projection(org,await originalStatus(org));}
+    const historySourceRuntime=createHistorySourceRuntime(messagingEnvironment,evolutionFleet,(org,work)=>withOrganizationTransaction(pools.appPool,org,work));
+    app.addHook('onClose',async()=>historySourceRuntime.close());
     channels = {
+      historyImport:createHistoryImportService({transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work),...(historySourceRuntime.source?{source:historySourceRuntime.source}:{})}),
       jwtSecret: config.jwtSecret,
       authenticateApiKey: apiKeys.authenticateApiKey,
       resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),

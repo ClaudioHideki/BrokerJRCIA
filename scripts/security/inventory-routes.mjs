@@ -128,6 +128,18 @@ const ROUTE_POLICIES = Object.freeze({
   'PUT /v1/channels/{id}/whatsapp-groups/selection':policy('apps/api/src/http/routes/whatsapp-groups.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
     'EXPECTED_IDENTITY_SNAPSHOT_CATALOG_REVISION_FRESH_NUMBER_OBSERVATION','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACTOR_LOCKED_CHANNEL_ITEM_AUDITED_NO_SEND_OR_BOT'),
   ...Object.fromEntries([
+    'GET /v1/channels/{id}/history-import/capability',
+    'GET /v1/channels/{id}/history-import/by-request/{requestId}',
+    'GET /v1/channels/{id}/history-import/{operationId}',
+  ].map(route=>[route,policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_MEMBER_PUBLIC_INSTANCE_RESOLVED_SERVER_SOURCE_NO_RAW_PAGES')])),
+  ...Object.fromEntries([
+    'POST /v1/channels/{id}/history-import',
+    'POST /v1/channels/{id}/history-import/{operationId}/advance',
+    'POST /v1/channels/{id}/history-import/{operationId}/cancel',
+  ].map(route=>[route,policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    'FROZEN_SERVER_SNAPSHOT_DURABLE_REQUEST_PAGE_RECEIPT_CHECKPOINT','NO_STORE_METADATA_ONLY','RLS_LOCKED_CURRENT_MEMBER_INSTANCE_CHANNEL_IDENTITY_ENGINE_CANCEL_FENCE_NO_SEND_OR_BOT')])),
+  ...Object.fromEntries([
     'GET /v1/channels/central/inboxes', 'GET /v1/channels/central/inboxes/{inboxId}/preview',
     'GET /v1/channels/central/operations/{operationId}', 'GET /v1/channels/central/operations/by-key/{key}',
     'GET /v1/channels/{id}/central-operation',

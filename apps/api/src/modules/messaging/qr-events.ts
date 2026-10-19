@@ -19,7 +19,7 @@ export type QrContactEvent = ({
       media: MediaRegistration;
       caption: string;
       occurredAt: Date;
-    }) & {lid?:string;recoveredIdentity?:boolean;historical?:boolean};
+    }) & {lid?:string;recoveredIdentity?:boolean;historical?:boolean;historicalState?:'SENT'|'DELIVERED'|'READ'|'FAILED'};
 type WithoutPhone<T> = T extends unknown ? Omit<T,'externalId'> : never;
 export type QrUnresolvedContactEvent=WithoutPhone<QrContactEvent>;
 export type QrEvent =

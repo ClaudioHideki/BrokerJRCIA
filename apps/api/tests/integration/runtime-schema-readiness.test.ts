@@ -73,6 +73,13 @@ it('requires migration 0031 for app-role readiness after a valid 0030 upgrade', 
         client.release();
       }
     };
+    expect(await probeWithout('drop trigger history_import_receipt_checkpoint on history_import_pages')).toBe(false);
+    expect(await probeWithout('alter table history_import_pages disable trigger history_import_receipt_checkpoint')).toBe(false);
+    expect(await probeWithout('revoke update on history_import_jobs from jrc_app')).toBe(false);
+    expect(await probeWithout('grant update on history_import_pages to jrc_app')).toBe(false);
+    expect(await probeWithout('alter table history_import_jobs no force row level security')).toBe(false);
+    expect(await probeWithout('alter table history_import_jobs disable trigger history_import_job_guard')).toBe(false);
+    expect(await probeWithout('drop policy history_import_tenant on history_import_pages')).toBe(false);
     expect(await probeWithout('drop trigger instance_archive_operations on provider_operations')).toBe(false);
     expect(await probeWithout('drop index messaging_conversations_contact_cycles')).toBe(false);
     expect(await probeWithout('alter table provider_operations disable trigger instance_archive_operations')).toBe(false);

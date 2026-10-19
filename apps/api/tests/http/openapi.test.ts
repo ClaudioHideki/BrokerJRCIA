@@ -10,6 +10,12 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/channels/{id}/history-import/capability',
+  'POST /v1/channels/{id}/history-import',
+  'GET /v1/channels/{id}/history-import/by-request/{requestId}',
+  'GET /v1/channels/{id}/history-import/{operationId}',
+  'POST /v1/channels/{id}/history-import/{operationId}/advance',
+  'POST /v1/channels/{id}/history-import/{operationId}/cancel',
   'GET /v1/integrations/chatwoot/jobs/summary',
   'GET /v1/platform/organizations/{id}/chatwoot/jobs/summary',
   'GET /v1/automations/{id}/resource-channels',

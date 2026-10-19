@@ -15,10 +15,13 @@ import type { Role } from '../plugins/authorization.js';
 import { authenticateRequest, type AuthenticationOptions } from '../plugins/authentication.js';
 import { registerRequestContext } from '../plugins/request-context.js';
 import { tenantOperationalProblem } from '../../modules/tenancy/operational-limits.js';
+import {HistoryImportError,type HistoryImportService} from '../../modules/history-import/types.js';
+import {HistoryImportCapabilitySchema,HistoryImportOperationSchema,HistoryImportSelectionSchema} from '@jrc/contracts';
 
 export interface ChannelRouteOptions extends AuthenticationOptions {
   service: ChannelFacade;
   lifecycle?: LifecycleService;
+  historyImport?: HistoryImportService;
   resolveCurrentRole(userId: string, organizationId: string): Promise<Role | null>;
   now?: () => Date;
   requestTimeoutMs?: number;
@@ -30,6 +33,7 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
     ...(options.requestTimeoutMs ? { timeoutMs: options.requestTimeoutMs } : {}) });
   app.addHook('onRequest', async (_request, reply) => { reply.header('Cache-Control', 'no-store'); });
   app.setErrorHandler((error, request, reply) => {
+    if(error instanceof HistoryImportError)return reply.code(error.statusCode).type(PROBLEM_CONTENT_TYPE).send({type:'about:blank',title:error.code,status:error.statusCode,code:error.code,requestId:request.id});
     if(error instanceof AttendanceError)return reply.code(error.statusCode).type('application/problem+json').send({type:'about:blank',title:error.code,status:error.statusCode,code:error.code,requestId:request.id});
     const operational = tenantOperationalProblem(error, request.id);
     if (operational) return reply.code(operational.status).type(PROBLEM_CONTENT_TYPE).send(operational);
@@ -57,6 +61,24 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
     requestId: request.id, deadline: request.operationDeadline, signal: request.operationSignal });
   const central=()=>{if(!options.service.central)throw new ChannelFacadeError('CHATWOOT_NOT_CONFIGURED',503);return options.service.central;};
   const centralErrors={400:ProblemDetailsSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,404:ProblemDetailsSchema,409:ProblemDetailsSchema,503:ProblemDetailsSchema};
+  const history=()=>{if(!options.historyImport)throw new HistoryImportError('HISTORY_SOURCE_NOT_CONFIGURED',503);return options.historyImport;};
+  const historyParams=params.extend({operationId:z.uuid()});
+  api.get('/v1/channels/:id/history-import/capability',{preHandler:manage,schema:{params,querystring:empty,response:{200:HistoryImportCapabilitySchema,...centralErrors}}},async request=>{
+    if(options.historyImport)return options.historyImport.capability(org(request),actor(request),request.params.id);
+    const channel=await options.service.get(org(request),request.params.id);
+    return {schemaVersion:1 as const,organizationId:org(request),channelId:request.params.id,available:false,
+      reason:channel.provider==='QR'?'SOURCE_NOT_CONFIGURED' as const:'CHANNEL_UNAVAILABLE' as const,maxRecords:0};
+  });
+  api.post('/v1/channels/:id/history-import',{preHandler:manage,schema:{params,querystring:empty,headers:z.object({'idempotency-key':z.uuid()}),body:HistoryImportSelectionSchema,response:{200:HistoryImportOperationSchema,...centralErrors}}},
+    request=>history().start(org(request),actor(request),request.params.id,request.body,request.headers['idempotency-key']));
+  api.get('/v1/channels/:id/history-import/by-request/:requestId',{preHandler:manage,schema:{params:params.extend({requestId:z.uuid()}),querystring:empty,response:{200:HistoryImportOperationSchema,...centralErrors}}},
+    request=>history().byRequest(org(request),actor(request),request.params.id,request.params.requestId));
+  api.get('/v1/channels/:id/history-import/:operationId',{preHandler:manage,schema:{params:historyParams,querystring:empty,response:{200:HistoryImportOperationSchema,...centralErrors}}},
+    request=>history().get(org(request),actor(request),request.params.id,request.params.operationId));
+  api.post('/v1/channels/:id/history-import/:operationId/advance',{preHandler:manage,schema:{params:historyParams,querystring:empty,body:empty,response:{200:HistoryImportOperationSchema,...centralErrors}}},
+    request=>history().advance(org(request),actor(request),request.params.id,request.params.operationId));
+  api.post('/v1/channels/:id/history-import/:operationId/cancel',{preHandler:manage,schema:{params:historyParams,querystring:empty,body:empty,response:{200:HistoryImportOperationSchema,...centralErrors}}},
+    request=>history().cancel(org(request),actor(request),request.params.id,request.params.operationId));
   api.get('/v1/channels/central/inboxes',{preHandler:manage,schema:{querystring:empty,response:{200:CentralInboxListSchema,...centralErrors}}},request=>central().listInboxes(org(request),actor(request)));
   api.get('/v1/channels/central/inboxes/:inboxId/preview',{preHandler:manage,schema:{params:z.strictObject({inboxId:z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER)}),querystring:empty,response:{200:CentralInboxPreviewSchema,...centralErrors}}},request=>central().preview(org(request),actor(request),request.params.inboxId));
   api.get('/v1/channels/central/operations/:operationId',{preHandler:manage,schema:{params:z.strictObject({operationId:z.uuid()}),querystring:empty,response:{200:CentralCutoverOperationSchema,...centralErrors}}},request=>central().get(org(request),request.params.operationId));

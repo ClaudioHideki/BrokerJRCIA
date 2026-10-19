@@ -8,7 +8,7 @@ export type FleetTransaction=<T>(org:string,work:OrganizationTransaction<T>)=>Pr
 export interface EngineSnapshot extends EngineBinding{organizationId:string;instanceId:string;upstreamKey:string;state:'ACTIVE'|'DRAINING'|'DISABLED';traditional:boolean}
 export interface FleetLease{token:string;snapshot:EngineSnapshot}
 export interface FleetStore{
- resolve(org:string,key:string,operationId?:string):Promise<EngineSnapshot>;
+ resolve(org:string,key:string,operationId?:string,tx?:TenantTransaction):Promise<EngineSnapshot>;
  acquire(snapshot:EngineSnapshot,mutation:boolean,deadline:Date,operationId?:string,intent?:ProviderContext['engineIntent']):Promise<FleetLease>;
  assert(snapshot:EngineSnapshot,tx?:TenantTransaction,mutation?:boolean):Promise<void>;
  settle(lease:FleetLease,ok:boolean,code:string|null,uncertain?:boolean):Promise<void>;
@@ -28,7 +28,8 @@ function rowSnapshot(row:Record<string,unknown>,org:string,key:string):EngineSna
 export function createPostgresFleetStore(transaction:FleetTransaction,fleet:ReadonlyMap<string,EvolutionEngine>):FleetStore{
  const transact:FleetTransaction=async(org,work)=>{try{return await transaction(org,work);}catch(error){throw normalizeEvolutionDatabaseError(error);}};
  const legacy=fleet.get('legacy')!;
- const resolve=async(org:string,key:string,operationId?:string)=>transact(org,async tx=>{
+ const resolve=async(org:string,key:string,operationId?:string,existingTx?:TenantTransaction)=>{
+  const work=async(tx:TenantTransaction)=>{
   const result=await tx.query(`SELECT * FROM public.evolution_resolve_binding($1,$2,$3)`,[org,key,operationId??null]);
   const row=result.rows[0];if(!row)throw fault('EVOLUTION_ENGINE_BINDING_REQUIRED');
   if(row.traditional===true){
@@ -36,7 +37,8 @@ export function createPostgresFleetStore(transaction:FleetTransaction,fleet:Read
    return rowSnapshot({...row,engineId:'legacy',generation:legacy.generation,destinationFingerprint:legacy.destinationFingerprint,state:'ACTIVE'},org,key);
   }
   return rowSnapshot(row,org,key);
- });
+  };return existingTx?work(existingTx):transact(org,work);
+ };
  const assert=async(snapshot:EngineSnapshot,tx?:TenantTransaction,mutation=false)=>{
   const work=async(client:TenantTransaction)=>{
    const result=await client.query(`SELECT public.evolution_assert_binding($1,$2,$3,$4,$5,$6,$7) AS valid`,
@@ -68,7 +70,7 @@ export function createEvolutionFleetRuntime(environment:Record<string,string|und
   workspace:engine=>new EvolutionWorkspaceClient(engine.providerOptions()),groups:engine=>new EvolutionGroupsClient(engine.providerOptions()),
   messaging:(engine,key)=>new EvolutionMessagingClient({...engine.providerOptions(),instanceKey:key}),
   groupText:(engine,key)=>createEvolutionGroupTextSender({...engine.providerOptions(),instanceKey:key}),...options.factories};
- const capture=(org:string,key:string,operationId?:string)=>store.resolve(org,key,operationId);
+ const capture=(org:string,key:string,operationId?:string,tx?:TenantTransaction)=>store.resolve(org,key,operationId,tx);
  const same=(a:EngineSnapshot,b:EngineSnapshot)=>a.instanceId===b.instanceId&&a.organizationId===b.organizationId&&a.engineId===b.engineId&&a.generation===b.generation&&a.destinationFingerprint===b.destinationFingerprint&&a.traditional===b.traditional;
  const execute=async<T>(context:ProviderContext,key:string,mutation:boolean,invoke:(engine:EvolutionEngine)=>Promise<T>,pinned?:EngineSnapshot,reconciliation=false):Promise<T>=>{
   const snapshot=await capture(context.organizationId,key,context.engineOperationId);

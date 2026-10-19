@@ -19,6 +19,16 @@ const status = {
   jobs: {},
 };
 afterEach(cleanup);
+it('distinguishes historical work from live messages and counts its pending lane',async()=>{
+ const request=vi.fn(async(path:string)=>path===''?{...status,jobs:{HISTORY_PENDING:2}}:path==='/jobs'?{data:[{
+  id,integrationId:id,messageId:id,kind:'MIRROR_MESSAGE',historical:true,status:'HISTORY_PENDING',attempts:0,lastError:null,operation:null,
+  createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),
+ }]}:{data:[]});
+ render(<ChatwootPanel request={request} canManage platform={false}/>);
+ expect(await screen.findByText('Histórico → JRC Conversas')).toBeVisible();
+ expect(screen.getByText('Histórico aguardando importação')).toBeVisible();
+ expect(screen.getByText('2')).toBeVisible();
+});
 it('describes configured bindings without advertising unverified delivery as ready', async () => {
   const request = vi.fn(async (path: string) => path === '' ? { ...status,
     account: { accountId: 1, status: 'READY', lastError: null, hasCredential: true },

@@ -69,7 +69,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
     return tx(org, async (t) => {
       // An expired POST might have succeeded remotely. Replies are local, idempotent transactions.
       await t.query(
-        `UPDATE integration_jobs SET status=CASE WHEN kind='CHATWOOT_REPLY' THEN 'PENDING' ELSE 'UNKNOWN' END,
+        `UPDATE integration_jobs SET status=CASE WHEN payload->>'historical'='true' AND payload->>'operation'='IMPORT_HISTORY' THEN 'HISTORY_PENDING' WHEN kind='CHATWOOT_REPLY' THEN 'PENDING' ELSE 'UNKNOWN' END,
         lease_token=NULL,lease_expires_at=NULL,last_error='WORKER_LEASE_EXPIRED',updated_at=now()
         WHERE organization_id=$1 AND status='RUNNING' AND lease_expires_at<now()`,
         [org],
@@ -83,7 +83,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
         WHERE c.organization_id=$1 AND c.status='READY' AND a.status='READY'
           AND d.approval_status='APPROVED'
           AND chatwoot_channel_identity_ready(c.organization_id,c.channel_id)
-          AND EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND j.status='PENDING' AND j.available_at<=now())
+          AND EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now())
           AND NOT EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND j.status IN ('RUNNING','UNKNOWN'))
         ORDER BY c.updated_at,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1`,
           [org],
@@ -92,8 +92,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
       if (!connection) return;
       const job = (
         await t.query<{ id: string }>(
-          `SELECT id FROM integration_jobs WHERE organization_id=$1 AND integration_id=$2 AND status='PENDING' AND available_at<=now()
-        ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`,
+          `SELECT id FROM integration_jobs WHERE organization_id=$1 AND integration_id=$2 AND status IN ('PENDING','HISTORY_PENDING') AND available_at<=now()
+        ORDER BY CASE WHEN payload->>'historical'='true' THEN 1 ELSE 0 END,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`,
           [org, connection.id],
         )
       ).rows[0];
@@ -390,8 +390,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
           content: MessageContent;
           state: string;
           canonical_error_code: string | null;
+          is_historical:boolean;
+          created_at:Date;
         }>(
-          "SELECT id,conversation_id,direction,source,content,state,canonical_error_code FROM messaging_messages WHERE organization_id=$1 AND id=$2 AND channel_id=$3",
+          "SELECT id,conversation_id,direction,source,content,state,canonical_error_code,is_historical,created_at FROM messaging_messages WHERE organization_id=$1 AND id=$2 AND channel_id=$3",
           [org, job.message_id, c.channel_id],
         )
       ).rows[0];
@@ -442,7 +444,12 @@ export function createChatwootWorker(options: ChatwootOptions) {
     if(!a.destination)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
     const attendanceScope:ChatwootObservationScope={organizationId:org,channelId:c.channel_id,integrationId:c.id,
       destinationRevision:a.destination.revision,credentialRevision:a.credential_version,accountId,inboxId};
-    const brokerOwnsConversation=context.owner?.executor==='BROKER'&&context.owner.remote_binding_id===null;
+    const historical=message.is_historical;
+    if(historical){
+      const capability=await client.historyImportCapability(accountId,{organizationId:org,integrationId:c.id,inboxId});
+      if(!context.map&&capability.supports_silent_bootstrap!==true)throw new IntegrationError('CHATWOOT_HISTORY_UNSUPPORTED');
+    }
+    const brokerOwnsConversation=!historical&&context.owner?.executor==='BROKER'&&context.owner.remote_binding_id===null;
     let media: BinaryMedia | undefined;
     if (
       !context.mappedMessage &&
@@ -458,6 +465,23 @@ export function createChatwootWorker(options: ChatwootOptions) {
       };
     }
     let map = context.map;
+    if(!map&&historical){
+      await beforeExternal(job,'IMPORT_HISTORY');
+      const receipt=await client.bootstrapHistoryConversation(accountId,{organizationId:org,integrationId:c.id,inboxId,
+        brokerContactId:contact.id,brokerConversationId:message.conversation_id,phone:contact.external_id,
+        name:(contact.display_name??'+'+contact.external_id).slice(0,160),occurredAt:Math.floor(message.created_at.getTime()/1000)});
+      map=await tx(org,async t=>{
+        await lockAttendanceChannel(t,org,c.channel_id);
+        await t.query(`INSERT INTO chatwoot_conversations(organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id)
+          VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(organization_id,integration_id,conversation_id) DO NOTHING`,
+          [org,c.id,message.conversation_id,receipt.contact_id,receipt.source_id,receipt.conversation_id]);
+        const canonical=(await t.query<ConversationMap>(`SELECT contact_id,source_id,remote_conversation_id FROM chatwoot_conversations
+          WHERE organization_id=$1 AND integration_id=$2 AND conversation_id=$3`,[org,c.id,message.conversation_id])).rows[0];
+        if(!canonical||String(canonical.contact_id)!==String(receipt.contact_id)||canonical.source_id!==receipt.source_id)
+          throw new IntegrationError('CHATWOOT_HISTORY_RECEIPT_CONFLICT');
+        return canonical;
+      });
+    }
     if (!map) {
       let contactId =
         typeof job.payload.contactId === "number"
@@ -505,7 +529,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
               inboxId,
               contactId,
               sourceId,
-              ...(flowOwnsInbox||brokerOwnsConversation ? { status: 'pending' as const } : {}),
+              ...(historical||flowOwnsInbox||brokerOwnsConversation ? { status: 'pending' as const } : {}),
             });
       await progress(job, { conversationId });
       const canonical=brokerOwnsConversation?await client.attendanceConversation(accountId,conversationId):undefined;
@@ -543,6 +567,16 @@ export function createChatwootWorker(options: ChatwootOptions) {
       : typeof job.payload.remoteMessageId === "number"
         ? job.payload.remoteMessageId
         : undefined;
+    if(historical){
+      if(message.content.type!=='TEXT'||!['SENT','DELIVERED','READ','FAILED'].includes(message.state))throw new IntegrationError('CHATWOOT_CONTENT_UNSUPPORTED');
+      await beforeExternal(job,'IMPORT_HISTORY');
+      const importedId=await client.importHistoryMessage(accountId,Number(map.remote_conversation_id),{
+        organizationId:org,integrationId:c.id,inboxId,brokerMessageId:message.id,text:message.content.text,incoming:message.direction==='INCOMING',
+        occurredAt:Math.floor(message.created_at.getTime()/1000),status:message.state.toLowerCase() as 'sent'|'delivered'|'read'|'failed'});
+      if(remoteMessageId&&remoteMessageId!==importedId)throw new IntegrationError('CHATWOOT_HISTORY_RECEIPT_CONFLICT');
+      remoteMessageId=importedId;
+      await progress(job,{remoteMessageId});
+    }
     if (!remoteMessageId) {
       const text =
         message.content.type === "TEXT"
@@ -597,6 +631,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
         )
         .then(() => undefined),
     );
+    if(historical){await finish(job);return;}
     if (
       message.direction === "OUTGOING" &&
       ["SENT", "DELIVERED", "READ", "FAILED"].includes(message.state)
@@ -642,7 +677,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
         if (job.kind === "CHATWOOT_REPLY") await receiveReply(job);
         else await mirror(job);
       } catch (error) {
-        const uncertain =
+        const idempotentHistory=job.payload.historical===true&&job.payload.operation==='IMPORT_HISTORY';
+        const uncertain = !idempotentHistory&&
           job.kind === "MIRROR_MESSAGE" &&
           (!(error instanceof IntegrationError) ||
             error.code === "INTEGRATION_LEASE_LOST") &&
@@ -670,7 +706,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
                 org,
                 job.id,
                 job.lease_token,
-                uncertain ? "UNKNOWN" : retry ? "PENDING" : "FAILED",
+                uncertain ? "UNKNOWN" : retry ? job.payload.historical===true ? 'HISTORY_PENDING' : "PENDING" : "FAILED",
                 code,
                 Math.min(300, 5 * 2 ** Math.min(job.attempts, 6)),
               ],

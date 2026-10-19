@@ -179,9 +179,11 @@ describe('canonical channels UI', () => {
     }) as ApiClient['request'];
     render(<App client={client(request)} initialEntries={[`/channels/${id}`]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Gerar QR Code' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Atualize o status');
-    expect(screen.getByRole('alert')).toHaveTextContent('reconciliação');
-    expect(screen.getByRole('alert')).not.toHaveTextContent('CONNECT_RECONCILIATION_REQUIRED');
+    const channelError = await screen.findByRole('alert', { name: 'Erro da caixa' });
+    expect(channelError).toHaveTextContent('Atualize o status');
+    expect(channelError).toHaveTextContent('reconciliação');
+    expect(channelError).not.toHaveTextContent('CONNECT_RECONCILIATION_REQUIRED');
+    expect(screen.queryByRole('img', { name: 'QR Code para conectar o WhatsApp' })).not.toBeInTheDocument();
   });
 });
 

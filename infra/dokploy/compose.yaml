@@ -145,6 +145,8 @@ services:
 
     environment:
       <<: *runtime
+      HISTORY_EVOLUTION_DATABASE_URL: ${HISTORY_EVOLUTION_DATABASE_URL:-}
+      HISTORY_EVOLUTION_DATABASES_JSON: ${HISTORY_EVOLUTION_DATABASES_JSON:-}
       MEDIA_STORAGE_DRIVER: ${MEDIA_STORAGE_DRIVER:-postgres}
       MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT:-}
       MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET:-}
@@ -334,6 +336,31 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 0.25
+
+  history-import-worker:
+    image: ${JRC_API_IMAGE:?required}
+    entrypoint: [node, apps/api/dist/commands/history-import-worker.js, --watch]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://jrc_app:${JRC_APP_PASSWORD:?required}@postgres:5432/jrc_broker
+      EVOLUTION_BASE_URL: http://evolution:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?required}
+      QR_WEBHOOK_SIGNING_KEY: ${QR_WEBHOOK_SIGNING_KEY:?required}
+      HISTORY_EVOLUTION_DATABASE_URL: ${HISTORY_EVOLUTION_DATABASE_URL:-}
+      HISTORY_EVOLUTION_DATABASES_JSON: ${HISTORY_EVOLUTION_DATABASES_JSON:-}
+      HISTORY_IMPORT_WORKER_INTERVAL_MS: ${HISTORY_IMPORT_WORKER_INTERVAL_MS:-5000}
+      HISTORY_IMPORT_WORKER_DB_POOL_MAX: ${HISTORY_IMPORT_WORKER_DB_POOL_MAX:-2}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [backend]
+    read_only: true
+    tmpfs: ["/tmp:size=1m,uid=1000,gid=1000,mode=0700"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     mem_limit: 256m
     cpus: 0.25
 

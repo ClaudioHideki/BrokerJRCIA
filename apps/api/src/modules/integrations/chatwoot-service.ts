@@ -709,7 +709,7 @@ export function createChatwootService(options: ChatwootOptions) {
       return tx(org, async (t) => ({
         data: (
           await t.query(
-            `SELECT id,integration_id AS "integrationId",kind,status,attempts,last_error AS "lastError",payload->>'operation' AS operation,message_id AS "messageId",created_at AS "createdAt",updated_at AS "updatedAt"
+            `SELECT id,integration_id AS "integrationId",kind,coalesce(payload->>'historical'='true',false) AS historical,status,attempts,last_error AS "lastError",payload->>'operation' AS operation,message_id AS "messageId",created_at AS "createdAt",updated_at AS "updatedAt"
         FROM integration_jobs WHERE organization_id=$1 ORDER BY created_at DESC,id DESC LIMIT 100`,
             [org],
           )
@@ -724,7 +724,7 @@ export function createChatwootService(options: ChatwootOptions) {
       await tx(org, async (t) => {
         await requireActiveOrganization(t, org);
         const result = await t.query(
-          `UPDATE integration_jobs SET status='PENDING',attempts=0,available_at=now(),last_error=NULL,updated_at=now()
+          `UPDATE integration_jobs SET status=CASE WHEN payload->>'historical'='true' THEN 'HISTORY_PENDING' ELSE 'PENDING' END,attempts=0,available_at=now(),last_error=NULL,updated_at=now()
           WHERE organization_id=$1 AND id=$2 AND status='FAILED' RETURNING id,message_id`,
           [org, id],
         );
@@ -859,7 +859,7 @@ export function createChatwootService(options: ChatwootOptions) {
       await tx(org, async (t) => {
         await requireActiveOrganization(t, org);
         const result = await t.query(
-          `UPDATE integration_jobs SET status='PENDING',payload=payload||$3::jsonb,last_error=NULL,available_at=now(),updated_at=now()
+          `UPDATE integration_jobs SET status=CASE WHEN payload->>'historical'='true' THEN 'HISTORY_PENDING' ELSE 'PENDING' END,payload=payload||$3::jsonb,last_error=NULL,available_at=now(),updated_at=now()
           WHERE organization_id=$1 AND id=$2 AND status='UNKNOWN' RETURNING id`,
           [org, id, JSON.stringify(patch)],
         );

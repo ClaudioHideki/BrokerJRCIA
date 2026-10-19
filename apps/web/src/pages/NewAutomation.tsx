@@ -45,6 +45,9 @@ export function NewAutomationPage(){
       if(preview){const importState=pendingImport.current;if(!importState)throw new Error('Selecione novamente o arquivo para importar.');
         if(!importState.persisted)importState.persisted=await client.request<Preview>('/v1/automation-imports',{method:'POST',headers:{'Idempotency-Key':importState.idempotencyKey},body:JSON.stringify({source:'AUTO',content:importState.content})});
         confirmed=importState.persisted;}
+      // An import may finish after leaving this route or changing the tenant.
+      // Do not start a second mutation with an obsolete UI context.
+      if(current!==generation.current)return;
       const graph=confirmed?.graph??(template==='OPERATOR_RECEPTION'?operatorReceptionFlow():welcomeFlow()),creationName=name.trim();
       const signature=JSON.stringify({name:creationName,graph});
       if(pendingCreation.current?.signature!==signature)pendingCreation.current={signature,idempotencyKey:crypto.randomUUID()};

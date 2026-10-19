@@ -177,6 +177,53 @@ export class ChatwootClient {
     return new ChatwootClient({ ...this.options, fetch: this.fetch,
       timeoutMs: z.number().int().min(100).max(30_000).parse(timeoutMs) });
   }
+  async historyImportCapability(accountId:number,input:{organizationId:string;integrationId:string;inboxId:number}) {
+    const query=new URLSearchParams({organization_id:effectIdentity.parse(input.organizationId),integration_id:effectIdentity.parse(input.integrationId)});
+    let raw:unknown;
+    try{raw=await this.request('GET',`${this.account(accountId)}/jrc_history_import/inboxes/${integer.parse(input.inboxId)}?${query}`);}
+    catch(error){if(error instanceof ChatwootError&&[404,405].includes(error.httpStatus??0))throw new ChatwootError('CHATWOOT_HISTORY_UNSUPPORTED');throw error;}
+    const data=parseCatalog(z.strictObject({protocol:z.literal('jrc-history-import/1'),account_id:integer,inbox_id:integer,
+      organization_id:effectIdentity,integration_id:effectIdentity,supports_text:z.literal(true),supports_silent_bootstrap:z.boolean().optional()}),raw);
+    if(data.account_id!==accountId||data.inbox_id!==input.inboxId||data.organization_id!==input.organizationId||data.integration_id!==input.integrationId)
+      throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
+    return data;
+  }
+  async bootstrapHistoryConversation(accountId:number,input:{organizationId:string;integrationId:string;inboxId:number;
+    brokerContactId:string;brokerConversationId:string;phone:string;name:string;occurredAt:number}) {
+    const body=z.strictObject({organization_id:effectIdentity,integration_id:effectIdentity,broker_contact_id:effectIdentity,
+      broker_conversation_id:effectIdentity,phone:z.string().regex(/^[1-9][0-9]{7,14}$/),name:z.string().min(1).max(160),
+      occurred_at:z.number().int().nonnegative().safe()}).parse({organization_id:input.organizationId,integration_id:input.integrationId,
+        broker_contact_id:input.brokerContactId,broker_conversation_id:input.brokerConversationId,phone:input.phone,name:input.name,occurred_at:input.occurredAt});
+    let raw:unknown;
+    try{raw=await this.request('POST',`${this.account(accountId)}/jrc_history_import/inboxes/${integer.parse(input.inboxId)}/bootstrap`,body);}
+    catch(error){if(error instanceof ChatwootError&&(error.uncertain||error.retrySafe))throw new ChatwootError('CHATWOOT_HISTORY_UNAVAILABLE',true,false);throw error;}
+    const data=parseCatalog(z.strictObject({protocol:z.literal('jrc-history-import/1'),account_id:integer,inbox_id:integer,
+      organization_id:effectIdentity,integration_id:effectIdentity,contact_id:integer,source_id:z.string().min(1).max(256),
+      conversation_id:integer,broker_contact_id:effectIdentity,broker_conversation_id:effectIdentity}),raw);
+    if(data.account_id!==accountId||data.inbox_id!==input.inboxId||data.organization_id!==input.organizationId||data.integration_id!==input.integrationId||
+      data.broker_contact_id!==input.brokerContactId||data.broker_conversation_id!==input.brokerConversationId)throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
+    return data;
+  }
+  async importHistoryMessage(accountId:number,conversationId:number,input:{organizationId:string;integrationId:string;inboxId:number;
+    brokerMessageId:string;text:string;incoming:boolean;occurredAt:number;status:'sent'|'delivered'|'read'|'failed'}) {
+    const body=z.strictObject({organization_id:effectIdentity,integration_id:effectIdentity,inbox_id:integer,broker_message_id:effectIdentity,
+      content:z.string().min(1).max(4096),direction:z.enum(['incoming','outgoing']),occurred_at:z.number().int().nonnegative().safe(),
+      status:z.enum(['sent','delivered','read','failed'])}).parse({organization_id:input.organizationId,integration_id:input.integrationId,
+      inbox_id:input.inboxId,broker_message_id:input.brokerMessageId,content:input.text,direction:input.incoming?'incoming':'outgoing',occurred_at:input.occurredAt,status:input.status});
+    let raw:unknown;
+    try{raw=await this.request('POST',`${this.account(accountId)}/conversations/${integer.parse(conversationId)}/jrc_history_import`,body);}
+    catch(error){
+      // This endpoint is idempotent by immutable broker message identity + body.
+      // Retrying it cannot send to WhatsApp or rerun central live-message callbacks.
+      if(error instanceof ChatwootError&&(error.uncertain||error.retrySafe))throw new ChatwootError('CHATWOOT_HISTORY_UNAVAILABLE',true,false);
+      throw error;
+    }
+    const data=parseCatalog(z.strictObject({protocol:z.literal('jrc-history-import/1'),id:integer,account_id:integer,inbox_id:integer,
+      conversation_id:integer,organization_id:effectIdentity,integration_id:effectIdentity,broker_message_id:effectIdentity}),raw);
+    if(data.account_id!==accountId||data.inbox_id!==input.inboxId||data.conversation_id!==conversationId||data.organization_id!==input.organizationId||
+      data.integration_id!==input.integrationId||data.broker_message_id!==input.brokerMessageId)throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
+    return data.id;
+  }
   async flowEffectCapabilities(accountId: number, inboxId: number) {
     const data = parseEffect(effectCapabilities, await this.request('GET',
       `${this.account(accountId)}/jrc_flow_effects/capabilities?inbox_id=${integer.parse(inboxId)}`));

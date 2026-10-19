@@ -70,6 +70,7 @@ export const IntegrationDeliveryIssueCodeSchema = z.enum([
   'CHATWOOT_ATTENDANCE_POLICY_REQUIRES_CONFIGURATION', 'GROUP_CENTRAL_SCOPE_CHANGED',
   'CHATWOOT_INVALID_RESPONSE', 'CHATWOOT_REQUEST_REJECTED', 'MEDIA_DOWNLOAD_FAILED',
   'MEDIA_TYPE_UNSUPPORTED', 'CHATWOOT_OUTCOME_UNKNOWN', 'OTHER',
+  'CHATWOOT_HISTORY_UNSUPPORTED','CHATWOOT_HISTORY_UNAVAILABLE',
 ]);
 export const IntegrationDeliverySummarySchema = z.object({data:z.array(z.object({
   status:z.enum(['FAILED','UNKNOWN']),code:IntegrationDeliveryIssueCodeSchema,
@@ -82,10 +83,11 @@ export const IntegrationJobsSchema = z.object({
       id: z.uuid(),
       integrationId: z.uuid(),
       kind: z.enum(["CHATWOOT_REPLY", "MIRROR_MESSAGE"]),
-      status: z.enum(["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "UNKNOWN"]),
+      historical:z.boolean().optional(),
+      status: z.enum(["PENDING", "HISTORY_PENDING", "RUNNING", "SUCCEEDED", "FAILED", "UNKNOWN"]),
       attempts: z.number().int().nonnegative(),
       lastError: z.string().nullable(),
-      operation: z.enum(['CREATE_CONTACT','LINK_CONTACT','CREATE_CONVERSATION','SEND_MESSAGE','UPDATE_STATUS']).nullable().optional(),
+      operation: z.enum(['CREATE_CONTACT','LINK_CONTACT','CREATE_CONVERSATION','SEND_MESSAGE','IMPORT_HISTORY','UPDATE_STATUS']).nullable().optional(),
       messageId: z.uuid().nullable(),
       createdAt: z.string(),
       updatedAt: z.string(),

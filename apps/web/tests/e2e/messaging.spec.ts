@@ -31,7 +31,21 @@ test('Meta e Typebot sintéticos: template, entrega, resposta ordenada e atendim
   }).toContain('DELIVERED');
   // Restore BOT because projects share the isolated fixture but run sequentially.
   const resume = page.getByRole('button', { name: 'Retomar bot' });
-  if (await resume.count()) await resume.click();
+  // Exercise a slow local resume request before the next provider input.
+  await page.route('**/v1/messaging/conversations/*/mode', async route => {
+    if (route.request().method() === 'PATCH' && route.request().postDataJSON()?.mode === 'BOT') {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    await route.continue();
+  });
+  if (await resume.count()) {
+    const resumed = page.waitForResponse(response => response.request().method() === 'PATCH'
+      && /\/v1\/messaging\/conversations\/[^/]+\/mode$/.test(response.url())
+      && response.request().postDataJSON()?.mode === 'BOT');
+    await resume.click();
+    expect((await resumed).status()).toBe(200);
+  }
+  await expect(page.getByText('Modo: Bot', { exact: true })).toBeVisible();
   const incomingText = `Olá ${randomUUID()}`;
   const body = JSON.stringify({ object: 'whatsapp_business_account', entry: [{ id: '20000000000', changes: [{ field: 'messages', value: {
     metadata: { phone_number_id: process.env.JRC_E2E_META_PHONE_ID },

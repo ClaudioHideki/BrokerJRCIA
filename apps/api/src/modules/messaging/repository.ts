@@ -446,6 +446,8 @@ export interface MessagingRepository {
       occurredAt?: Date;
       /** Central ingress awaits a canonical remote read before routing. */
       scheduleBot?: boolean;
+      /** Imported facts must use the side-effect-free central history protocol. */
+      historical?: boolean;
     },
   ): Promise<{
     kind: "created" | "duplicate";
@@ -933,9 +935,9 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       const insertedResult = await transaction.query<MessageDatabaseRow>(
         `INSERT INTO messaging_messages
            (id, organization_id, channel_id, conversation_id, direction, source,
-            upstream_message_id, content, state, created_at, updated_at)
+            upstream_message_id, content, state, created_at, updated_at, is_historical)
          VALUES ($1, $2, $3, $4, 'INCOMING', 'CONTACT', $5, $6::jsonb, 'DELIVERED',
-                 COALESCE($7::timestamptz, now()), COALESCE($7::timestamptz, now()))
+                 COALESCE($7::timestamptz, now()), COALESCE($7::timestamptz, now()), $8::boolean)
          ON CONFLICT (organization_id, channel_id, provider_scope, upstream_message_id)
            WHERE upstream_message_id IS NOT NULL
          DO NOTHING
@@ -948,6 +950,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
           input.upstreamMessageId,
           JSON.stringify(input.content),
           input.occurredAt ?? null,
+          input.historical ?? false,
         ],
       );
       let message = first(insertedResult);

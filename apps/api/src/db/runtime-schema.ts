@@ -5,7 +5,8 @@ import {flowDelegationRuntimeSql,nativeFlowGuardCoverageRuntimeSql} from './flow
 import {whatsappGroupRuntimeSql} from './whatsapp-group-runtime-schema.js';
 import {nicoTakeoverRuntimeSql} from './nico-takeover-runtime-schema.js';
 import {qrIdentityRuntimeSql} from './qr-identity-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0066_physical_conversation_cycles';
+import {historyImportRuntimeSql} from './history-import-runtime-schema.js';
+export const RUNTIME_SCHEMA_BASELINE = '0067_history_import_ledger';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -429,7 +430,7 @@ const requiredObjectsSql = `SELECT
         FROM unnest(i.indkey) WITH ORDINALITY k(attnum,ordinality)
         JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum)
         =ARRAY['organization_id','channel_id','contact_id','id'])
-  AND (${flowDelegationRuntimeSql}) AND (${nativeFlowGuardCoverageRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AND (${consolidatedRuntimeSql}) AND (${inputTimeoutRuntimeSql}) AND (${nicoTakeoverRuntimeSql}) AND (${conversationEffectsRuntimeSql}) AND (${qrIdentityRuntimeSql}) AS ready`;
+  AND (${flowDelegationRuntimeSql}) AND (${nativeFlowGuardCoverageRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AND (${consolidatedRuntimeSql}) AND (${inputTimeoutRuntimeSql}) AND (${nicoTakeoverRuntimeSql}) AND (${conversationEffectsRuntimeSql}) AND (${qrIdentityRuntimeSql}) AND (${historyImportRuntimeSql}) AS ready`;
 
 export async function probeRequiredRuntimeSchema(query: SchemaProbeQuery): Promise<boolean> {
   const result = await query(requiredObjectsSql);

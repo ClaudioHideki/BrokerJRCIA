@@ -63,11 +63,28 @@ describe('permanent tenant and channel deletion with PostgreSQL ownership bounda
   });
 
   it('removes only the chosen QR connection after verified Evolution cleanup',async()=>{
+    const historyChannel=randomUUID(),historyContact=randomUUID(),historyConversation=randomUUID(),historyJob=randomUUID();
+    const seed=await db.pool.connect();try{
+      await seed.query('BEGIN');
+      await seed.query("INSERT INTO messaging_channels(id,organization_id,provider_account_id,provider,instance_id,credential_reference) VALUES($1,$2,$3,'BAILEYS',$4,'qa')",[historyChannel,a,accountA,instanceA]);
+      await seed.query('INSERT INTO messaging_contacts(id,organization_id,external_id) VALUES($1,$2,$3)',[historyContact,a,'synthetic-history']);
+      await seed.query('INSERT INTO messaging_conversations(id,organization_id,channel_id,contact_id) VALUES($1,$2,$3,$4)',[historyConversation,a,historyChannel,historyContact]);
+      await seed.query("INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state) VALUES($1,$2,$3,'INCOMING','CONTACT',$4,'DELIVERED')",[a,historyChannel,historyConversation,{type:'TEXT',text:'Synthetic historical message'}]);
+      const manifest={schemaVersion:1,snapshotId:randomUUID(),organizationId:a,channelId:historyChannel,sourceRevision:1,sourceFingerprint:'a'.repeat(64),
+        from:'2026-10-17T10:00:00.000Z',to:'2026-10-17T12:00:00.000Z',expiresAt:'2026-10-18T12:00:00.000Z',totalRecords:1,pageSize:100,pageDigests:['b'.repeat(64)]};
+      await seed.query("INSERT INTO history_import_jobs(organization_id,id,channel_id,request_id,manifest,fingerprint,max_records,total_records,state) VALUES($1,$2,$3,$4,$5,$6,100,1,'OPEN')",[a,historyJob,historyChannel,randomUUID(),manifest,'c'.repeat(64)]);
+      await seed.query('INSERT INTO history_import_pages(organization_id,channel_id,import_id,start_ordinal,next_ordinal,checksum,imported_count,duplicate_count) VALUES($1,$2,$3,0,1,$4,1,0)',[a,historyChannel,historyJob,'b'.repeat(64)]);
+      await seed.query("UPDATE history_import_jobs SET next_ordinal=1,imported_count=1,state='COMPLETED',revision=revision+1 WHERE id=$1",[historyJob]);
+      await seed.query('COMMIT');
+    }catch(error){await seed.query('ROLLBACK');throw error;}finally{seed.release();}
+    expect((await db.pool.query('SELECT * FROM history_import_pages WHERE import_id=$1',[historyJob])).rows).toHaveLength(1);
     const requested=await service.requestChannel(a,instanceA,'WhatsApp Lifecycle A','Authorized cleanup','TENANT',ownerA);
     expect(requested.status).toBe('REQUESTED');
     expect(await workerService.processOne()).toBe(true);
     expect(await service.status(a,instanceA,requested.operationId)).toMatchObject({status:'COMPLETED',errorCode:null});
     expect(deprovision).toHaveBeenCalledWith(a,`qa-${instanceA}`);
+    expect((await db.pool.query('SELECT * FROM history_import_jobs WHERE organization_id=$1',[a])).rows).toEqual([]);
+    expect((await db.pool.query('SELECT * FROM history_import_pages WHERE organization_id=$1',[a])).rows).toEqual([]);
     expect((await db.pool.query('SELECT count(*)::int n FROM instances WHERE organization_id=$1',[a])).rows[0].n).toBe(0);
     expect((await db.pool.query('SELECT count(*)::int n FROM instances WHERE organization_id=$1',[b])).rows[0].n).toBe(1);
     expect((await db.pool.query('SELECT count(*)::int n FROM organizations WHERE id=$1',[a])).rows[0].n).toBe(1);
