@@ -63,3 +63,6 @@ incluindo21 casos de concorrência em rodada própria sem pending.
 TypeScript aprovado, bundle11 arquivos/findings[] e auditoria npm zero
 vulnerabilidades reportadas. São evidências locais; este documento não atesta CI,
 imagem publicada, servidor atualizado ou homologação física.
+# Fechamento do CI de integração
+
+O CI39314595063 passou3211+ testes gerais e652 de interface, mas encontrou três expectativas antigas de baseline0065 em testes de readiness. A implementação exige0068. Atualizadas somente essas três expectativas literais; verificações de RLS, grants, constraints e estruturas preservadas. `npm test -- --config vitest.integration.config.ts` nos três arquivos:36 testes aprovados. O CI completo será executado novamente sobre o commit de correção. Código de produção e editor permanecem idênticos ao commit42848bf.
