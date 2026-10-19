@@ -53,7 +53,11 @@ jobs:
       - run: npm ci
       - name: Install PDF verification tools required by the unit suite
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends poppler-utils
-      - run: npm run build && npm test && npm run test:web:bundle && npm run security:submodule && npm audit --audit-level=high
+      - run: npm run build
+      - run: npm test -- --exclude tests/security-audit-artifacts.test.mjs
+      - name: Verify PDF audit artifacts without competing test workers
+        run: npm test -- tests/security-audit-artifacts.test.mjs --maxWorkers=1
+      - run: npm run test:web:bundle && npm run security:submodule && npm audit --audit-level=high
       - name: Verify the native Flow editor uses the same committed source
         run: npm run build:native-flow-editor -- --out .sessions/native-flow-editor-images
       - name: Verify tenant storage and durable automation before building images

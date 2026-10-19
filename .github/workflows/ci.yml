@@ -103,7 +103,10 @@ jobs:
         run: npm run test:compiled
 
       - name: Run unit, contract, and HTTP tests
-        run: npm test
+        run: npm test -- --exclude tests/security-audit-artifacts.test.mjs
+
+      - name: Verify PDF audit artifacts without competing test workers
+        run: npm test -- tests/security-audit-artifacts.test.mjs --maxWorkers=1
 
       - name: Run the focused web component suite
         run: npm run test:web
