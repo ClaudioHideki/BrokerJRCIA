@@ -42,6 +42,7 @@ export async function assertEffectAuthority(tx:TenantTransaction,item:OutboxRow,
  return authority;
 }
 export async function commitLocalConversationEffect(tx:TenantTransaction,item:OutboxRow,config:ConversationEffectConfig,expected:EffectAuthority){
+ if(config.operation==='domain')throw Error('AUTOMATION_EFFECT_CAPABILITY_UNAVAILABLE');
  const current=await assertEffectAuthority(tx,item,expected);if(current.profile!=='STANDALONE')throw Error('AUTOMATION_EFFECT_AUTHORITY_LOST');
  const previous=(await tx.query(`select id from automation_conversation_effects where organization_id=$1 and outbox_id=$2`,[item.organizationId,item.id])).rows[0];if(previous)throw Error('AUTOMATION_EFFECT_INTENT_EXISTS');
  let resource:ActionResourceRow|undefined,value:unknown;

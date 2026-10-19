@@ -36,6 +36,7 @@ describe('automation runtime v2 engine',()=>{
     const resource={resourceId:'33333333-3333-4333-8333-333333333333',resourceRevision:'a'.repeat(64)};
     Object.assign(configs,{tag:{...action,...resource,operation:'tag'},attribute:{...action,...resource,operation:'attribute',valueSource:{kind:'LITERAL',value:false}},
       note:{...action,operation:'note',text:'Nota privada'},resolve:{...action,operation:'resolve',status:'RESOLVED'},
+      domain:{...action,operation:'domain',command:'create_lead'},
       media:{mediaEffectVersion:2,channelId:action.channelId,mediaId:resource.resourceId,mediaRevision:1,target:'media.result',timeoutMs:10000,caption:''}});
     const current=node('current',type,configs[type]??{});
     const nodes=type==='start'?[current,node('end','end')]:['end','handoff','resolve'].includes(type)?[node('start','start'),current]:[node('start','start'),current,node('end','end')];
@@ -48,7 +49,7 @@ describe('automation runtime v2 engine',()=>{
       return {automationId,version,runtimeStateVersion:2,graph:{nodes:[node('child-start','start'),node('child-message','message',{text:'Filho publicado'}),node('child-end','end')],edges:[{id:'child-next',source:'child-start',target:'child-message',port:'next'},{id:'child-finish',source:'child-message',target:'child-end',port:'next'}]}};
     });
     expect(resolved).toBe(type==='subflow'?1:0);
-    expect(result.effects.every(effect=>effect.kind==='SEND_TEXT'||effect.kind==='HANDOFF'||(type==='http'&&effect.kind==='IO_HTTP')||(aiTypes.includes(type)&&effect.kind==='IO_AI')||(['tag','attribute','note','resolve'].includes(type)&&effect.kind==='IO_CONVERSATION')||(type==='media'&&effect.kind==='SEND_MEDIA'))).toBe(true);
+    expect(result.effects.every(effect=>effect.kind==='SEND_TEXT'||effect.kind==='HANDOFF'||(type==='http'&&effect.kind==='IO_HTTP')||(aiTypes.includes(type)&&effect.kind==='IO_AI')||(['tag','attribute','note','resolve','domain'].includes(type)&&effect.kind==='IO_CONVERSATION')||(type==='media'&&effect.kind==='SEND_MEDIA'))).toBe(true);
     expect(['WAITING','COMPLETED','HANDOFF']).toContain(result.status);
     if(type==='handoff')expect(result.effects).toEqual([{nodeId:'current',ordinal:0,kind:'HANDOFF',payload:handoffConfig}]);
     if(type==='message')expect(result.effects[0]?.payload.text).toBe('Olá');
@@ -56,6 +57,7 @@ describe('automation runtime v2 engine',()=>{
     if(type==='variable')expect(result.state.variables.name).toBe('Ana');
     if(type==='input'||type==='menu')expect(result.wait?.kind).toBe('EVENT');
     if(type==='http')expect(result).toMatchObject({status:'WAITING',wait:{kind:'IO',nodeId:'current'},effects:[{kind:'IO_HTTP',payload:expect.objectContaining(configs.http)}]});
+    if(type==='domain')expect(result).toMatchObject({status:'WAITING',wait:{kind:'IO',nodeId:'current'},effects:[{kind:'IO_CONVERSATION',payload:{operation:'domain',command:'create_lead',waitId:expect.any(String)}}]});
     if(aiTypes.includes(type)){
       expect(result.status).toBe('WAITING');
       expect(result.wait).toEqual({kind:'IO',nodeId:'current'});

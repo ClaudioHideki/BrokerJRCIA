@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DataVariableKeySchema } from './automation-data-v2.js';
+import {DomainCommandConfigSchema} from './automation-domain-command.js';
 
 const bytes = (value: string) => new TextEncoder().encode(value).byteLength;
 const boundedText = (maximum: number) => z.string().refine(value => bytes(value) <= maximum);
@@ -29,7 +30,7 @@ function effectSchema<V extends 1 | 2>(version: V) {
 }
 // Historical data is readable, but only the explicit v2 schema admits the new executor.
 export const ConversationEffectConfigV1Schema = effectSchema(1);
-export const ConversationEffectConfigSchema = effectSchema(2);
+export const ConversationEffectConfigSchema = z.union([effectSchema(2),DomainCommandConfigSchema]);
 export type ConversationEffectConfig = z.infer<typeof ConversationEffectConfigSchema>;
 function mediaSchema<V extends 1 | 2>(version: V) {
   return z.strictObject({ mediaEffectVersion: z.literal(version), ...common, mediaId: z.uuid(),
@@ -82,6 +83,9 @@ export type AutomationResourceChannels = z.infer<typeof AutomationResourceChanne
 export const ActionCatalogPageSchema = z.strictObject({ schemaVersion: z.literal(1), scope,
   profile: z.enum(['STANDALONE', 'CENTRAL']), capabilities: z.strictObject({
     tag: capability, attribute: capability, note: capability, resolve: capability, media: capability,
+    domain: z.object({state:z.enum(['SUPPORTED','UNAVAILABLE','UNVERIFIED']),reason:z.string().nullable(),
+      owners:z.array(z.strictObject({id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),name:z.string().min(1).max(160)})).max(200).default([])})
+      .refine(value=>value.state==='SUPPORTED'?value.reason===null:value.reason!==null).optional(),
   }), data: z.array(ActionResourceSchema).max(200), nextCursor: cursor });
 export type ActionCatalogPage = z.infer<typeof ActionCatalogPageSchema>;
 export const AutomationMediaAssetSchema = z.strictObject({ schemaVersion: z.literal(1), scope, id: z.uuid(),
@@ -93,7 +97,7 @@ export const ActionSimulationResponseSchema = z.strictObject({ type: z.literal('
   nodeId: z.string().min(1).max(100), waitId: z.uuid(), outcome: z.enum(['success', 'error', 'timeout', 'unknown']) });
 export type ActionSimulationResponse = z.infer<typeof ActionSimulationResponseSchema>;
 export const ConversationEffectWaitSchema = z.strictObject({ nodeId: z.string().min(1).max(100),
-  waitId: z.uuid(), operation: z.enum(['tag', 'attribute', 'note', 'resolve', 'media']) });
+  waitId: z.uuid(), operation: z.enum(['tag', 'attribute', 'note', 'resolve', 'media','domain']) });
 export type ConversationEffectWait = z.infer<typeof ConversationEffectWaitSchema>;
 
 export function compatibleConversationEffectSchema(type: string, legacy: z.ZodType): z.ZodType {

@@ -23,6 +23,17 @@ const node = (type = 'tag', data: Record<string, unknown> = {}): FlowNode => ({ 
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 
 describe('scoped conversation action editor', () => {
+  it('configures a native task by owner name and keeps public sending separate',async()=>{
+    const api=transport(),change=vi.fn();
+    vi.mocked(api.actionCatalog).mockResolvedValue({...catalog,profile:'CENTRAL',capabilities:{...catalog.capabilities,
+      domain:{...supported,owners:[{id:7,name:'Synthetic operator'}]}}});
+    render(<ConversationActionEditor node={node('domain',{command:'create_task',ownerId:7,title:'Follow up',dueAt:{kind:'LITERAL',value:'2026-11-01T12:00:00Z'}})} editable transport={api} onChange={change}/>);
+    expect(await screen.findByRole('option',{name:'Synthetic operator'})).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Título da tarefa ou reunião'),{target:{value:'Review the request'}});
+    expect(change).toHaveBeenCalledWith(expect.objectContaining({command:'create_task',ownerId:7,title:'Review the request'}));
+    expect(screen.getByText(/Nenhuma mensagem ou convite externo é enviado/)).toBeVisible();
+    expect(api.saveResource).not.toHaveBeenCalled();
+  });
   it('chooses a label by name and preserves the resource revision without fetching unrelated media', async () => {
     const api = transport(), change = vi.fn();
     render(<ConversationActionEditor node={node()} editable transport={api} onChange={change} />);

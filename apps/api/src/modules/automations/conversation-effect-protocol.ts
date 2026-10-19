@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import {DomainCommandArgumentsSchema,DomainCommandResultSchema} from '@jrc/contracts';
 
 export const CONVERSATION_EFFECT_PROTOCOL = 'jrc-conversation-effects/2' as const;
 const MAX_SAFE = Number.MAX_SAFE_INTEGER;
@@ -12,7 +13,7 @@ const decimalId = z.string().regex(/^[1-9][0-9]{0,15}$/)
   .refine(value => Number.isSafeInteger(Number(value)), 'Unsafe remote ID');
 const decimalRevision = z.string().regex(/^(?:0|[1-9][0-9]{0,15})$/)
   .refine(value => Number.isSafeInteger(Number(value)), 'Unsafe revision');
-const operations = z.enum(['tag', 'attribute', 'note', 'resolve']);
+const operations = z.enum(['tag', 'attribute', 'note', 'resolve','domain']);
 
 function scalar(value: string): { valid: true; value: string | number | boolean | null } | { valid: false } {
   try {
@@ -40,6 +41,10 @@ export const ConversationEffectRequestSchema = z.discriminatedUnion('operation',
   z.strictObject({ ...requestScope, operation: z.literal('note'),
     value_json: valueIs(value => typeof value === 'string' && value.trim().length > 0 && Buffer.byteLength(value, 'utf8') <= 4096) }),
   z.strictObject({ ...requestScope, operation: z.literal('resolve'), value_json: valueIs(value => value === 'RESOLVED') }),
+  z.strictObject({...requestScope,operation:z.literal('domain'),integration_id:uuid,value_json:z.string().refine(raw=>{
+    if(Buffer.byteLength(raw,'utf8')>8192)return false;
+    try{return DomainCommandArgumentsSchema.safeParse(JSON.parse(raw)).success;}catch{return false;}
+  })}),
 ]).refine(value => Buffer.byteLength(JSON.stringify(value), 'utf8') <= 16384, 'Effect body exceeds 16 KiB');
 export type ConversationEffectRequest = z.infer<typeof ConversationEffectRequestSchema>;
 
@@ -58,8 +63,10 @@ export const ConversationEffectReceiptSchema = z.strictObject({
   resource_id: positiveId.nullable(), resource_revision: digest.nullable(), request_hash: digest,
   dispatch_proof_hash: digest, control_revision_before: revision, control_revision_after: revision,
   message_id: positiveId.nullable(),
+  domain_result:DomainCommandResultSchema.optional(),
 }).refine(value => value.control_revision_after >= value.control_revision_before, 'Control revision cannot regress')
   .refine(value => (value.operation === 'note') === (value.message_id !== null), 'Only notes have a Message receipt')
+  .refine(value=>(value.operation==='domain')===(value.domain_result!==undefined),'Domain receipt required only for domain commands')
   .refine(value => ['tag', 'attribute'].includes(value.operation)
     ? value.resource_id !== null && value.resource_revision !== null
     : value.resource_id === null && value.resource_revision === null, 'Resource does not match this effect');
@@ -69,6 +76,7 @@ export type ConversationEffectDigestInput = {
   organization_id: string; operation_id: string; inbox_id: string; remote_contact_id: string;
   expected_control_revision: string; operation: z.infer<typeof operations>; value_json: string;
   resource_id?: string; resource_revision?: string;
+  integration_id?:string;
 };
 function routeId(value: number | string): string {
   return decimalId.parse(typeof value === 'number' ? String(positiveId.parse(value)) : value);
@@ -78,11 +86,13 @@ export function conversationEffectRequestHash(scope: { accountId: number | strin
   // Hash the original UTF-8 scalar bytes. JSON normalization would change exponent,
   // whitespace and escaping and would disagree with the Ruby receipt ledger.
   const scalarHash = createHash('sha256').update(input.value_json, 'utf8').digest('hex');
-  const material = [CONVERSATION_EFFECT_PROTOCOL, uuid.parse(input.organization_id), uuid.parse(input.operation_id),
+  const fields = [CONVERSATION_EFFECT_PROTOCOL, uuid.parse(input.organization_id), uuid.parse(input.operation_id),
     routeId(scope.accountId), decimalId.parse(input.inbox_id), routeId(scope.remoteConversationId),
     decimalId.parse(input.remote_contact_id), decimalRevision.parse(input.expected_control_revision),
     operations.parse(input.operation), input.resource_id === undefined ? '' : decimalId.parse(input.resource_id),
-    input.resource_revision === undefined ? '' : digest.parse(input.resource_revision), scalarHash].join('\n');
+    input.resource_revision === undefined ? '' : digest.parse(input.resource_revision), scalarHash];
+  if(input.operation==='domain')fields.push(uuid.parse(input.integration_id));
+  const material=fields.join('\n');
   return createHash('sha256').update(material, 'utf8').digest('hex');
 }
 
@@ -114,5 +124,9 @@ export function matchConversationEffectReceipt(raw: unknown, expected: {
   const resource = request.operation === 'tag' || request.operation === 'attribute' ? request : undefined;
   if (receipt.resource_id !== (resource ? Number(resource.resource_id) : null) ||
       receipt.resource_revision !== (resource?.resource_revision ?? null)) return { matched: false };
+  if(request.operation==='domain'){
+    const args=DomainCommandArgumentsSchema.parse(JSON.parse(request.value_json)),result=receipt.domain_result;
+    if(!result||result.command!==args.command||result.event.id!==request.operation_id||result.event.causation_id!==request.operation_id)return {matched:false};
+  }
   return { matched: true, receipt };
 }

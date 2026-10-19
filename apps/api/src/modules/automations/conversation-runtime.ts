@@ -22,7 +22,7 @@ export function createConversationEffectRuntime(options:{transact<T>(org:string,
    join automation_executions e on e.organization_id=o.organization_id and e.id=o.execution_id
    where o.organization_id=$1 and o.status='UNKNOWN' and (o.lease_expires_at is null or o.lease_expires_at<clock_timestamp())
    and o.payload->>'waitId'=o.id::text and
-   ((o.kind='IO_CONVERSATION' and o.payload->>'conversationEffectVersion'='2' and o.payload->>'operation' in ('tag','attribute','note','resolve'))
+   ((o.kind='IO_CONVERSATION' and o.payload->>'conversationEffectVersion'='2' and o.payload->>'operation' in ('tag','attribute','note','resolve','domain'))
     or (o.kind='SEND_MEDIA' and o.payload->>'mediaEffectVersion'='2'))
    and not exists(select 1 from automation_conversation_effects r where r.organization_id=o.organization_id and r.outbox_id=o.id)
    order by o.created_at,o.id limit 20`,[org])).rows);

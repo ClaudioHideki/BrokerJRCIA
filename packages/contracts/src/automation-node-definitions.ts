@@ -8,6 +8,7 @@ import {compatibleHttpQuerySchema} from './automation-http-query.js';
 import {compatibleInputCaptureSchema,inputCapturePorts} from './automation-input.js';
 import {compatibleConversationEffectSchema,conversationEffectPorts} from './automation-conversation-effects.js';
 import {SwitchNodeConfigSchema,switchNodePorts} from './automation-switch.js';
+import {DomainCommandConfigSchema} from './automation-domain-command.js';
 
 export const NodeDiagnosticSchema = z.object({
   nodeId: z.string().nullable(), field: z.string(), code: z.string(), message: z.string(),
@@ -70,6 +71,7 @@ export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = 
   define('attribute', 'Definir atributo', 'HUMAN', compatibleConversationEffectSchema('attribute',config({ name: z.string().min(1), value: z.unknown().refine(input => input !== undefined, 'Informe um valor.') })), node=>conversationEffectPorts(node.data,node.type)),
   define('note', 'Nota interna', 'HUMAN', compatibleConversationEffectSchema('note',config({ text })), node=>conversationEffectPorts(node.data,node.type)),
   define('resolve', 'Resolver e encerrar', 'HUMAN', compatibleConversationEffectSchema('resolve',config()), node=>conversationEffectPorts(node.data,node.type)),
+  define('domain','CRM: lead, tarefa ou reunião','INTEGRATIONS',DomainCommandConfigSchema,node=>conversationEffectPorts(node.data,node.type)),
 ];
 export function getNodeDefinition(type: string, version: number): AutomationNodeDefinition | null {
   return AUTOMATION_NODE_DEFINITIONS.find(definition => definition.type === type && definition.version === version) ?? null;

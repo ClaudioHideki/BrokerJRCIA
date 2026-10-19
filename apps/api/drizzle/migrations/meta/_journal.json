@@ -470,6 +470,13 @@
       "when": 1793313600000,
       "tag": "0067_history_import_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1793400000000,
+      "tag": "0068_flow_domain_commands",
+      "breakpoints": true
     }
   ]
 }

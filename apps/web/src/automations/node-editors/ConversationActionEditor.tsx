@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ActionCatalogPage, AutomationMediaAsset, ConversationAttributeDefinition, FlowNode } from '@jrc/contracts';
 import { ApiClientError } from '../../api/client.js';
 import type { ConversationActionTransport } from '../conversation-api.js';
+import {DomainCommandFields} from './DomainCommandFields.js';
 
 type Props = { node: FlowNode; editable: boolean; transport: ConversationActionTransport; onChange(data: FlowNode['data']): void };
 type Scoped<T> = { key: string; transport: ConversationActionTransport; value: T };
@@ -72,7 +73,7 @@ export function ConversationActionEditor({ node, editable, transport, onChange }
     onChange(node.type === 'media'
       ? { mediaEffectVersion: 2, channelId: selected, mediaId: '', mediaRevision: 1, target: 'media.result', caption: '', timeoutMs: 15000 }
       : { conversationEffectVersion: 2, operation: node.type, channelId: selected, target: 'action.result', timeoutMs: 15000,
-        ...(node.type === 'note' ? { text: typeof node.data.text === 'string' ? node.data.text : '' }
+        ...(node.type==='domain'?{command:'create_lead'}:node.type === 'note' ? { text: typeof node.data.text === 'string' ? node.data.text : '' }
           : node.type === 'resolve' ? { status: 'RESOLVED' }
             : { resourceId: '', resourceRevision: '', ...(node.type === 'attribute' ? { valueSource: { kind: 'LITERAL', value: '' } } : {}) }) });
   }
@@ -151,6 +152,7 @@ export function ConversationActionEditor({ node, editable, transport, onChange }
                 maxLength={definition.maxLength} value={String(source?.value ?? '')} onChange={event => literal(definition.valueType === 'number' && event.target.value !== '' ? Number(event.target.value) : event.target.value)} /></label>}
       </>}
       {node.type === 'note' && <><p>Nota privada do atendimento. Ela não é enviada ao WhatsApp.</p><label>Nota interna<textarea maxLength={4096} value={String(node.data.text ?? '')} onChange={event => change({ text: event.target.value })} /></label></>}
+      {node.type==='domain'&&<DomainCommandFields data={node.data} owners={catalog?.capabilities.domain?.owners??[]} onChange={data=>{if(editable)onChange(data);}}/>}
       {node.type === 'resolve' && <p>Resolver e encerrar termina o ciclo do bot após a confirmação. Nenhuma próxima mensagem é enviada por este ciclo.</p>}
       {node.type === 'media' && <>
         <label>Arquivo privado<select value={typeof node.data.mediaId === 'string' ? node.data.mediaId : ''} disabled={!supported} onChange={event => {

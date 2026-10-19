@@ -230,6 +230,17 @@ export class ChatwootClient {
     if (data.account_id !== accountId || data.inbox_id !== inboxId) throw new ChatwootError('CHATWOOT_BINDING_MISMATCH', true);
     return data;
   }
+  async flowDomainCapabilities(accountId:number,inboxId:number,scope:{organizationId:string;integrationId:string}){
+    const query=new URLSearchParams({inbox_id:String(integer.parse(inboxId)),organization_id:effectIdentity.parse(scope.organizationId),integration_id:effectIdentity.parse(scope.integrationId)});
+    const data=parseEffect(z.strictObject({protocol:z.literal('jrc-domain-commands/1'),account_id:integer,inbox_id:integer,
+      organization_id:effectIdentity,integration_id:effectIdentity,commands:z.array(z.enum(['create_lead','create_task','create_meeting'])).max(3),
+      owners:z.array(z.strictObject({id:integer,name:z.string().min(1).max(160)})).max(200)})
+      .refine(value=>new Set(value.commands).size===value.commands.length&&new Set(value.owners.map(owner=>owner.id)).size===value.owners.length),
+      await this.request('GET',`${this.account(accountId)}/jrc_domain_commands/capabilities?${query}`));
+    if(data.account_id!==accountId||data.inbox_id!==inboxId||data.organization_id!==scope.organizationId||data.integration_id!==scope.integrationId)
+      throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
+    return data;
+  }
   async flowEffectContext(accountId: number, inboxId: number, conversationId: number) {
     integer.parse(inboxId);
     const data = parseEffect(ConversationEffectContextSchema, await this.request('GET',
@@ -242,7 +253,7 @@ export class ChatwootClient {
   async applyFlowEffect(accountId: number, conversationId: number, raw: unknown) {
     const input = ConversationEffectRequestSchema.parse(raw);
     const data = parseEffect(ConversationEffectReceiptSchema, await this.request('POST',
-      `${this.account(accountId)}/conversations/${integer.parse(conversationId)}/jrc_flow_effects`, input), true);
+      `${this.account(accountId)}/conversations/${integer.parse(conversationId)}/${input.operation==='domain'?'jrc_domain_commands':'jrc_flow_effects'}`, input), true);
     if (data.account_id !== accountId || data.inbox_id !== Number(input.inbox_id) || data.conversation_id !== conversationId ||
         data.organization_id !== input.organization_id || data.operation_id !== input.operation_id) {
       throw new ChatwootError('CHATWOOT_BINDING_MISMATCH', false, true);
@@ -250,13 +261,15 @@ export class ChatwootClient {
     return data;
   }
   async flowEffectReceipt(accountId: number, conversationId: number,
-    input: { organizationId: string; operationId: string; dispatchProof: string }) {
+    input: { organizationId: string; operationId: string; dispatchProof: string; domainScope?:{integrationId:string;inboxId:number} }) {
     const query = new URLSearchParams({ organization_id: effectIdentity.parse(input.organizationId),
       dispatch_proof: effectIdentity.parse(input.dispatchProof) });
+    if(input.domainScope){query.set('integration_id',effectIdentity.parse(input.domainScope.integrationId));query.set('inbox_id',String(integer.parse(input.domainScope.inboxId)));}
     const data = parseEffect(ConversationEffectReceiptSchema, await this.request('GET',
-      `${this.account(accountId)}/conversations/${integer.parse(conversationId)}/jrc_flow_effects/${effectIdentity.parse(input.operationId)}?${query}`));
+      `${this.account(accountId)}/conversations/${integer.parse(conversationId)}/${input.domainScope?'jrc_domain_commands':'jrc_flow_effects'}/${effectIdentity.parse(input.operationId)}?${query}`));
     if (data.account_id !== accountId || data.conversation_id !== conversationId ||
-        data.organization_id !== input.organizationId || data.operation_id !== input.operationId) {
+        data.organization_id !== input.organizationId || data.operation_id !== input.operationId ||
+        input.domainScope&&(data.operation!=='domain'||data.inbox_id!==input.domainScope.inboxId)) {
       throw new ChatwootError('CHATWOOT_BINDING_MISMATCH', true);
     }
     return data;

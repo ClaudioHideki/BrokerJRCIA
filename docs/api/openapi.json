@@ -3999,6 +3999,55 @@
                           ],
                           "type": "object"
                         },
+                        "domain": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "owners": {
+                              "default": [],
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "id": {
+                                    "exclusiveMinimum": true,
+                                    "maximum": 9007199254740991,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "name": {
+                                    "maxLength": 160,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 200,
+                              "type": "array"
+                            },
+                            "reason": {
+                              "nullable": true,
+                              "type": "string"
+                            },
+                            "state": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNAVAILABLE",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "state",
+                            "reason",
+                            "owners"
+                          ],
+                          "type": "object"
+                        },
                         "media": {
                           "additionalProperties": false,
                           "properties": {
@@ -28560,6 +28609,55 @@
                           "required": [
                             "state",
                             "reason"
+                          ],
+                          "type": "object"
+                        },
+                        "domain": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "owners": {
+                              "default": [],
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "id": {
+                                    "exclusiveMinimum": true,
+                                    "maximum": 9007199254740991,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "name": {
+                                    "maxLength": 160,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 200,
+                              "type": "array"
+                            },
+                            "reason": {
+                              "nullable": true,
+                              "type": "string"
+                            },
+                            "state": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNAVAILABLE",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "state",
+                            "reason",
+                            "owners"
                           ],
                           "type": "object"
                         },

@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import type {ConversationEffectConfig,ActionCatalogPage} from '@jrc/contracts';
+import {DomainCommandArgumentsSchema,type ConversationEffectConfig,type ActionCatalogPage} from '@jrc/contracts';
 import type {OrganizationTransaction,TenantTransaction} from '../../db/tenant-transaction.js';
 import {readChatwootAccount,type AccountRow} from '../integrations/chatwoot-context.js';
 import {ChatwootClient,ChatwootError} from '../integrations/chatwoot-client.js';
@@ -11,6 +11,8 @@ import type {OutboxDispatchResult} from './service.js';
 import {ConversationEffectContextSchema,ConversationEffectRequestSchema,conversationEffectRequestHash,
  matchConversationEffectReceipt,type ConversationEffectContext,type ConversationEffectRequest,type ConversationEffectReceipt} from './conversation-effect-protocol.js';
 import {remoteInteger,confirmEffectObservations,effectRevisionMatches} from './conversation-effect-proof.js';
+import {renderRuntimeText} from './runtime-state.js';
+import type {RuntimeJson} from './types.js';
 
 type Options={transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;client(account:AccountRow):ChatwootClient};
 type Intent={outbox_id:string;scope:NonNullable<EffectAuthority['scope']>;credential_revision:number;state:string;
@@ -43,6 +45,12 @@ export function createConversationCentralAdapter(options:Options){
   const supported={state:'SUPPORTED' as const,reason:null},missing={state:'UNAVAILABLE' as const,reason:'CENTRAL_EXTENSION_REQUIRED'};
   const supports=(op:'tag'|'attribute'|'note'|'resolve')=>extension?.control_revision_supported&&extension.operations.includes(op)?supported:missing;
   const capabilities:ActionCatalogPage['capabilities']={tag:supports('tag'),attribute:supports('attribute'),note:supports('note'),resolve:supports('resolve'),media:supported};
+  capabilities.domain={state:'UNAVAILABLE',reason:'CENTRAL_DOMAIN_EXTENSION_REQUIRED',owners:[]};
+  try{
+   const domain=await client.flowDomainCapabilities(initial.scope.accountId,initial.scope.inboxId,{organizationId:org,integrationId:initial.scope.integrationId});
+   if(['create_lead','create_task','create_meeting'].every(command=>domain.commands.includes(command as typeof domain.commands[number])))
+    capabilities.domain={state:'SUPPORTED',reason:null,owners:domain.owners};
+  }catch{/* Domain availability is independent of the existing conversation-effect capability. */}
   await options.transact(org,async tx=>{
    await lockAttendanceChannel(tx,org,channel);await assertContext(tx,org,channel,initial);
    const ids:string[]=[];
@@ -91,7 +99,8 @@ export function createConversationCentralAdapter(options:Options){
   }catch(error){if(error instanceof Error&&error.message==='AUTOMATION_EFFECT_AUTHORITY_LOST')return;throw error;}
   if(intent.request_body.operation==='resolve'){await completeResolvedEffect(tx,item);return;}
   await createPostgresAutomationRepository().resumeExecution(tx,{org:item.organizationId,id:item.executionId,eventId:randomUUID(),
-   eventKey:`io:${item.id}`,effectReceiptId:item.id,payload:{waitId:item.id,outcome:'success',output:{operation:intent.request_body.operation,confirmed:true}}});
+   eventKey:`io:${item.id}`,effectReceiptId:item.id,payload:{waitId:item.id,outcome:'success',output:{operation:intent.request_body.operation,confirmed:true,
+    ...(intent.confirmed_receipt.domain_result?{domain:intent.confirmed_receipt.domain_result}:{})}}});
  }
  async function freshContext(item:OutboxRow,intent:Intent){
   try{const ctx=await context(item.organizationId,item.channelId);
@@ -132,10 +141,15 @@ export function createConversationCentralAdapter(options:Options){
     if(resource.source!=='CENTRAL'||resource.remoteId===null)throw Error('AUTOMATION_RESOURCE_UNAVAILABLE');
     resourceId=resource.remoteId;resourceRevision=resource.revision;
     if(config.operation==='attribute')value=readConversationActionValue(config,item.payload.variables as Record<string,unknown>,resource);
+   }else if(config.operation==='domain'){
+    value=DomainCommandArgumentsSchema.parse(config.command==='create_lead'?{command:config.command}:{command:config.command,
+     owner_id:config.ownerId,title:renderRuntimeText(config.title,item.payload.variables as Record<string,RuntimeJson>),
+     due_at:config.dueAt.kind==='LITERAL'?config.dueAt.value:(item.payload.variables as Record<string,RuntimeJson>)[config.dueAt.variable]});
    }else value=config.operation==='note'?config.text:'RESOLVED';
    const request=ConversationEffectRequestSchema.parse({organization_id:item.organizationId,operation_id:item.id,dispatch_proof:randomUUID(),
     inbox_id:String(scope.inboxId),remote_contact_id:String(remote.remote_contact_id),expected_control_revision:String(remote.control_revision),
-    operation:config.operation,value_json:JSON.stringify(value),...(resourceId===undefined?{}:{resource_id:String(resourceId),resource_revision:resourceRevision})});
+    operation:config.operation,value_json:JSON.stringify(value),...(config.operation==='domain'?{integration_id:scope.integrationId}:{}),
+    ...(resourceId===undefined?{}:{resource_id:String(resourceId),resource_revision:resourceRevision})});
    return (await tx.query<Intent>(`insert into automation_conversation_effects(organization_id,outbox_id,channel_id,conversation_id,execution_id,
     automation_id,version,operation,profile,state,owner_revision,control_revision,cycle,resource_id,resource_revision,request_hash,scope,credential_revision,
     sender_id,remote_conversation_id,dispatch_proof,protocol_version,remote_context,request_body)
@@ -173,7 +187,8 @@ export function createConversationCentralAdapter(options:Options){
     const ctx=await context(org,item.channelId);
     if(!sameConversationScope(ctx.scope,intent.scope)||ctx.account.credential_version!==intent.credential_revision)continue;
     const raw=await options.client(ctx.account).flowEffectReceipt(intent.scope.accountId,intent.remote_context.conversation_id,
-     {organizationId:org,operationId:item.id,dispatchProof:intent.request_body.dispatch_proof});
+     {organizationId:org,operationId:item.id,dispatchProof:intent.request_body.dispatch_proof,
+      ...(intent.request_body.operation==='domain'?{domainScope:{integrationId:intent.request_body.integration_id,inboxId:intent.scope.inboxId}}:{})});
     intent=await saveReceipt(item,raw);
    }
    const remote=await freshContext(item,intent);

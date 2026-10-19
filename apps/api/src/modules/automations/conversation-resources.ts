@@ -25,11 +25,14 @@ export async function assertConversationResourceScope(tx:TenantTransaction,org:s
 }
 export async function assertConversationResourcePolicies(tx:TenantTransaction,org:string,root:string,graphs:readonly AutomationGraphV1[],pin?:{automationId:string;version:number}){
  for(const graph of graphs)for(const node of graph.nodes){
-  const modern=node.type==='media'?node.data.mediaEffectVersion===2:['tag','attribute','note','resolve'].includes(node.type)&&node.data.conversationEffectVersion===2;if(!modern)continue;
+  const modern=node.type==='media'?node.data.mediaEffectVersion===2:['tag','attribute','note','resolve','domain'].includes(node.type)&&node.data.conversationEffectVersion===2;if(!modern)continue;
   const config=node.type==='media'?MediaEffectConfigSchema.parse(node.data):ConversationEffectConfigSchema.parse(node.data);
   const scope=await assertConversationResourceScope(tx,org,root,config.channelId);
+  if(node.type==='domain'&&!scope)throw new AutomationError('AUTOMATION_EFFECT_CAPABILITY_UNAVAILABLE',409);
   if(scope){const catalogue=(await tx.query<{scope:unknown;credentialRevision:number;capabilities:ActionCatalogPage['capabilities'];live:boolean}>(`select scope,credential_revision as "credentialRevision",capabilities,expires_at>clock_timestamp() as live from automation_action_catalogs where organization_id=$1 and channel_id=$2 for share`,[org,config.channelId])).rows[0];
    if(!catalogue?.live||catalogue.credentialRevision!==(await readChatwootAccount(tx,org))?.credential_version||!sameConversationScope(catalogue.scope,scope)||catalogue.capabilities[node.type as keyof ActionCatalogPage['capabilities']]?.state!=='SUPPORTED')throw new AutomationError('AUTOMATION_EFFECT_CAPABILITY_UNAVAILABLE',409);
+   if('operation' in config&&config.operation==='domain'&&config.command!=='create_lead'&&!catalogue.capabilities.domain?.owners.some(owner=>owner.id===config.ownerId))
+    throw new AutomationError('AUTOMATION_RESOURCE_UNAVAILABLE',409);
   }
   if(node.type==='media'){
    const mediaConfig=MediaEffectConfigSchema.parse(config),asset=assertMediaAsset(org,root,config.channelId,mediaConfig,await readMediaAsset(tx,org,mediaConfig.mediaId,true));

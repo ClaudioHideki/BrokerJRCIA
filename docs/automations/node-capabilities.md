@@ -35,8 +35,19 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 | attribute | AVAILABLE | ConversationActionEditor: caixa, atributo tipado e revisão | IO_CONVERSATION: preserva false/zero e outros campos; success/error/timeout |
 | note | AVAILABLE | ConversationActionEditor: caixa e texto privado | IO_CONVERSATION: nota privada standalone ou central; success/error/timeout |
 | resolve | AVAILABLE | ConversationActionEditor: caixa e Resolver e encerrar | IO_CONVERSATION: resolução confirmada encerra o ciclo inteiro |
+| domain | AVAILABLE | DomainCommandFields: caixa, ação CRM, responsável, título e data | IO_CONVERSATION: lead/tarefa/reunião nativos; success/error/timeout; simulação identificada |
 
 Os formulários simples acima são os existentes; o menu visual com adicionar/remover/reordenar opções faz parte de U3a. `end` encerra o bot, não resolve a conversa na central.
+
+`domain` exige uma central com `jrc-domain-commands/1`, vínculo verificado e
+permissão/cobertura CRM atuais. Reutiliza o lead da conversa e a unidade nativa;
+não envia mensagens, convites ou ligações. Catálogo de responsáveis é limitado a
+200 membros; acima do limite a consulta é recusada explicitamente, sem truncamento
+silencioso. A integração precisa de um diretório paginado antes de atender contas
+maiores nesse comando. Lead novo sem origem inequívoca exige classificação no
+CRM; tarefas/reuniões preservam a unidade do lead. Recibo incerto fica em espera e
+é consultado, sem repetir POST. A simulação marca `simulated:true` e não inventa
+identidade de recurso nem entrega externa. Consulte [operação do comando](../validation/2026-10-19-domain-commands.md).
 
 `switchVersion:1` distingue texto, número finito, booleano e null. A variável ausente, objeto/lista ou valor não encontrado segue `default`, cuja ligação é obrigatória. Não interpreta expressões. Renomear caso conserva sua saída; remover preserva a ligação para revisão, e um caso novo não reutiliza o ID removido. A condição textual anterior não muda. Veja [verificação candidata](../validation/2026-10-16-flow-typed-switch.md).
 

@@ -55,7 +55,7 @@ export async function simulateConversation(root:PublishedAutomation,input:Simula
       // A historical effect at the same node never authorizes another wait.
       const waiting=actionWait(result,effects);
       if(!waiting||waiting.nodeId!==event.nodeId||waiting.waitId!==event.waitId)throw Error('AUTOMATION_SIMULATION_ACTION_WAIT_MISMATCH');
-      const output=event.outcome==='success'?{operation:waiting.operation,confirmed:true}
+      const output=event.outcome==='success'?{operation:waiting.operation,confirmed:true,...(waiting.operation==='domain'?{simulated:true}:{})}
         :{operation:waiting.operation,error:event.outcome==='timeout'?'AUTOMATION_ACTION_TIMEOUT':event.outcome==='unknown'?'AUTOMATION_ACTION_UNKNOWN':'AUTOMATION_ACTION_SYNTHETIC_ERROR'};
       result=await run({text:'',eventType:'RESUME',now,payload:{waitId:event.waitId,outcome:event.outcome,output}},result.state);
     }else if(event.type==='AI_RESPONSE'){
