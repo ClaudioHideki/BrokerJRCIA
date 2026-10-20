@@ -485,6 +485,8 @@ describe('migrations PostgreSQL', () => {
       { policyname:'meta_signup_states_tenant',roles:['jrc_app'],cmd:'ALL' },
       { policyname:'meta_connections_tenant',roles:['jrc_app'],cmd:'ALL' },
       { policyname:'meta_connections_lookup',roles:['jrc_migrator'],cmd:'SELECT' },
+      { policyname:'meta_waba_owner_read',roles:['jrc_app'],cmd:'SELECT' },
+      { policyname:'meta_management_tenant',roles:['jrc_app'],cmd:'ALL' },
       {policyname:'messaging_channels_ingress_resolution',roles:['jrc_migrator'],cmd:'SELECT'},
       {policyname:'chatwoot_ingress_resolution',roles:['jrc_migrator'],cmd:'SELECT'},
       ...['chatwoot_embed_apps','chatwoot_embed_authorizations','chatwoot_embed_sessions'].flatMap(table => [

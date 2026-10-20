@@ -29,7 +29,9 @@ describe('NewAutomation retry', () => {
     render(<SessionProvider client={client(request as ApiClient['request'])}><MemoryRouter initialEntries={['/automations/new']}><Routes>
       <Route path="/automations/new" element={<NewAutomationPage/>}/><Route path="/automations/:id/edit" element={<p>Draft editor</p>}/>
     </Routes></MemoryRouter></SessionProvider>);
-    fireEvent.change(await screen.findByLabelText('Modelo inicial'),{target:{value:'OPERATOR_RECEPTION'}});
+    const initialTemplate=await screen.findByLabelText('Modelo inicial');
+    await waitFor(()=>expect(initialTemplate).toBeEnabled());
+    fireEvent.change(initialTemplate,{target:{value:'OPERATOR_RECEPTION'}});
     fireEvent.change(screen.getByLabelText('Nome da automação'),{target:{value:'Recepcao sintetica'}});
     await waitFor(()=>expect(screen.getByRole('button',{name:'Criar e abrir editor'})).toBeEnabled());
     fireEvent.click(screen.getByRole('button',{name:'Criar e abrir editor'}));

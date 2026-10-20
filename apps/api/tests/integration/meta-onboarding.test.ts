@@ -11,6 +11,8 @@ import {connectionStringForRole} from './helpers/task7.js';
 import {withGlobalRoleLock} from './helpers/global-role-lock.js';
 import {probeRequiredRuntimeSchema} from '../../src/db/runtime-schema.js';
 import {readFile} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
+import {createLifecycleService,withLifecyclePlatformTransaction,withLifecycleWorkerTransaction} from '../../src/modules/lifecycle/service.js';
 let db:IsolatedPostgresDatabase;let pool:Pool;let a:string;let b:string;let user:string;
 const graph={authorize:vi.fn(async()=>({accessToken:'private-test-token',expiresAt:null})),subscribe:vi.fn(async()=>{}),checkReadiness:vi.fn(async():Promise<string[]>=>[]),register:vi.fn(async()=>{})};
 let service:ReturnType<typeof createMetaOnboardingService>;
@@ -154,4 +156,39 @@ it('deletes event metadata with its connection but retains ownership and denies 
   expect((await tx.query('SELECT claim_meta_waba($1) AS claimed',[connection.wabaId])).rows[0].claimed).toBe(false);
  });
  await expect(withOrganizationTransaction(pool,b,tx=>tx.query('UPDATE meta_waba_ownership SET organization_id=$1',[b]))).rejects.toMatchObject({code:'42501'});
+});
+
+it('purges Meta through the real lifecycle, retaining ownership after channel removal and preserving another tenant',async()=>{
+ const actor=randomUUID();
+ await db.pool.query("INSERT INTO platform_users(id,email,password_hash,role,mfa_seed) VALUES($1,'meta-lifecycle@example.test','no-login','SUPER_ADMIN','no-login')",[actor]);
+ const platform=new Pool({connectionString:connectionStringForRole(db.connectionString,'jrc_platform')});
+ const worker=new Pool({connectionString:connectionStringForRole(db.connectionString,'jrc_lifecycle')});
+ const deprovision=vi.fn(async()=>{});
+ const lifecycle=createLifecycleService({transact:work=>withLifecyclePlatformTransaction(platform,work),deprovision});
+ const processor=createLifecycleService({transact:work=>withLifecycleWorkerTransaction(worker,work),deprovision});
+ const connect=async(org:string,wabaId:string,phoneNumberId:string)=>{
+  const start=await service.start(org,user);
+  const connection=await service.complete(org,user,{state:start.state,code:'fixture',wabaId,phoneNumberId});
+  await service.managementUpdated(org,connection.id,'message_template_status_update','f'.repeat(64));
+  return connection;
+ };
+ try {
+  const target=await connect(a,'44444','44445');
+  const other=await connect(b,'55555','55556');
+  const preview=await lifecycle.previewChannel(a,target.id);
+  const removal=await lifecycle.requestChannel(a,target.id,preview.resourceName,'Authorized synthetic cleanup','TENANT',user);
+  await processor.processOne();
+  expect(await lifecycle.status(a,target.id,removal.operationId)).toMatchObject({status:'COMPLETED'});
+  expect((await db.pool.query('SELECT * FROM meta_management_events WHERE connection_id=$1',[target.id])).rows).toHaveLength(0);
+  expect((await db.pool.query("SELECT organization_id FROM meta_waba_ownership WHERE waba_id='44444'")).rows[0].organization_id).toBe(a);
+  await connect(a,'44444','44446');
+  const deletion=await lifecycle.requestOrganization(a,'Meta A','Authorized synthetic cleanup',actor);
+  await processor.processOne();
+  expect(await lifecycle.status(a,a,deletion.operationId)).toMatchObject({status:'COMPLETED'});
+  expect((await db.pool.query('SELECT * FROM meta_waba_ownership WHERE organization_id=$1',[a])).rows).toHaveLength(0);
+  expect((await db.pool.query('SELECT * FROM meta_management_events WHERE organization_id=$1',[a])).rows).toHaveLength(0);
+  expect((await db.pool.query('SELECT * FROM meta_management_events WHERE connection_id=$1',[other.id])).rows).toHaveLength(1);
+  expect((await db.pool.query("SELECT organization_id FROM meta_waba_ownership WHERE waba_id='55555'")).rows[0].organization_id).toBe(b);
+  expect(deprovision).not.toHaveBeenCalled();
+ } finally {await platform.end();await worker.end();}
 });
