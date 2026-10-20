@@ -448,7 +448,9 @@ for(const lock of ['BINDING','OWNER','CATALOG','CONTROL'] as const){
       }finally{conn.release();}})();await hasLock;}
       return{connected:true,phone,groupsIgnore:false};
     }});
-    const existing=lock==='CONTROL'?await t.runtime.configure(t.principal,t.channel,t.input):null;
+    // Creating the control is setup, not the short-deadline operation under test.
+    const existing=lock==='CONTROL'?await createGroupAutomationRuntime({...t.options,requestTimeoutMs:30000})
+      .configure(t.principal,t.channel,t.input):null;
     blocked=true;const attempt=t.runtime.configure(t.principal,t.channel,{...t.input,...(existing?{expectedRevision:existing.revision}:{})});
     const assertion=expect(attempt).rejects.toMatchObject({code:'GROUP_RUNTIME_UNAVAILABLE'});
     await hasLock;await new Promise(resolve=>setTimeout(resolve,350));released();await blocker;await assertion;

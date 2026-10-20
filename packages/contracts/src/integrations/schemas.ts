@@ -87,7 +87,12 @@ export const IntegrationJobsSchema = z.object({
       status: z.enum(["PENDING", "HISTORY_PENDING", "RUNNING", "SUCCEEDED", "FAILED", "UNKNOWN"]),
       attempts: z.number().int().nonnegative(),
       lastError: z.string().nullable(),
-      operation: z.enum(['CREATE_CONTACT','LINK_CONTACT','CREATE_CONVERSATION','SEND_MESSAGE','IMPORT_HISTORY','UPDATE_STATUS']).nullable().optional(),
+      operation: z.enum([
+        'CREATE_CONTACT','LINK_CONTACT','CREATE_CONVERSATION','SEND_MESSAGE','IMPORT_HISTORY','UPDATE_STATUS',
+        'GROUP_FIND_CONTACT','GROUP_CREATE_CONTACT','GROUP_LINK_CONTACT','GROUP_INBOX_POLICY',
+        'GROUP_EXECUTOR_POLICY','GROUP_CREATE_CONVERSATION','GROUP_READ_CONVERSATION',
+        'GROUP_SEND_MESSAGE','GROUP_UPDATE_STATUS',
+      ]).nullable().optional(),
       messageId: z.uuid().nullable(),
       createdAt: z.string(),
       updatedAt: z.string(),

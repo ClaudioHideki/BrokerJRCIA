@@ -4,7 +4,7 @@ O Broker, o JRC Conversas e uma instalação externa de Chatwoot continuam sendo
 
 ## Imagem e banco
 
-A revisão de código da API e da web deve ser a mesma publicada na `main`. Use os dois digests do artefato `image-release.json` da execução de imagens aprovada. Não combine uma API nova com a web antiga. A baseline estrutural deste corte é `0060_consolidated_runtime_integrity`; ela inclui as migrações anteriores e não autoriza reaplicar SQL manualmente.
+A revisão de código da API e da web deve ser a mesma publicada na `main`. Use os dois digests do artefato `image-release.json` da execução de imagens aprovada. Não combine uma API nova com a web antiga. A baseline estrutural atual é `0068_flow_domain_commands`; ela inclui as migrações anteriores e não autoriza reaplicar SQL manualmente. A correção de tarefas de grupos de 20/10/2026 não acrescenta migração nem variável de ambiente.
 
 No Dokploy, mantenha repositório `ClaudioHideki/BrokerJRCIA`, branch `main` e Compose Path `./infra/dokploy/compose.yaml`. Atualize `JRC_API_IMAGE` e `JRC_WEB_IMAGE` com o par verificado. Preserve as credenciais e os volumes existentes. O comando a seguir é de manutenção no diretório do checkout usado pelo Dokploy, não no terminal do container API:
 
@@ -44,7 +44,7 @@ node -p 'process.env.AUTOMATION_RUNTIME_V2_ENABLED'
 node --input-type=module -e 'import{RUNTIME_SCHEMA_BASELINE}from"/app/apps/api/dist/db/runtime-schema.js";console.log(RUNTIME_SCHEMA_BASELINE)'
 ```
 
-Os resultados esperados são HTTP 200/ready, `true` e `0060_consolidated_runtime_integrity`. A readiness verifica a estrutura necessária, mas não substitui a comparação do journal/hash feita pela manutenção nem o teste funcional.
+Os resultados esperados são HTTP 200/ready, `true` e `0068_flow_domain_commands`. A readiness verifica a estrutura necessária, mas não substitui a comparação do journal/hash feita pela manutenção nem o teste funcional. A flag do motor não significa que se deve ativar um bot: preserve os vínculos e estados de publicação durante a atualização.
 
 A homologação começa pela conversa pessoal do Welton, autorizada para teste: mensagem recebida, menu, captura, transferência, resposta humana e retomada. Depois entram os dois tenants JRC e a instalação externa ainda a configurar, grupos, mídias, reconexão e revogação. Guarde revisão da imagem, IDs de correlação e resultado observado. CI com transportes sintéticos não comprova a entrega no WhatsApp.
 

@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { issueAccessToken } from '@jrc/security';
+import { IntegrationJobsSchema } from '@jrc/contracts';
 import { buildApp } from '../../src/app.js';
 import type { ChatwootService } from '../../src/modules/integrations/chatwoot-service.js';
 const org = '4f2491a2-6853-4ac2-a7ef-c997813a9182', id = '81555d45-b1a2-4a3f-ab95-c1459b0df0d0', secret = 'integration-test-secret-at-least-32-bytes';
@@ -8,13 +9,39 @@ async function harness(role: 'OWNER'|'VIEWER' = 'OWNER') {
   const status = vi.fn().mockResolvedValue({ configured: true, baseUrl: 'https://conversas.test', provisioningAvailable: false, account: null, connections: [], jobs: {}, encrypted_token: 'secret-must-not-leak' });
   const bindAccount = vi.fn().mockImplementation(() => status());
   const jobsSummary = vi.fn().mockResolvedValue({data:[]});
-  const service = { status, bindAccount, jobsSummary } as unknown as ChatwootService;
+  const jobs = vi.fn().mockResolvedValue({data:[]});
+  const service = { status, bindAccount, jobsSummary, jobs } as unknown as ChatwootService;
   const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ async verifyPasswordOrDummy() { return false; } }),
     integrations: { service, jwtSecret: secret, authenticateApiKey: async () => null, resolveCurrentRole: async () => role } });
   apps.push(app);
-  return { app, status, bindAccount, jobsSummary, headers: { authorization: 'Bearer ' + await issueAccessToken({ userId: id, organizationId: org, role }, secret) } };
+  return { app, status, bindAccount, jobsSummary, jobs, headers: { authorization: 'Bearer ' + await issueAccessToken({ userId: id, organizationId: org, role }, secret) } };
 }
 afterEach(async () => { await Promise.all(apps.splice(0).map(a => a.close())); });
+it.each([
+  'GROUP_FIND_CONTACT', 'GROUP_CREATE_CONTACT', 'GROUP_LINK_CONTACT',
+  'GROUP_INBOX_POLICY', 'GROUP_EXECUTOR_POLICY', 'GROUP_CREATE_CONVERSATION',
+  'GROUP_READ_CONVERSATION', 'GROUP_SEND_MESSAGE', 'GROUP_UPDATE_STATUS',
+])('lists persisted group operation %s without losing uncertain results or tenant scope', async operation => {
+  const h = await harness('VIEWER');
+  const job = {
+    id, integrationId: org, kind: 'MIRROR_MESSAGE', historical: false,
+    status: 'UNKNOWN', attempts: 1, lastError: 'GROUP_CENTRAL_CONFIRMATION_PENDING',
+    operation, messageId: null, createdAt: '2026-10-20T10:00:00.000Z',
+    updatedAt: '2026-10-20T10:00:01.000Z',
+  };
+  h.jobs.mockResolvedValue({ data: [job] });
+  const response = await h.app.inject({ url: '/v1/integrations/chatwoot/jobs', headers: h.headers });
+  expect(response.statusCode).toBe(200);
+  expect(IntegrationJobsSchema.parse(response.json()).data).toEqual([job]);
+  expect(h.jobs).toHaveBeenCalledExactlyOnceWith(org);
+});
+it('does not accept arbitrary operation names or a forged tenant when reading jobs', async () => {
+  const h = await harness('VIEWER');
+  expect((await h.app.inject({url:'/v1/integrations/chatwoot/jobs'})).statusCode).toBe(401);
+  expect((await h.app.inject({url:'/v1/integrations/chatwoot/jobs?organizationId=forged',headers:h.headers})).statusCode).toBe(400);
+  expect(h.jobs).not.toHaveBeenCalled();
+  expect(IntegrationJobsSchema.shape.data.element.shape.operation.safeParse('UNRECOGNIZED_OPERATION').success).toBe(false);
+});
 it('reads delivery diagnostics only in the authenticated tenant, including for viewers',async()=>{
  const h=await harness('VIEWER');
  expect((await h.app.inject({url:'/v1/integrations/chatwoot/jobs/summary',headers:h.headers})).statusCode).toBe(200);

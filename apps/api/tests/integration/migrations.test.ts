@@ -397,7 +397,9 @@ describe('migrations PostgreSQL', () => {
       join pg_attribute a on a.attrelid=c.oid and a.attname='organization_id' and not a.attisdropped
       where n.nspname='public' and c.relkind='r' and c.relname not in ('lifecycle_deletions','lifecycle_cleanup_items')
       order by c.relname`)).rows.map(row=>row.table_name);
-    expect(catalogue).toEqual(tenantTables);
+    // text and pg_catalog.name can use different database collations.
+    // Compare inventory membership in the same order, preserving duplicates.
+    expect([...catalogue].sort()).toEqual([...tenantTables].sort());
     // 0036 uses maintenance_boundary on these catalogued commercial tables,
     // not lifecycle_migrator. Keep the rest of the historical inventory strict.
     const lifecycleManaged=catalogue.filter(table=>!['support_tickets','support_messages',
