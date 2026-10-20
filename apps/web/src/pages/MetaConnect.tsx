@@ -9,6 +9,7 @@ interface Connection {
   phoneNumberId: string;
   status: "PENDING" | "READY" | "REVOKED";
   pending: string[];
+  managementEvents?: Array<{field:string;receivedAt:string}>;
 }
 interface Signup {
   state: string;
@@ -42,13 +43,19 @@ export function loadFacebookSdk(): Promise<FacebookSdk> {
     const script = document.createElement("script");
     script.src = "https://connect.facebook.net/pt_BR/sdk.js";
     script.async = true;
-    script.onload = () =>
-      window.FB ? resolve(window.FB) : reject(new Error("SDK indisponível"));
-    script.onerror = () => {
+    const failed = () => {
+      clearTimeout(timer);
       sdkFlight = undefined;
       script.remove();
       reject(new Error("Não foi possível carregar a conexão Meta."));
     };
+    const timer = setTimeout(failed, 20_000);
+    script.onload = () => {
+      if(!window.FB) return failed();
+      clearTimeout(timer);
+      resolve(window.FB);
+    };
+    script.onerror = failed;
     document.head.append(script);
   }));
 }
@@ -60,6 +67,14 @@ const pendingLabels: Record<string, string> = {
   META_PERMISSION_REMOVAL_EXTERNAL:
     "Revisar permissões do aplicativo nas configurações Meta",
   META_HEALTH_UNAVAILABLE: "Verificar disponibilidade do número na Meta",
+  META_ACCOUNT_HEALTH_REVIEW_REQUIRED: "Verificar restrições de envio na Meta",
+  META_AUTHORIZATION_RECHECK_REQUIRED: "Consultar novamente a autorização na Meta",
+};
+const managementLabels:Record<string,string>={
+ account_update:'Conta atualizada',account_review_update:'Análise da conta atualizada',
+ phone_number_name_update:'Nome do número atualizado',phone_number_quality_update:'Qualidade do número atualizada',
+ business_capability_update:'Capacidade da conta atualizada',message_template_status_update:'Estado de template atualizado',
+ message_template_quality_update:'Qualidade de template atualizada',
 };
 export function MetaConnectPage() {
   const client = useApiClient();
@@ -132,22 +147,27 @@ export function MetaConnectPage() {
     }
   }
   function authorize() {
-    if (!signup || !window.FB) return;
+    if (!signup || !window.FB || busy) return;
     const current = version.current;
     setBusy(true);
     setError("");
+    setNotice("");
     let code: string | undefined;
     let assets: { wabaId: string; phoneNumberId: string } | undefined;
     let completing = false;
+    let ended = false;
     const cleanup = () => {
+      ended = true;
       window.removeEventListener("message", receive);
       clearTimeout(timer);
       stop.current = null;
     };
     const complete = () => {
-      if (!code || !assets || completing || current !== version.current) return;
+      if (!code || !assets || completing || ended || current !== version.current) return;
       completing = true;
       cleanup();
+      // Completion consumes state even if Graph fails; retry must start a new authorization.
+      setSignup(null);
       void action(async () => {
         await client.request("/v1/meta-onboarding/complete", {
           method: "POST",
@@ -181,6 +201,10 @@ export function MetaConnectPage() {
         event?: string;
         data?: { waba_id?: string; phone_number_id?: string };
       };
+      if(item?.type==='WA_EMBEDDED_SIGNUP' && ['CANCEL','ERROR'].includes(item.event??'')) {
+        finishAttempt(item.event==='ERROR'?'A Meta não concluiu a autorização. Inicie novamente.':undefined);
+        return;
+      }
       if (
         item?.type === "WA_EMBEDDED_SIGNUP" &&
         item.event === "FINISH" &&
@@ -194,6 +218,12 @@ export function MetaConnectPage() {
         complete();
       }
     };
+    const finishAttempt = (message?:string) => {
+      if(ended || current!==version.current) return;
+      cleanup();setBusy(false);setSignup(null);
+      if(message) setError(message);
+      else setNotice('Autorização cancelada. Seus ativos permanecem na Meta.');
+    };
     const timer = setTimeout(() => {
       cleanup();
       if (current === version.current) {
@@ -204,15 +234,12 @@ export function MetaConnectPage() {
     }, 180_000);
     window.addEventListener("message", receive);
     stop.current = cleanup;
-    window.FB.login(
+    try { window.FB.login(
       (response) => {
-        if (current !== version.current) return;
+        if (ended || current !== version.current) return;
         code = response.authResponse?.code;
         if (!code) {
-          cleanup();
-          setBusy(false);
-          setSignup(null);
-          setNotice("Autorização cancelada. Seus ativos permanecem na Meta.");
+          finishAttempt();
           return;
         }
         complete();
@@ -223,7 +250,7 @@ export function MetaConnectPage() {
         override_default_response_type: true,
         extras: { setup: {}, sessionInfoVersion: "3" },
       },
-    );
+    ); } catch {finishAttempt('Não foi possível abrir a janela da Meta. Inicie novamente.');}
   }
   return (
     <section className="page-content">
@@ -378,6 +405,13 @@ export function MetaConnectPage() {
                     </li>
                   ))}
                 </ul>
+                {!!connection.managementEvents?.length && <details>
+                  <summary>Últimos avisos da Meta</summary>
+                  <ul>{connection.managementEvents.map(event=><li key={event.field}>
+                    {managementLabels[event.field]??'Atualização da Meta'} — recebido em {new Date(event.receivedAt).toLocaleString('pt-BR')}
+                  </li>)}</ul>
+                  <p>Os avisos não aprovam o envio. A situação é consultada na Meta; templates são verificados novamente antes do envio.</p>
+                </details>}
                 {connection.status !== "REVOKED" && (
                   <>
                     <div className="dialog-actions">

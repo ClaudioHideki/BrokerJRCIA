@@ -7,7 +7,8 @@ import {nicoTakeoverRuntimeSql} from './nico-takeover-runtime-schema.js';
 import {qrIdentityRuntimeSql} from './qr-identity-runtime-schema.js';
 import {historyImportRuntimeSql} from './history-import-runtime-schema.js';
 import {flowDomainRuntimeSql} from './flow-domain-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0068_flow_domain_commands';
+import {metaOnboardingRuntimeSql} from './meta-onboarding-runtime-schema.js';
+export const RUNTIME_SCHEMA_BASELINE = '0069_meta_waba_ownership';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -431,7 +432,7 @@ const requiredObjectsSql = `SELECT
         FROM unnest(i.indkey) WITH ORDINALITY k(attnum,ordinality)
         JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum)
         =ARRAY['organization_id','channel_id','contact_id','id'])
-  AND (${flowDelegationRuntimeSql}) AND (${nativeFlowGuardCoverageRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AND (${consolidatedRuntimeSql}) AND (${inputTimeoutRuntimeSql}) AND (${nicoTakeoverRuntimeSql}) AND (${conversationEffectsRuntimeSql}) AND (${qrIdentityRuntimeSql}) AND (${historyImportRuntimeSql}) AND (${flowDomainRuntimeSql}) AS ready`;
+  AND (${flowDelegationRuntimeSql}) AND (${nativeFlowGuardCoverageRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AND (${consolidatedRuntimeSql}) AND (${inputTimeoutRuntimeSql}) AND (${nicoTakeoverRuntimeSql}) AND (${conversationEffectsRuntimeSql}) AND (${qrIdentityRuntimeSql}) AND (${historyImportRuntimeSql}) AND (${flowDomainRuntimeSql}) AND (${metaOnboardingRuntimeSql}) AS ready`;
 
 export async function probeRequiredRuntimeSchema(query: SchemaProbeQuery): Promise<boolean> {
   const result = await query(requiredObjectsSql);

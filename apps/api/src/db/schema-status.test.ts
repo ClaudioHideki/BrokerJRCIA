@@ -9,10 +9,10 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('carrega o manifesto real até a migration 0068', async () => {
+  it('carrega o manifesto real até a migration 0069', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(68);
-    expect(migrations.at(-1)?.name).toBe('0068_flow_domain_commands');
+    expect(migrations).toHaveLength(69);
+    expect(migrations.at(-1)?.name).toBe('0069_meta_waba_ownership');
   });
 
   it('informa a versão aplicada e migrations pendentes sem expor hashes', () => {

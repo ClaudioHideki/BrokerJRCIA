@@ -57,6 +57,19 @@ export function createWebServer({ root = resolve('public'), apiOrigin = 'http://
     let pathname, parsedUrl;
     try { parsedUrl = new URL(req.url ?? '/', 'http://local'); pathname = decodeURIComponent(parsedUrl.pathname); }
     catch { res.writeHead(400); res.end(); return; }
+    // Public documents must work without the SPA, a session or a healthy API.
+    const legalDocument = /^\/(privacy|data-deletion|terms)\/?$/.exec(pathname)?.[1];
+    if (legalDocument) {
+      try {
+        const data = await readFile(resolve(root, 'legal', `${legalDocument}.html`));
+        res.writeHead(200, { ...consoleHeaders, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(req.method === 'HEAD' ? undefined : data);
+      } catch {
+        res.writeHead(503, { ...consoleHeaders, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(req.method === 'HEAD' ? undefined : 'Documento temporariamente indisponível.');
+      }
+      return;
+    }
     if (pathname.startsWith('/embed/chatwoot') || pathname === '/embed.html') {
       try {
         const match = /^\/embed\/chatwoot\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/iu.exec(pathname);

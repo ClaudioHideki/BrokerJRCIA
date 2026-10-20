@@ -1,0 +1,14 @@
+# Meta Tech Provider readiness — implementation and release
+
+Scope approved in chat: finish pending Broker Meta integration and publish tested API/web images. No production deploy, number registration, or bot activation. Existing JRC/NICO release remains separate.
+
+1. Public privacy/deletion/terms pages with supplied operator identity. Preserve public access without JS and reject missing documents instead of SPA fallback. Local tests already RED then GREEN (5).
+2. WABA ownership: migration 0069, one organization per WABA, many phones per organization. Backfill aborts on cross-tenant conflicts. Claim after Graph proves assets but before subscription; database enforces all connection writes. Revocation does not silently transfer ownership. RLS and concurrent claims tested with PostgreSQL.
+3. Eight subscribed webhook fields: messages unchanged; seven management fields explicitly recognized. Persist only field, digest and receipt timestamp, not raw customer content. Repeated identical notification is idempotent. Account/phone/capability notifications invalidate readiness before authoritative Graph refresh; templates remain subject to existing live Graph preflight on every send. Expose management observations to tenant administrators.
+4. Embedded Signup UX: cancel/error/timeout/SDK throw clean up listeners, ignore late callbacks, reset consumed state after complete failure; SDK load failure can retry. Keep tenant guards and successful code+asset pairing.
+5. Regression, build, PostgreSQL, security, branch review, CI. Integrate tested revision and publish immutable API/web digests. Record migration instructions and actual evidence. No claim of Meta approval or real number homologation.
+
+Ruling: management event bodies are signals, never authority to grant READY or increase limits. Graph remains authoritative; no inferred status from undocumented fields.
+Ruling: ownership is retained after connection revocation/deletion. Transfer requires an explicit future administrative procedure, preventing accidental reassignment.
+
+Progress: tasks 1–4 implemented. Focused unit/UI/schema checks: 28 passed. PostgreSQL integration: 9 passed, including concurrent claims, conflicting legacy ownership, event isolation/deduplication, stale readiness, stale OAuth revocation and connection deletion. Independent final review found two P1 races; both were fixed and re-reviewed with no remaining concrete blocker. The 3,248 unit/HTTP/UI tests passed across the full run and isolated PDF verification (three PDF timeouts under concurrent load; all six PDF tests passed alone, matching the CI split). Build, web bundle inspection, public contract checks, notices, Evolution boundary and npm audit passed (zero vulnerabilities). CI/full integration and the release workflow remain publication gates. Deployment instructions: `docs/deploy/meta-readiness-0069.md`.

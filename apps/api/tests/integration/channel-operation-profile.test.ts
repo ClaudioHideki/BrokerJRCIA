@@ -1,3 +1,4 @@
+import {seedMetaConnection} from './helpers/meta-fixture.js';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
@@ -7,7 +8,7 @@ beforeAll(async()=>{db=await attendanceDatabase();},120000);
 afterAll(async()=>{await db?.dispose();});
 async function fixture(remote=false,mode='EXTERNAL'){
  const t=await seedAttendanceTenant(db.database,false),id=randomUUID(),origin=`https://${t.org}.example.test`;
- await db.database.pool.query("insert into meta_connections(id,organization_id,channel_id,waba_id,phone_number_id,encrypted_token,graph_version,status) values($1,$2,$3,'test',$4,'synthetic-secret','v24','READY')",[id,t.org,t.channel,`asset-${id}`]);
+ await seedMetaConnection(db.database.pool,{id:id,org:t.org,channel:t.channel});
  if(remote){
   await db.database.pool.query("insert into chatwoot_destinations(organization_id,base_url,mode,approval_status) values($1,$2,$3,'APPROVED')",[t.org,origin,mode]);
   await db.database.pool.query("insert into chatwoot_accounts(organization_id,base_url,account_id,status) values($1,$2,7,'READY')",[t.org,origin]);
@@ -83,7 +84,7 @@ it.each(['ABSENT','OLD_CREDENTIAL','OLD_DESTINATION','RESET'])('does not borrow 
  const t=await fixture(true),channel=randomUUID(),id=randomUUID(),integration=randomUUID();
  const p=(await db.database.pool.query('select provider_account_id from messaging_channels where id=$1',[t.channel])).rows[0].provider_account_id;
  await db.database.pool.query("insert into messaging_channels(id,organization_id,provider_account_id,phone_number_id,waba_id,credential_reference) values($1,$2,$3,$4,'test','vault://test')",[channel,t.org,p,`asset-${channel}`]);
- await db.database.pool.query("insert into meta_connections(id,organization_id,channel_id,waba_id,phone_number_id,encrypted_token,graph_version,status) values($1,$2,$3,'test',$4,'synthetic-secret','v24','READY')",[id,t.org,channel,`meta-${channel}`]);
+ await seedMetaConnection(db.database.pool,{id:id,org:t.org,channel:channel});
  await db.database.pool.query("insert into chatwoot_connections(id,organization_id,channel_id,inbox_id,name,status) values($1,$2,$3,10,'second','READY')",[integration,t.org,channel]);
  if(state!=='ABSENT')await db.database.pool.query("insert into chatwoot_connection_health(organization_id,integration_id,channel_id,callback_verified_at,callback_destination_revision,callback_credential_version) values($1,$2,$3,case when $4='RESET' then null else clock_timestamp() end,case when $4='OLD_DESTINATION' then 2 else 1 end,case when $4='OLD_CREDENTIAL' then 2 else 1 end)",[t.org,integration,channel,state]);
  expect(await service().get(t.org,t.id)).toMatchObject({readiness:'READY',blockers:[]});

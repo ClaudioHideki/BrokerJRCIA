@@ -1,3 +1,4 @@
+import {seedMetaConnection} from './helpers/meta-fixture.js';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -111,7 +112,7 @@ describe('transactional SaaS operational limits', () => {
   it('rejects a revoked Meta connection in final preflight and removes its unsent lease', async () => {
     const t=await tenant(); const connection=randomUUID();
     await db.pool.query('UPDATE messaging_channels SET credential_reference=$2 WHERE id=$1',[t.channel,`meta-db:${connection}`]);
-    await db.pool.query("INSERT INTO meta_connections(id,organization_id,channel_id,waba_id,phone_number_id,encrypted_token,graph_version,status) VALUES($1,$2::uuid,$3,$2::text,$2::text,'fixture','v25.0','READY')",[connection,t.org,t.channel]);
+    await seedMetaConnection(db.pool,{id:connection,org:t.org,channel:t.channel});
     await enqueue(t);
     const claim=(await withOrganizationTransaction(app,t.org,tx=>repository.claimOutgoing(tx,{organizationId:t.org,workerId:randomUUID(),now:new Date(),leaseMs:60000,limit:1})))[0]!;
     await db.pool.query("UPDATE meta_connections SET status='REVOKED',encrypted_token=NULL WHERE id=$1",[connection]);

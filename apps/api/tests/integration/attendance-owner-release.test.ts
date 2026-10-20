@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import {seedMetaConnection} from './helpers/meta-fixture.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createChannelFacade } from '../../src/modules/channels/facade.js';
 import { createOwnershipService } from '../../src/modules/attendance/ownership-service.js';
@@ -13,8 +14,7 @@ describe('attendance authority release and current entitlement', () => {
   it('rejects facade activation when the module was disabled after its availability snapshot', async () => {
     const t = await seedAttendanceTenant(db.database, false), connection = randomUUID();
     await db.database.pool.query('insert into flow_features(organization_id,enabled) values($1,true)', [t.org]);
-    await db.database.pool.query(`insert into meta_connections(id,organization_id,channel_id,waba_id,phone_number_id,graph_version,status)
-      values($1::uuid,$2,$3,'synthetic',$1::text,'v23','REVOKED')`, [connection, t.org, t.channel]);
+    await seedMetaConnection(db.database.pool,{id:connection,org:t.org,channel:t.channel,status:'REVOKED'});
     const facade = createChannelFacade({ transact: db.transact, instances: {} as never,
       meta: { start: async () => { throw new Error('unused'); } },
       automationStatus: async () => {

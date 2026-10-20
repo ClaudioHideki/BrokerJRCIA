@@ -697,7 +697,8 @@ export function buildApp(options: BuildAppOptions = {}) {
         appSecret: messagingEnvironment.META_APP_SECRET,
         verifyToken: messagingEnvironment.META_WEBHOOK_VERIFY_TOKEN,
         ingest: createMetaOnboardingWebhook({
-          accountUpdated: metaOnboardingService.accountUpdated,
+          managementUpdated: metaOnboardingService.managementUpdated,
+          refreshConnection: metaOnboardingService.refresh,
           async findWaba(wabaId) {
             const rows = await pools.appPool.query<{
               organization_id: string;

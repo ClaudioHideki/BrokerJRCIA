@@ -9,7 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { MetaConnectPage } from "./MetaConnect.js";
+import { MetaConnectPage, loadFacebookSdk } from "./MetaConnect.js";
 const fixture = vi.hoisted(() => ({
   request: vi.fn(),
   role: "OWNER",
@@ -68,7 +68,7 @@ it("purges connections and a deferred signup when switching between two owner or
     finish = resolve;
   });
   fixture.request.mockImplementation((path: string) =>
-    path.endsWith("/start")
+    path === "/v1/channels"
       ? pending
       : Promise.resolve({
           configured: true,
@@ -159,7 +159,7 @@ it("removes signup listeners and ignores old SDK callbacks after switching tenan
   };
   fixture.request.mockImplementation((path: string) =>
     Promise.resolve(
-      path.endsWith("/start")
+      path === "/v1/channels"
         ? {
             state: "a-state",
             appId: "123",
@@ -207,6 +207,65 @@ it("removes signup listeners and ignores old SDK callbacks after switching tenan
       "Autorização cancelada. Seus ativos permanecem na Meta.",
     ),
   ).not.toBeInTheDocument();
+});
+
+async function beginSignup() {
+ let callback!: (response:{authResponse?:{code?:string}})=>void;
+ window.FB={init:vi.fn(),login:vi.fn(cb=>{callback=cb;})};
+ fixture.request.mockImplementation(async(path:string)=>path==='/v1/channels'
+  ? {provider:'META',action:{type:'EMBEDDED_SIGNUP',state:'test-state',appId:'123',configId:'456',graphVersion:'v25.0',expiresAt:new Date(Date.now()+600000).toISOString()}}
+  : {configured:true,connections:[]});
+ render(<MemoryRouter><MetaConnectPage/></MemoryRouter>);
+ fireEvent.click(await screen.findByRole('button',{name:'Preparar conexão oficial'}));
+ fireEvent.click(await screen.findByRole('button',{name:'Continuar na Meta'}));
+ return (response:{authResponse?:{code?:string}})=>callback(response);
+}
+function signupEvent(event:string,origin='https://www.facebook.com') {
+ window.dispatchEvent(new MessageEvent('message',{origin,data:{type:'WA_EMBEDDED_SIGNUP',event,data:{waba_id:'54321',phone_number_id:'12345'}}}));
+}
+it.each(['CANCEL','ERROR'])('ends %s immediately and ignores a late SDK callback',async event=>{
+ const callback=await beginSignup();
+ await act(async()=>signupEvent(event));
+ expect(await screen.findByRole('button',{name:'Preparar conexão oficial'})).toBeEnabled();
+ await act(async()=>{signupEvent('FINISH');callback({authResponse:{code:'late-code'}});});
+ expect(fixture.request.mock.calls.some(([path])=>path.endsWith('/complete'))).toBe(false);
+});
+it('requires both an allowed-origin finish and a code and completes only once',async()=>{
+ const callback=await beginSignup();
+ await act(async()=>{signupEvent('FINISH','https://invalid.example');callback({authResponse:{code:'test-code'}});});
+ expect(fixture.request.mock.calls.some(([path])=>path.endsWith('/complete'))).toBe(false);
+ await act(async()=>{signupEvent('FINISH');signupEvent('FINISH');callback({authResponse:{code:'test-code'}});});
+ expect(fixture.request.mock.calls.filter(([path])=>path.endsWith('/complete'))).toHaveLength(1);
+ expect(await screen.findByText(/Autorização recebida/)).toBeVisible();
+});
+it('requires a fresh state after a completion failure instead of replaying the consumed state',async()=>{
+ const callback=await beginSignup();
+ fixture.request.mockRejectedValueOnce(new Error('provider unavailable'));
+ await act(async()=>{signupEvent('FINISH');callback({authResponse:{code:'test-code'}});});
+ expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível concluir');
+ expect(screen.getByRole('button',{name:'Preparar conexão oficial'})).toBeEnabled();
+});
+it('recovers when SDK login throws synchronously',async()=>{
+ await beginSignup();
+ // Cancel the current attempt, then create another prepared attempt.
+ await act(async()=>signupEvent('CANCEL'));
+ fireEvent.click(await screen.findByRole('button',{name:'Preparar conexão oficial'}));
+ const button=await screen.findByRole('button',{name:'Continuar na Meta'});
+ window.FB!.login=()=>{throw new Error('blocked');};
+ fireEvent.click(button);
+ expect(await screen.findByRole('button',{name:'Preparar conexão oficial'})).toBeEnabled();
+ expect(screen.getByRole('alert')).toHaveTextContent(/abrir/);
+});
+it('allows SDK loading to retry if script loaded without FB',async()=>{
+ const first=loadFacebookSdk();const rejected=expect(first).rejects.toThrow();
+ document.querySelector<HTMLScriptElement>('script[src*="connect.facebook.net"]')!.dispatchEvent(new Event('load'));
+ await rejected;
+ const second=loadFacebookSdk();
+ expect(second).not.toBe(first);
+ window.FB={init:vi.fn(),login:vi.fn()};
+ document.querySelector<HTMLScriptElement>('script[src*="connect.facebook.net"]')!.dispatchEvent(new Event('load'));
+ await expect(second).resolves.toBe(window.FB);
+ document.querySelector('script[src*="connect.facebook.net"]')?.remove();
 });
 it("an operator cannot initialize signup", () => {
   fixture.role = "OPERATOR";

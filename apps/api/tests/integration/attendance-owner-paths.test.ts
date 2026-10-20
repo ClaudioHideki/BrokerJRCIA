@@ -1,3 +1,4 @@
+import {seedMetaConnection} from './helpers/meta-fixture.js';
 import { randomUUID } from 'node:crypto';
 import { afterAll,beforeAll,describe,expect,it } from 'vitest';
 import { createAutomationService } from '../../src/modules/automations/service.js';
@@ -51,7 +52,7 @@ describe('one transactional authority for bot mutations',()=>{
   });
   it('facade replacement cannot ignore a stale owner revision from another API path',async()=>{
     const t=await fixture(),connection=randomUUID();
-    await db.database.pool.query(`insert into meta_connections(id,organization_id,channel_id,waba_id,phone_number_id,graph_version,status) values($1::uuid,$2,$3,'test',$1::text,'v23','REVOKED')`,[connection,t.org,t.channel]);
+    await seedMetaConnection(db.database.pool,{id:connection,org:t.org,channel:t.channel,status:'REVOKED'});
     const facade=createChannelFacade({transact:db.transact,instances:{} as never,meta:{start:async()=>{throw new Error('unused');}}});
     await t.service.bind(t.org,t.automation,{channelId:t.channel,version:1,expectedOwnerRevision:0});
     await expect(facade.bindAutomation(t.org,connection,{automationId:t.automation,version:1,expectedOwnerRevision:0})).rejects.toMatchObject({code:'ATTENDANCE_OWNER_CHANGED'});

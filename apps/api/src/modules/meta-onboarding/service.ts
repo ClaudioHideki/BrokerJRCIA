@@ -3,6 +3,7 @@ import type { OrganizationTransaction } from '../../db/tenant-transaction.js';
 import type { MessagingChannel } from '../messaging/types.js';
 import { MetaSignupGraphClient, openToken, sealToken } from './graph.js';
 import {TenantOperationalError} from '../tenancy/operational-limits.js';
+import {META_MANAGEMENT_FIELDS,type MetaManagementField} from './webhook.js';
 
 export interface SignupInput {state:string;code:string;wabaId:string;phoneNumberId:string}
 export interface MetaConnectionView {id:string;channelId:string;wabaId:string;phoneNumberId:string;status:'PENDING'|'READY'|'REVOKED';pending:string[]}
@@ -26,7 +27,12 @@ export function createMetaOnboardingService(options:Options) {
  }
  const service = {
   async list(organizationId:string) {
-   return {configured,connections:await options.transact(organizationId,async tx=>(await tx.query<MetaConnectionView>(`SELECT ${columns} FROM meta_connections WHERE organization_id=$1 ORDER BY updated_at DESC`,[organizationId])).rows)};
+   return {configured,connections:await options.transact(organizationId,async tx=>{
+    const rows=(await tx.query<MetaConnectionView>(`SELECT ${columns} FROM meta_connections WHERE organization_id=$1 ORDER BY updated_at DESC`,[organizationId])).rows;
+    const observations=(await tx.query<{connection_id:string;field:string;received_at:Date}>(`SELECT DISTINCT ON(connection_id,field) connection_id,field,received_at
+     FROM meta_management_events WHERE organization_id=$1 ORDER BY connection_id,field,received_at DESC`,[organizationId])).rows;
+    return rows.map(row=>({...row,managementEvents:observations.filter(event=>event.connection_id===row.id).map(event=>({field:event.field,receivedAt:event.received_at}))}));
+   })};
   },
   async start(organizationId:string,userId:string) {
    if(!configured) throw fail(503);
@@ -46,6 +52,9 @@ export function createMetaOnboardingService(options:Options) {
    if(!consumed) throw fail(409);
    await active(organizationId);
    const authorization=await graph.authorize(input.code,input.wabaId,input.phoneNumberId);
+   // Commit ownership before any remote mutation; competing tenants cannot both subscribe.
+   const claimed=await options.transact(organizationId,async tx=>(await tx.query<{claimed:boolean}>('SELECT claim_meta_waba($1) AS claimed',[input.wabaId])).rows[0]?.claimed);
+   if(!claimed) throw fail(409);
    const id=randomUUID();const channelId=randomUUID();const providerId=randomUUID();
    const pending=['PHONE_REGISTRATION_REQUIRED','META_PAYMENT_METHOD_REQUIRED','META_BUSINESS_REVIEW_REQUIRED'];
    try {await graph.subscribe(input.wabaId,authorization.accessToken);} catch {pending.push('WEBHOOK_SUBSCRIPTION_REQUIRED');}
@@ -53,7 +62,7 @@ export function createMetaOnboardingService(options:Options) {
     const existing=(await tx.query<{id:string;waba_id:string}>('SELECT id,waba_id FROM meta_connections WHERE organization_id=$1 AND phone_number_id=$2 FOR UPDATE',[organizationId,input.phoneNumberId])).rows[0];
     if(existing) {
      if(existing.waba_id!==input.wabaId) throw fail(409);
-     return (await tx.query<MetaConnectionView>(`UPDATE meta_connections SET encrypted_token=$3,token_expires_at=$4,graph_version=$5,status='PENDING',pending=$6,updated_at=now()
+     return (await tx.query<MetaConnectionView>(`UPDATE meta_connections SET encrypted_token=$3,token_expires_at=$4,graph_version=$5,status='PENDING',pending=$6,updated_at=now(),readiness_revision=readiness_revision+1
       WHERE organization_id=$1 AND id=$2 RETURNING ${columns}`,[organizationId,existing.id,sealToken(authorization.accessToken,key,`${organizationId}:${existing.id}`),authorization.expiresAt,env.META_GRAPH_VERSION,JSON.stringify(pending)])).rows[0]!;
     }
     const reference=`meta-db:${id}`;
@@ -66,40 +75,55 @@ export function createMetaOnboardingService(options:Options) {
     return row.rows[0]!;
    });
   },
-  async revoke(organizationId:string,id:string):Promise<MetaConnectionView> {
+  async revoke(organizationId:string,id:string,expected?:{token:string;revision:string}):Promise<MetaConnectionView> {
    return options.transact(organizationId,async tx=>{
-    const result=await tx.query<MetaConnectionView>(`UPDATE meta_connections SET status='REVOKED',encrypted_token=NULL,pending='["META_PERMISSION_REMOVAL_EXTERNAL"]',updated_at=now() WHERE organization_id=$1 AND id=$2 RETURNING ${columns}`,[organizationId,id]);
-    if(!result.rows[0]) throw fail(404);
+    const result=await tx.query<MetaConnectionView>(`UPDATE meta_connections SET status='REVOKED',encrypted_token=NULL,pending='["META_PERMISSION_REMOVAL_EXTERNAL"]',updated_at=now(),readiness_revision=readiness_revision+1 WHERE organization_id=$1 AND id=$2
+     AND ($3::text IS NULL OR (encrypted_token=$3 AND readiness_revision=$4)) RETURNING ${columns}`,[organizationId,id,expected?.token??null,expected?.revision??null]);
+    if(!result.rows[0]) throw fail(expected?409:404);
     return result.rows[0];
    });
   },
   async refresh(organizationId:string,id:string,pin?:string):Promise<MetaConnectionView> {
    if(!graph) throw fail(503);
    if(pin) await active(organizationId);
-   const record=await options.transact(organizationId,async tx=>(await tx.query<{encrypted_token:string;waba_id:string;phone_number_id:string}>(
-    `SELECT encrypted_token,waba_id,phone_number_id FROM meta_connections WHERE organization_id=$1 AND id=$2 AND status<>'REVOKED' AND (token_expires_at IS NULL OR token_expires_at>now())`,[organizationId,id])).rows[0]);
+   const record=await options.transact(organizationId,async tx=>(await tx.query<{encrypted_token:string;waba_id:string;phone_number_id:string;readiness_revision:string}>(
+    `SELECT encrypted_token,waba_id,phone_number_id,readiness_revision FROM meta_connections WHERE organization_id=$1 AND id=$2 AND status<>'REVOKED' AND (token_expires_at IS NULL OR token_expires_at>now())`,[organizationId,id])).rows[0]);
    if(!record) throw fail(404);
    const token=openToken(record.encrypted_token,key,`${organizationId}:${id}`);
    if(pin) await graph.register(record.phone_number_id,token,pin);
    let pending:string[];
    try {pending=await graph.checkReadiness(record.waba_id,record.phone_number_id,token);} catch(error) {
-    if(error instanceof Error && error.message==='META_TOKEN_REVOKED') return service.revoke(organizationId,id);
+    if(error instanceof Error && error.message==='META_TOKEN_REVOKED') return service.revoke(organizationId,id,{token:record.encrypted_token,revision:record.readiness_revision});
     throw error;
    }
    return options.transact(organizationId,async tx=>{
-    const result=await tx.query<MetaConnectionView>(`UPDATE meta_connections SET status=$3,pending=$4,updated_at=now() WHERE organization_id=$1 AND id=$2 AND encrypted_token=$5 AND status<>'REVOKED' RETURNING ${columns}`,
-     [organizationId,id,pending.length?'PENDING':'READY',JSON.stringify(pending),record.encrypted_token]);
+    const result=await tx.query<MetaConnectionView>(`UPDATE meta_connections SET status=$3,pending=$4,updated_at=now(),readiness_revision=readiness_revision+1 WHERE organization_id=$1 AND id=$2 AND encrypted_token=$5 AND readiness_revision=$6 AND status<>'REVOKED' RETURNING ${columns}`,
+     [organizationId,id,pending.length?'PENDING':'READY',JSON.stringify(pending),record.encrypted_token,record.readiness_revision]);
     if(!result.rows[0]) throw fail(409);
     return result.rows[0];
    });
   },
   async accountUpdated(organizationId:string,id:string) {
    await options.transact(organizationId,async tx=>{
-    await tx.query(`UPDATE meta_connections SET status='PENDING',pending='["META_AUTHORIZATION_RECHECK_REQUIRED"]',updated_at=now()
+    await tx.query(`UPDATE meta_connections SET status='PENDING',pending='["META_AUTHORIZATION_RECHECK_REQUIRED"]',updated_at=now(),readiness_revision=readiness_revision+1
      WHERE organization_id=$1 AND id=$2 AND status<>'REVOKED'`,[organizationId,id]);
    });
    // A signed account notification invalidates send eligibility immediately. Graph proves the next state.
    try {await service.refresh(organizationId,id);} catch {/* Remains blocked for operator refresh if Graph is unavailable. */}
+  },
+  async managementUpdated(organizationId:string,id:string,field:MetaManagementField,fingerprint:string) {
+   if(!META_MANAGEMENT_FIELDS.includes(field) || !/^[a-f0-9]{64}$/.test(fingerprint)) throw fail(409);
+   const recheck=!field.startsWith('message_template_');
+   const inserted=await options.transact(organizationId,async tx=>{
+    const connection=await tx.query(`SELECT id FROM meta_connections WHERE organization_id=$1 AND id=$2 AND status<>'REVOKED' FOR UPDATE`,[organizationId,id]);
+    if(!connection.rowCount) return false;
+    const result=await tx.query(`INSERT INTO meta_management_events(organization_id,connection_id,field,fingerprint)
+     VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING fingerprint`,[organizationId,id,field,fingerprint]);
+    if(result.rowCount && recheck) await tx.query(`UPDATE meta_connections SET status='PENDING',pending='["META_AUTHORIZATION_RECHECK_REQUIRED"]',updated_at=now(),readiness_revision=readiness_revision+1 WHERE organization_id=$1 AND id=$2`,[organizationId,id]);
+    return Boolean(result.rowCount);
+   });
+   // Template status is always re-read from Graph by list/send preflight; a webhook cannot approve a template.
+   return inserted && recheck;
   },
   async resolveCredential(channel:MessagingChannel) {
    if(!configured || !channel.credentialReference.startsWith('meta-db:')) throw fail(503);
