@@ -38,6 +38,28 @@ function openApiOperations(openapi) {
 }
 
 describe('dados reproduzíveis da auditoria de segurança', () => {
+  it('classifica campanhas Chatwoot como leituras autorizadas e isoladas por caixa e mensagem', async () => {
+    const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
+    const inventory = await buildRouteInventory({ rootDirectory: ROOT, openapi });
+    for (const suffix of ['/campaign-transport', '/conversations/{conversationId}/campaign-messages/{messageId}']) {
+      const route = inventory.find(item => item.method === 'GET'
+        && item.path === `/v1/integrations/chatwoot/control/connections/{integrationId}${suffix}`);
+      expect(route).toMatchObject({
+        authentication: 'JWT_OR_BOUND_CONTROL_KEY',
+        permission: 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
+        tenantRls: true,
+        idempotency: 'READ_ONLY',
+        challengeExposure: 'NO_STORE_METADATA_ONLY',
+        handlerFile: 'apps/api/src/http/routes/chatwoot-control.ts',
+        handlerLine: expect.any(Number),
+      });
+      expect(route.handlerLine).toBeGreaterThan(0);
+      expect(route.ownershipCheck).toContain('RLS_CURRENT_ACCOUNT_DESTINATION_CONNECTION');
+      if (suffix.includes('campaign-messages')) {
+        expect(route.ownershipCheck).toContain('CONVERSATION_MESSAGE');
+      }
+    }
+  });
   it.each(['automations', 'delegated-flows'])('documenta o upload binário P3 de %s separado do grafo', async prefix => {
     const openapi = JSON.parse(await readFile(resolve(ROOT, 'docs/api/openapi.json'), 'utf8'));
     const operation = openapi.paths[`/v1/${prefix}/{id}/channels/{channelId}/media`].post;

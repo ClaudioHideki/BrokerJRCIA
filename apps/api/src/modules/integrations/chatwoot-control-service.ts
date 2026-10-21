@@ -11,6 +11,7 @@ import { IntegrationError } from './integration-error.js';
 import { ChatwootError } from './chatwoot-client.js';
 import { observeChatwootCapabilities } from './chatwoot-compatibility.js';
 import type { PairActionStore } from './chatwoot-pair-action-store.js';
+import { readCampaignTransport, readCampaignReceipt } from './chatwoot-campaigns.js';
 
 export interface ChatwootControlOptions extends ChatwootOptions { auth: ChatwootControlAuth; health: ChatwootHealth; instances: InstanceService; chatwoot: ChatwootService; pairActions?: PairActionStore }
 interface Mapping extends ConnectionRow { instance_id: string }
@@ -71,6 +72,18 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
     return c;
   }
   return {
+    async campaignTransport(p: ChatwootControlPrincipal, id: string) {
+      return tx(p.organizationId, async t => {
+        await mapping(t,p,id,'chatwoot:read');
+        return readCampaignTransport(t,p,id);
+      });
+    },
+    async campaignReceipt(p: ChatwootControlPrincipal, id: string, conversationId: number, messageId: number) {
+      return tx(p.organizationId, async t => {
+        await mapping(t,p,id,'chatwoot:read');
+        return readCampaignReceipt(t,p,id,conversationId,messageId);
+      });
+    },
     async pairOperation(p: ChatwootControlPrincipal, id: string, operationId: string): Promise<PairOperation> {
       const { progress, instanceId, currentConnect } = await tx(p.organizationId, async t => {
         const c = await pairOperationMapping(t, p, id);

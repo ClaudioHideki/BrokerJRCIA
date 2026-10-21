@@ -175,6 +175,8 @@ const EXPECTED_OPERATIONS = [
   'POST /v1/embed/authorizations', 'GET /v1/embed/authorizations/{id}',
   'POST /v1/embed/authorizations/{id}/approve', 'POST /v1/embed/authorizations/{id}/deny', 'POST /v1/embed/authorizations/{id}/exchange',
   'GET /v1/embed/connections/{id}/status', 'POST /v1/embed/connections/{id}/pair',
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/campaign-transport',
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{conversationId}/campaign-messages/{messageId}',
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/status',
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/pair-operations/{operationId}',
   'POST /v1/integrations/chatwoot/control/connections/{integrationId}/pair',

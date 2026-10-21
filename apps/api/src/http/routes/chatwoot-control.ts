@@ -14,6 +14,7 @@ import { InstanceServiceError } from '../../modules/instances/service.js';
 import { OperatorGrantViewSchema } from '@jrc/contracts';
 import { registerNicoTakeoverRoutes } from './nico-takeovers.js';
 import type { NicoTakeovers } from '../../modules/integrations/nico-takeover-types.js';
+import { CampaignTransportSchema, CampaignReceiptSchema } from '@jrc/contracts';
 
 export interface ChatwootControlRouteOptions extends AuthenticationOptions { service: ChatwootControlAuth; onboarding?: OnboardingService | undefined; facade?: ChatwootControlService | undefined; takeovers?: NicoTakeovers | undefined }
 export async function registerChatwootControlRoutes(app: FastifyInstance, options: ChatwootControlRouteOptions) {
@@ -50,6 +51,15 @@ export async function registerChatwootControlRoutes(app: FastifyInstance, option
   const facade = () => { if (!options.facade) throw new IntegrationError('CHATWOOT_CONTROL_NOT_CONFIGURED', 503); return options.facade; };
   const connectionParams = z.strictObject({ integrationId: z.uuid() });
   const integrationId = (req: FastifyRequest) => (req.params as { integrationId: string }).integrationId;
+  app.get('/v1/integrations/chatwoot/control/connections/:integrationId/campaign-transport', {
+    preHandler:read,schema:{querystring:empty,params:connectionParams,response:{200:CampaignTransportSchema}},
+  },async req=>facade().campaignTransport(await options.service.authorize(req.authentication!,'chatwoot:read',integrationId(req)),integrationId(req)));
+  app.get('/v1/integrations/chatwoot/control/connections/:integrationId/conversations/:conversationId/campaign-messages/:messageId', {
+    preHandler:read,schema:{querystring:empty,params:z.strictObject({integrationId:z.uuid(),conversationId:z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),messageId:z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER)}),response:{200:CampaignReceiptSchema}},
+  },async req=>{
+    const p=req.params as {integrationId:string;conversationId:number;messageId:number};
+    return facade().campaignReceipt(await options.service.authorize(req.authentication!,'chatwoot:read',p.integrationId),p.integrationId,p.conversationId,p.messageId);
+  });
   app.get('/v1/integrations/chatwoot/control/connections/:integrationId/status', {
     preHandler: read, schema: { querystring: empty, params: connectionParams, response: { 200: ConnectionHealthSchema } },
   }, async req => facade().status(await options.service.authorize(req.authentication!, 'chatwoot:read', integrationId(req)), integrationId(req)));

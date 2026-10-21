@@ -310,6 +310,14 @@ const ROUTE_POLICIES = Object.freeze({
     'apps/api/src/http/routes/chatwoot-embed.ts', 'OPAQUE_SHORT_SESSION_HASH_LOOKUP', 'SESSION_PAIR_GRANT_APPROVED_IDENTITY',
     true, 'IDEMPOTENCY_KEY_AND_SHARED_PAIR_WINDOW', 'TEMPORARY_PAIRING_ACTION_NO_STORE', 'RLS_CURRENT_SESSION_GRANT_BEFORE_DISPATCH_AFTER_RESPONSE',
   ),
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/campaign-transport': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
+    true, 'READ_ONLY', 'NO_STORE_METADATA_ONLY', 'RLS_CURRENT_ACCOUNT_DESTINATION_CONNECTION_IDENTITY_CALLBACK_OWNER',
+  ),
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{conversationId}/campaign-messages/{messageId}': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
+    true, 'READ_ONLY', 'NO_STORE_METADATA_ONLY', 'RLS_CURRENT_ACCOUNT_DESTINATION_CONNECTION_CONVERSATION_MESSAGE',
+  ),
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/status': policy(
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
     true, 'READ_ONLY_PROVIDER_STATUS', 'NONE', 'RLS_ACCOUNT_REVISION_CONNECTION_GRANT',

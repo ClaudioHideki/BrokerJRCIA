@@ -11,6 +11,7 @@ export * from './integrations/schemas.js';
 export * from './operator-reception.js';
 export * from './integrations/destinations.js';
 export * from './integrations/control.js';
+export * from './integrations/campaigns.js';
 export * from './integrations/embed.js';
 export * from './flows.js';
 export * from './channels-v1.js';

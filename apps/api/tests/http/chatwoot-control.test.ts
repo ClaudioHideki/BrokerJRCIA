@@ -6,6 +6,8 @@ import type { InstanceService } from '../../src/modules/instances/service.js';
 import type { ChatwootService } from '../../src/modules/integrations/chatwoot-service.js';
 import type { OnboardingService } from '../../src/modules/integrations/chatwoot-onboarding.js';
 import { InstanceServiceError } from '../../src/modules/instances/service.js';
+import type { ChatwootControlService } from '../../src/modules/integrations/chatwoot-control-service.js';
+import { IntegrationError } from '../../src/modules/integrations/integration-error.js';
 const org = '4f2491a2-6853-4ac2-a7ef-c997813a9182', keyId = '81555d45-b1a2-4a3f-ab95-c1459b0df0d0';
 const secret = 'synthetic-control-jwt-secret-at-least-32';
 const apps: ReturnType<typeof buildApp>[] = [];
@@ -22,14 +24,32 @@ function harness(enabled = true) {
   if (enabled) Object.assign(service, { resources });
   const list = vi.fn().mockResolvedValue({ data: [operation] });
   const instance = vi.fn();
+  const integrationId = 'bdb01a03-7616-4114-8340-3adc545010ab';
+  const campaignTransport = vi.fn().mockResolvedValue({ protocol:'chatwoot-campaigns/v1',integrationId,inboxId:9,instanceId:keyId,destinationRevision:1,identityRevision:2,numberSuffix:'0000',ready:true,reason:null });
+  const campaignReceipt = vi.fn().mockResolvedValue({ protocol:'chatwoot-campaigns/v1',integrationId,conversationId:18,messageId:21,status:'queued' });
   const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ async verifyPasswordOrDummy() { return false; } }),
-    chatwootControl: { jwtSecret: secret, authenticateApiKey, service, onboarding: { start, get, recover, list } as unknown as OnboardingService },
+    chatwootControl: { jwtSecret: secret, authenticateApiKey, service, facade:{campaignTransport,campaignReceipt} as unknown as ChatwootControlService, onboarding: { start, get, recover, list } as unknown as OnboardingService },
     integrations: { jwtSecret: secret, authenticateApiKey, resolveCurrentRole: async () => null, service: new Proxy({}, { get: () => instance }) as ChatwootService },
     instances: { jwtSecret: secret, authenticateApiKey, service: new Proxy({}, { get: () => instance }) as InstanceService } });
   apps.push(app);
-  return { app, context, instance, authorize, start, get, recover, operation, resources, list, headers: { 'x-jrc-api-key': 'synthetic-control' } };
+  return { app, context, instance, authorize, start, get, recover, operation, resources, list, campaignTransport,campaignReceipt,integrationId, headers: { 'x-jrc-api-key': 'synthetic-control' } };
 }
 afterEach(async () => { await Promise.all(apps.splice(0).map(a => a.close())); });
+it('offers only scoped read access to transport capability and actual receipts',async()=>{
+  const h=harness(), base=`/v1/integrations/chatwoot/control/connections/${h.integrationId}`;
+  const url=`${base}/campaign-transport`;
+  expect((await h.app.inject({method:'GET',url})).statusCode).toBe(401);
+  expect((await h.app.inject({method:'GET',url,headers:h.headers})).json()).toMatchObject({ready:true,protocol:'chatwoot-campaigns/v1'});
+  const receipt=await h.app.inject({method:'GET',url:`${base}/conversations/18/campaign-messages/21`,headers:h.headers});
+  expect(receipt.statusCode).toBe(200);expect(receipt.json().status).toBe('queued');
+  expect(receipt.headers['cache-control']).toBe('no-store');
+  expect(h.authorize).toHaveBeenLastCalledWith(expect.anything(),'chatwoot:read',h.integrationId);
+  expect(h.campaignReceipt).toHaveBeenCalledWith(expect.anything(),h.integrationId,18,21);
+  expect((await h.app.inject({method:'GET',url:`${base}/conversations/0/campaign-messages/21`,headers:h.headers})).statusCode).toBe(400);
+  h.authorize.mockRejectedValueOnce(new IntegrationError('CHATWOOT_CONTROL_FORBIDDEN',403));
+  expect((await h.app.inject({method:'GET',url,headers:h.headers})).statusCode).toBe(403);
+  expect(h.campaignTransport).toHaveBeenCalledTimes(1);
+});
 it('offers native onboarding resource selection and operation recovery through the restricted facade', async () => {
   const h = harness();
   const resources = await h.app.inject({ method: 'GET', url: '/v1/integrations/chatwoot/control/resources', headers: h.headers });
