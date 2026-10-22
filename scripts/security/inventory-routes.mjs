@@ -4,6 +4,50 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/campaign-transport': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts','BOUND_CHATWOOT_CONTROL_KEY_OR_CURRENT_MEMBERSHIP','CHATWOOT_READ',true,
+    'READ_ONLY_CURRENT_TRANSPORT_IDENTITY_AND_DESTINATION_REVISIONS','NO_STORE_METADATA_ONLY','RLS_AUTHENTICATED_TENANT_ACCOUNT_INBOX_BINDING_CURRENT_CREDENTIAL_AND_CONNECTION'),
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts','BOUND_CHATWOOT_CONTROL_KEY','CHATWOOT_MANAGE_CANONICAL_EXTERNAL_ACTOR',true,
+    'DURABLE_KEY_CANONICAL_MESSAGE_ACTOR_CONTENT_ATTACHMENT_REVISION_FINGERPRINT','NO_STORE_METADATA_ONLY','RLS_AUTHENTICATED_TENANT_ACCOUNT_INBOX_CANONICAL_MESSAGE_CURRENT_REVISIONS_AND_AUTHORITY_AT_DISPATCH'),
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{conversationId}/campaign-messages/{messageId}': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts','BOUND_CHATWOOT_CONTROL_KEY_OR_CURRENT_MEMBERSHIP','CHATWOOT_READ',true,
+    'READ_ONLY_SCOPED_CANONICAL_RECEIPT_AGGREGATION','NO_STORE_METADATA_ONLY','RLS_AUTHENTICATED_TENANT_ACCOUNT_INBOX_DESTINATION_CONVERSATION_AND_MESSAGE'),
+  'POST /v1/messaging/channels/{id}/partner-text': policy(
+    'apps/api/src/http/routes/messaging.ts', 'CURRENT_ORGANIZATION_API_KEY', 'MESSAGING_SEND_SCOPE', true,
+    'TENANT_CHANNEL_KEY_BODY_HASH_AND_AUTHORIZING_API_KEY', 'NO_STORE_MESSAGE_CONTENT',
+    'RLS_AUTHENTICATED_TENANT_ACTIVE_QR_BROKER_CHANNEL_CONVERSATION_CONTACT_POLICY_KEY_RECHECK_BEFORE_DISPATCH',
+  ),
+  'POST /v1/messaging/instances/{id}/partner-activate': policy(
+    'apps/api/src/http/routes/integrations.ts', 'CURRENT_ORGANIZATION_API_KEY', 'INSTANCES_WRITE_AND_MESSAGING_SEND_SCOPES', true,
+    'HEADER_REQUIRED_CANONICAL_TENANT_INSTANCE_CHANNEL_REUSE', 'NO_STORE_METADATA_ONLY',
+    'RLS_AUTHENTICATED_TENANT_ACTIVE_ORGANIZATION_INSTANCE_CANONICAL_QR_CHANNEL_BEFORE_PROVIDER_WEBHOOK_CONFIGURATION',
+  ),
+  'GET /v1/partner-webhooks': policy(
+    'apps/api/src/http/routes/partner-webhooks.ts', 'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY', 'OWNER_ADMIN_OR_WEBHOOKS_MANAGE_SCOPE', true,
+    'READ_ONLY', 'NO_STORE_ENDPOINT_METADATA_NO_SIGNING_SECRET',
+    'RLS_AUTHENTICATED_TENANT_ACTIVE_ORGANIZATION_ENDPOINT_METADATA_ONLY',
+  ),
+  'POST /v1/partner-webhooks': policy(
+    'apps/api/src/http/routes/partner-webhooks.ts', 'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY', 'OWNER_ADMIN_OR_WEBHOOKS_MANAGE_SCOPE', true,
+    'TENANT_HASHED_KEY_NORMALIZED_URL_EXACT_REPLAY', 'NO_STORE_ENCRYPTED_SIGNING_SECRET_EXACT_AUTHORIZED_REPLAY_ONLY',
+    'RLS_AUTHENTICATED_TENANT_ACTIVE_ORGANIZATION_HTTPS_ENDPOINT_DISTINCT_ENCRYPTED_SECRET_PUBLIC_DNS_PINNING_AT_DISPATCH',
+  ),
+  'DELETE /v1/partner-webhooks/{id}': policy(
+    'apps/api/src/http/routes/partner-webhooks.ts', 'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY', 'OWNER_ADMIN_OR_WEBHOOKS_MANAGE_SCOPE', true,
+    'REVOCATION_ONLY_CANCEL_PENDING_AND_LEASED_DELIVERIES', 'NO_STORE_METADATA_ONLY',
+    'RLS_AUTHENTICATED_TENANT_ACTIVE_ORGANIZATION_ENDPOINT_SECRET_ERASURE_AND_DELIVERY_CANCELLATION',
+  ),
+  'GET /v1/partner-events': policy(
+    'apps/api/src/http/routes/partner-webhooks.ts', 'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY', 'OWNER_ADMIN_OR_WEBHOOKS_MANAGE_SCOPE', true,
+    'READ_ONLY_COMMIT_ORDERED_CURSOR_RETENTION_WATERMARK', 'NO_STORE_EVENT_CONTENT',
+    'RLS_AUTHENTICATED_TENANT_ACTIVE_ORGANIZATION_IMMUTABLE_EVENT_PAYLOAD_BOUNDED_PUBLICATION_RETENTION_CURSOR_GAP',
+  ),
+  'GET /v1/partner-webhook-deliveries': policy(
+    'apps/api/src/http/routes/partner-webhooks.ts', 'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY', 'OWNER_ADMIN_OR_WEBHOOKS_MANAGE_SCOPE', true,
+    'READ_ONLY_BOUNDED_DIAGNOSTICS', 'NO_STORE_METADATA_ONLY',
+    'RLS_AUTHENTICATED_TENANT_ACTIVE_ORGANIZATION_DELIVERY_STATUS_NO_REMOTE_RESPONSE_BODY_OR_SECRET',
+  ),
   'GET /v1/automations/{id}/resource-channels': policy('apps/api/src/http/routes/automations.ts',
     'JWT_CURRENT_MEMBERSHIP', 'CURRENT_MEMBER', true, 'READ_ONLY_ROOT_BOUND_CURSOR', 'NO_STORE_METADATA_ONLY',
     'RLS_CURRENT_ORGANIZATION_AUTHORIZED_ROOT_CHANNEL_METADATA'),
@@ -442,12 +486,12 @@ const ROUTE_POLICIES = Object.freeze({
   ),
   "GET /v1/messaging/media/{id}": policy(
     "apps/api/src/http/routes/messaging.ts",
-    "JWT_WITH_ACTIVE_MEMBERSHIP",
-    "OWNER_ADMIN_OPERATOR_VIEWER",
+    "JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY",
+    "CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE",
     true,
     "NOT_APPLICABLE",
     "NONE",
-    "RLS_ORGANIZATION_ENCRYPTED_MEDIA_ATTACHMENT_ONLY",
+    "RLS_ORGANIZATION_ENCRYPTED_MEDIA_ATTACHMENT_ONLY_RECHECK_AFTER_PRIVATE_MEDIA_READ",
   ),
   "POST /v1/messaging/messages/{id}/retry": policy(
     "apps/api/src/http/routes/messaging.ts",
@@ -461,7 +505,7 @@ const ROUTE_POLICIES = Object.freeze({
   ...Object.fromEntries([
     'GET /v1/messaging/conversations/{id}/qr-outbound-observations',
     'GET /v1/messaging/conversations/{id}/qr-dispatch-attempts',
-  ].map(route=>[route,policy('apps/api/src/http/routes/messaging.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR_VIEWER',true,
+  ].map(route=>[route,policy('apps/api/src/http/routes/messaging.ts','JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY','CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE',true,
     'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ORGANIZATION_CONVERSATION_METADATA_ONLY')])),
   'POST /v1/messaging/qr-outbound-observations/{id}/abandon': policy('apps/api/src/http/routes/messaging.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
     'EXPECTED_REVISION_CHANNEL_LOCK_TRANSACTIONAL_AUDIT_NO_REPLAY','NO_STORE_METADATA_ONLY',
@@ -913,8 +957,8 @@ const ROUTE_POLICIES = Object.freeze({
   ),
   "GET /v1/messaging/channels": policy(
     "apps/api/src/http/routes/messaging.ts",
-    "JWT_WITH_ACTIVE_MEMBERSHIP",
-    "OWNER_ADMIN_OPERATOR_VIEWER",
+    "JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY",
+    "CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE",
     true,
     "NOT_APPLICABLE",
     "NONE",
@@ -922,8 +966,8 @@ const ROUTE_POLICIES = Object.freeze({
   ),
   "GET /v1/messaging/channels/{id}/templates": policy(
     "apps/api/src/http/routes/messaging.ts",
-    "JWT_WITH_ACTIVE_MEMBERSHIP",
-    "OWNER_ADMIN_OPERATOR_VIEWER",
+    "JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY",
+    "CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE",
     true,
     "NOT_APPLICABLE",
     "NONE",
@@ -931,8 +975,8 @@ const ROUTE_POLICIES = Object.freeze({
   ),
   "GET /v1/messaging/channels/{id}/templates/{templateId}/status": policy(
     "apps/api/src/http/routes/messaging.ts",
-    "JWT_WITH_ACTIVE_MEMBERSHIP",
-    "OWNER_ADMIN_OPERATOR_VIEWER",
+    "JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY",
+    "CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE",
     true,
     "READ_ONLY_META_STATUS",
     "NONE",
@@ -949,8 +993,8 @@ const ROUTE_POLICIES = Object.freeze({
   ),
   "GET /v1/messaging/channels/{id}/conversations": policy(
     "apps/api/src/http/routes/messaging.ts",
-    "JWT_WITH_ACTIVE_MEMBERSHIP",
-    "OWNER_ADMIN_OPERATOR_VIEWER",
+    "JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY",
+    "CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE",
     true,
     "NOT_APPLICABLE",
     "NONE",
@@ -958,8 +1002,8 @@ const ROUTE_POLICIES = Object.freeze({
   ),
   "GET /v1/messaging/conversations/{id}/messages": policy(
     "apps/api/src/http/routes/messaging.ts",
-    "JWT_WITH_ACTIVE_MEMBERSHIP",
-    "OWNER_ADMIN_OPERATOR_VIEWER",
+    "JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY",
+    "CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE",
     true,
     "NOT_APPLICABLE",
     "NONE",
@@ -967,8 +1011,8 @@ const ROUTE_POLICIES = Object.freeze({
   ),
   "GET /v1/messaging/conversations/{id}": policy(
     "apps/api/src/http/routes/messaging.ts",
-    "JWT_WITH_ACTIVE_MEMBERSHIP",
-    "OWNER_ADMIN_OPERATOR_VIEWER",
+    "JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY",
+    "CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE",
     true,
     "NOT_APPLICABLE",
     "NONE",

@@ -235,3 +235,9 @@ describe('serviço de API keys', () => {
     })]);
   });
 });
+
+it('enforces current partner delegation authority inside the issuance transaction',async()=>{
+ const h=createHarness();
+ await expect(h.service.issueApiKey({organizationId:ORGANIZATION_A,credentialKind:'API_KEY',actorId:null,apiKeyId:USER_ID,requestId:REQUEST_ID},{name:'Synthetic delegated partner',scopes:['messaging:send'],expiresAt:null})).rejects.toMatchObject({code:'PARTNER_SCOPE_DELEGATION_FORBIDDEN'});
+ expect(h.inserted).toEqual([]);
+});

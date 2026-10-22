@@ -4,6 +4,11 @@ export const SendTextRequestSchema = z.strictObject({
   text: z.string().trim().min(1).max(4096),
 });
 export type SendTextRequest = z.infer<typeof SendTextRequestSchema>;
+export const PartnerTextRequestSchema = z.union([
+  z.strictObject({ conversationId: z.uuid(), text: z.string().trim().min(1).max(4096) }),
+  z.strictObject({ phoneNumber: z.string().regex(/^\+[1-9]\d{7,14}$/), text: z.string().trim().min(1).max(4096) }),
+]);
+export type PartnerTextRequest = z.infer<typeof PartnerTextRequestSchema>;
 
 export const QrOutboundObservationViewSchema = z.strictObject({
   id:z.uuid(),revision:z.number().int().positive(),blocking:z.boolean(),
@@ -41,6 +46,7 @@ export const ConversationModeRequestSchema = z.strictObject({
   mode: z.enum(["BOT", "HUMAN"]),
 });
 export const MessagingChannelViewSchema = z.object({
+  instanceId: z.uuid().nullable().optional(),
   ownerRevision: z.number().int().nonnegative(),
   id: z.uuid(),
   provider: z.enum(["META", "BAILEYS"]),

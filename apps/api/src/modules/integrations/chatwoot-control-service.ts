@@ -1,3 +1,4 @@
+import {createChatwootCampaignService} from './chatwoot-campaign-service.js';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { ControlIdempotencyKeySchema, ControlAgentIdsSchema, type ChatwootControlScope, type ConnectionHealth, type PairOperation, type InstanceStatus } from '@jrc/contracts';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
@@ -71,6 +72,7 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
     return c;
   }
   return {
+    ...createChatwootCampaignService(options),
     async pairOperation(p: ChatwootControlPrincipal, id: string, operationId: string): Promise<PairOperation> {
       const { progress, instanceId, currentConnect } = await tx(p.organizationId, async t => {
         const c = await pairOperationMapping(t, p, id);

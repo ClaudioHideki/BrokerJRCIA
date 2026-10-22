@@ -17,6 +17,8 @@ COPY apps/web/tsconfig.json apps/web/vite.config.ts apps/web/index.html apps/web
 COPY infra/web/frame-policy.mjs infra/web/frame-policy.d.mts infra/web/
 COPY apps/web/src apps/web/src
 COPY apps/web/public apps/web/public
+COPY scripts/docs scripts/docs
+COPY docs/api/openapi.json docs/api/openapi.json
 COPY packages/contracts/tsconfig.json packages/contracts/tsconfig.json
 COPY packages/contracts/src packages/contracts/src
 COPY packages/providers/tsconfig.json packages/providers/tsconfig.json

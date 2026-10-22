@@ -14,9 +14,10 @@ async function harness(role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' = 'OWNER'
   let mutations = 0;
   let currentRole: typeof role | null = role;
   const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ async verifyPasswordOrDummy() { return false; } }), messaging: {
-    jwtSecret: secret, async authenticateApiKey(raw) { return raw === 'existing-instance-key' ? { apiKeyId: channel, organizationId: org, scopes: ['instances:read', 'instances:connect'] } : null; },
+    jwtSecret: secret, async authenticateApiKey(raw) { if (raw.startsWith('partner-')) return {apiKeyId:channel,organizationId:org,scopes:raw==='partner-read'?['messaging:read']:raw==='partner-send'?['messaging:send']:['messaging:read','messaging:send']}; return raw === 'existing-instance-key' ? { apiKeyId: channel, organizationId: org, scopes: ['instances:read', 'instances:connect'] } : null; },
     async resolveCurrentRole() { return currentRole; },
     service: {
+      async sendPartnerText(organizationId,channelId,input,_key,apiKeyId){ organizations.push(organizationId);mutations++;if(apiKeyId!==channel)throw new Error('key not propagated');return {id:channelId,conversationId:channel,direction:'OUTGOING' as const,state:'ACCEPTED' as const,text:input.text};},
       ...{async getConversation(organizationId:string,conversationId:string){organizations.push(organizationId);return {id:conversationId,channelId:channel,contactId:channel,mode:'HUMAN' as const,privateField:'must-not-leak'};}},
       async listChannels(organizationId: string) { organizations.push(organizationId); return { data: [{ id: channel, provider: 'META' as const, ownerRevision: 0, botPublicId: null, credentialReference: 'must-not-leak' }] }; },
       async listTemplates() { return { data: [] }; }, async listConversations() { return { data: [] }; }, async listMessages() { return { data: [] }; },
@@ -85,6 +86,13 @@ it('entrega anexo somente após autenticação, sem cache ou execução no naveg
  expect((await h.app.inject({url})).statusCode).toBe(401);
  const response=await h.app.inject({url,headers:h.headers});expect(response.statusCode).toBe(200);expect(response.rawPayload).toEqual(Buffer.from([1,2]));
  expect(response.headers['cache-control']).toBe('no-store');expect(response.headers['content-disposition']).toContain('attachment');expect(h.organizations).toEqual([org]);
+});
+it('permite baixar mídia privada com messaging:read, sem conceder acesso à chave apenas de instância',async()=>{
+ const h=await harness();const url=`/v1/messaging/media/${channel}`;
+ const result=await h.app.inject({url,headers:{'x-jrc-api-key':'partner-read'}});
+ expect(result.statusCode).toBe(200);expect(result.rawPayload).toEqual(Buffer.from([1,2]));
+ expect(result.headers['cache-control']).toBe('no-store');expect(result.headers['content-disposition']).toContain('attachment');
+ expect((await h.app.inject({url,headers:{'x-jrc-api-key':'existing-instance-key'}})).statusCode).toBe(403);
 });
 
 it('não entrega bytes se a membership for removida durante a leitura de mídia',async()=>{
@@ -250,4 +258,28 @@ describe('API JRC de mensageria', () => {
     expect(response.json().state).toBe('ACCEPTED');
     expect(h.mutations()).toBe(1);
   });
+});
+
+
+it('admits only explicit messaging read scope without granting control writes',async()=>{
+ const h=await harness();const headers={'x-jrc-api-key':'partner-read'};
+ for(const url of ['/v1/messaging/channels',`/v1/messaging/channels/${channel}/conversations`,`/v1/messaging/conversations/${channel}/messages`]){
+  expect((await h.app.inject({url,headers})).statusCode).toBe(200);
+  expect((await h.app.inject({url,headers:{'x-jrc-api-key':'partner-send'}})).statusCode).toBe(403);
+ }
+ expect((await h.app.inject({method:'PATCH',url:`/v1/messaging/conversations/${channel}/mode`,headers,payload:{mode:'HUMAN'}})).statusCode).toBe(403);
+ expect((await h.app.inject({method:'POST',url:`/v1/messaging/channels/${channel}/templates`,headers:{...headers,'idempotency-key':'test-template'},payload:{name:'notice',language:'en_US',category:'UTILITY',body:'Synthetic notice'}})).statusCode).toBe(403);
+ expect(h.mutations()).toBe(0);
+});
+it('partner text authenticates tenant and key, requires send scope, strict E164 and idempotency',async()=>{
+ const h=await harness();const url=`/v1/messaging/channels/${channel}/partner-text`;
+ const headers={'x-jrc-api-key':'partner-send','idempotency-key':'partner-123'};
+ const payload={phoneNumber:'+12025550123',text:'Synthetic greeting'};
+ const response=await h.app.inject({method:'POST',url,headers,payload});
+ expect(response.statusCode).toBe(202);expect(response.json()).toMatchObject({conversationId:channel,state:'ACCEPTED'});
+ expect(h.organizations).toEqual([org]);
+ for(const raw of ['existing-instance-key','partner-read'])expect((await h.app.inject({method:'POST',url,headers:{...headers,'x-jrc-api-key':raw},payload})).statusCode).toBe(403);
+ expect((await h.app.inject({method:'POST',url,headers:{'x-jrc-api-key':'partner-send'},payload})).statusCode).toBe(400);
+ for(const invalid of [{...payload,organizationId:org},{...payload,conversationId:channel},{...payload,phoneNumber:'12025550123'}])expect((await h.app.inject({method:'POST',url,headers,payload:invalid})).statusCode).toBe(400);
+ expect(h.mutations()).toBe(1);
 });

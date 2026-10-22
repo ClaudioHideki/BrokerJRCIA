@@ -157,8 +157,9 @@ it('uses read-only startup options and fixed metadata queries without letting UR
   });
   expect(connectionOptions).toContain('default_transaction_read_only=on'); expect(connectionOptions).not.toContain('read_only=off');
   expect(connectionOptions).toContain('statement_timeout=3000');
-  expect(queries).toHaveLength(2); expect(queries[0]).toBe('SHOW server_version');
+  expect(queries).toHaveLength(3); expect(queries[0]).toBe('SHOW server_version');
   expect(queries[1]?.trimStart().startsWith('SELECT')).toBe(true);
+  expect(queries[2]).toBe('SELECT public.partner_event_catalogue_ready() AS ready');
   expect(result).toEqual({ reachable: true, compatible: true, version: '16.4' }); expect(closed).toBe(true);
   expect(JSON.stringify(result)).not.toContain('private-');
 });
@@ -179,14 +180,15 @@ it('does not create a database connection when DATABASE_URL is absent', async ()
   expect(result).toEqual({ reachable: false, compatible: null, code: 'DATABASE_URL_REQUIRED' }); expect(created).toBe(false);
 });
 
-it.each(['connect', 'version-query', 'schema-query', 'end'] as const)('captures Client error events during %s and never reports a compatible schema', async phase => {
+it.each(['connect', 'version-query', 'schema-query', 'catalogue-query', 'end'] as const)('captures Client error events during %s and never reports a compatible schema', async phase => {
   const { probeOperationalDatabase, runOperationalStatusCommand } = await subject();
   let escaped = false; let closed = false; let queryCount = 0;
   const client = Object.assign(new EventEmitter(), {
     connect: async () => { if (phase === 'connect') await emitFailure(); },
     query: async (sql: string) => {
       queryCount++;
-      if ((phase === 'version-query' && queryCount === 1) || (phase === 'schema-query' && queryCount === 2)) await emitFailure();
+      if ((phase === 'version-query' && queryCount === 1) || (phase === 'schema-query' && queryCount === 2)
+        || (phase === 'catalogue-query' && queryCount === 3)) await emitFailure();
       return { rows: sql === 'SHOW server_version' ? [{ server_version: '16.4' }] : [{ ready: true }] };
     },
     end: async () => { if (phase === 'end') await emitFailure(); closed = true; },
@@ -212,7 +214,7 @@ it.each(['connect', 'version-query', 'schema-query', 'end'] as const)('captures 
   expect(report.errors).toContain('08006'); expect(serialized).not.toContain('private-'); expect(stderr).toEqual([]);
 });
 
-it('sanitizes an unknown Client error emitted during closing even after both queries succeed', async () => {
+it('sanitizes an unknown Client error emitted during closing even after all metadata queries succeed', async () => {
   const { probeOperationalDatabase } = await subject(); let escaped = false;
   const client = Object.assign(new EventEmitter(), {
     connect: async () => {},

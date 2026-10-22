@@ -419,6 +419,7 @@ describe('migrations PostgreSQL', () => {
     expect(result.rows).toEqual([
       // 0034 (2) + 0039 (3) + 0042 (1) + 0044 (1) + 0045 (2).
       ...Array.from({length:9},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      {policyname:'campaign_tenant',roles:['jrc_app'],cmd:'ALL'},
       {policyname:'nico_takeover_tenant',roles:['jrc_app'],cmd:'ALL'},
       ...Array.from({length:3},()=>({policyname:'central_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'qr_tenant',roles:['jrc_app'],cmd:'ALL'})),
@@ -433,6 +434,8 @@ describe('migrations PostgreSQL', () => {
       ...Array.from({length:2},()=>({policyname:'group_central_tenant',roles:['jrc_app'],cmd:'ALL'})),
       // 0067: immutable source snapshot, durable job and page receipt; tenant policy on each.
       ...Array.from({length:3},()=>({policyname:'history_import_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      // 0070: partner endpoints, events, deliveries and cursor state remain tenant scoped.
+      ...Array.from({length:4},()=>({policyname:'partner_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...['evolution_engines_migrator','evolution_binding_migrator','evolution_io_migrator','evolution_backoff_migrator',
         'evolution_history_maintenance','evolution_cleanup_history_maintenance','evolution_cleanup_io_maintenance','evolution_io_history_maintenance']
         .map(policyname=>({policyname,roles:['jrc_migrator'],cmd:'ALL'})),

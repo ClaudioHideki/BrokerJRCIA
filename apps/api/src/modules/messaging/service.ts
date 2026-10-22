@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createPartnerTextSender } from './partner-text.js';
 import {
   ConfigureBotRequestSchema,
   CreateTextTemplateRequestSchema,
@@ -109,6 +110,7 @@ export function createMessagingService(
     return channel;
   }
   return {
+    sendPartnerText: createPartnerTextSender({ repository, transact }),
     listQrOutboundObservations:(org,conversation)=>transact(org,tx=>listQrOutboundObservations(tx,org,conversation)),
     listQrDispatchAttempts:(org,conversation)=>transact(org,tx=>listQrDispatchAttempts(tx,org,conversation)),
     abandonQrDispatchAttempt:(org,id,input,actorId)=>transact(org,async tx=>{
@@ -183,6 +185,7 @@ export function createMessagingService(
         data: channels.map((channel) => ({
           ownerRevision: channel.ownerRevision ?? 0,
           id: channel.id,
+          instanceId: channel.instanceId ?? null,
           provider: channel.provider ?? "META",
           botPublicId: channel.botPublicId,
         })),

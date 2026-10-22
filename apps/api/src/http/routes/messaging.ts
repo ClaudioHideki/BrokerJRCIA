@@ -22,6 +22,7 @@ import {
   QrDispatchAttemptViewSchema,QrDispatchAttemptsResponseSchema,AbandonQrDispatchAttemptRequestSchema,type QrDispatchAttemptView,type AbandonQrDispatchAttemptRequest,
   ConversationViewSchema,
   PROBLEM_CONTENT_TYPE,
+  ProblemDetailsSchema,
   type ConfigureBotRequest,
   type MessagingChannelView,
   type TemplateView,
@@ -38,9 +39,12 @@ import {
 } from "../plugins/authentication.js";
 import type { Role } from "../plugins/authorization.js";
 import { SendTextRequestSchema, type SendTextRequest } from "@jrc/contracts";
+import { PartnerTextRequestSchema, type PartnerTextRequest } from '@jrc/contracts';
 import { MediaError, safeMediaName, type BinaryMedia } from "@jrc/providers";
 
 export interface MessagingService {
+  sendPartnerText?(organizationId: string, channelId: string, input: PartnerTextRequest,
+    idempotencyKey: string, apiKeyId: string): Promise<MessageView & {conversationId:string}>;
   listQrOutboundObservations?(organizationId:string,conversationId:string):Promise<{data:QrOutboundObservationView[]}>;
   abandonQrOutboundObservation?(organizationId:string,id:string,input:AbandonQrOutboundObservationRequest,actorId:string):Promise<QrOutboundObservationView>;
   listQrDispatchAttempts?(organizationId:string,conversationId:string):Promise<{data:QrDispatchAttemptView[]}>;
@@ -118,6 +122,7 @@ function tenant(request: FastifyRequest) {
 function permission(write: boolean) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     const context = request.authentication;
+    if (!write && context?.kind === 'API_KEY' && context.scopes.includes('messaging:read')) return;
     // Existing instance API keys do not implicitly gain messaging privileges.
     if (context?.kind === "JWT" && (!write || context.role !== "VIEWER"))
       return;
@@ -132,6 +137,11 @@ function permission(write: boolean) {
         requestId: request.id,
       });
   };
+}
+async function partnerSenderPermission(request: FastifyRequest, reply: FastifyReply) {
+  const context = request.authentication;
+  if (context?.kind === 'API_KEY' && context.scopes.includes('messaging:send')) return;
+  return reply.code(403).type(PROBLEM_CONTENT_TYPE).send({type:'about:blank',title:'Forbidden',status:403,code:'FORBIDDEN',requestId:request.id});
 }
 async function automationAdministrator(
   request: FastifyRequest,
@@ -202,6 +212,7 @@ export async function registerMessagingRoutes(
     const safeCode = typeof candidate.code === "string" && [
       "META_CHANNEL_REQUIRED", "META_TEMPLATE_REJECTED", "META_TEMPLATE_SUBMISSION_UNKNOWN",
       "META_TEMPLATE_NAME_CONFLICT", "IDEMPOTENCY_CONFLICT",
+      "PARTNER_CREDENTIAL_REVOKED", "BROKER_CHANNEL_REQUIRED", "PARTNER_QR_CHANNEL_REQUIRED",
     ].includes(candidate.code) ? candidate.code : undefined;
     const code = safeCode ?? (status === 400
         ? "INVALID_REQUEST"
@@ -261,6 +272,20 @@ export async function registerMessagingRoutes(
     currentMembership,
     automationAdministrator,
   ];
+  api.post('/v1/messaging/channels/:id/partner-text', {
+    preHandler: [authenticateRequest(options), partnerSenderPermission],
+    schema: { params: idParams, querystring: emptyQuery, headers: IdempotencyHeadersSchema,
+      body: PartnerTextRequestSchema, response: {202: MessageViewSchema.extend({conversationId:z.uuid()}),
+        400:ProblemDetailsSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,404:ProblemDetailsSchema,
+        409:ProblemDetailsSchema,413:ProblemDetailsSchema,415:ProblemDetailsSchema,422:ProblemDetailsSchema,
+        429:ProblemDetailsSchema,500:ProblemDetailsSchema,503:ProblemDetailsSchema} },
+  }, async (request, reply) => {
+    const context = request.authentication;
+    if (context?.kind !== 'API_KEY') throw Object.assign(new Error('Forbidden'), {statusCode:403});
+    if (!options.service.sendPartnerText) throw Object.assign(new Error('Unavailable'), {status:503});
+    return reply.code(202).send(await options.service.sendPartnerText(context.organizationId,
+      request.params.id, request.body, request.headers['idempotency-key'], context.apiKeyId));
+  });
   api.get('/v1/messaging/conversations/:id/qr-outbound-observations',{
     preHandler:read,schema:{params:idParams,querystring:emptyQuery,response:{200:QrOutboundObservationsResponseSchema}},
   },request=>{

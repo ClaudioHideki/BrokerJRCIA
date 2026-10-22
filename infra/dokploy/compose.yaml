@@ -46,6 +46,8 @@ x-runtime: &runtime
   JWT_SECRET: ${JWT_SECRET:?required}
   REFRESH_TOKEN_HASH_SECRET: ${REFRESH_TOKEN_HASH_SECRET:?required}
   API_KEY_HMAC_SECRET: ${API_KEY_HMAC_SECRET:?required}
+  # Optional partner API. Same canonical base64 32-byte key on API and worker.
+  PARTNER_WEBHOOK_ENCRYPTION_KEY: ${PARTNER_WEBHOOK_ENCRYPTION_KEY:-}
   IP_RATE_LIMIT_HMAC_SECRET: ${IP_RATE_LIMIT_HMAC_SECRET:?required}
   IDENTITY_RATE_LIMIT_HMAC_SECRET: ${IDENTITY_RATE_LIMIT_HMAC_SECRET:?required}
   CHALLENGE_ENCRYPTION_KEY: ${CHALLENGE_ENCRYPTION_KEY:?required}
@@ -313,6 +315,30 @@ services:
     mem_limit: 512m
     cpus: 0.75
 
+
+  partner-events-worker:
+    image: ${JRC_API_IMAGE:?required}
+    profiles: [partner-api]
+    entrypoint: [node, apps/api/dist/commands/partner-events-worker.js, --watch]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://jrc_app:${JRC_APP_PASSWORD:?required}@postgres:5432/jrc_broker
+      PARTNER_WEBHOOK_ENCRYPTION_KEY: ${PARTNER_WEBHOOK_ENCRYPTION_KEY:-}
+      PARTNER_EVENTS_WORKER_INTERVAL_MS: ${PARTNER_EVENTS_WORKER_INTERVAL_MS:-1000}
+      PARTNER_EVENTS_WORKER_DB_POOL_MAX: ${PARTNER_EVENTS_WORKER_DB_POOL_MAX:-2}
+      PARTNER_EVENTS_WORKER_DB_POOL_CONNECT_TIMEOUT_MS: ${PARTNER_EVENTS_WORKER_DB_POOL_CONNECT_TIMEOUT_MS:-5000}
+      PARTNER_EVENTS_WORKER_DB_POOL_IDLE_TIMEOUT_MS: ${PARTNER_EVENTS_WORKER_DB_POOL_IDLE_TIMEOUT_MS:-10000}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [backend, egress]
+    read_only: true
+    tmpfs: ["/tmp:size=1m,uid=1000,gid=1000,mode=0700"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.25
 
   scheduler-worker:
     image: ${JRC_API_IMAGE:?required}

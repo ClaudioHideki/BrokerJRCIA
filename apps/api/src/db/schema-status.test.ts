@@ -9,10 +9,12 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('carrega o manifesto real até a migration 0069', async () => {
+  it('carrega o manifesto real até a migration 0072', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(69);
-    expect(migrations.at(-1)?.name).toBe('0069_meta_waba_ownership');
+    expect(migrations).toHaveLength(72);
+    expect(migrations.slice(-3).map(entry => entry.name)).toEqual([
+      '0070_partner_events', '0071_partner_messaging_authority', '0072_chatwoot_campaign_intents',
+    ]);
   });
 
   it('informa a versão aplicada e migrations pendentes sem expor hashes', () => {

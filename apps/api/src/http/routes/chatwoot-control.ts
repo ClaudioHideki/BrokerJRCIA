@@ -1,3 +1,4 @@
+import {CampaignIntentInputSchema,CampaignIntentResponseSchema,CampaignTransportSchema,CampaignReceiptSchema} from '../../modules/integrations/chatwoot-campaign-service.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { ControlResourcesSchema, OnboardingListSchema, ProblemDetailsSchema } from '@jrc/contracts';
@@ -22,9 +23,10 @@ export async function registerChatwootControlRoutes(app: FastifyInstance, option
   app.setErrorHandler((error, request, reply) => {
     const operational = tenantOperationalProblem(error, request.id);
     const known = error instanceof IntegrationError || error instanceof IdempotencyConflictError || error instanceof InstanceServiceError;
-    const candidate = error as { validation?: unknown; code?: string };
-    const status = operational?.status ?? (known ? error.status : candidate.validation || error instanceof z.ZodError ? 400 : candidate.code === '23505' ? 409 : error instanceof ChatwootError ? 502 : 503);
-    const code = operational?.code ?? (known || error instanceof ChatwootError ? error.code : status === 400 ? 'INVALID_REQUEST' : status === 409 ? 'CONTROL_RESOURCE_CONFLICT' : 'CONTROL_UNAVAILABLE');
+    const candidate = error as { validation?: unknown; code?: string; statusCode?: number };
+    const clientStatus=candidate.statusCode===400||candidate.statusCode===413||candidate.statusCode===415?candidate.statusCode:undefined;
+    const status = operational?.status ?? (known ? error.status : candidate.validation || error instanceof z.ZodError ? 400 : clientStatus ?? (candidate.code === '23505' ? 409 : error instanceof ChatwootError ? 502 : 503));
+    const code = operational?.code ?? (known || error instanceof ChatwootError ? error.code : clientStatus||status === 400 ? 'INVALID_REQUEST' : status === 409 ? 'CONTROL_RESOURCE_CONFLICT' : 'CONTROL_UNAVAILABLE');
     return reply.code(status).type(PROBLEM_CONTENT_TYPE).send({ type: 'about:blank', status, title: code, code, requestId: request.id });
   });
   const authentication = authenticateRequest(options);
@@ -50,6 +52,25 @@ export async function registerChatwootControlRoutes(app: FastifyInstance, option
   const facade = () => { if (!options.facade) throw new IntegrationError('CHATWOOT_CONTROL_NOT_CONFIGURED', 503); return options.facade; };
   const connectionParams = z.strictObject({ integrationId: z.uuid() });
   const integrationId = (req: FastifyRequest) => (req.params as { integrationId: string }).integrationId;
+  app.get('/v1/integrations/chatwoot/control/connections/:integrationId/campaign-transport', {
+    preHandler:read,schema:{querystring:empty,params:connectionParams,response:{200:CampaignTransportSchema}},
+  },async req=>facade().campaignTransport(await options.service.authorize(req.authentication!,'chatwoot:read',integrationId(req)),integrationId(req)));
+  app.post('/v1/integrations/chatwoot/control/connections/:integrationId/campaign-intents', {
+    preHandler:[...read,async req=>{
+      if(req.authentication?.kind!=='API_KEY'||!req.authentication.scopes.includes('chatwoot:manage'))throw new IntegrationError('CHATWOOT_CONTROL_FORBIDDEN',403);
+      z.string().regex(/^[1-9]\d{0,15}$/).parse(req.headers['x-jrc-external-actor']);
+    }],schema:{querystring:empty,params:connectionParams,headers:z.object({'idempotency-key':ControlIdempotencyKeySchema,'x-jrc-external-actor':z.string().regex(/^[1-9]\d{0,15}$/)}).passthrough(),body:CampaignIntentInputSchema,response:{200:CampaignIntentResponseSchema,201:CampaignIntentResponseSchema}},
+  },async(req,reply)=>{
+    const p=await options.service.authorize(req.authentication!,'chatwoot:manage',integrationId(req),attributedActor(req));
+    const result=await facade().reserveCampaignIntent(p,integrationId(req),CampaignIntentInputSchema.parse(req.body),String(req.headers['idempotency-key']));
+    return reply.code(result.replayed?200:201).send(result);
+  });
+  app.get('/v1/integrations/chatwoot/control/connections/:integrationId/conversations/:conversationId/campaign-messages/:messageId', {
+    preHandler:read,schema:{querystring:empty,params:z.strictObject({integrationId:z.uuid(),conversationId:z.coerce.number().int().positive(),messageId:z.coerce.number().int().positive()}),response:{200:CampaignReceiptSchema}},
+  },async req=>{
+    const p=req.params as {integrationId:string;conversationId:number;messageId:number};
+    return facade().campaignReceipt(await options.service.authorize(req.authentication!,'chatwoot:read',p.integrationId),p.integrationId,p.conversationId,p.messageId);
+  });
   app.get('/v1/integrations/chatwoot/control/connections/:integrationId/status', {
     preHandler: read, schema: { querystring: empty, params: connectionParams, response: { 200: ConnectionHealthSchema } },
   }, async req => facade().status(await options.service.authorize(req.authentication!, 'chatwoot:read', integrationId(req)), integrationId(req)));

@@ -29,7 +29,26 @@ services:
       CONSOLE_ALLOWED_ORIGINS: "${CONSOLE_ALLOWED_ORIGINS:?required}"
       CONSOLE_COOKIE_SECURE: "true"
       SWAGGER_UI_ENABLED: "false"
+      PARTNER_WEBHOOK_ENCRYPTION_KEY: "${PARTNER_WEBHOOK_ENCRYPTION_KEY:-}"
     networks: [broker, provider]
+
+  partner-events-worker:
+    # Development webhook worker only. Full QR/POC stack: infra/dokploy/compose.yaml.
+    image: jrc-whatsapp-broker:phase-1-increment-2
+    profiles: [partner-api]
+    restart: unless-stopped
+    entrypoint: [node, apps/api/dist/commands/partner-events-worker.js, --watch]
+    environment:
+      DATABASE_URL: "${DATABASE_URL:?required}"
+      PARTNER_WEBHOOK_ENCRYPTION_KEY: "${PARTNER_WEBHOOK_ENCRYPTION_KEY:-}"
+      PARTNER_EVENTS_WORKER_INTERVAL_MS: "${PARTNER_EVENTS_WORKER_INTERVAL_MS:-1000}"
+    depends_on:
+      api:
+        condition: service_started
+    networks: [broker]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
 
   postgres:
     image: postgres:16.4-alpine

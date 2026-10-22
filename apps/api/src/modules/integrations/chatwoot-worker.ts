@@ -21,6 +21,7 @@ import { beginChatwootMirrorAttempt,confirmChatwootMirrorAttempt,failChatwootMir
   type ChatwootObservationScope } from './chatwoot-attendance-store.js';
 import type { ChatwootAttendanceEvent } from './chatwoot-attendance-events.js';
 import {preparePhysicalConversationCycle} from './chatwoot-conversation-cycle.js';
+import {requireCampaignIntent,verifyCanonicalCampaignMessage} from './chatwoot-campaign-authority.js';
 
 interface Job {
   id: string;
@@ -40,6 +41,7 @@ interface ConversationMap {
 const replySchema = z
   .object({
     attendanceObservationId:z.string().uuid().optional(),
+    campaignIntentId:z.uuid().optional(),
     attendanceKind:z.enum(['HUMAN_PUBLIC','EXTERNAL_BOT','AUTOMATED_REPLY']).optional(),
     destinationRevision:z.number().int().positive().optional(),
     messageId: z.number().int().positive(),
@@ -174,12 +176,18 @@ export function createChatwootWorker(options: ChatwootOptions) {
         )
       ).rowCount,
     }));
+    let campaignCanonical:unknown;
+    if(data.campaignIntentId){
+      if(!binding.account||!binding.connection?.inbox_id)throw new IntegrationError('INTEGRATION_PAUSED',409);
+      await tx(job.organization_id,t=>requireCampaignIntent(t,job.organization_id,data.campaignIntentId!,job.integration_id,data.conversationId,data.messageId));
+      campaignCanonical=await env.client(binding.account).canonicalMessage(Number(binding.account.account_id),Number(binding.connection.inbox_id),data.conversationId,data.messageId);
+    }
     let remote:
       | Awaited<ReturnType<ReturnType<typeof env.client>["conversation"]>>
       | undefined;
     let remoteSource: string | undefined;
     let canonical:Awaited<ReturnType<ReturnType<typeof env.client>['attendanceConversation']>>|undefined;
-    if (!binding.mapped) {
+    if (!binding.mapped||data.campaignIntentId) {
       if (
         !binding.account ||
         !binding.connection?.inbox_id ||
@@ -211,7 +219,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
       )?.source_id;
       if (!remoteSource)
         throw new IntegrationError("CHATWOOT_CONVERSATION_NOT_BOUND");
-      if(data.attendanceObservationId)canonical=await client.attendanceConversation(Number(binding.account.account_id),data.conversationId);
+      if(data.attendanceObservationId&&!data.campaignIntentId)canonical=await client.attendanceConversation(Number(binding.account.account_id),data.conversationId);
     }
     await tx(job.organization_id, async (t) => {
       if(!binding.connection)throw new IntegrationError('INTEGRATION_PAUSED',409);
@@ -289,7 +297,23 @@ export function createChatwootWorker(options: ChatwootOptions) {
       }
       if (!map)
         throw new IntegrationError("CHATWOOT_CONVERSATION_NOT_BOUND", 409);
-      if(data.attendanceObservationId){
+      if(data.campaignIntentId){
+        const intent=await requireCampaignIntent(t,job.organization_id,data.campaignIntentId,job.integration_id,data.conversationId,data.messageId);
+        if(!remote||Number(intent.remote_contact_id)!==remote.meta.sender.id||intent.recipient_phone!==remote.meta.sender.phone_number||intent.recipient_source_id!==remoteSource)
+          throw new IntegrationError('CAMPAIGN_RECIPIENT_CHANGED',409);
+        const physical=await t.query(`SELECT 1 FROM messaging_conversations cv JOIN messaging_contacts contact ON contact.organization_id=cv.organization_id AND contact.id=cv.contact_id
+          JOIN chatwoot_conversations cm ON cm.organization_id=cv.organization_id AND cm.conversation_id=cv.id AND cm.integration_id=$3
+          WHERE cv.organization_id=$1 AND cv.id=$2 AND cm.remote_conversation_id=$4 AND cm.contact_id=$5 AND cm.source_id=$6 AND contact.external_id=$7`,
+          [job.organization_id,map.conversation_id,job.integration_id,data.conversationId,intent.remote_contact_id,intent.recipient_source_id,intent.recipient_phone.slice(1)]);
+        if(!physical.rowCount)throw new IntegrationError('CAMPAIGN_RECIPIENT_CHANGED',409);
+        const proof=verifyCanonicalCampaignMessage(intent,campaignCanonical,{conversationId:data.conversationId,messageId:data.messageId,inboxId:Number(connection.inbox_id)});
+        if(intent.text!==(data.content?.text??data.caption??'')||
+          (intent.kind==='text'?Boolean(data.attachments):!data.attachments||data.attachments.length!==1||data.attachments[0]!.kind!==intent.kind||data.attachments[0]!.id!==proof.attachmentIds[0]))
+          throw new IntegrationError('CAMPAIGN_MESSAGE_NOT_PROVEN',409);
+        const bound=await t.query(`UPDATE chatwoot_campaign_intents SET local_conversation_id=$3 WHERE organization_id=$1 AND id=$2
+          AND (local_conversation_id IS NULL OR local_conversation_id=$3) RETURNING id`,[job.organization_id,data.campaignIntentId,map.conversation_id]);
+        if(!bound.rowCount)throw new IntegrationError('CAMPAIGN_CONTEXT_CHANGED',409);
+      } else if(data.attendanceObservationId){
         if(!currentAccount?.destination||data.destinationRevision!==currentAccount.destination.revision)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
         const scope:ChatwootObservationScope={organizationId:job.organization_id,channelId:connection.channel_id,integrationId:job.integration_id,
           destinationRevision:currentAccount.destination.revision,credentialRevision:currentAccount.credential_version,accountId:Number(currentAccount.account_id),inboxId:Number(connection.inbox_id)};
@@ -348,6 +372,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
           conversationId: map.conversation_id,
           source: "OPERATOR",
           chatwootReplyProof:{jobId:job.id,leaseToken:job.lease_token},
+          ...(data.campaignIntentId?{campaignIntentId:data.campaignIntentId}:{}),
           content,
           idempotencyKey: data.content ? replyKey : `${replyKey}:${index}`,
           bodyHash: createHash("sha256")

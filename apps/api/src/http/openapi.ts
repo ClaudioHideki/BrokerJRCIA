@@ -51,6 +51,10 @@ function documentationOptions() {
     },
   ) as ProviderAccountService;
   return {
+    partnerWebhooks: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
+      service: new Proxy({}, {get() { return unavailable; }}) as import('../modules/partner-events/service.js').PartnerEventService,
+    },
     support: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
       service: new Proxy({}, {get(){return unavailable;}}) as import('../modules/support/service.js').SupportService,
@@ -338,6 +342,16 @@ function normalizeDocument(document: JsonObject): JsonObject {
       }
       if (path.startsWith("/v1/messaging/"))
         operation.security = [{ bearerAuth: [] }];
+      if (path.startsWith('/v1/messaging/') && method === 'get')
+        operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
+      if (['/v1/messaging/channels/{id}/partner-text','/v1/messaging/instances/{id}/partner-activate','/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents'].includes(path) && method === 'post')
+        operation.security = [{ jrcApiKeyAuth: [] }];
+      if (path === '/v1/messaging/media/{id}' && method === 'get') {
+        operation.responses = { ...((operation.responses ?? {}) as JsonObject),
+          '200': {description:'Bytes privados do anexo; MIME depende do arquivo. Não retorna JSON.',content:{'application/octet-stream':{schema:{type:'string',format:'binary'}}}} };
+      }
+      if (['/v1/partner-webhooks', '/v1/partner-events', '/v1/partner-webhook-deliveries'].some(prefix => path === prefix || path.startsWith(prefix + '/')))
+        operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
       if(path.startsWith('/v1/delegated-flows'))operation.security=[{flowSessionAuth:[]}];
       if (method === 'post' && /^\/v1\/(?:automations|delegated-flows)\/\{id\}\/channels\/\{channelId\}\/media$/.test(path)) {
         operation.description = 'Arquivo privado binário de 1 a 16 MiB, sujeito ao limite por MIME e à quota. Não é um grafo JSON nem uma URL pública. A mesma chave exige os mesmos bytes, raiz e caixa; autorização é revalidada durante o armazenamento.';
@@ -384,6 +398,8 @@ function normalizeDocument(document: JsonObject): JsonObject {
             : [{ bearerAuth: [] }];
       if (path.startsWith('/v1/integrations/chatwoot/control/'))
         operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
+      if (method === 'post' && path === '/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents')
+        operation.security = [{ jrcApiKeyAuth: [] }];
       if (path.startsWith('/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/'))
         operation.security = [{ jrcApiKeyAuth: [] }];
       if (

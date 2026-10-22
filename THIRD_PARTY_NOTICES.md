@@ -21,3 +21,10 @@ O gate de armazenamento de CI executa MinIO RELEASE.2025-09-07T16-13-09Z
 A origem e o hash do binário e o texto integral da licença estão preservados em
 `docs/legal/minio/STORAGE_TEST_FIXTURE.md` e `docs/legal/minio/LICENSE`.
 O binário é baixado em diretório temporário do gate e não integra a imagem JRC.
+# Swagger UI documentation portal
+
+The public API documentation includes Swagger UI 5.32.6, supplied by the pinned
+`@fastify/swagger-ui` dependency. Swagger UI is Copyright SmartBear Software and
+licensed under Apache-2.0. The upstream LICENSE, NOTICE and bundled dependency
+notices are preserved under `scripts/docs/vendor/` and served with the portal.
+No upstream API credentials, engine UI or proprietary source are included.

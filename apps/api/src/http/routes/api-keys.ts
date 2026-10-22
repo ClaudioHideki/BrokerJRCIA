@@ -22,7 +22,7 @@ import {
   type AuthenticatedApiKey,
 } from '../plugins/authentication.js';
 import { requirePermission } from '../plugins/authorization.js';
-import { ApiKeyServiceError, type ApiKeyActorContext } from '../../modules/api-keys/service.js';
+import { ApiKeyServiceError, requestedPartnerScopes, type ApiKeyActorContext } from '../../modules/api-keys/service.js';
 
 export interface ApiKeyRouteOptions {
   jwtSecret: string;
@@ -78,6 +78,11 @@ export async function registerApiKeyRoutes(
     const tenantProblem = tenantOperationalProblem(error, request.id);
     if (tenantProblem) return reply.code(tenantProblem.status).type(PROBLEM_CONTENT_TYPE).send(tenantProblem);
     const candidate = error as { validation?: unknown; statusCode?: unknown };
+    if (error instanceof ApiKeyServiceError && error.code === 'PARTNER_SCOPE_DELEGATION_FORBIDDEN') {
+      return reply.code(403).type(PROBLEM_CONTENT_TYPE).send(
+        problem(403, 'FORBIDDEN', 'Forbidden', request.id),
+      );
+    }
     if (error instanceof ApiKeyServiceError && error.code === 'CURSOR_NOT_FOUND') {
       return reply.code(404).type(PROBLEM_CONTENT_TYPE).send(
         problem(404, 'NOT_FOUND', 'Resource not found', request.id),
@@ -129,6 +134,13 @@ export async function registerApiKeyRoutes(
       },
     },
   }, async (request, reply) => {
+    const principal = request.authentication;
+    if (principal?.kind === 'API_KEY' && requestedPartnerScopes(request.body.scopes)
+      .some(scope => !principal.scopes.includes(scope))) {
+      return reply.code(403).type(PROBLEM_CONTENT_TYPE).send(
+        problem(403, 'FORBIDDEN', 'Forbidden', request.id),
+      );
+    }
     const created = await options.issueApiKey(actorContext(request), request.body);
     return reply.code(201).send(created);
   });

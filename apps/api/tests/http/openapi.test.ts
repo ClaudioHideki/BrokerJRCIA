@@ -10,6 +10,13 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/campaign-transport',
+  'POST /v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents',
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{conversationId}/campaign-messages/{messageId}',
+  'POST /v1/messaging/channels/{id}/partner-text',
+  'POST /v1/messaging/instances/{id}/partner-activate',
+  'GET /v1/partner-webhooks', 'POST /v1/partner-webhooks', 'DELETE /v1/partner-webhooks/{id}',
+  'GET /v1/partner-events', 'GET /v1/partner-webhook-deliveries',
   'GET /v1/channels/{id}/history-import/capability',
   'POST /v1/channels/{id}/history-import',
   'GET /v1/channels/{id}/history-import/by-request/{requestId}',

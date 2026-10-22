@@ -1,3 +1,4 @@
+import {requireCampaignIntent} from './chatwoot-campaign-authority.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
@@ -45,6 +46,10 @@ async function controlForRemote(tx:TenantTransaction,s:ChatwootObservationScope,
 }
 export async function mayForwardChatwootAttendanceReply(tx:TenantTransaction,s:ChatwootObservationScope,event:ChatwootAttendanceEvent) {
   if(!event.mayForwardReply)return false;
+  if(event.kind==='AUTOMATED_REPLY'&&event.campaignIntentId){
+    try{await requireCampaignIntent(tx,s.organizationId,event.campaignIntentId,s.integrationId,event.remoteConversationId,event.remoteMessageId,event.senderId);return true;}
+    catch(error){if(error instanceof IntegrationError)return false;throw error;}
+  }
   if(event.kind==='EXTERNAL_BOT'||event.kind==='AUTOMATED_REPLY'){
     const owner=(await tx.query<{executor:string;remote_binding_id:string|null;bot_id:string|null}>(`SELECT o.executor,o.remote_binding_id,b.bot_id
       FROM attendance_owners o LEFT JOIN flow_chatwoot_bindings b ON b.organization_id=o.organization_id AND b.id=o.remote_binding_id
@@ -63,7 +68,8 @@ async function queueReply(tx:TenantTransaction,s:ChatwootObservationScope,observ
   await tx.query(`INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,payload)
     VALUES($1,$2,'CHATWOOT_REPLY',$3,$4::jsonb) ON CONFLICT(organization_id,integration_id,dedupe_key) DO NOTHING`,
     [s.organizationId,s.integrationId,`reply:${s.destinationRevision}:${s.accountId}:${s.inboxId}:${observation.event.remoteMessageId}`,JSON.stringify({...observation.reply_payload,
-      attendanceObservationId:observation.id,attendanceKind:observation.event.kind,destinationRevision:s.destinationRevision})]);
+      attendanceObservationId:observation.id,attendanceKind:observation.event.kind,destinationRevision:s.destinationRevision,
+      ...('campaignIntentId' in observation.event&&observation.event.campaignIntentId?{campaignIntentId:observation.event.campaignIntentId}:{})})]);
   await tx.query('UPDATE chatwoot_attendance_observations SET reply_payload=null WHERE organization_id=$1 AND id=$2',[s.organizationId,observation.id]);
 }
 async function applyObservation(tx:TenantTransaction,s:ChatwootObservationScope,observation:Observation,control:Control) {
@@ -103,6 +109,10 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
   const transport=(await tx.query<{transport:string}>('SELECT transport FROM messaging_channels WHERE organization_id=$1 AND id=$2',[s.organizationId,s.channelId])).rows[0]?.transport;
   if(transport==='CENTRAL_TRANSPORT')event={...event,mayForwardReply:false};
   const original=record(raw);
+  // A campaign marker is never a human takeover instruction. Invalid or revoked
+  // intents remain observable but cannot pause the selected executor.
+  if(event.kind==='AUTOMATED_REPLY'&&(event.campaignIntentId||record(original.additional_attributes).jrc_campaign_broker===true)&&
+    !await mayForwardChatwootAttendanceReply(tx,s,event))event={...event,mayForwardReply:false,interruptsBot:false};
   const key=event.kind==='CONVERSATION_CONTROL'?`control:${event.remoteConversationId}:${createHash('sha256').update(JSON.stringify(event)).digest('hex')}`:`message:${event.remoteMessageId}`;
   const prior=(await tx.query<Observation>(`SELECT id,event,disposition,reply_payload,conversation_id,cycle FROM chatwoot_attendance_observations
     WHERE organization_id=$1 AND integration_id=$2 AND destination_revision=$3 AND account_id=$4 AND inbox_id=$5 AND event_key=$6`,[...scopeValues(s),key])).rows[0];
@@ -138,7 +148,8 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
       [s.organizationId,s.integrationId,event.remoteConversationId])).rows[0];
     if(map){await createControl(tx,s,map.conversation_id,event.remoteConversationId);control=await controlForRemote(tx,s,event.remoteConversationId);}
   }
-  const disposition:Disposition=candidate||effectCandidate&&!effectCandidate.confirmed?'ECHO_PENDING':event.kind==='BROKER_ECHO'||!event.interruptsBot&&event.kind!=='CONVERSATION_CONTROL'?'IGNORED':control?'APPLIED':'WAITING_MAP';
+  const selectedAutomation=(event.kind==='AUTOMATED_REPLY'||event.kind==='EXTERNAL_BOT')&&await mayForwardChatwootAttendanceReply(tx,s,event);
+  const disposition:Disposition=candidate||effectCandidate&&!effectCandidate.confirmed?'ECHO_PENDING':event.kind==='BROKER_ECHO'||!event.interruptsBot&&event.kind!=='CONVERSATION_CONTROL'&&!selectedAutomation?'IGNORED':control?'APPLIED':'WAITING_MAP';
   const observation=(await tx.query<Observation>(`INSERT INTO chatwoot_attendance_observations(organization_id,id,integration_id,channel_id,destination_revision,credential_revision,
     account_id,inbox_id,remote_conversation_id,event_key,event,disposition,mirror_attempt_id,reply_payload,conversation_id,cycle,effect_outbox_id)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id,event,disposition,reply_payload,conversation_id,cycle`,

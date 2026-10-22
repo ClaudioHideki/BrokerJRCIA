@@ -22,6 +22,7 @@ it('serves SPA routes, blocks traversal and proxies only API without forged forw
   expect((await fetch(origin+'/missing.js')).status).toBe(404);
   expect((await fetch(origin+'/v1/test', {headers: { 'x-forwarded-for': 'spoof', origin:'https://client.example' }})).status).toBe(200);
   expect(seen['x-forwarded-for']).toBeUndefined(); expect(seen.origin).toBe('https://client.example');
+  expect(await (await fetch(origin+'/ready')).json()).toEqual({ok:true});
 });
 
 it('serves only the restricted entry with an uncached per-app policy from the fixed API', async () => {

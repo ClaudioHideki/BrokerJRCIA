@@ -1,4 +1,7 @@
 import {registerFlowDelegationRoutes,type FlowDelegationRouteOptions} from './http/routes/flow-delegation.js';
+import {registerPartnerWebhookRoutes,type PartnerWebhookRouteOptions} from './http/routes/partner-webhooks.js';
+import {createPartnerEventService,PartnerEventError} from './modules/partner-events/service.js';
+import {createIntegrationSecrets} from './modules/integrations/secrets.js';
 import {registerNativeFlowRoutes,type NativeFlowRouteOptions} from './http/routes/flow-native.js';
 import {createFlowDelegationService} from './modules/flows/delegation/service.js';
 import {createFlowOriginApproval} from './modules/flows/delegation/origin-approval.js';
@@ -177,6 +180,7 @@ export interface BuildAppOptions {
   instanceWorkspace?: InstanceWorkspaceRouteOptions;
   whatsappGroups?: WhatsAppGroupsRouteOptions;
   messaging?: MessagingRouteOptions;
+  partnerWebhooks?: PartnerWebhookRouteOptions;
   flows?: FlowRouteOptions;
   automations?: AutomationRouteOptions;
   flowDelegation?:FlowDelegationRouteOptions;
@@ -282,6 +286,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   let instances = nodeEnv === "test" ? options.instances : undefined;
   let channels = nodeEnv === "test" ? options.channels : undefined;
   let messaging = nodeEnv === "test" ? options.messaging : undefined;
+  let partnerWebhooks = nodeEnv === 'test' ? options.partnerWebhooks : undefined;
   let flows = nodeEnv === "test" ? options.flows : undefined;
   let automations = nodeEnv === "test" ? options.automations : undefined;
   let flowDelegation=nodeEnv==="test"?options.flowDelegation:undefined;
@@ -414,6 +419,17 @@ export function buildApp(options: BuildAppOptions = {}) {
         issueApiKey: service.issueApiKey,
         listApiKeys: service.listApiKeys,
         revokeApiKey: service.revokeApiKey,
+      };
+    }
+    if (!partnerWebhooks) {
+      const encryptionKey = (options.environment ?? process.env).PARTNER_WEBHOOK_ENCRYPTION_KEY?.trim();
+      partnerWebhooks = {
+        jwtSecret: config.jwtSecret,
+        authenticateApiKey: apiKeys.authenticateApiKey,
+        service: encryptionKey ? createPartnerEventService({
+          transact: (org, work) => withOrganizationTransaction(pools.appPool, org, work),
+          secrets: createIntegrationSecrets(encryptionKey),
+        }) : new Proxy({}, { get() { return async () => { throw new PartnerEventError('PARTNER_EVENTS_NOT_CONFIGURED', 503); }; } }) as ReturnType<typeof createPartnerEventService>,
       };
     }
     if (!providerAccounts) {
@@ -993,6 +1009,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     void app.register(async (scope) =>
       registerTenantOperationsRoutes(scope, configured),
     );
+  }
+  if (partnerWebhooks) {
+    const configured = partnerWebhooks;
+    void app.register(scope => registerPartnerWebhookRoutes(scope, configured));
   }
   if (integrations) {
     const configured = integrations;

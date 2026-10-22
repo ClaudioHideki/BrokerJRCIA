@@ -68,6 +68,8 @@ export function isCustomerServiceWindowOpen(
 }
 
 export interface EnqueueOutgoingInput {
+  authorizingApiKeyId?: string;
+  campaignIntentId?: string;
   id: string;
   organizationId: string;
   channelId: string;
@@ -172,7 +174,7 @@ const QUALIFIED_MESSAGE_COLUMNS = `
 
 const CHANNEL_COLUMNS = `
   id, organization_id AS "organizationId", provider_account_id AS "providerAccountId",
-  provider, instance_id AS "instanceId",
+  provider, transport, instance_id AS "instanceId",
   phone_number_id AS "phoneNumberId", waba_id AS "wabaId",
   credential_reference AS "credentialReference", bot_public_id AS "botPublicId",
   bot_origin_reference AS "botOriginReference",
@@ -855,8 +857,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
            INSERT INTO messaging_messages
              (id, organization_id, channel_id, conversation_id, direction, source,
               content, state, idempotency_key, idempotency_body_hash,
-              requires_opt_in)
-           VALUES ($1, $2, $3, $4, 'OUTGOING', $5, $6::jsonb, 'ACCEPTED', $7, $8, $9)
+              requires_opt_in, authorizing_api_key_id, campaign_intent_id)
+           VALUES ($1, $2, $3, $4, 'OUTGOING', $5, $6::jsonb, 'ACCEPTED', $7, $8, $9, $10, $11)
            ON CONFLICT (organization_id, channel_id, idempotency_key)
              WHERE idempotency_key IS NOT NULL
            DO NOTHING
@@ -876,6 +878,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
           input.idempotencyKey,
           input.bodyHash,
           requireOptIn,
+          input.authorizingApiKeyId ?? null,
+          input.campaignIntentId ?? null,
         ],
       );
       const inserted = first(insertedResult);
@@ -1319,6 +1323,15 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                 (channel.provider <> 'BAILEYS' OR EXISTS(SELECT 1 FROM instances i WHERE i.organization_id=channel.organization_id AND i.id=channel.instance_id AND i.status='CONNECTED')) AS "qrChannelReady",
                 chatwoot_channel_identity_ready(channel.organization_id,channel.id) AS "identityReady",
                 flow_output_allowed(message.organization_id,message.id) AS "flowAllowed",
+                (message.authorizing_api_key_id IS NULL OR EXISTS (
+                  SELECT 1 FROM api_keys partner_key
+                   WHERE partner_key.organization_id=message.organization_id
+                     AND partner_key.id=message.authorizing_api_key_id
+                     AND partner_key.revoked_at IS NULL
+                     AND (partner_key.expires_at IS NULL OR partner_key.expires_at>now())
+                     AND partner_key.scopes @> ARRAY['messaging:send']::text[]
+                )) AS "partnerAuthorityAllowed",
+                (message.campaign_intent_id IS NULL OR campaign_intent_authorized(message.organization_id,message.campaign_intent_id,true)) AS "campaignAuthorityAllowed",
                 conversation.mode,
                 NOT EXISTS(SELECT 1 FROM qr_outbound_observations observation WHERE observation.organization_id=message.organization_id
                   AND observation.conversation_id=message.conversation_id AND observation.blocking) AS "qrObservationsSettled",
@@ -1355,7 +1368,11 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       if (!selected) return { eligible: false, reason: "INVALID_OUTBOX_CLAIM" };
       const claim = asClaim(selected);
       let reason: ClaimIneligibilityReason;
-      if ((selected as ClaimDatabaseRow & {qrObservationsSettled?:boolean}).qrObservationsSettled===false)
+      if ((selected as ClaimDatabaseRow & {campaignAuthorityAllowed?:boolean}).campaignAuthorityAllowed===false)
+        reason='CAMPAIGN_AUTHORITY_REVOKED';
+      else if ((selected as ClaimDatabaseRow & {partnerAuthorityAllowed?:boolean}).partnerAuthorityAllowed===false)
+        reason='PARTNER_CREDENTIAL_REVOKED';
+      else if ((selected as ClaimDatabaseRow & {qrObservationsSettled?:boolean}).qrObservationsSettled===false)
         reason='QR_OBSERVATION_RECONCILE_REQUIRED';
       else if (
         (selected as ClaimDatabaseRow & { qrChannelReady?: boolean })

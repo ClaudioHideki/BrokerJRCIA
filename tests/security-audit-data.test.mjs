@@ -106,7 +106,7 @@ describe('dados reproduzíveis da auditoria de segurança', () => {
       const path = `/v1/messaging/conversations/{id}/${resource}`;
       const route = inventory.find(item => item.method === 'GET' && item.path === path);
       expect(route).toMatchObject({
-        authentication: 'JWT_CURRENT_MEMBERSHIP', permission: 'OWNER_ADMIN_OPERATOR_VIEWER', tenantRls: true,
+        authentication: 'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY', permission: 'CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE', tenantRls: true,
         idempotency: 'READ_ONLY', challengeExposure: 'NO_STORE_METADATA_ONLY',
         ownershipCheck: 'RLS_CURRENT_ORGANIZATION_CONVERSATION_METADATA_ONLY',
         handlerFile: 'apps/api/src/http/routes/messaging.ts', requestSchemas: ['path:id'],
@@ -173,6 +173,12 @@ describe('dados reproduzíveis da auditoria de segurança', () => {
       if(key==='GET /v1/channels')return {...withoutLocation(route),requestSchemas:['query:cursor','query:includeArchived','query:pageSize']};
       if(key==='GET /v1/platform/organizations')return {...withoutLocation(route),requestSchemas:['query:cursor']};
       if(['PUT /v1/channels/{id}/automation','PUT /v1/channels/{id}/destination'].includes(key))return {...withoutLocation(route),permission:'OWNER_ADMIN'};
+      if(route.method==='GET'&&route.path.startsWith('/v1/messaging/'))return {...withoutLocation(route),
+        authentication:'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY',permission:'CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE',
+        ...(route.path==='/v1/messaging/media/{id}'?{
+          ownershipCheck:'RLS_ORGANIZATION_ENCRYPTED_MEDIA_ATTACHMENT_ONLY_RECHECK_AFTER_PRIVATE_MEDIA_READ',
+          responseSchemas:['200:application/octet-stream'],
+        }:{})};
       return withoutLocation(route);
     };
     expect(generated.filter(({ method, path }) => historicKeys.has(`${method} ${path}`)).map(withoutLocation))
@@ -205,19 +211,19 @@ describe('dados reproduzíveis da auditoria de segurança', () => {
     const routes = Object.fromEntries(inventory.map((route) => [`${route.method} ${route.path}`, route]));
 
     expect(routes['GET /v1/messaging/channels']).toMatchObject({
-      authentication: 'JWT_WITH_ACTIVE_MEMBERSHIP', permission: 'OWNER_ADMIN_OPERATOR_VIEWER',
+      authentication: 'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY', permission: 'CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE',
       tenantRls: true, idempotency: 'NOT_APPLICABLE', ownershipCheck: 'RLS_ORGANIZATION_FILTER',
     });
     expect(routes['GET /v1/messaging/channels/{id}/templates']).toMatchObject({
-      authentication: 'JWT_WITH_ACTIVE_MEMBERSHIP', permission: 'OWNER_ADMIN_OPERATOR_VIEWER',
+      authentication: 'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY', permission: 'CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE',
       tenantRls: true, ownershipCheck: 'RLS_ORGANIZATION_AND_CHANNEL_ID_BEFORE_META',
     });
     expect(routes['GET /v1/messaging/channels/{id}/conversations']).toMatchObject({
-      authentication: 'JWT_WITH_ACTIVE_MEMBERSHIP', permission: 'OWNER_ADMIN_OPERATOR_VIEWER',
+      authentication: 'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY', permission: 'CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE',
       tenantRls: true, ownershipCheck: 'RLS_ORGANIZATION_AND_CHANNEL_ID',
     });
     expect(routes['GET /v1/messaging/conversations/{id}/messages']).toMatchObject({
-      authentication: 'JWT_WITH_ACTIVE_MEMBERSHIP', permission: 'OWNER_ADMIN_OPERATOR_VIEWER',
+      authentication: 'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY', permission: 'CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE',
       tenantRls: true, ownershipCheck: 'RLS_ORGANIZATION_AND_CONVERSATION_ID',
     });
     expect(routes['POST /v1/messaging/channels/{id}/messages']).toMatchObject({

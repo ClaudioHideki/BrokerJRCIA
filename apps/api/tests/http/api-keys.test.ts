@@ -345,3 +345,26 @@ describe('rotas HTTP de API keys', () => {
     expect(chunks.join('')).not.toContain(RAW_API_KEY);
   });
 });
+
+it.each(['messaging:read','messaging:send','webhooks:manage'] as const)('does not let a legacy key manager delegate %s',async scope=>{
+ const h=createHarness();
+ try{
+  const response=await h.app.inject({method:'POST',url:'/v1/api-keys',headers:{'x-jrc-api-key':RAW_API_KEY},payload:{name:'Synthetic delegated key',scopes:[scope]}});
+  expect(response.statusCode).toBe(403);expect(h.calls).toEqual([]);
+ }finally{await h.app.close();}
+});
+it('allows a key manager to delegate exactly the partner scopes it possesses',async()=>{
+ const scopes=['messaging:read','messaging:send','webhooks:manage'] as const;
+ const h=createHarness({async authenticateApiKey(){return {organizationId:ORGANIZATION_ID,apiKeyId:API_KEY_ID,scopes:['api_keys:manage',...scopes]};}});
+ try{const response=await h.app.inject({method:'POST',url:'/v1/api-keys',headers:{'x-jrc-api-key':RAW_API_KEY},payload:{name:'Synthetic delegated key',scopes}});expect(response.statusCode).toBe(201);}finally{await h.app.close();}
+});
+it.each(['OWNER','ADMIN'] as const)('retains %s issuance of explicitly selected partner scopes',async role=>{
+ const h=createHarness();try{const response=await h.app.inject({method:'POST',url:'/v1/api-keys',headers:{authorization:`Bearer ${await jwt(role)}`},payload:{name:'Synthetic partner',scopes:['messaging:read','messaging:send','webhooks:manage']}});expect(response.statusCode).toBe(201);}finally{await h.app.close();}
+});
+
+it('preserves legacy instance-scope issuance by a legacy key manager',async()=>{
+ const h=createHarness();try{const response=await h.app.inject({method:'POST',url:'/v1/api-keys',headers:{'x-jrc-api-key':RAW_API_KEY},payload:{name:'Synthetic legacy instance key',scopes:['instances:read','instances:write']}});expect(response.statusCode).toBe(201);}finally{await h.app.close();}
+});
+it('does not turn a possessed read scope into a delegated send scope',async()=>{
+ const h=createHarness({async authenticateApiKey(){return {organizationId:ORGANIZATION_ID,apiKeyId:API_KEY_ID,scopes:['api_keys:manage','messaging:read']};}});try{const response=await h.app.inject({method:'POST',url:'/v1/api-keys',headers:{'x-jrc-api-key':RAW_API_KEY},payload:{name:'Synthetic refused send key',scopes:['messaging:read','messaging:send']}});expect(response.statusCode).toBe(403);expect(h.calls).toEqual([]);}finally{await h.app.close();}
+});

@@ -26,6 +26,7 @@ export type ChatwootAttendanceEvent = {
   remoteConversationId: number;
   remoteMessageId: number;
   senderId?: number;
+  campaignIntentId?: string;
   mayForwardReply: boolean;
   interruptsBot: boolean;
 } | {
@@ -82,7 +83,7 @@ export function classifyChatwootAttendanceEvent(raw: unknown, scope: ChatwootEve
     const message = messageSchema.parse(raw);
     requireScope(message.account.id, message.inbox.id, scope);
     requireScope(message.conversation.account?.id ?? message.account.id, message.conversation.inbox_id ?? message.inbox.id, scope);
-    const result = (kind: MessageKind, interruptsBot: boolean, mayForwardReply = false, senderId?: number): ChatwootAttendanceEvent => ({
+    const result = (kind: MessageKind, interruptsBot: boolean, mayForwardReply = false, senderId?: number): Extract<ChatwootAttendanceEvent,{remoteMessageId:number}> => ({
       kind, remoteConversationId: message.conversation.id, remoteMessageId: message.id,
       ...(senderId === undefined ? {} : { senderId }), mayForwardReply, interruptsBot,
     });
@@ -97,7 +98,9 @@ export function classifyChatwootAttendanceEvent(raw: unknown, scope: ChatwootEve
     if (sender.type !== 'user') return result('UNVERIFIED_REPLY', true);
     const attributes = record(message.additional_attributes), contentAttributes = record(message.content_attributes);
     if (contentAttributes.automation_rule_id != null || attributes.campaign_id != null) {
-      return result('AUTOMATED_REPLY', true, !message.private, senderId.data);
+      const classified=result('AUTOMATED_REPLY', attributes.jrc_campaign_broker!==true, !message.private, senderId.data);
+      const intent=z.uuid().safeParse(attributes.jrc_campaign_intent_id);
+      return intent.success?{...classified,campaignIntentId:intent.data}:classified;
     }
     return result(message.private ? 'HUMAN_PRIVATE' : 'HUMAN_PUBLIC', true, !message.private, senderId.data);
   }

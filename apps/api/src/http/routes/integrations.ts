@@ -9,7 +9,9 @@ import {
   IntegrationDeliverySummarySchema,
   ReconcileIntegrationJobSchema,
   MessagingChannelViewSchema,
+  IdempotencyHeadersSchema,
   PROBLEM_CONTENT_TYPE,
+  ProblemDetailsSchema,
   DestinationRequestSchema,
   ChatwootDestinationSchema,
   attendanceCatalogSchema,
@@ -113,6 +115,23 @@ export async function registerIntegrationRoutes(
   const read = [authenticateRequest(options), guard(false)],
     write = [authenticateRequest(options), guard(true)];
   const api = app.withTypeProvider<ZodTypeProvider>();
+  const partnerActivationGuard = async (request: FastifyRequest, reply: FastifyReply) => {
+    const principal = request.authentication;
+    if (principal?.kind === 'API_KEY' && ['instances:write','messaging:send'].every(scope => principal.scopes.includes(scope))) return;
+    return reply.code(403).type(PROBLEM_CONTENT_TYPE).send({type:'about:blank',title:'Forbidden',status:403,code:'FORBIDDEN',requestId:request.id});
+  };
+  api.post('/v1/messaging/instances/:id/partner-activate', {
+    preHandler: [authenticateRequest(options), partnerActivationGuard],
+    schema: {params, querystring:empty, body:empty, headers:IdempotencyHeadersSchema,
+      response:{200:MessagingChannelViewSchema,400:ProblemDetailsSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,
+        404:ProblemDetailsSchema,409:ProblemDetailsSchema,413:ProblemDetailsSchema,415:ProblemDetailsSchema,
+        422:ProblemDetailsSchema,429:ProblemDetailsSchema,500:ProblemDetailsSchema,502:ProblemDetailsSchema,503:ProblemDetailsSchema}},
+  }, async (request,reply) => {
+    reply.header('Cache-Control','no-store');
+    if (!options.qr) throw new IntegrationError('QR_NOT_CONFIGURED',503);
+    const channel = await options.qr.activate(org(request),request.params.id);
+    return {...channel,instanceId:request.params.id};
+  });
   api.get('/v1/integrations/chatwoot/connections/:id/attendance-catalog',{
     preHandler:write,schema:{params,querystring:empty,response:{200:attendanceCatalogSchema}},
   },async(request,reply)=>{

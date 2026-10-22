@@ -54,6 +54,7 @@ jobs:
       - name: Install PDF verification tools required by the unit suite
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends poppler-utils
       - run: npm run build
+      - run: npm run test:partner-qr
       - run: npm test -- --exclude tests/security-audit-artifacts.test.mjs
       - name: Verify PDF audit artifacts without competing test workers
         run: npm test -- tests/security-audit-artifacts.test.mjs --maxWorkers=1

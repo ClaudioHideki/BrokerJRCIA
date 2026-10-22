@@ -113,14 +113,18 @@ export interface ApiKeyServiceDependencies {
 }
 
 export class ApiKeyServiceError extends Error {
-  constructor(readonly code: 'INVALID_CURSOR' | 'CURSOR_NOT_FOUND' | 'INVALID_EXPIRATION') {
-    super(code === 'INVALID_CURSOR'
+  constructor(readonly code: 'INVALID_CURSOR' | 'CURSOR_NOT_FOUND' | 'INVALID_EXPIRATION' | 'PARTNER_SCOPE_DELEGATION_FORBIDDEN') {
+    super(code === 'PARTNER_SCOPE_DELEGATION_FORBIDDEN' ? 'Partner scope delegation forbidden' : code === 'INVALID_CURSOR'
       ? 'Invalid API key cursor'
       : code === 'CURSOR_NOT_FOUND'
         ? 'API key cursor not found'
         : 'Invalid API key expiration');
     this.name = 'ApiKeyServiceError';
   }
+}
+
+export function requestedPartnerScopes(scopes: readonly string[]): string[] {
+  return scopes.filter(scope => ['messaging:read','messaging:send','webhooks:manage'].includes(scope));
 }
 
 function view(row: ApiKeyRow): ApiKeyView {
@@ -206,6 +210,17 @@ export function createApiKeyService(dependencies: ApiKeyServiceDependencies): Ap
           const created = await dependencies.runInOrganizationTransaction(
             context.organizationId,
             async (transaction) => {
+              const partnerScopes = requestedPartnerScopes(input.scopes);
+              if (context.credentialKind === 'API_KEY' && partnerScopes.length) {
+                // Recheck the issuing key in the same transaction as insertion:
+                // authentication-time scopes alone can race revocation/downgrade.
+                const issuer = await transaction.query(`SELECT id FROM api_keys
+                  WHERE organization_id=$1 AND id=$2 AND revoked_at IS NULL
+                    AND (expires_at IS NULL OR expires_at>$3)
+                    AND scopes @> $4::text[] FOR SHARE`,
+                  [context.organizationId, context.apiKeyId, now(), ['api_keys:manage',...partnerScopes]]);
+                if (!issuer.rows.length) throw new ApiKeyServiceError('PARTNER_SCOPE_DELEGATION_FORBIDDEN');
+              }
               const row = await dependencies.repository.insert(transaction, {
                 organizationId: context.organizationId,
                 name: input.name,

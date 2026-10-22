@@ -18,6 +18,9 @@ import { useApiClient, useSession } from "../auth/SessionProvider.js";
 const scopeOptions: Array<{ value: ApiKeyScope; label: string }> = [
   { value: "instances:read", label: "Ler conexões" },
   { value: "instances:write", label: "Gerenciar conexões" },
+  { value: 'messaging:read', label: 'Ler mensagens' },
+  { value: 'messaging:send', label: 'Enviar mensagens pela API' },
+  { value: 'webhooks:manage', label: 'Gerenciar webhooks e eventos' },
   { value: "api_keys:manage", label: "Gerenciar chaves" },
 ];
 
@@ -38,6 +41,7 @@ export function ApiKeysPage() {
   const [items, setItems] = useState<ApiKey[]>([]);
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<ApiKeyScope[]>([]);
+  const [validDays, setValidDays] = useState('15');
   const [issued, setIssued] = useState<IssuedApiKey | null>(null);
   const [loading, setLoading] = useState(allowed);
   const [submitting, setSubmitting] = useState(false);
@@ -55,6 +59,7 @@ export function ApiKeysPage() {
     setItems([]);
     setName("");
     setScopes([]);
+    setValidDays('15');
     setNextCursor(null);
     setHasNextPage(false);
     setError(null);
@@ -138,7 +143,7 @@ export function ApiKeysPage() {
       const result = await issueApiKey(client, {
         name: name.trim(),
         scopes,
-        expiresAt: null,
+        expiresAt: validDays === '0' ? null : new Date(Date.now() + Number(validDays) * 86400000).toISOString(),
       });
       setIssued(result);
       setItems((current) => [
@@ -178,6 +183,7 @@ export function ApiKeysPage() {
         <div>
           <p className="eyebrow">Integrações JRC</p>
           <h1 id="api-keys-title">Chaves de API</h1>
+          <a href="/documentation/" target="_blank" rel="noopener noreferrer">Documentação e testes da API</a>
           <p>
             Emita credenciais limitadas para integrações da organização ativa.
           </p>
@@ -216,10 +222,15 @@ export function ApiKeysPage() {
           </p>
         </details>
         <p>
-          Os escopos atuais não habilitam envio de mensagens nem a integração
+          Os escopos de conexões, sozinhos, não habilitam envio de mensagens nem a integração
           com o JRC Conversa. Essa integração precisa de um conector próprio. A
           chave JRC também é diferente do token do Chatwoot e da autorização da
           Meta.
+        </p>
+        <p>
+          Para integrar seu sistema, combine as permissões necessárias de conexão,
+          leitura, envio e eventos. A chave identifica esta empresa; não exige o endereço
+          do seu sistema. O webhook HTTPS é configurado separadamente quando quiser receber eventos.
         </p>
       </section>
       {error ? (
@@ -242,6 +253,13 @@ export function ApiKeysPage() {
           value={name}
           onChange={(event) => setName(event.target.value)}
         />
+        <label htmlFor="api-key-validity">Validade da chave</label>
+        <select id="api-key-validity" value={validDays} onChange={event => setValidDays(event.target.value)}>
+          <option value="15">15 dias — homologação</option>
+          <option value="30">30 dias</option>
+          <option value="90">90 dias</option>
+          <option value="0">Sem expiração</option>
+        </select>
         <fieldset>
           <legend>Escopos</legend>
           {scopeOptions.map((scope) => (

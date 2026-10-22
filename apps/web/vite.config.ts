@@ -4,6 +4,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 import { assertNoViteClientEnvironment } from './src/build-security.js';
+import { createDocumentationAssets } from '../../scripts/docs/build-portal.mjs';
 
 const projectDirectory = fileURLToPath(new URL('.', import.meta.url));
 
@@ -13,7 +14,12 @@ export default defineConfig(({ mode }) => {
     ...process.env,
   });
   return {
-    plugins: [react()],
+    plugins: [react(), {
+      name: 'jrc-public-api-documentation',
+      async generateBundle() {
+        for (const asset of await createDocumentationAssets()) this.emitFile({ type: 'asset', ...asset });
+      },
+    }],
     build: { rollupOptions: { input: {
       main: fileURLToPath(new URL('./index.html', import.meta.url)),
       embed: fileURLToPath(new URL('./embed.html', import.meta.url)),

@@ -437,6 +437,9 @@
                                 "instances:read",
                                 "instances:write",
                                 "api_keys:manage",
+                                "messaging:read",
+                                "messaging:send",
+                                "webhooks:manage",
                                 "chatwoot:read",
                                 "chatwoot:manage",
                                 "chatwoot:pair",
@@ -618,11 +621,14 @@
                       "enum": [
                         "instances:read",
                         "instances:write",
-                        "api_keys:manage"
+                        "api_keys:manage",
+                        "messaging:read",
+                        "messaging:send",
+                        "webhooks:manage"
                       ],
                       "type": "string"
                     },
-                    "maxItems": 3,
+                    "maxItems": 6,
                     "minItems": 1,
                     "type": "array"
                   }
@@ -672,6 +678,9 @@
                           "instances:read",
                           "instances:write",
                           "api_keys:manage",
+                          "messaging:read",
+                          "messaging:send",
+                          "webhooks:manage",
                           "chatwoot:read",
                           "chatwoot:manage",
                           "chatwoot:pair",
@@ -42270,6 +42279,350 @@
         ]
       }
     },
+    "/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integrationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9:_-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-jrc-external-actor",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "campaignId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "conversationId": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "destinationRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "identityRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "enum": [
+                      "text",
+                      "image",
+                      "document",
+                      "video",
+                      "audio"
+                    ],
+                    "type": "string"
+                  },
+                  "messageId": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "ownerRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "text": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "conversationId",
+                  "messageId",
+                  "campaignId",
+                  "kind",
+                  "text",
+                  "destinationRevision",
+                  "identityRevision",
+                  "ownerRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "expiresAt": {
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                      "type": "string"
+                    },
+                    "intentId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "protocol": {
+                      "enum": [
+                        "chatwoot-campaigns/v1"
+                      ],
+                      "type": "string"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    },
+                    "state": {
+                      "enum": [
+                        "RESERVED"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "protocol",
+                    "intentId",
+                    "state",
+                    "expiresAt",
+                    "replayed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "expiresAt": {
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                      "type": "string"
+                    },
+                    "intentId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "protocol": {
+                      "enum": [
+                        "chatwoot-campaigns/v1"
+                      ],
+                      "type": "string"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    },
+                    "state": {
+                      "enum": [
+                        "RESERVED"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "protocol",
+                    "intentId",
+                    "state",
+                    "expiresAt",
+                    "replayed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-transport": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integrationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "destinationRevision": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "identityRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "inboxId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "instanceId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "integrationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "numberSuffix": {
+                      "nullable": true,
+                      "pattern": "^\\d{4}$",
+                      "type": "string"
+                    },
+                    "ownerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "protocol": {
+                      "enum": [
+                        "chatwoot-campaigns/v1"
+                      ],
+                      "type": "string"
+                    },
+                    "ready": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "enum": [
+                        "CAMPAIGN_BROKER_TRANSPORT_REQUIRED",
+                        "CAMPAIGN_CALLBACK_NOT_READY",
+                        "CAMPAIGN_IDENTITY_NOT_READY",
+                        "CAMPAIGN_ATTENDANCE_POLICY_REQUIRES_CONFIGURATION"
+                      ],
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "protocol",
+                    "integrationId",
+                    "inboxId",
+                    "instanceId",
+                    "destinationRevision",
+                    "identityRevision",
+                    "ownerRevision",
+                    "ready",
+                    "reason",
+                    "numberSuffix"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
     "/v1/integrations/chatwoot/control/connections/{integrationId}/confirm-identity": {
       "post": {
         "parameters": [
@@ -42333,6 +42686,125 @@
                   },
                   "required": [
                     "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{conversationId}/campaign-messages/{messageId}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "integrationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "conversationId",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "conversationId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "errorCode": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "integrationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "messageId": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "protocol": {
+                      "enum": [
+                        "chatwoot-campaigns/v1"
+                      ],
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "queued",
+                        "sent",
+                        "delivered",
+                        "read",
+                        "failed",
+                        "blocked",
+                        "unknown"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "protocol",
+                    "integrationId",
+                    "conversationId",
+                    "messageId",
+                    "status",
+                    "errorCode"
                   ],
                   "type": "object"
                 }
@@ -46366,6 +46838,12 @@
                             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                             "type": "string"
                           },
+                          "instanceId": {
+                            "format": "uuid",
+                            "nullable": true,
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
                           "ownerRevision": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -46414,6 +46892,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
           }
         ]
       }
@@ -46476,6 +46957,12 @@
                     },
                     "id": {
                       "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "instanceId": {
+                      "format": "uuid",
+                      "nullable": true,
                       "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                       "type": "string"
                     },
@@ -46754,6 +47241,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
           }
         ]
       }
@@ -46934,6 +47424,428 @@
         ]
       }
     },
+    "/v1/messaging/channels/{id}/partner-text": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "conversationId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "text": {
+                        "maxLength": 4096,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "conversationId",
+                      "text"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "phoneNumber": {
+                        "pattern": "^\\+[1-9]\\d{7,14}$",
+                        "type": "string"
+                      },
+                      "text": {
+                        "maxLength": 4096,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "phoneNumber",
+                      "text"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "conversationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "direction": {
+                      "enum": [
+                        "INCOMING",
+                        "OUTGOING"
+                      ],
+                      "type": "string"
+                    },
+                    "errorCode": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "id": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "media": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "image",
+                            "audio",
+                            "video",
+                            "document",
+                            "sticker"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "fileName"
+                      ],
+                      "type": "object"
+                    },
+                    "retrySafe": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "enum": [
+                        "CONTACT",
+                        "OPERATOR",
+                        "AUTOMATION",
+                        "EXTERNAL_OBSERVED"
+                      ],
+                      "type": "string"
+                    },
+                    "state": {
+                      "enum": [
+                        "ACCEPTED",
+                        "SENDING",
+                        "SENT",
+                        "DELIVERED",
+                        "READ",
+                        "FAILED",
+                        "UNKNOWN"
+                      ],
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "direction",
+                    "state",
+                    "text",
+                    "conversationId"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
     "/v1/messaging/channels/{id}/templates": {
       "get": {
         "parameters": [
@@ -47018,6 +47930,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
           }
         ]
       },
@@ -47276,6 +48191,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
           }
         ]
       }
@@ -47662,6 +48580,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
           }
         ]
       }
@@ -47799,6 +48720,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
           }
         ]
       }
@@ -48134,6 +49058,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
           }
         ]
       }
@@ -48264,6 +49191,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
           }
         ]
       }
@@ -48307,6 +49237,12 @@
                     },
                     "id": {
                       "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "instanceId": {
+                      "format": "uuid",
+                      "nullable": true,
                       "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                       "type": "string"
                     },
@@ -48354,8 +49290,8 @@
         ]
       }
     },
-    "/v1/messaging/media/{id}": {
-      "get": {
+    "/v1/messaging/instances/{id}/partner-activate": {
+      "post": {
         "parameters": [
           {
             "in": "path",
@@ -48366,10 +49302,327 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {},
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "botPublicId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "id": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "instanceId": {
+                      "format": "uuid",
+                      "nullable": true,
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "ownerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "provider": {
+                      "enum": [
+                        "META",
+                        "BAILEYS"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ownerRevision",
+                    "id",
+                    "provider",
+                    "botPublicId"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
             "description": "Default Response",
             "headers": {
               "Cache-Control": {
@@ -48386,7 +49639,55 @@
         },
         "security": [
           {
+            "jrcApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/messaging/media/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Bytes privados do anexo; MIME depende do arquivo. Não retorna JSON.",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
             "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
           }
         ]
       }
@@ -49445,6 +50746,2005 @@
           {
             "bearerAuth": []
           }
+        ]
+      }
+    },
+    "/v1/partner-events": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "pattern": "^(0|[1-9][0-9]{0,18})$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "cursor": {
+                            "type": "string"
+                          },
+                          "data": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "eventId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "occurredAt": {
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "schemaVersion": {
+                            "enum": [
+                              1
+                            ],
+                            "type": "number"
+                          },
+                          "type": {
+                            "description": "message.received, message.created, message.status or connection.status",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "schemaVersion",
+                          "eventId",
+                          "cursor",
+                          "organizationId",
+                          "type",
+                          "occurredAt",
+                          "data"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "earliestCursor": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "lastPrunedCursor": {
+                      "type": "string"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "retentionDays": {
+                      "enum": [
+                        30
+                      ],
+                      "type": "number"
+                    },
+                    "schemaVersion": {
+                      "enum": [
+                        1
+                      ],
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "retentionDays",
+                    "earliestCursor",
+                    "lastPrunedCursor",
+                    "data",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "pattern": "^[A-Z][A-Z0-9_]*$",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "earliestCursor": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "lastPrunedCursor": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "resetCursor": {
+                      "enum": [
+                        "0"
+                      ],
+                      "type": "string"
+                    },
+                    "retentionDays": {
+                      "enum": [
+                        30
+                      ],
+                      "type": "number"
+                    },
+                    "status": {
+                      "maximum": 599,
+                      "minimum": 100,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
+          }
+        ],
+        "summary": "Read events retained for 30 days; expired cursors return 409",
+        "tags": [
+          "Partner webhooks"
+        ]
+      }
+    },
+    "/v1/partner-webhook-deliveries": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "attempts": {
+                            "maximum": 10,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "availableAt": {
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                            "type": "string"
+                          },
+                          "endpointId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "eventId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "lastErrorCode": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "status": {
+                            "description": "PENDING, RUNNING, DELIVERED, FAILED or CANCELLED",
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "endpointId",
+                          "eventId",
+                          "status",
+                          "attempts",
+                          "lastErrorCode",
+                          "availableAt",
+                          "updatedAt"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "pattern": "^[A-Z][A-Z0-9_]*$",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "earliestCursor": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "lastPrunedCursor": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "resetCursor": {
+                      "enum": [
+                        "0"
+                      ],
+                      "type": "string"
+                    },
+                    "retentionDays": {
+                      "enum": [
+                        30
+                      ],
+                      "type": "number"
+                    },
+                    "status": {
+                      "maximum": 599,
+                      "minimum": 100,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
+          }
+        ],
+        "summary": "Inspect delivery status and bounded retry diagnostics",
+        "tags": [
+          "Partner webhooks"
+        ]
+      }
+    },
+    "/v1/partner-webhooks": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "createdAt": {
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                            "type": "string"
+                          },
+                          "id": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "revokedAt": {
+                            "format": "date-time",
+                            "nullable": true,
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "ACTIVE",
+                              "REVOKED"
+                            ],
+                            "type": "string"
+                          },
+                          "url": {
+                            "format": "uri",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "url",
+                          "status",
+                          "createdAt",
+                          "revokedAt"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "pattern": "^[A-Z][A-Z0-9_]*$",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "earliestCursor": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "lastPrunedCursor": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "resetCursor": {
+                      "enum": [
+                        "0"
+                      ],
+                      "type": "string"
+                    },
+                    "retentionDays": {
+                      "enum": [
+                        30
+                      ],
+                      "type": "number"
+                    },
+                    "status": {
+                      "maximum": 599,
+                      "minimum": 100,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
+          }
+        ],
+        "summary": "List webhook endpoints without secrets",
+        "tags": [
+          "Partner webhooks"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "format": "uri",
+                    "maxLength": 2048,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "endpoint": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "createdAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revokedAt": {
+                          "format": "date-time",
+                          "nullable": true,
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "status": {
+                          "enum": [
+                            "ACTIVE",
+                            "REVOKED"
+                          ],
+                          "type": "string"
+                        },
+                        "url": {
+                          "format": "uri",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "url",
+                        "status",
+                        "createdAt",
+                        "revokedAt"
+                      ],
+                      "type": "object"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    },
+                    "signingSecret": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "endpoint",
+                    "signingSecret",
+                    "replayed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "pattern": "^[A-Z][A-Z0-9_]*$",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "earliestCursor": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "lastPrunedCursor": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "resetCursor": {
+                      "enum": [
+                        "0"
+                      ],
+                      "type": "string"
+                    },
+                    "retentionDays": {
+                      "enum": [
+                        30
+                      ],
+                      "type": "number"
+                    },
+                    "status": {
+                      "maximum": 599,
+                      "minimum": 100,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
+          }
+        ],
+        "summary": "Create an HTTPS endpoint with its independent signing secret",
+        "tags": [
+          "Partner webhooks"
+        ]
+      }
+    },
+    "/v1/partner-webhooks/{id}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "createdAt": {
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                      "type": "string"
+                    },
+                    "id": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "format": "date-time",
+                      "nullable": true,
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "ACTIVE",
+                        "REVOKED"
+                      ],
+                      "type": "string"
+                    },
+                    "url": {
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "url",
+                    "status",
+                    "createdAt",
+                    "revokedAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "pattern": "^[A-Z][A-Z0-9_]*$",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "earliestCursor": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "lastPrunedCursor": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "resetCursor": {
+                      "enum": [
+                        "0"
+                      ],
+                      "type": "string"
+                    },
+                    "retentionDays": {
+                      "enum": [
+                        30
+                      ],
+                      "type": "number"
+                    },
+                    "status": {
+                      "maximum": 599,
+                      "minimum": 100,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "jrcApiKeyAuth": []
+          }
+        ],
+        "summary": "Revoke endpoint and cancel pending deliveries",
+        "tags": [
+          "Partner webhooks"
         ]
       }
     },

@@ -16,6 +16,7 @@ const profiles: Array<[DatabasePoolProfile, number, number]> = [
   ['MESSAGING_WORKER', 4, 5000], ['MESSAGING_AUTH', 2, 5000],
   ['AUTOMATION_WORKER', 4, 5000], ['AUTOMATION_IO_WORKER', 4, 5000],
   ['SCHEDULER_WORKER', 2, 5000], ['LIFECYCLE_WORKER', 2, 5000],
+  ['PARTNER_EVENTS_WORKER', 2, 5000],
 ];
 
 describe('database pool budgets', () => {

@@ -7,6 +7,7 @@ export type Permission =
   | 'instances:read'
   | 'instances:connect'
   | 'api_keys:manage'
+  | 'webhooks:manage'
   | 'memberships:manage'
   | 'memberships:change_owner';
 
@@ -35,6 +36,7 @@ declare module 'fastify' {
 
 const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> = {
   OWNER: new Set([
+    'webhooks:manage',
     'instances:read',
     'instances:connect',
     'api_keys:manage',
@@ -42,6 +44,7 @@ const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> = {
     'memberships:change_owner',
   ]),
   ADMIN: new Set([
+    'webhooks:manage',
     'instances:read',
     'instances:connect',
     'api_keys:manage',

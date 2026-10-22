@@ -686,6 +686,8 @@ export const messagingMessages = pgTable(
     idempotencyKey: text("idempotency_key"),
     idempotencyBodyHash: text("idempotency_body_hash"),
     requiresOptIn: boolean("requires_opt_in").notNull().default(false),
+    authorizingApiKeyId: uuid("authorizing_api_key_id"),
+    campaignIntentId: uuid("campaign_intent_id"),
     sequenceNumber: bigint("sequence_number", { mode: "number" })
       .notNull()
       .default(sql`nextval('messaging_message_order_seq')`),
@@ -1049,7 +1051,46 @@ export const qrIdentityPendingEvents=pgTable('qr_identity_pending_events',{
   index('qr_identity_pending_unresolved').on(t.organizationId,t.channelId,t.status).where(sql`${t.status} IN ('WAITING','CONFLICT','STALE')`),
 ]);
 
+export const partnerEventOrder=pgSequence('partner_event_order_seq');
+export const partnerWebhookEndpoints=pgTable('partner_webhook_endpoints',{
+ organizationId:uuid('organization_id').notNull().references(()=>organizations.id,{onDelete:'cascade'}),
+ id:uuid('id').notNull().defaultRandom(),url:text('url').notNull(),idempotencyKey:text('idempotency_key').notNull(),
+ status:text('status').notNull().default('ACTIVE'),encryptedSecret:text('encrypted_secret'),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),revokedAt:timestamp('revoked_at',{withTimezone:true}),
+},t=>[primaryKey({columns:[t.organizationId,t.id]}),unique().on(t.organizationId,t.idempotencyKey),
+ check('partner_webhook_url_length',sql`length(${t.url})<=2048`),check('partner_webhook_idempotency_length',sql`length(${t.idempotencyKey}) BETWEEN 8 AND 128`),
+ check('partner_webhook_status',sql`${t.status} IN ('ACTIVE','REVOKED')`),
+ check('partner_webhook_secret_state',sql`(${t.status}='ACTIVE' AND ${t.encryptedSecret} IS NOT NULL AND ${t.revokedAt} IS NULL) OR (${t.status}='REVOKED' AND ${t.encryptedSecret} IS NULL AND ${t.revokedAt} IS NOT NULL)`),
+]);
+export const partnerEvents=pgTable('partner_events',{
+ organizationId:uuid('organization_id').notNull().references(()=>organizations.id,{onDelete:'cascade'}),id:uuid('id').notNull().defaultRandom(),
+ sequenceNumber:bigint('sequence_number',{mode:'bigint'}),eventType:text('event_type').notNull(),
+ occurredAt:timestamp('occurred_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),payload:jsonb('payload').notNull(),channelId:uuid('channel_id'),instanceId:uuid('instance_id'),
+},t=>[primaryKey({columns:[t.organizationId,t.id]}),unique().on(t.organizationId,t.sequenceNumber),
+ foreignKey({columns:[t.organizationId,t.channelId],foreignColumns:[messagingChannels.organizationId,messagingChannels.id]}).onDelete('cascade'),
+ foreignKey({columns:[t.organizationId,t.instanceId],foreignColumns:[instances.organizationId,instances.id]}).onDelete('cascade'),
+ check('partner_event_type',sql`${t.eventType} IN ('message.received','message.created','message.status','connection.status')`),
+ index('partner_events_unpublished').on(t.organizationId,t.occurredAt,t.id).where(sql`${t.sequenceNumber} IS NULL`),
+ index('partner_events_retention').on(t.organizationId,t.occurredAt,t.id),
+]);
+export const partnerEventDeliveries=pgTable('partner_event_deliveries',{
+ organizationId:uuid('organization_id').notNull(),id:uuid('id').notNull().defaultRandom(),endpointId:uuid('endpoint_id').notNull(),eventId:uuid('event_id').notNull(),
+ status:text('status').notNull().default('PENDING'),attempts:integer('attempts').notNull().default(0),availableAt:timestamp('available_at',{withTimezone:true}).notNull().defaultNow(),
+ lastErrorCode:text('last_error_code'),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),leaseToken:uuid('lease_token'),leaseExpiresAt:timestamp('lease_expires_at',{withTimezone:true}),
+},t=>[primaryKey({columns:[t.organizationId,t.id]}),unique().on(t.organizationId,t.endpointId,t.eventId),
+ foreignKey({columns:[t.organizationId,t.endpointId],foreignColumns:[partnerWebhookEndpoints.organizationId,partnerWebhookEndpoints.id]}).onDelete('cascade'),
+ foreignKey({columns:[t.organizationId,t.eventId],foreignColumns:[partnerEvents.organizationId,partnerEvents.id]}).onDelete('cascade'),
+ check('partner_delivery_status',sql`${t.status} IN ('PENDING','RUNNING','DELIVERED','FAILED','CANCELLED')`),check('partner_delivery_attempts',sql`${t.attempts} BETWEEN 0 AND 10`),
+ check('partner_delivery_lease',sql`(${t.status}='RUNNING' AND ${t.leaseToken} IS NOT NULL AND ${t.leaseExpiresAt} IS NOT NULL) OR (${t.status}<>'RUNNING' AND ${t.leaseToken} IS NULL AND ${t.leaseExpiresAt} IS NULL)`),
+ index('partner_delivery_pending').on(t.organizationId,t.availableAt,t.id).where(sql`${t.status} IN ('PENDING','RUNNING')`),
+]);
+export const partnerEventCursorState=pgTable('partner_event_cursor_state',{
+ organizationId:uuid('organization_id').primaryKey().references(()=>organizations.id,{onDelete:'cascade'}),
+ lastPrunedCursor:bigint('last_pruned_cursor',{mode:'bigint'}).notNull().default(0n),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[check('partner_cursor_pruned_nonnegative',sql`${t.lastPrunedCursor}>=0`)]);
+
 export * from "./platform-schema.js";
 export * from "./tenancy-schema.js";
 export * from "./meta-onboarding-schema.js";
 export * from "./integrations-schema.js";
+export * from "./chatwoot-campaign-schema.js";

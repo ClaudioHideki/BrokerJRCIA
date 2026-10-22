@@ -484,6 +484,27 @@
       "when": 1793486400000,
       "tag": "0069_meta_waba_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1793572800000,
+      "tag": "0070_partner_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1793659200000,
+      "tag": "0071_partner_messaging_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1793745600000,
+      "tag": "0072_chatwoot_campaign_intents",
+      "breakpoints": true
     }
   ]
 }

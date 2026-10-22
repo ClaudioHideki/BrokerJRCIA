@@ -1,0 +1,8 @@
+{
+  "name": "@jrc/partner-qr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./backend": "./backend.mjs", "./panel": "./panel.mjs", "./panel.css": "./panel.css" },
+  "engines": { "node": ">=24" }
+}

@@ -426,6 +426,24 @@ describe('PostgresMessagingRepository outbox lifecycle', () => {
     attemptCount: 1,
   };
 
+  it('rejects a queued partner send when its tenant key was revoked, expired, deleted or lost scope', async () => {
+    const queries: string[] = [];
+    const fixture = transactionReturning([], [{...CLAIM, mode:'HUMAN', partnerAuthorityAllowed:false}], []);
+    const transaction = {query: async (sql:string, values?:unknown[]) => {
+      queries.push(sql);return fixture.query(sql,values);
+    }} as unknown as TenantTransaction;
+    await expect(createPostgresMessagingRepository().validateClaim(transaction, {
+      organizationId:ORGANIZATION_ID,messageId:MESSAGE_ID,leaseToken:CLAIM.leaseToken,
+    })).resolves.toEqual({eligible:false,reason:'PARTNER_CREDENTIAL_REVOKED'});
+    const authorization = queries.find(sql=>sql.includes('partnerAuthorityAllowed'))!;
+    expect(authorization).toContain('partner_key.organization_id=message.organization_id');
+    expect(authorization).toContain('partner_key.id=message.authorizing_api_key_id');
+    expect(authorization).toContain('partner_key.revoked_at IS NULL');
+    expect(authorization).toContain('partner_key.expires_at>now()');
+    expect(authorization).toContain("ARRAY['messaging:send']::text[]");
+    expect(queries.some(sql=>sql.includes("SET state = 'SENDING'"))).toBe(false);
+  });
+
   it('devolve somente os itens adquiridos pelo worker', async () => {
     const transaction = transactionReturning([], [], [], [], [CLAIM]);
     await expect(createPostgresMessagingRepository().claimOutgoing(transaction, {

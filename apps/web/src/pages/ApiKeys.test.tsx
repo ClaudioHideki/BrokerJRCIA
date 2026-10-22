@@ -20,6 +20,17 @@ const ORG_B = "11111111-2222-4333-8444-555555555555";
 const ID = "81555d45-b1a2-4a3f-ab95-c1459b0df0d0";
 const SECRET = "jrc_prefix123_abcdefghijklmnopqrstuvwxyzABCDEFGH012345678";
 const now = "2030-01-01T12:00:00.000Z";
+
+it('offers explicit partner messaging and webhook scopes without selecting them automatically', async () => {
+  const request = vi.fn(async () => ({ data: [], pageInfo: { hasNextPage: false, nextCursor: null } })) as ApiClient['request'];
+  render(<App client={client(request)} initialEntries={['/chaves-api']} />);
+  await screen.findByText('Nenhuma chave emitida');
+  for (const label of ['Ler mensagens', 'Enviar mensagens pela API', 'Gerenciar webhooks e eventos']) {
+    expect(screen.getByRole('checkbox', { name: label })).not.toBeChecked();
+  }
+  expect(screen.getByLabelText('Validade da chave')).toHaveValue('15');
+  expect(screen.getByRole('link', { name: 'Documentação e testes da API' })).toHaveAttribute('href', '/documentation/');
+});
 const apiKey = {
   id: ID,
   name: "Automação",

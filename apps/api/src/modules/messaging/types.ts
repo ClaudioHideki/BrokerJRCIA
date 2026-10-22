@@ -121,6 +121,8 @@ export interface OutboxClaim {
 }
 
 export type ClaimIneligibilityReason =
+  | "PARTNER_CREDENTIAL_REVOKED"
+  | "CAMPAIGN_AUTHORITY_REVOKED"
   | "QR_OBSERVATION_RECONCILE_REQUIRED"
   | "FLOW_REVOKED"
   | "IDENTITY_CONFIRMATION_REQUIRED"

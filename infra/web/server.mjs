@@ -40,7 +40,7 @@ export function createWebServer({ root = resolve('public'), apiOrigin = 'http://
   const upstream = new URL(apiOrigin);
   if (upstream.protocol !== 'http:' || upstream.username || upstream.password || upstream.pathname !== '/' || upstream.search || upstream.hash) throw new Error('Invalid API upstream');
   return createServer(async (req, res) => {
-    if (req.url?.startsWith('/v1/') || req.url === '/health') {
+    if (req.url?.startsWith('/v1/') || req.url === '/health' || req.url === '/ready') {
       const headers = { ...req.headers };
       // The edge is authoritative for proxy identity. Never relay a browser-supplied chain.
       delete headers['forwarded']; delete headers['x-forwarded-for']; delete headers['x-real-ip'];
@@ -57,6 +57,23 @@ export function createWebServer({ root = resolve('public'), apiOrigin = 'http://
     let pathname, parsedUrl;
     try { parsedUrl = new URL(req.url ?? '/', 'http://local'); pathname = decodeURIComponent(parsedUrl.pathname); }
     catch { res.writeHead(400); res.end(); return; }
+    // Explicit public documentation entry: never fall back to the SPA for missing docs.
+    if (pathname === '/documentation' || pathname.startsWith('/documentation/')) {
+      const name = pathname === '/documentation' || pathname === '/documentation/' ? 'index.html' : pathname.slice('/documentation/'.length);
+      const allowed = /^(?:index\.html|guia-api-jrc\.pdf|postman-poc\.json|portal\.(?:js|css)|swagger-ui(?:-bundle\.js|\.css|-bundle\.js\.LICENSE\.txt)|LICENSE\.txt|NOTICE\.txt|(?:openapi|postman)-(?:instances|chatwoot|messaging|events)\.json)$/;
+      if (!allowed.test(name) || parsedUrl.search) { res.writeHead(404, { ...consoleHeaders, 'Cache-Control': 'no-store' }); res.end(); return; }
+      const mime = name.endsWith('.pdf') ? 'application/pdf' : name.endsWith('.json') ? 'application/json; charset=utf-8' : name.endsWith('.js') ? 'text/javascript; charset=utf-8'
+        : name.endsWith('.css') ? 'text/css; charset=utf-8' : name.endsWith('.html') ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
+      try {
+        const data = await readFile(resolve(root, 'documentation', name));
+        res.writeHead(200, { ...consoleHeaders, 'Content-Type': mime, 'Cache-Control': 'no-store' });
+        res.end(req.method === 'HEAD' ? undefined : data);
+      } catch {
+        res.writeHead(name === 'index.html' ? 503 : 404, { ...consoleHeaders, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(req.method === 'HEAD' ? undefined : 'Documentação temporariamente indisponível.');
+      }
+      return;
+    }
     // Public documents must work without the SPA, a session or a healthy API.
     const legalDocument = /^\/(privacy|data-deletion|terms)\/?$/.exec(pathname)?.[1];
     if (legalDocument) {

@@ -72,6 +72,8 @@ jobs:
 
       - name: Build all TypeScript project references
         run: npm run build
+      - name: Verify the independent CCLX QR adapter and panel
+        run: npm run test:partner-qr
 
       - name: Rebuild the production web bundle explicitly
         run: npm run build:web

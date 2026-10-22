@@ -1,6 +1,6 @@
 import {createHmac,randomUUID} from 'node:crypto';
 import {AsyncLocalStorage} from 'node:async_hooks';
-import {afterAll,beforeAll,expect,it} from 'vitest';
+import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import type {OrganizationTransaction} from '../../src/db/tenant-transaction.js';
 import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
 import {createAutomationService} from '../../src/modules/automations/service.js';
@@ -656,11 +656,31 @@ it('bounds the complete sequential observation and fence journey rather than res
  const t=await fixture(),qr=await qrInbox(t),native=nativeAdapter(),remote=remoteClient(t),service=t.serviceWith({nativeAdapter:native.adapter,client:()=>remote.client,identity:qr.health,remoteTimeoutMs:500});
  await approveOriginFixture(db.database,t.org,'JRC_NATIVE');await service.configureExecutorProfile(t.principal,{integrationId:qr.integration,expectedRevision:0});
  const session=await service.issueBrokerSession(t.principal,{integrationIds:[qr.integration],scopes:full}),access={organizationId:t.org,token:session.token};
- remote.onRead(async()=>{await new Promise(resolve=>setTimeout(resolve,100));});
- const originalFence=native.adapter.fenceAndDrain;native.adapter.fenceAndDrain=async request=>{await new Promise(resolve=>setTimeout(resolve,300));return originalFence(request);};
- await expect(service.prepareCutover(access,qr.integration,{expectedOwnerRevision:0})).rejects.toMatchObject({code:'FLOW_CUTOVER_TIMEOUT'});
- await new Promise(resolve=>setTimeout(resolve,350));
- expect((await db.database.pool.query('SELECT phase,lease_token FROM flow_executor_cutovers WHERE integration_id=$1',[qr.integration])).rows).toEqual([{phase:'UNKNOWN',lease_token:null}]);
+ // Control only timer time. Date and PostgreSQL authority/lease clocks remain
+ // real, so scheduler/SQL load cannot consume the budget before fence dispatch.
+ vi.useFakeTimers({toFake:['setTimeout','clearTimeout']});
+ let reads=0,signal:AbortSignal|undefined,entered!:()=>void,release!:()=>void,returned!:()=>void;
+ const fenceEntered=new Promise<void>(resolve=>{entered=resolve;}),fenceResponse=new Promise<void>(resolve=>{release=resolve;}),fenceReturned=new Promise<void>(resolve=>{returned=resolve;});
+ remote.onRead(async()=>{reads++;await vi.advanceTimersByTimeAsync(100);});
+ const originalFence=native.adapter.fenceAndDrain;
+ native.adapter.fenceAndDrain=async(request:any,abortSignal?:AbortSignal)=>{
+  signal=abortSignal;
+  const proof=await originalFence(request);entered();
+  await fenceResponse;returned();return proof;
+ };
+ const outcome=service.prepareCutover(access,qr.integration,{expectedOwnerRevision:0}).then(value=>({value,error:undefined}),error=>({value:undefined,error}));
+ try{
+  await Promise.race([fenceEntered,outcome.then(result=>{throw result.error??new Error('Cutover settled before the fence-response barrier');})]);
+  expect(reads).toBe(3);
+  expect((await db.database.pool.query('SELECT phase,fence_dispatched_at IS NOT NULL AS dispatched FROM flow_executor_cutovers WHERE integration_id=$1',[qr.integration])).rows).toEqual([{phase:'FENCED',dispatched:true}]);
+  // Three sequential reads consumed 300 ms. The same deadline must abort
+  // another 200 ms into the fence, rather than granting it a new 500 ms.
+  await vi.advanceTimersByTimeAsync(199);expect(signal?.aborted).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);expect(signal?.aborted).toBe(true);
+  expect(await outcome).toMatchObject({error:{code:'FLOW_CUTOVER_TIMEOUT'}});
+  release();await fenceReturned;
+  expect((await db.database.pool.query('SELECT phase,lease_token FROM flow_executor_cutovers WHERE integration_id=$1',[qr.integration])).rows).toEqual([{phase:'UNKNOWN',lease_token:null}]);
+ }finally{release();await outcome;vi.useRealTimers();}
 });
 it('retires a rejected read-only preflight without fabricating a native fence or leaving pending lifecycle forever',async()=>{
  const t=await fixture(),qr=await qrInbox(t),native=nativeAdapter(),remote=remoteClient(t),service=t.serviceWith({nativeAdapter:native.adapter,client:()=>remote.client,identity:qr.health});
