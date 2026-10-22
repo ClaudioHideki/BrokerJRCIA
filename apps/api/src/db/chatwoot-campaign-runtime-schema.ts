@@ -33,5 +33,4 @@ export const campaignRuntimeSql=`
    AND pg_catalog.has_function_privilege('jrc_app',p.oid,'EXECUTE')=required.app_execute
    AND NOT EXISTS(SELECT 1 FROM (VALUES('jrc_auth'),('jrc_platform'),('jrc_lifecycle')) forbidden(role_name)
     WHERE pg_catalog.has_function_privilege(forbidden.role_name,p.oid,'EXECUTE'))))
- AND CASE WHEN pg_catalog.to_regprocedure('public.campaign_catalogue_ready()') IS NULL THEN false ELSE public.campaign_catalogue_ready() END
 `;

@@ -73,6 +73,7 @@ table(['JRC','CCLX'],[
  ['Expor o QR e operações documentadas.','Incorporar a interface QR e respeitar quem pode administrar cada caixa.'],
  ['Assinar e repetir webhooks dentro dos limites.','Verificar HMAC, persistir eventId único, publicar na fila e evitar loop/duplicação.']],[82*mm,83*mm])
 p('Não é necessário compartilhar banco PostgreSQL, Redis, fila interna, SSH ou chave Evolution. O Broker não escreve diretamente no banco do CCLX. Para o caminho genérico, URL/Account/token Chatwoot não são pré-requisitos da emissão da chave.')
+p('O pacote QR não instala mensageria ou controller Rails. O CCLX precisa integrar sessão, permissões e cofre, além de construir o consumidor de eventos e o envio pelo compositor local. Os quatro eventos genéricos não atribuem conversas a times/agentes; transferência e retomada de Flow exigem uma ponte de controle própria, homologada no host.')
 h('O que falta confirmar com o CCLX')
 p('Versão exata 3.x; autenticação e permissões do host; API local de contatos/conversas/mensagens; tecnologia e contrato Pub/Sub; formato dos IDs; receptor HTTPS ou escolha inicial por polling; mapeamento das caixas e dos cinco números da POC.')
 
@@ -166,7 +167,7 @@ table(['Recurso','Situação e próximo critério'],[
  ['Mídia','Há transporte de imagem/áudio/vídeo/documento/figurinha no Broker. O perfil genérico de chave já permite download privado pelo ID da mensagem; ainda precisa de upload/envio, cotas e homologação específica.'],
  ['Campanhas','São envios individuais agendados. A ponte JRC exige contrato canônico de capacidade, intenção e recibo da revisão correspondente; não basta liberar uma checkbox.'],
  ['Grupos e histórico','Há caminhos próprios no Broker, com seleção e revisões. Não presumir catálogo de grupos completo, administração de participantes ou cópia integral do WhatsApp pelo perfil genérico.'],
- ['Flow / URA','Usar primeiro o editor no console Broker, com um executor por canal. Editor incorporado, catálogo remoto, transferência e retomada precisam de adaptação ao host CCLX. A chave QR/texto não autoriza gestão do Flow.'],
+ ['Flow / URA','Usar primeiro o editor no console Broker, com um executor por canal. Editor incorporado, catálogo remoto, transferência e retomada precisam de adaptação ao host CCLX. A chave QR/texto não autoriza gestão do Flow, e os quatro eventos genéricos não executam atribuição local. A POC genérica não cobre esse controle.'],
  ['Chamadas','Na referência Evolution fixada, offerCall tem a chamada real comentada e devolve um ID de exemplo. Voz exige transporte efetivo e validado; esse stub não comprova ligação.'],
  ['Outros tipos','Localização, cartão de contato, reação, enquete, lista e botões têm funções na referência Evolution. Cada tipo precisa de contrato, armazenamento/projeção, despacho e prova próprios no Broker.'],
  ['Monitoramento','Usar saúde, fila e diagnóstico. UNKNOWN exige conciliação. Eventos e Pub/Sub não autorizam repetir efeitos de envio.']],[35*mm,130*mm])

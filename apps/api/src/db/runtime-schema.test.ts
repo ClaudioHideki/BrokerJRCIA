@@ -4,6 +4,18 @@ import { loadExpectedMigrations } from './schema-status.js';
 import { RUNTIME_SCHEMA_BASELINE, probeRequiredRuntimeSchema } from './runtime-schema.js';
 
 describe('runtime schema probe', () => {
+  it('only invokes private catalogue functions after their structural guards have passed', async () => {
+    const query=vi.fn(async (_sql:string)=>({rows:[{ready:true}]}));
+    expect(await probeRequiredRuntimeSchema(query)).toBe(true);
+    expect(query.mock.calls[0]?.[0]).not.toContain('ELSE public.campaign_catalogue_ready()');
+    expect(query.mock.calls[1]?.[0]).toBe('SELECT public.partner_event_catalogue_ready() AND public.campaign_catalogue_ready() AS ready');
+  });
+  it('returns false if a checked catalogue function disappears before invocation, without masking other failures',async()=>{
+    const missing=vi.fn().mockResolvedValueOnce({rows:[{ready:true}]}).mockRejectedValueOnce(Object.assign(new Error('Missing function'),{code:'42883'}));
+    expect(await probeRequiredRuntimeSchema(missing)).toBe(false);
+    const denied=vi.fn().mockResolvedValueOnce({rows:[{ready:true}]}).mockRejectedValueOnce(Object.assign(new Error('Denied'),{code:'42501'}));
+    await expect(probeRequiredRuntimeSchema(denied)).rejects.toMatchObject({code:'42501'});
+  });
   it('requires partner event isolation, publisher guards and queued credential authority', async () => {
     const query = vi.fn(async (_sql: string) => ({ rows: [{ ready: false }] }));
     await probeRequiredRuntimeSchema(query);

@@ -66,16 +66,36 @@ recuperação. Revogar chave de API não revoga o endpoint: revogue ambos no enc
 
 ## Módulo QR dentro do CCLX/JRC
 
-O frontend nativo exibe as instâncias e o QR, usando um backend adaptador do próprio
-Chatwoot. Esse adaptador chama a API JRC e converte os eventos em contatos, conversas
-e mensagens locais, mantendo vínculo único entre canal JRC e caixa local. Mensagens
-locais são enviadas com idempotência; eventos espelhados não podem gerar novo envio.
-O módulo também respeita a associação do agente à caixa e as permissões do host.
+O pacote `integrations/partner-qr` fornece painel e adaptador de conexões para o
+backend do host. O CCLX precisa implementar os hooks de sessão, CSRF, cofre e
+permissões antes de montá-lo. Ele não instala controller Rails nem mensageria.
+Uma camada adicional precisa converter os eventos em contatos, conversas e
+mensagens locais, mantendo vínculo único entre canal JRC e caixa local. As saídas
+do compositor local precisam de idempotência; eventos espelhados não podem gerar
+novo envio. A exibição de anexos deve revalidar as permissões locais.
 
 O contrato genérico não depende da URL do Chatwoot. A instalação nativa ainda exige
 conhecer a versão e os pontos de extensão do CCLX. Tela de QR, adaptador e integração
 de Flow são entregas separadas da emissão de chave. Não trocar a integração atual
 do Grupo JRC por esse adaptador sem homologar entrada, saída, mídia, estados e transferência.
+
+### Flow, times e agentes no CCLX
+
+Os quatro eventos genéricos documentados são de mensagem, estado e conexão.
+Eles não atribuem conversas a times/agentes nem executam comandos de Flow no
+CCLX. O cadastro da chave e o pareamento QR não implementam uma URA local.
+
+Há dois percursos que não devem ser confundidos: o consumo genérico transporta
+mensagens e eventos; a integração direta Chatwoot usa uma Account remota vinculada
+e contratos próprios de controle/delegação. Para usar transferência e retomada do
+Broker dentro do CCLX, é necessário homologar essa ponte de controle e os pontos
+de extensão da versão instalada, ou desenvolver um protocolo próprio de comandos
+com confirmação durável. Não enviar comandos de atribuição como se fossem texto.
+
+Começar pelo editor no console Broker, com um executor por canal. A incorporação
+do editor no CCLX exige instalação adicional com sessões delegadas, recursos
+autorizados, catálogo local e confirmação de transferência/retomada. Esses testes
+não estão cobertos pela coleção POC genérica de 19 operações.
 
 ## Atualização do servidor Broker
 

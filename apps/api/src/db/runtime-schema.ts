@@ -439,8 +439,16 @@ const requiredObjectsSql = `SELECT
 export async function probeRequiredRuntimeSchema(query: SchemaProbeQuery): Promise<boolean> {
   const result = await query(requiredObjectsSql);
   if (result.rows[0]?.ready !== true) return false;
-  // The catalogue itself is private to the migrator. Only call its narrow,
-  // read-only boolean probe after its owner and execution ACL passed above.
-  const catalogue = await query('SELECT public.partner_event_catalogue_ready() AS ready');
-  return catalogue.rows[0]?.ready === true;
+  // Catalogue tables are private to the migrator. PostgreSQL resolves function
+  // calls while parsing, including calls in an unreachable CASE branch. Only
+  // parse these calls after both functions' existence, owner and ACL pass above.
+  try {
+    const catalogue = await query('SELECT public.partner_event_catalogue_ready() AND public.campaign_catalogue_ready() AS ready');
+    return catalogue.rows[0]?.ready === true;
+  } catch(error) {
+    // A concurrent schema change can remove a checked function between queries.
+    // Missing schema is unready; permission and infrastructure errors stay errors.
+    if(error!==null&&typeof error==='object'&&'code' in error&&error.code==='42883')return false;
+    throw error;
+  }
 }

@@ -159,7 +159,7 @@ it('uses read-only startup options and fixed metadata queries without letting UR
   expect(connectionOptions).toContain('statement_timeout=3000');
   expect(queries).toHaveLength(3); expect(queries[0]).toBe('SHOW server_version');
   expect(queries[1]?.trimStart().startsWith('SELECT')).toBe(true);
-  expect(queries[2]).toBe('SELECT public.partner_event_catalogue_ready() AS ready');
+  expect(queries[2]).toBe('SELECT public.partner_event_catalogue_ready() AND public.campaign_catalogue_ready() AS ready');
   expect(result).toEqual({ reachable: true, compatible: true, version: '16.4' }); expect(closed).toBe(true);
   expect(JSON.stringify(result)).not.toContain('private-');
 });
