@@ -4,6 +4,11 @@ import { buildPublicDocument, buildReadOnlyPostman } from '../scripts/docs/publi
 
 const source = JSON.parse(await readFile(new URL('../docs/api/openapi.json', import.meta.url), 'utf8'));
 describe('public partner contract', () => {
+  it('documents the manage scope actually required to discover Chatwoot control resources', () => {
+    const operation = buildPublicDocument(source, 'chatwoot').paths['/v1/integrations/chatwoot/control/resources'].get;
+    expect(operation.description).toContain('Escopo da chave: chatwoot:manage.');
+    expect(operation.description).not.toContain('Escopo da chave: chatwoot:read.');
+  });
   it('documents self-service messaging and signed events separately from optional Chatwoot', () => {
     const messaging = buildPublicDocument(source, 'messaging');
     expect(messaging.paths['/v1/messaging/instances/{id}/partner-activate'].post.security).toEqual([{ jrcApiKeyAuth: [] }]);
