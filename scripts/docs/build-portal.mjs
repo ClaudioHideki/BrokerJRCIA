@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPublicDocument, buildReadOnlyPostman, publicProfiles } from './public-api.mjs';
 import { buildPocPostman } from './postman-poc.mjs';
+import { sourceTextHash } from './source-hash.mjs';
 
 const directory = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -27,8 +28,8 @@ export async function createDocumentationAssets() {
   const pdf = await readFile(resolve(directory, 'assets/guia-api-jrc.pdf'));
   const manifest = JSON.parse(await readFile(resolve(directory, 'assets/guia-api-jrc.json'), 'utf8'));
   const hash = source => createHash('sha256').update(source).digest('hex');
-  if (manifest.canonicalSha256 !== hash(canonical) || manifest.pdfSha256 !== hash(pdf)
-    || manifest.guideSha256 !== hash(await readFile(resolve(directory, 'operation-guide.mjs')))) {
+  if (manifest.canonicalSha256 !== sourceTextHash(canonical) || manifest.pdfSha256 !== hash(pdf)
+    || manifest.guideSha256 !== sourceTextHash(await readFile(resolve(directory, 'operation-guide.mjs')))) {
     throw new Error('PUBLIC_DOCUMENT_PDF_STALE_REGENERATE');
   }
   add('guia-api-jrc.pdf', pdf);

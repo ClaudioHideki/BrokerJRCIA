@@ -15,6 +15,8 @@ python scripts/docs/generate-partner-pdf.py
 Review rendered pages with Poppler before committing the PDF. The web build fails
 if its canonical contract, guide or PDF checksum differs from the manifest. The
 PDF is an authored release asset; Python/ReportLab are not production dependencies.
+Source text digests normalize CRLF to Git's LF checkout; the PDF digest verifies
+the exact binary bytes. Content changes still require regeneration and review.
 
 `build-portal.mjs` packages the local Swagger UI and notices, filtered OpenAPI,
 read-only Postman collections, the explicit POC collection and PDF. No CDN and no

@@ -185,7 +185,8 @@ def decorate(canvas, doc):
     canvas.drawRightString(188*mm,13*mm,str(doc.page))
 SimpleDocTemplate(str(OUT), pagesize=(210*mm,297*mm), rightMargin=22*mm,leftMargin=22*mm,topMargin=25*mm,bottomMargin=23*mm,
     title='JRC Broker - Guia da API para empresas',author='JRC',subject='Integração CCLX, QR, mensageria e webhooks').build(story,onFirstPage=decorate,onLaterPages=decorate)
-manifest = {'canonicalSha256': DATA['sourceHash'], 'guideSha256':hashlib.sha256((ROOT/'scripts/docs/operation-guide.mjs').read_bytes()).hexdigest(), 'pdfSha256':hashlib.sha256(OUT.read_bytes()).hexdigest(),'operationCount':operation_count,'edition':'2026-10-22'}
+guide_bytes = (ROOT/'scripts/docs/operation-guide.mjs').read_bytes().replace(b'\r\n', b'\n')
+manifest = {'canonicalSha256': DATA['sourceHash'], 'guideSha256':hashlib.sha256(guide_bytes).hexdigest(), 'pdfSha256':hashlib.sha256(OUT.read_bytes()).hexdigest(),'operationCount':operation_count,'edition':'2026-10-22'}
 (OUT.with_suffix('.json')).write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
 dest=ROOT/'output/pdf';dest.mkdir(parents=True,exist_ok=True)
 (dest/OUT.name).write_bytes(OUT.read_bytes())
