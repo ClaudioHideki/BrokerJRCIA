@@ -21,7 +21,7 @@ import { beginChatwootMirrorAttempt,confirmChatwootMirrorAttempt,failChatwootMir
   type ChatwootObservationScope } from './chatwoot-attendance-store.js';
 import type { ChatwootAttendanceEvent } from './chatwoot-attendance-events.js';
 import {preparePhysicalConversationCycle} from './chatwoot-conversation-cycle.js';
-import {requireCampaignIntent,verifyCanonicalCampaignMessage} from './chatwoot-campaign-authority.js';
+import {canonicalCampaignRecipient,requireCampaignIntent,verifyCanonicalCampaignMessage} from './chatwoot-campaign-authority.js';
 
 interface Job {
   id: string;
@@ -235,9 +235,9 @@ export function createChatwootWorker(options: ChatwootOptions) {
         contact.phone_number !== remote.meta.sender.phone_number
       )
         throw new IntegrationError("CHATWOOT_BINDING_MISMATCH");
-      remoteSource = contact.contact_inboxes.find(
-        (i) => i.inbox.id === remote!.inbox_id,
-      )?.source_id;
+      remoteSource = data.campaignIntentId
+        ? canonicalCampaignRecipient(remote,contact,{accountId:Number(binding.account.account_id),inboxId:Number(binding.connection.inbox_id),conversationId:data.conversationId},'CAMPAIGN_RECIPIENT_CHANGED').sourceId
+        : contact.contact_inboxes.find((i) => i.inbox.id === remote!.inbox_id)?.source_id;
       if (!remoteSource)
         throw new IntegrationError("CHATWOOT_CONVERSATION_NOT_BOUND");
       if(data.attendanceObservationId&&!data.campaignIntentId)canonical=await client.attendanceConversation(Number(binding.account.account_id),data.conversationId);

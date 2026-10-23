@@ -643,6 +643,7 @@ export class ChatwootClient {
         id: integer,
         account_id: integer,
         inbox_id: integer,
+        contact_inbox: z.object({id:integer,contact_id:integer,inbox_id:integer,source_id:z.string().min(1).max(255)}).nullable().optional(),
         meta: z.object({
           sender: z.object({
             id: integer,
