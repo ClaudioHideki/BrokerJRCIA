@@ -7,7 +7,7 @@ beforeAll(async () => { db = await attendanceDatabase(); }, 60_000);
 afterAll(async () => { await db?.dispose(); });
 
 it('accepts the fully migrated partner API under the actual app role', async () => {
-  expect(RUNTIME_SCHEMA_BASELINE).toBe('0072_chatwoot_campaign_intents');
+  expect(RUNTIME_SCHEMA_BASELINE).toBe('0073_chatwoot_initial_identity');
   const client = await db.database.pool.connect();
   try {
     await client.query('BEGIN');

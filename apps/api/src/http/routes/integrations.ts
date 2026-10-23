@@ -252,7 +252,7 @@ export async function registerIntegrationRoutes(
         response: { 200: ChatwootStatusSchema },
       },
     },
-    (request) => service().connect(org(request), request.body, actor(request)),
+    (request) => service().connect(org(request), request.body, actor(request), request.authentication!),
   );
   api.get(
     "/v1/integrations/chatwoot/connections/:id/agents",

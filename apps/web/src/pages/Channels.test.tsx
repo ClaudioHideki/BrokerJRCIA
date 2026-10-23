@@ -30,6 +30,7 @@ describe('canonical channels UI', () => {
       throw new Error(`Unexpected ${path}`);
     }) as ApiClient['request'];
     render(<App client={client(request)} initialEntries={[`/channels/${id}`]}/>);
+    fireEvent.click(await screen.findByRole('tab',{name:'Histórico e grupos'}));
     expect(await screen.findByRole('heading',{name:'Grupos do WhatsApp'})).toBeVisible();
     await waitFor(()=>expect(request).toHaveBeenCalledWith(`/v1/channels/${messagingChannelId}/whatsapp-groups?limit=50`,expect.objectContaining({signal:expect.any(AbortSignal)})));
     expect(request).not.toHaveBeenCalledWith(`/v1/channels/${id}/whatsapp-groups?limit=50`,expect.anything());
@@ -47,6 +48,7 @@ describe('canonical channels UI', () => {
       throw new Error(`Unexpected ${path}`);
     }) as ApiClient['request'];
     render(<App client={client(request)} initialEntries={[`/channels/${id}`]}/>);
+    fireEvent.click(await screen.findByRole('tab',{name:'Flow'}));
     await screen.findByRole('option',{name:'Triagem · v1'});
     fireEvent.change(screen.getByLabelText('Automação publicada'),{target:{value:automationId}});
     const button = screen.getByRole('button',{name:'Vincular automação'});
@@ -161,7 +163,9 @@ describe('canonical channels UI', () => {
     expect(screen.getByRole('button', { name: 'Atualizar status' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Reconectar' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Desconectar' })).toBeVisible();
+    fireEvent.click(screen.getByRole('tab', { name: 'Configurações WhatsApp' }));
     expect(screen.getByRole('button', { name: 'Salvar nome' })).toBeVisible();
+    fireEvent.click(screen.getByRole('tab', { name: 'Flow' }));
     expect(await screen.findByRole('option', { name: 'Triagem inteligente · v2' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Vincular automação' })).toBeDisabled();
   });

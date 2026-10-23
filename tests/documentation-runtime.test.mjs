@@ -56,3 +56,15 @@ it('serves the integration PDF with its binary MIME independently of the API', a
   expect(await response.text()).toContain('%PDF-');
   expect((await fetch(f.origin + '/documentation/guia-api-jrc.pdf?token=no')).status).toBe(404);
 });
+
+it('serves only the explicit control catalogue and empty environment downloads', async () => {
+  const f = await fixture();
+  for (const name of ['postman-control.json', 'postman-environment.json']) {
+    await writeFile(join(f.root, 'documentation', name), '{"fixture":true}');
+    const response = await fetch(f.origin + '/documentation/' + name);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect((await fetch(f.origin + '/documentation/' + name, { method: 'HEAD' })).status).toBe(200);
+    expect((await fetch(f.origin + '/documentation/' + name + '?key=no')).status).toBe(404);
+  }
+});

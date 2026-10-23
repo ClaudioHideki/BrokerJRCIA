@@ -17,6 +17,7 @@ import { registerRequestContext } from '../plugins/request-context.js';
 import { tenantOperationalProblem } from '../../modules/tenancy/operational-limits.js';
 import {HistoryImportError,type HistoryImportService} from '../../modules/history-import/types.js';
 import {HistoryImportCapabilitySchema,HistoryImportOperationSchema,HistoryImportSelectionSchema} from '@jrc/contracts';
+import { IntegrationError } from '../../modules/integrations/integration-error.js';
 
 export interface ChannelRouteOptions extends AuthenticationOptions {
   service: ChannelFacade;
@@ -33,6 +34,7 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
     ...(options.requestTimeoutMs ? { timeoutMs: options.requestTimeoutMs } : {}) });
   app.addHook('onRequest', async (_request, reply) => { reply.header('Cache-Control', 'no-store'); });
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof IntegrationError) return reply.code(error.status).type(PROBLEM_CONTENT_TYPE).send({ type: 'about:blank', title: error.code, status: error.status, code: error.code, requestId: request.id });
     if(error instanceof HistoryImportError)return reply.code(error.statusCode).type(PROBLEM_CONTENT_TYPE).send({type:'about:blank',title:error.code,status:error.statusCode,code:error.code,requestId:request.id});
     if(error instanceof AttendanceError)return reply.code(error.statusCode).type('application/problem+json').send({type:'about:blank',title:error.code,status:error.statusCode,code:error.code,requestId:request.id});
     const operational = tenantOperationalProblem(error, request.id);
@@ -170,5 +172,5 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
   api.put('/v1/channels/:id/destination', { preHandler: manage, schema: { params, querystring: empty,
     body: BindChannelDestinationV1Schema, response: { 200: ChannelV1Schema, 400: ProblemDetailsSchema,
       401: ProblemDetailsSchema, 403: ProblemDetailsSchema, 404: ProblemDetailsSchema, 409: ProblemDetailsSchema, 503: ProblemDetailsSchema } } },
-  request => options.service.bindDestination(org(request), request.params.id, request.body, actor(request)));
+  request => options.service.bindDestination(org(request), request.params.id, request.body, actor(request), request.authentication!));
 }

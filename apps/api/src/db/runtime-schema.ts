@@ -1,4 +1,5 @@
 import {campaignRuntimeSql} from './chatwoot-campaign-runtime-schema.js';
+import {initialIdentityRuntimeSql} from './chatwoot-initial-identity-runtime-schema.js';
 import {conversationEffectsRuntimeSql} from './conversation-effects-runtime-schema.js';
 import {consolidatedRuntimeSql} from './consolidated-runtime-schema.js';
 import {inputTimeoutRuntimeSql} from './input-timeout-runtime-schema.js';
@@ -10,7 +11,7 @@ import {historyImportRuntimeSql} from './history-import-runtime-schema.js';
 import {flowDomainRuntimeSql} from './flow-domain-runtime-schema.js';
 import {metaOnboardingRuntimeSql} from './meta-onboarding-runtime-schema.js';
 import {partnerApiRuntimeSql} from './partner-api-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0072_chatwoot_campaign_intents';
+export const RUNTIME_SCHEMA_BASELINE = '0073_chatwoot_initial_identity';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -434,7 +435,7 @@ const requiredObjectsSql = `SELECT
         FROM unnest(i.indkey) WITH ORDINALITY k(attnum,ordinality)
         JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum)
         =ARRAY['organization_id','channel_id','contact_id','id'])
-  AND (${flowDelegationRuntimeSql}) AND (${nativeFlowGuardCoverageRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AND (${consolidatedRuntimeSql}) AND (${inputTimeoutRuntimeSql}) AND (${nicoTakeoverRuntimeSql}) AND (${conversationEffectsRuntimeSql}) AND (${qrIdentityRuntimeSql}) AND (${historyImportRuntimeSql}) AND (${flowDomainRuntimeSql}) AND (${metaOnboardingRuntimeSql}) AND (${partnerApiRuntimeSql}) AND (${campaignRuntimeSql}) AS ready`;
+   AND (${flowDelegationRuntimeSql}) AND (${nativeFlowGuardCoverageRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AND (${consolidatedRuntimeSql}) AND (${inputTimeoutRuntimeSql}) AND (${nicoTakeoverRuntimeSql}) AND (${conversationEffectsRuntimeSql}) AND (${qrIdentityRuntimeSql}) AND (${historyImportRuntimeSql}) AND (${flowDomainRuntimeSql}) AND (${metaOnboardingRuntimeSql}) AND (${partnerApiRuntimeSql}) AND (${campaignRuntimeSql}) AND (${initialIdentityRuntimeSql}) AS ready`;
 
 export async function probeRequiredRuntimeSchema(query: SchemaProbeQuery): Promise<boolean> {
   const result = await query(requiredObjectsSql);

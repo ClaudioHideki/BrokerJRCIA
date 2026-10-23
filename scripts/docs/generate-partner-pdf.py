@@ -44,10 +44,10 @@ p('JRC BROKER / INTEGRAÇÕES', 'H2JRC')
 story.append(Spacer(1,27*mm))
 p('Guia da API<br/>para empresas', 'TitleJRC')
 p('Conexões WhatsApp, mensageria, eventos assinados e integração com CCLX / Chatwoot.', 'H2JRC')
-p('Edição técnica 22/10/2026. Contratos extraídos da revisão documentada do Broker. A publicação deste arquivo não certifica implantação no servidor nem homologação de um sistema externo.')
+p('Edição técnica 23/10/2026. Contratos extraídos da revisão candidata do Broker. A publicação deste arquivo não certifica implantação no servidor nem homologação de um sistema externo.')
 h('O que você recebe')
 p('URL da instalação JRC, uma chave exclusiva da organização e documentação OpenAPI. A JRC opera o Broker e o motor de conexão. A empresa integra seu próprio backend e mantém suas telas, agentes, caixas e regras de negócio.')
-p('Origem prevista: <b>https://jrc-broker.jrcws.cloud</b><br/>Portal previsto após o deploy: <b>/documentation/</b><br/>Chaves reais são entregues separadamente, por canal privado. Este guia não contém credenciais.')
+p('Origem Broker: <b>https://jrc-broker.jrcws.cloud</b><br/>Portal: <b>/documentation/</b><br/>Use a origem fornecida para sua instalação. Chaves reais são entregues separadamente, por canal privado. Este guia não contém credenciais.')
 p('Referência do contrato: ' + DATA['sourceHash'][:20], 'SmallJRC')
 
 page('1. O que a empresa consegue fazer')
@@ -55,7 +55,7 @@ table(['Área','Disponível pelo perfil documentado'],[
  ['Conexões QR','Descobrir provedores do tenant; criar/listar instâncias; parear, consultar estado, reconectar e desconectar.'],
  ['Mensageria por chave','Ativar o canal QR; consultar canais, conversas e mensagens; enfileirar texto individual.'],
  ['Recebimento','Receber eventos em receptor HTTPS com HMAC ou ler eventos por cursor, sem exigir URL Chatwoot previamente.'],
- ['Controle Chatwoot opcional','Vincular uma Account remota, parear número, confirmar identidade, definir agentes e acompanhar operações, mediante credencial específica.'],
+ ['Controle Chatwoot opcional','Criar/adotar vínculo novo, parear, matricular a primeira identidade quando elegível, confirmar legado/troca, definir agentes e acompanhar operações com credencial vinculada à Account.'],
  ['Interface dentro do CCLX','Pacote adaptador de QR para incorporação ao host. Instalação exige integração com sessão, permissões e mapeamento do CCLX.']],[39*mm,126*mm])
 h('Limites do acesso genérico atual')
 p('O envio por chave neste perfil é de <b>texto individual pelo QR</b>. Inclui download privado de anexo, mas não envio de mídia, envio em grupos, templates Meta nem administração de Flows. Outras funções do console e integrações diretas usam contratos e permissões próprios. Não assuma que qualquer chave autoriza todas as rotas do Broker.')
@@ -83,7 +83,7 @@ code('GET /v1/provider-accounts?provider=BAILEYS&limit=100\nAccept: application/
 p('A chave identifica a organização. Não envie organizationId no corpo para escolher outro tenant. Os IDs de recursos são UUIDs do Broker, não IDs globais do Evolution. Se a lista de contas de provedor estiver vazia, a JRC precisa provisionar o acesso do tenant antes de criar instâncias.')
 p('Validade sugerida para a POC: 15 dias. A chave é revogável e os novos escopos são explícitos. Não guardar a chave em JavaScript público, URL, repositório, print ou pacote de documentação. O Swagger mantém a autorização somente na memória da aba.')
 h('Usar o Swagger')
-p('Abrir /documentation/, escolher Conexões, Mensageria ou Eventos e clicar Authorize. Informar somente uma credencial por requisição. Escrita fica desabilitada inicialmente; habilitá-la e clicar Execute executa a operação real. O portal não cria conexões ou envia mensagens automaticamente. Há downloads OpenAPI, consultas Postman e este PDF.')
+p('Abrir /documentation/, escolher o perfil e clicar Authorize. Informar somente uma credencial por requisição. Escrita fica desabilitada inicialmente; habilitá-la e clicar Execute executa a operação real. O portal não cria conexões ou envia mensagens automaticamente. Há quatro contratos OpenAPI, consultas Postman, POC genérica de 19 operações, catálogo de controle de 15 operações e ambiente vazio. No controle Postman, cada pasta de mutação exige seu próprio allow_*=true e termina o Runner após a ação; Run All não habilita escrita. Preencher IDs e chave somente no ambiente privado. Não publicar respostas ou relatórios brutos.')
 
 page('4. Primeiro número: parear e ativar')
 h('Passo 1 - Escolher uma conta e criar instância')
@@ -95,6 +95,13 @@ p('Ler action.type. QR_CODE usa action.encoding, value e expiresAt; PAIRING_CODE
 h('Passo 3 - Ativar o canal para mensageria')
 code('POST /v1/messaging/instances/INSTANCE_ID/partner-activate\nIdempotency-Key: poc-canal-01\nContent-Type: application/json\n\n{}')
 p('Guardar <b>response.id</b> como channelId: o canal vem em objeto plano, sem wrapper channel. Ativar mensageria não liga bots. Consultar os canais permite recuperar o vínculo pela instanceId.')
+p('A POC para o Runner em QR, pending, erro, UNKNOWN ou reconciliationRequired. Escanear e retomar na consulta de estado; ativação/envio exigem CONNECTED da mesma instanceId. run_id preserva as chaves da mesma intenção: só limpar para uma nova POC depois de conciliar a anterior. Pareamento/logout, canal de envio e receptor revogado precisam pertencer à mesma rodada. Não definir IDs gerenciados ou run_id no ambiente/data/local: sobrescrita interrompe a requisição antes do HTTP. O ambiente vazio omite esses nomes.')
+
+page('4.1. Vínculo e identidade da integração direta')
+for paragraph in DATA['identityEnrollmentGuide']:
+    p(escape(paragraph))
+p('A origem/Account/revisão vêm de control/context e do vínculo autenticado, não de organização ou conta arbitrária no corpo. Uma chave de controle pode servir às conexões autorizadas da mesma Account; não se emite uma chave por inbox. O host integra resources/status ao seu catálogo local. A sincronização e a instalação do CCLX precisam de homologação própria. X-JRC-External-Actor é atribuição auditável opcional nas mutações por chave; a reserva de campanha exige ID numérico do administrador remoto e revisões atuais. Esse header não autentica nem concede permissões.')
+p('Legado e substituição: consultar status, conferir número mascarado e identityRevision, decidir explicitamente e executar confirm-identity com observedRevision atual e chave idempotente. Não confirmar automaticamente ao receber erro. Flow, transferência e editor usam credenciais e contratos separados; nenhuma coleção deste guia publica automação.')
 
 page('5. Receber e responder')
 h('Recebimento por consulta periódica')
@@ -123,7 +130,7 @@ p('1. Uma empresa e um número de homologação; chave com prazo e escopos míni
 p('Sem acesso ao host do CCLX e sem números de homologação, o pacote pode ser testado por contratos e simulação, mas não é correto certificar a integração externa como concluída.')
 
 page('8. Catálogo de endpoints')
-p('As próximas páginas explicam cada operação dos perfis públicos. Tipos, campos obrigatórios, limites e respostas são derivados do mesmo OpenAPI do Swagger. Erros comuns de autenticação, autorização, indisponibilidade e limites também podem ocorrer em rotas legadas que documentam somente a resposta de sucesso.')
+p('As próximas páginas explicam as 34 operações dos perfis públicos. Tipos, campos obrigatórios, limites e respostas são derivados do mesmo OpenAPI do Swagger. Falhas usam application/problem+json com code e requestId. 401 indica credencial inválida/ambígua; 403 permissão ou vínculo; 404 recurso do tenant ou controle desligado; 409 conflito/identidade/reconciliação; 429 limite; 502/503 dependência. Rotas legadas fora do controle podem declarar somente sucesso. Timeout de mutação não prova falha: preservar idempotência, consultar e conciliar antes de outra intenção.')
 profile_names = {'instances':'Conexões QR', 'messaging':'Mensageria por chave', 'events':'Eventos e webhooks', 'chatwoot':'Controle Chatwoot opcional'}
 operation_count = 0
 for profile in ['instances','messaging','events','chatwoot']:
@@ -182,12 +189,11 @@ p('Essas referências descrevem o produto de origem e não certificam o fork/ver
 def decorate(canvas, doc):
     canvas.setStrokeColor(colors.HexColor('#dbe5ef')); canvas.line(22*mm,281*mm,188*mm,281*mm)
     canvas.setFillColor(NAVY); canvas.setFont('Helvetica-Bold',8); canvas.drawString(22*mm,285*mm,'JRC BROKER | API PARA EMPRESAS')
-    canvas.setFont('Helvetica',8); canvas.drawString(22*mm,13*mm,'22/10/2026 | Guia de integração - sem credenciais')
+    canvas.setFont('Helvetica',8); canvas.drawString(22*mm,13*mm,'23/10/2026 | Guia de integração - sem credenciais')
     canvas.drawRightString(188*mm,13*mm,str(doc.page))
 SimpleDocTemplate(str(OUT), pagesize=(210*mm,297*mm), rightMargin=22*mm,leftMargin=22*mm,topMargin=25*mm,bottomMargin=23*mm,
     title='JRC Broker - Guia da API para empresas',author='JRC',subject='Integração CCLX, QR, mensageria e webhooks').build(story,onFirstPage=decorate,onLaterPages=decorate)
-guide_bytes = (ROOT/'scripts/docs/operation-guide.mjs').read_bytes().replace(b'\r\n', b'\n')
-manifest = {'canonicalSha256': DATA['sourceHash'], 'guideSha256':hashlib.sha256(guide_bytes).hexdigest(), 'pdfSha256':hashlib.sha256(OUT.read_bytes()).hexdigest(),'operationCount':operation_count,'edition':'2026-10-22'}
+manifest = {**DATA['provenance'], 'pdfSha256':hashlib.sha256(OUT.read_bytes()).hexdigest(),'operationCount':operation_count,'edition':'2026-10-23'}
 (OUT.with_suffix('.json')).write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
 dest=ROOT/'output/pdf';dest.mkdir(parents=True,exist_ok=True)
 (dest/OUT.name).write_bytes(OUT.read_bytes())

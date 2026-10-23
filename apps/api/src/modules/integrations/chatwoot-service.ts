@@ -26,6 +26,10 @@ import { createChatwootDestinationService, lockChatwootDestination } from './cha
 import { IntegrationError } from './integration-error.js';
 import { accountCompatibility, observeChatwootCapabilities } from './chatwoot-compatibility.js';
 import { readChatwootAccount, resolveChatwootContext, requireApprovedDestination, mayUsePlatformToken, type AccountRow } from './chatwoot-context.js';
+import { createChatwootInitialIdentity } from './chatwoot-initial-identity.js';
+import type { ChatwootHealth } from './chatwoot-health.js';
+import type { ChatwootControlAuth, ChatwootControlPrincipal } from './chatwoot-control-auth.js';
+import type { AuthenticationContext } from '../../http/plugins/authorization.js';
 export { IntegrationError } from './integration-error.js';
 export { readChatwootAccount, type AccountRow } from './chatwoot-context.js';
 export interface ChatwootOptions {
@@ -45,6 +49,8 @@ export interface ChatwootOptions {
   resolveIntegration(id: string): Promise<string | undefined>;
   activateQr?(org: string, instanceId: string): Promise<{ id: string }>;
   assertIdentity?(org: string, channelId: string): Promise<void>;
+  health?: ChatwootHealth;
+  controlAuth?: ChatwootControlAuth;
 }
 type IntegrationState = "PENDING" | "READY" | "FAILED" | "UNKNOWN" | "DISABLED";
 export interface ConnectionRow {
@@ -135,6 +141,8 @@ export function createChatwootService(options: ChatwootOptions) {
   const attendance=createChatwootAttendanceService({transact:options.transact,client:env.client});
   const repo = createPostgresMessagingRepository();
   const tx = options.transact;
+  const initialIdentity = options.health && options.controlAuth?.enabled
+    ? createChatwootInitialIdentity({ ...options, health: options.health, auth: options.controlAuth }) : undefined;
   const destinations = createChatwootDestinationService({ enabled: options.externalDestinationsEnabled === true,
     managedOrigin: env.origin, transact: tx });
   function connectionView(row: ConnectionRow) {
@@ -396,6 +404,7 @@ export function createChatwootService(options: ChatwootOptions) {
       ]);
       return this.agents(org, id);
     },
+    initialIdentity,
     async connect(
       org: string,
       input: {
@@ -407,7 +416,9 @@ export function createChatwootService(options: ChatwootOptions) {
         requireIdentity?: boolean | undefined;
       },
       actorId?: string,
+      authentication?: AuthenticationContext | ChatwootControlPrincipal,
     ) {
+      const initialPrincipal = authentication && initialIdentity ? await initialIdentity.authorize(authentication) : undefined;
       const a = await account(org),
         client = env.client(a);
       let channelId = input.channelId;
@@ -441,7 +452,8 @@ export function createChatwootService(options: ChatwootOptions) {
           )
         ).rows[0];
         if (!row) throw new IntegrationError("CONNECTION_ALREADY_EXISTS", 409);
-        if (input.requireIdentity) await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id,identity_enforced) VALUES($1,$2,$3,true)`, [org, id, channelId]);
+        if (initialPrincipal) await initialIdentity!.register(t, initialPrincipal, id);
+        if (input.requireIdentity) await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id,identity_enforced) VALUES($1,$2,$3,true) ON CONFLICT DO NOTHING`, [org, id, channelId]);
         await integrationAudit(
           t,
           org,
@@ -506,6 +518,7 @@ export function createChatwootService(options: ChatwootOptions) {
         );
         throw failure;
       }
+      if (initialPrincipal) await initialIdentity!.created(initialPrincipal, connection.id);
       return this.status(org);
     },
     async reconcileConnection(org: string, id: string) {

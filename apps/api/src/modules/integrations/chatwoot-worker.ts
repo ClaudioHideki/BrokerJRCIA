@@ -67,6 +67,26 @@ export function createChatwootWorker(options: ChatwootOptions) {
   const env = chatwootEnvironment(options),
     repo = createPostgresMessagingRepository(),
     tx = options.transact;
+  // An uncertain mirror must fence its contact, including later physical cycles,
+  // without stopping inbound mirrors for unrelated contacts. Keep every reply to
+  // WhatsApp stopped until the integration's uncertain writes are reconciled.
+  // Both claim queries use the same predicate so a blocked connection cannot
+  // starve another connection that has eligible work.
+  const eligibleJob = `j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now()
+    AND (NOT EXISTS(SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=j.organization_id
+      AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN')
+    OR (j.kind='MIRROR_MESSAGE' AND EXISTS(
+      SELECT 1 FROM messaging_messages candidate_message
+      JOIN messaging_conversations candidate_conversation ON candidate_conversation.organization_id=candidate_message.organization_id
+        AND candidate_conversation.channel_id=candidate_message.channel_id AND candidate_conversation.id=candidate_message.conversation_id
+      WHERE candidate_message.organization_id=j.organization_id AND candidate_message.id=j.message_id AND candidate_message.channel_id=c.channel_id
+        AND NOT EXISTS(SELECT 1 FROM integration_jobs blocked
+          LEFT JOIN messaging_messages blocked_message ON blocked_message.organization_id=blocked.organization_id
+            AND blocked_message.id=blocked.message_id AND blocked_message.channel_id=c.channel_id
+          LEFT JOIN messaging_conversations blocked_conversation ON blocked_conversation.organization_id=blocked_message.organization_id
+            AND blocked_conversation.channel_id=blocked_message.channel_id AND blocked_conversation.id=blocked_message.conversation_id
+          WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
+            AND (blocked_conversation.contact_id IS NULL OR blocked_conversation.contact_id=candidate_conversation.contact_id)))))`;
   async function claim(org: string): Promise<Job | undefined> {
     return tx(org, async (t) => {
       // An expired POST might have succeeded remotely. Replies are local, idempotent transactions.
@@ -85,8 +105,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
         WHERE c.organization_id=$1 AND c.status='READY' AND a.status='READY'
           AND d.approval_status='APPROVED'
           AND chatwoot_channel_identity_ready(c.organization_id,c.channel_id)
-          AND EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now())
-          AND NOT EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND j.status IN ('RUNNING','UNKNOWN'))
+          AND EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND ${eligibleJob})
+          AND NOT EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND j.status='RUNNING')
         ORDER BY c.updated_at,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1`,
           [org],
         )
@@ -94,8 +114,9 @@ export function createChatwootWorker(options: ChatwootOptions) {
       if (!connection) return;
       const job = (
         await t.query<{ id: string }>(
-          `SELECT id FROM integration_jobs WHERE organization_id=$1 AND integration_id=$2 AND status IN ('PENDING','HISTORY_PENDING') AND available_at<=now()
-        ORDER BY CASE WHEN payload->>'historical'='true' THEN 1 ELSE 0 END,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`,
+          `SELECT j.id FROM integration_jobs j JOIN chatwoot_connections c ON c.organization_id=j.organization_id AND c.id=j.integration_id
+        WHERE j.organization_id=$1 AND j.integration_id=$2 AND ${eligibleJob}
+        ORDER BY CASE WHEN j.payload->>'historical'='true' THEN 1 ELSE 0 END,j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`,
           [org, connection.id],
         )
       ).rows[0];

@@ -9,11 +9,11 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('carrega o manifesto real até a migration 0072', async () => {
+  it('carrega o manifesto real até a migration 0073', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(72);
+    expect(migrations).toHaveLength(73);
     expect(migrations.slice(-3).map(entry => entry.name)).toEqual([
-      '0070_partner_events', '0071_partner_messaging_authority', '0072_chatwoot_campaign_intents',
+      '0071_partner_messaging_authority', '0072_chatwoot_campaign_intents', '0073_chatwoot_initial_identity',
     ]);
   });
 
