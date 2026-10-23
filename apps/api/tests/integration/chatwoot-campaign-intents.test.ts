@@ -31,19 +31,65 @@ async function fixture(kind:'text'|'image'|'document'|'video'|'audio'='text'){
  // Mapping exists, so the campaign never changes attendance ownership or conversation mode.
  await db.database.pool.query(`INSERT INTO chatwoot_conversations(organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id) VALUES($1,$2,$3,12,'synthetic-source',21)`,[t.org,t.integration,t.conversation]);
  let intentId:string|undefined,policy=true,canonicalText='Synthetic campaign',attachmentId=71,recipientPhone='+12025550123',recipientSource='synthetic-source',recipientContactId=12;
+ let canonicalRoute:unknown=undefined,contactLinks:{source_id:string;inbox:{id:number}}[]|undefined,canonicalConversationId=21;
+ const conversation=()=>({id:canonicalConversationId,account_id:7,inbox_id:9,meta:{sender:{id:recipientContactId,phone_number:recipientPhone}},
+  ...(canonicalRoute===undefined?{}:{contact_inbox:canonicalRoute})});
  const canonical=()=>({id:25,account_id:7,inbox_id:9,conversation_id:21,message_type:'outgoing',private:false,created_at:1700000000,content:canonicalText,sender:{id:17,type:'user'},attachments:kind==='text'?[]:[{id:attachmentId,file_type:kind==='document'?'file':kind}],
   additional_attributes:{jrc_campaign_broker:true,campaign_id:'campaign:12',...(intentId?{jrc_campaign_intent_id:intentId}:{})}});
  const auth=createChatwootControlAuth({enabled:true,hmacSecret:'synthetic-campaign-test-hmac-secret-32',managedOrigin:origin,transact:db.transact,resolveCurrentRole:async()=>null});
  const options={baseUrl:origin,publicOrigin:'https://broker.example.com',encryptionKey,transact:db.transact,resolveIntegration:async()=>t.org,auth,
-  fetch:async(url:unknown)=>String(url).endsWith('/conversations/21')?Response.json({id:21,account_id:7,inbox_id:9,meta:{sender:{id:recipientContactId,phone_number:recipientPhone}}}):String(url).includes('/contacts/')?Response.json({payload:{id:recipientContactId,phone_number:recipientPhone,contact_inboxes:[{source_id:recipientSource,inbox:{id:9}}]}}):String(url).includes('/messages?')?Response.json({payload:[canonical()]}):String(url).endsWith('/inboxes/9')?Response.json({id:9,name:'Synthetic',channel_type:'Channel::Api',greeting_enabled:!policy,enable_auto_assignment:false}):Promise.reject(new Error('UNEXPECTED_CANONICAL_REQUEST'))} as unknown as ChatwootControlOptions;
+  fetch:async(url:unknown)=>String(url).endsWith('/conversations/21')?Response.json(conversation()):String(url).includes('/contacts/')?Response.json({payload:{id:recipientContactId,phone_number:recipientPhone,contact_inboxes:contactLinks??[{source_id:recipientSource,inbox:{id:9}}]}}):String(url).includes('/messages?')?Response.json({payload:[canonical()]}):String(url).endsWith('/inboxes/9')?Response.json({id:9,name:'Synthetic',channel_type:'Channel::Api',greeting_enabled:!policy,enable_auto_assignment:false}):Promise.reject(new Error('UNEXPECTED_CANONICAL_REQUEST'))} as unknown as ChatwootControlOptions;
  const service=createChatwootCampaignService(options),worker=createChatwootWorker(options);
  const p=await auth.authorize({kind:'API_KEY',organizationId:t.org,apiKeyId:key,actorId:null,scopes:['chatwoot:read','chatwoot:manage']},'chatwoot:manage',t.integration,'17');
  const input={conversationId:21,messageId:25,campaignId:'campaign:12',kind,text:'Synthetic campaign',destinationRevision:1,identityRevision:1,ownerRevision:0};
  async function reserve(){const r=await service.reserveCampaignIntent(p,t.integration,input,'campaign-delivery-12');intentId=r.intentId;return r;}
  async function callback(){await db.transact(t.org,tx=>recordChatwootAttendanceEvent(tx,{organizationId:t.org,integrationId:t.integration,channelId:t.channel,destinationRevision:1,credentialRevision:1,accountId:7,inboxId:9},
   {event:'message_created',...canonical(),account:{id:7},inbox:{id:9},conversation:{id:21,inbox_id:9}}));}
- return {...t,key,instance,p,input,service,worker,reserve,callback,setPolicy:(v:boolean)=>{policy=v;},setCanonicalText:(v:string)=>{canonicalText=v;},setAttachmentId:(v:number)=>{attachmentId=v;},setRecipient:()=>{recipientPhone='+12025550124';recipientSource='changed-source';recipientContactId=13;}};
+ return {...t,key,instance,p,input,service,worker,reserve,callback,setPolicy:(v:boolean)=>{policy=v;},setCanonicalText:(v:string)=>{canonicalText=v;},setAttachmentId:(v:number)=>{attachmentId=v;},
+  setCanonicalRoute:(value:unknown)=>{canonicalRoute=value;},setContactLinks:(value:{source_id:string;inbox:{id:number}}[])=>{contactLinks=value;},setCanonicalConversationId:(value:number)=>{canonicalConversationId=value;},
+  setRecipient:()=>{recipientPhone='+12025550124';recipientSource='changed-source';recipientContactId=13;}};
 }
+const canonicalRoute=(patch:Record<string,unknown>={})=>({id:81,contact_id:12,inbox_id:9,source_id:'synthetic-source',...patch});
+const contactLink=(source_id:string,inboxId=9)=>({source_id,inbox:{id:inboxId}});
+it.each(['text','image'] as const)('selects the exact canonical conversation route for a %s campaign among three same-inbox links',async kind=>{
+ const t=await fixture(kind);t.setCanonicalRoute(canonicalRoute());
+ t.setContactLinks([contactLink(`jrc-${randomUUID()}`),contactLink('synthetic-source'),contactLink(randomUUID())]);
+ const reserved=await t.reserve();expect(await t.reserve()).toMatchObject({intentId:reserved.intentId,replayed:true});await t.callback();await t.worker.runOnce(t.org);
+ const intents=(await db.database.pool.query('SELECT recipient_source_id,recipient_phone FROM chatwoot_campaign_intents WHERE organization_id=$1',[t.org])).rows;
+ expect(intents).toEqual([{recipient_source_id:'synthetic-source',recipient_phone:'+12025550123'}]);
+ const rows=(await db.database.pool.query('SELECT campaign_intent_id,content FROM messaging_messages WHERE organization_id=$1',[t.org])).rows;
+ expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({campaign_intent_id:reserved.intentId,content:kind==='text'?{type:'TEXT',text:'Synthetic campaign'}:{type:'MEDIA',kind:'image',caption:'Synthetic campaign'}});
+});
+it('preserves legacy single-link hosts but refuses multiple links without a canonical route',async()=>{
+ const legacy=await fixture();expect(await legacy.reserve()).toMatchObject({state:'RESERVED'});
+ const ambiguous=await fixture();ambiguous.setContactLinks([contactLink('synthetic-source'),contactLink(randomUUID())]);
+ await expect(ambiguous.reserve()).rejects.toMatchObject({code:'CAMPAIGN_RECIPIENT_NOT_PROVEN'});
+ expect((await db.database.pool.query('SELECT id FROM chatwoot_campaign_intents WHERE organization_id=$1',[ambiguous.org])).rowCount).toBe(0);
+});
+it.each([{inbox_id:10},{contact_id:13},{source_id:'foreign-source'},null] as const)('rejects canonical route parent/source mismatch without falling back to its single link: %j',async patch=>{
+ const t=await fixture();t.setCanonicalRoute(patch===null?null:canonicalRoute(patch));
+ await expect(t.reserve()).rejects.toMatchObject({code:'CAMPAIGN_RECIPIENT_NOT_PROVEN'});
+ expect((await db.database.pool.query('SELECT id FROM chatwoot_campaign_intents WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
+});
+it('does not depend on contact-link order when unrelated links appear after reservation',async()=>{
+ const t=await fixture('image');t.setCanonicalRoute(canonicalRoute());await t.reserve();
+ t.setContactLinks([contactLink(randomUUID()),contactLink('synthetic-source'),contactLink(`jrc-${randomUUID()}`)]);
+ await t.callback();await t.worker.runOnce(t.org);
+ expect((await db.database.pool.query('SELECT * FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(1);
+ expect(await t.service.campaignReceipt(t.p,t.integration,21,25)).toMatchObject({status:'queued'});
+});
+it.each(['source','inbox','contact','conversation','duplicate-source','missing-multiple'] as const)('rejects changed %s route evidence between reservation and worker dispatch',async change=>{
+ const t=await fixture();t.setCanonicalRoute(canonicalRoute());await t.reserve();
+ if(change==='source'){t.setCanonicalRoute(canonicalRoute({source_id:'changed-source'}));t.setContactLinks([contactLink('synthetic-source'),contactLink('changed-source')]);}
+ if(change==='inbox')t.setCanonicalRoute(canonicalRoute({inbox_id:10}));
+ if(change==='contact')t.setCanonicalRoute(canonicalRoute({contact_id:13}));
+ if(change==='conversation')t.setCanonicalConversationId(22);
+ if(change==='duplicate-source')t.setContactLinks([contactLink('synthetic-source'),contactLink('synthetic-source')]);
+ if(change==='missing-multiple'){t.setCanonicalRoute(undefined);t.setContactLinks([contactLink('synthetic-source'),contactLink(randomUUID())]);}
+ await t.callback();await t.worker.runOnce(t.org);
+ expect((await db.database.pool.query('SELECT * FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
+ expect(await t.service.campaignReceipt(t.p,t.integration,21,25)).toMatchObject({status:'failed',errorCode:'CAMPAIGN_RECIPIENT_CHANGED'});
+});
 it('has a complete forced-RLS campaign schema under the actual app role',async()=>{
  await db.transact(randomUUID(),async tx=>{expect(await probeRequiredRuntimeSchema(sql=>tx.query(sql))).toBe(true);});
 });

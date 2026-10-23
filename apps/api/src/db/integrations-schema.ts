@@ -50,6 +50,8 @@ export const chatwootConnectionHealth = pgTable('chatwoot_connection_health', {
   identityEnforced: boolean('identity_enforced').notNull().default(false), approvedFingerprint: text('approved_fingerprint'), observedFingerprint: text('observed_fingerprint'), observedLast4: text('observed_last4'),
   identityRevision: integer('identity_revision').notNull().default(1), observedConnected: boolean('observed_connected').notNull().default(false), observedAt: timestamp('observed_at', { withTimezone: true }),
   identityError: text('identity_error'), accessError: text('access_error'), pairWindowKey: uuid('pair_window_key'), pairWindowExpiresAt: timestamp('pair_window_expires_at', { withTimezone: true }),
+  initialIdentityIntent: jsonb('initial_identity_intent'), initialIdentityExpiresAt: timestamp('initial_identity_expires_at', { withTimezone: true }),
+  initialIdentityPairExpiresAt: timestamp('initial_identity_pair_expires_at', { withTimezone: true }),
   callbackVerifiedAt: timestamp('callback_verified_at', { withTimezone: true }), callbackDestinationRevision: integer('callback_destination_revision'), callbackCredentialVersion: integer('callback_credential_version'), ...dates,
 }, t => [primaryKey({ columns: [t.organizationId, t.integrationId] }), unique().on(t.organizationId, t.channelId),
   foreignKey({ columns: [t.organizationId, t.integrationId, t.channelId], foreignColumns: [chatwootConnections.organizationId, chatwootConnections.id, chatwootConnections.channelId] }).onDelete('restrict')]);

@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CompanyChannels } from './CompanyChannels.js';
+import { act, within } from '@testing-library/react';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -65,4 +66,59 @@ it('refreshes from page one after archiving and offers the new continuation curs
   expect(await screen.findByText('Segunda caixa')).toBeVisible();
   expect(request).toHaveBeenCalledWith('?cursor=new-cursor');
   expect(request).not.toHaveBeenCalledWith('?cursor=old-cursor');
+});
+
+it('uses the company-relative deletion path and preserves remote inboxes in the confirmation', async () => {
+  let finish!: (value: unknown) => void;
+  const receipt = new Promise(resolve => { finish = resolve; });
+  let lists = 0;
+  const request = vi.fn(async (path: string, method?: string) => {
+    if (path === '') return { data: ++lists === 1 ? [channel('first', 'Primeira caixa')] : [] };
+    if (path === '/first/deletion-preview') return { resourceId: 'first', resourceName: 'Primeira caixa', kind: 'CHANNEL', canDelete: true,
+      blockers: [], counts: { conversations: 2, messages: 7 }, externalEffects: ['Evolution: sessão removida após confirmação; Chatwoot externo preservado'], operationId: null, operationStatus: null };
+    if (path === '/first/deletion' && method === 'POST') return { operationId: 'operation', status: 'REQUESTED' };
+    if (path === '/first/deletion/operation') return receipt;
+    throw new Error(`Unexpected ${path}`);
+  });
+  render(<CompanyChannels request={request} admin disabled={false} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Excluir conexão' }));
+  expect(await screen.findByText(/caixas, contas e conversas.*preservados/i)).toBeVisible();
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar exclusão definitiva' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/first/deletion', 'POST',
+    { confirmationName: 'Primeira caixa', reason: 'Exclusão da conexão confirmada pelo administrador no painel do Broker.' }));
+  expect(lists).toBe(1);
+  await act(async () => { finish({ operationId: 'operation', status: 'COMPLETED' }); });
+  expect(await screen.findByText('Nenhuma caixa cadastrada.')).toBeVisible();
+  expect(lists).toBe(2);
+});
+
+it('does not expose deletion for support readers or for externally managed CENTRAL channels', async () => {
+  const request = vi.fn().mockResolvedValue({ data: [channel('first', 'Primeira caixa'), { ...channel('external', 'Central externa'), provider: 'CENTRAL' }] });
+  const view = render(<CompanyChannels request={request} admin={false} disabled={false} />);
+  await screen.findByText('Primeira caixa');
+  expect(screen.queryByRole('button', { name: 'Excluir conexão' })).not.toBeInTheDocument();
+  view.rerender(<CompanyChannels request={request} admin disabled={false} />);
+  const external = screen.getByText('Central externa').closest('tr')!;
+  expect(within(external).queryByRole('button', { name: 'Excluir conexão' })).not.toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: 'Excluir conexão' })).toHaveLength(1);
+});
+
+it('ignores a late deletion outcome after the administrator switches company workspaces', async () => {
+  let finish!: (value: unknown) => void;
+  const outcome = new Promise(resolve => { finish = resolve; });
+  const request = vi.fn(async (path: string, method?: string) => path === '' ? { data: [channel('first', 'Empresa antiga')] }
+    : path.endsWith('deletion-preview') ? { resourceId: 'first', resourceName: 'Empresa antiga', kind: 'CHANNEL', canDelete: true,
+      blockers: [], counts: {}, externalEffects: [], operationId: null, operationStatus: null }
+      : method === 'POST' ? outcome : { operationId: 'operation', status: 'REQUESTED' });
+  const replacement = vi.fn(async () => ({ data: [channel('other', 'Empresa atual')] }));
+  const view = render(<CompanyChannels key="old-company" request={request} admin disabled={false} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Excluir conexão' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Confirmar exclusão definitiva' }));
+  view.rerender(<CompanyChannels key="new-company" request={replacement} admin disabled={false} />);
+  await screen.findByText('Empresa atual');
+  await act(async () => { finish({ operationId: 'operation', status: 'COMPLETED' }); });
+  expect(replacement).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('Empresa atual')).toBeVisible();
+  expect(screen.queryByText('Conexão excluída')).not.toBeInTheDocument();
 });

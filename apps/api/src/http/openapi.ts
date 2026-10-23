@@ -396,8 +396,31 @@ function normalizeDocument(document: JsonObject): JsonObject {
         operation.security = path.endsWith("/events")
             ? [{ chatwootSignature: [] }]
             : [{ bearerAuth: [] }];
-      if (path.startsWith('/v1/integrations/chatwoot/control/'))
+      if (path.startsWith('/v1/integrations/chatwoot/control/')) {
         operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
+        // Documentation of the existing control error handler, not new runtime behavior.
+        const errors: Record<string, string> = {
+          '400': 'INVALID_REQUEST: parâmetros, corpo ou chave idempotente inválidos.',
+          '401': 'INVALID_CREDENTIALS: informe uma única credencial válida.',
+          '403': 'CHATWOOT_CONTROL_FORBIDDEN: escopo, vínculo ou papel atual insuficiente.',
+          '404': 'Controle desligado ou recurso indisponível no tenant autenticado.',
+          '409': 'Conflito de revisão, identidade, contexto ou operação; consultar e conciliar antes de repetir.',
+          '413': 'Corpo excede o limite da API.', '415': 'Tipo de conteúdo não aceito.',
+          '502': 'O provedor ou a central remota recusou a operação ou está indisponível.',
+          '503': 'Controle ou dependência indisponível; resultado de mutação pode exigir conciliação.',
+        };
+        const responses = (operation.responses ?? {}) as Record<string, JsonObject>;
+        for (const [status, description] of Object.entries(errors)) responses[status] ??= { description };
+        operation.responses = responses;
+        if (method !== 'get') {
+          const parameters = (operation.parameters ?? []) as JsonObject[];
+          if (!parameters.some(p => String(p.name).toLowerCase() === 'x-jrc-external-actor')) {
+            operation.parameters = [...parameters, { name: 'X-JRC-External-Actor', in: 'header', required: false,
+              description: 'Atribuição auditável opcional para chave de controle. Não autentica nem autoriza o usuário remoto. Campanhas exigem o ID numérico do administrador.',
+              schema: { type: 'string', pattern: '^[A-Za-z0-9:_-]{1,80}$' } }];
+          }
+        }
+      }
       if (method === 'post' && path === '/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents')
         operation.security = [{ jrcApiKeyAuth: [] }];
       if (path.startsWith('/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/'))

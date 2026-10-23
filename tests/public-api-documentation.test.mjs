@@ -4,6 +4,14 @@ import { buildPublicDocument, buildReadOnlyPostman } from '../scripts/docs/publi
 
 const source = JSON.parse(await readFile(new URL('../docs/api/openapi.json', import.meta.url), 'utf8'));
 describe('public partner contract', () => {
+  it('distinguishes authorized new enrollment from legacy approval and pair-only reconnection', () => {
+    const contract = buildPublicDocument(source, 'chatwoot'), base = '/v1/integrations/chatwoot/control/connections/{integrationId}';
+    expect(contract.info.description).toContain('GET não aprova identidade');
+    expect(contract.paths[base + '/pair'].post.description).toContain('primeira identidade exige também chatwoot:manage');
+    expect(contract.paths[base + '/status'].get.description).toContain('GET nunca aprova identidade');
+    expect(contract.paths[base + '/confirm-identity'].post.description).toContain('legado');
+    expect(contract.paths['/v1/integrations/chatwoot/control/onboarding'].get.description).toContain('Lista até 50 operações persistidas');
+  });
   it('documents the manage scope actually required to discover Chatwoot control resources', () => {
     const operation = buildPublicDocument(source, 'chatwoot').paths['/v1/integrations/chatwoot/control/resources'].get;
     expect(operation.description).toContain('Escopo da chave: chatwoot:manage.');

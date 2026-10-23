@@ -1,4 +1,5 @@
 import { operationGuide } from './operation-guide.mjs';
+export { buildControlPostman } from './postman-control.mjs';
 const profiles = {
   messaging: {
     title: 'Mensageria — API JRC para sistemas parceiros',
@@ -34,7 +35,7 @@ const profiles = {
   },
   chatwoot: {
     title: 'Integração direta Chatwoot — controle JRC',
-    description: 'Perfil opcional para uma Account Chatwoot vinculada ao Broker. Exige chave de controle específica chatwoot:read/manage/pair/disconnect; a chave genérica de instâncias não autoriza esse perfil. Mensagens dos agentes retornam pelo webhook da caixa. Flow possui credencial e contrato separados.',
+    description: 'Perfil opcional para uma Account Chatwoot vinculada ao Broker. Origem HTTPS aprovada, Account e revisão pertencem ao vínculo da credencial; não envie organizationId/accountId para escolher outra empresa. Exige chave de controle específica chatwoot:read/manage/pair/disconnect; a chave genérica de instâncias não autoriza esse perfil. Novos vínculos QR criados por administrador/manage podem matricular a primeira identidade automaticamente sob intenção finita e verificação do provider, contexto e inbox. GET não aprova identidade; legado e troca de número conservam confirmação administrativa. Mensagens dos agentes retornam pelo webhook da caixa. Flow possui credencial e contrato separados; este perfil não publica bots nem comprova homologação CCLX.',
     operations: [
       ['get', '/v1/integrations/chatwoot/control/context'],
       ['get', '/v1/integrations/chatwoot/control/resources'],
@@ -60,7 +61,7 @@ export function buildPublicDocument(document, profile) {
   if (!selected) throw new Error('PUBLIC_DOCUMENT_PROFILE_UNKNOWN');
   const result = {
     openapi: document.openapi,
-    info: { title: selected.title, version: '2026-10-22', description: selected.description },
+    info: { title: selected.title, version: '2026-10-23', description: selected.description },
     servers: [{ url: '/', description: 'Esta instalação do Broker JRC' }],
     paths: {}, components: { securitySchemes: {} },
   };
@@ -106,11 +107,11 @@ export function buildReadOnlyPostman(contract) {
   return {
     info: { name: contract.info.title + ' — consultas', schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json' },
     variable: [{ key: 'broker_origin', value: '' }, { key: 'jrc_api_key', value: '', type: 'secret' }],
-    item: Object.entries(contract.paths).filter(([, item]) => item.get).map(([route]) => ({
+    item: Object.entries(contract.paths).filter(([, item]) => item.get).map(([route, methods]) => ({
       name: 'GET ' + route,
       request: { method: 'GET', header: [{ key: 'Accept', value: 'application/json' }, { key: 'X-JRC-API-Key', value: '{{jrc_api_key}}' }],
         url: '{{broker_origin}}' + route.replace(/\{([^}]+)\}/g, '{{$1}}'),
-        description: 'Preencha a origem fornecida pela JRC e os IDs reais do seu tenant. Credencial não incluída. Consulta executada somente ao clicar Send.' },
+        description: methods.get.description + '\n\nPreencha a origem fornecida pela JRC e os IDs reais do seu tenant. O placeholder id tem o tipo de recurso indicado nesta rota; não reutilize um ID de canal como ID de mensagem/anexo. Credencial não incluída. Consulta executada somente ao clicar Send.' },
     })),
   };
 }

@@ -196,6 +196,7 @@ export function createIntegrationRuntime(
           }),
         ...(qr ? { activateQr: qr.activate } : {}),
         ...(identity ? { assertIdentity: identity.assertReady } : {}),
+        ...(identity && control ? { health: identity, controlAuth: control.auth } : {}),
         ...(groupPolicy ? {groupPolicy} : {}),
         async resolveIntegration(id) {
           return (

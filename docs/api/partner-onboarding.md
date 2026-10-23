@@ -18,6 +18,33 @@ Essas funções têm caminhos existentes com outros contratos/permissões e não
 convertidas em acesso genérico nesta entrega. A integração direta Chatwoot continua
 opcional e usa sua própria credencial vinculada à Account remota.
 
+## Vínculo direto e primeira identidade QR
+
+O controle usa a origem HTTPS aprovada, Account e revisão vinculadas à chave de
+controle; consultar `/control/context` e `/control/resources`. A mesma credencial
+da empresa atende seus vínculos autorizados, sem emissão por caixa. Isso é
+separado de criar uma instância com a chave genérica e de sincronizar o catálogo
+local do host. Flow mantém sua credencial e contrato próprios.
+
+Somente um vínculo BAILEYS **novo**, criado com intenção autenticada de
+administrador/`chatwoot:manage`, é elegível à matrícula automática da primeira
+identidade. A criação pode concluir a matrícula se a instância já estiver
+conectada. Para QR novo, o POST administrativo de `pair` arma uma janela de até
+dois minutos, limitada pelo desafio e pelo prazo de criação de 24 horas. Replays
+idempotentes não ampliam o prazo. Contexto, autoridade, primeira observação válida,
+revisão, inbox API, callback e segredo são conferidos novamente antes da matrícula.
+
+GET nunca aprova identidade. Vínculos legados, prazo expirado e troca de número
+mantêm confirmação administrativa da `observedRevision` atual. Revogação, logout
+ou mudança de contexto/identidade bloqueiam a intenção. Um novo POST administrativo
+pode rearmar somente enquanto ainda elegível; identidade aprovada nunca é trocada
+automaticamente. Meta segue seu onboarding próprio.
+
+`SUCCEEDED` do onboarding e `READY` do vínculo representam configuração;
+`CONNECTED` é sessão. Consultar saúde e `campaign-transport.ready/reason` antes de
+considerar capacidade de campanha. Matrícula não ativa bot, não certifica callback
+recebido/entrega nem instala/homologa o CCLX. Consulte o [runbook de controle](../operations/chatwoot-external.md).
+
 ## Provisão pela JRC
 
 1. Criar/selecionar a organização contratada no console do Broker.
@@ -112,12 +139,12 @@ base antiga de desenvolvimento e seu perfil adicional só inicia o worker de eve
    Nunca compartilhar essa chave com o CCLX. API e worker devem receber o mesmo valor.
 3. Aplicar migrações pelo serviço `migrate` do perfil `maintenance`, com banco ativo.
    As novas migrações são `0070_partner_events`, `0071_partner_messaging_authority`
-   e `0072_chatwoot_campaign_intents`.
+   `0072_chatwoot_campaign_intents` e `0073_chatwoot_initial_identity`.
 4. Habilitar `COMPOSE_PROFILES=partner-api` (preservando outros perfis já configurados)
    e fazer o Deploy normal com Run Command vazio. O novo `partner-events-worker`
    precisa de saída HTTPS; o Compose o liga às redes backend e egress.
 5. Conferir `operational-status.js`: READY, baseline
-   `0072_chatwoot_campaign_intents`, schema compatible. Isso é evidência estrutural,
+   `0073_chatwoot_initial_identity`, schema compatible. Isso é evidência estrutural,
    não comprova entrega ao WhatsApp ou ao consumidor externo.
 6. Abrir `/documentation/` sem login, confirmar contratos e Authorize. O portal
    deixa escrita bloqueada até seleção explícita na aba; nenhuma requisição de
