@@ -60,7 +60,7 @@ export function createWebServer({ root = resolve('public'), apiOrigin = 'http://
     // Explicit public documentation entry: never fall back to the SPA for missing docs.
     if (pathname === '/documentation' || pathname.startsWith('/documentation/')) {
       const name = pathname === '/documentation' || pathname === '/documentation/' ? 'index.html' : pathname.slice('/documentation/'.length);
-      const allowed = /^(?:index\.html|guia-api-jrc\.pdf|postman-poc\.json|portal\.(?:js|css)|swagger-ui(?:-bundle\.js|\.css|-bundle\.js\.LICENSE\.txt)|LICENSE\.txt|NOTICE\.txt|(?:openapi|postman)-(?:instances|chatwoot|messaging|events)\.json)$/;
+      const allowed = /^(?:index\.html|guia-api-jrc\.pdf|postman-(?:poc|control|environment)\.json|portal\.(?:js|css)|swagger-ui(?:-bundle\.js|\.css|-bundle\.js\.LICENSE\.txt)|LICENSE\.txt|NOTICE\.txt|(?:openapi|postman)-(?:instances|chatwoot|messaging|events)\.json)$/;
       if (!allowed.test(name) || parsedUrl.search) { res.writeHead(404, { ...consoleHeaders, 'Cache-Control': 'no-store' }); res.end(); return; }
       const mime = name.endsWith('.pdf') ? 'application/pdf' : name.endsWith('.json') ? 'application/json; charset=utf-8' : name.endsWith('.js') ? 'text/javascript; charset=utf-8'
         : name.endsWith('.css') ? 'text/css; charset=utf-8' : name.endsWith('.html') ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';

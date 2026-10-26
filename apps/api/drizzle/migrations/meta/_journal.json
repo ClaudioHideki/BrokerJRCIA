@@ -505,6 +505,13 @@
       "when": 1793745600000,
       "tag": "0072_chatwoot_campaign_intents",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1793832000000,
+      "tag": "0073_chatwoot_initial_identity",
+      "breakpoints": true
     }
   ]
 }

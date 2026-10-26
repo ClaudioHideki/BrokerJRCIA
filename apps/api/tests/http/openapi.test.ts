@@ -321,6 +321,10 @@ describe('OpenAPI público da JRC', () => {
       Pragma: { $ref: '#/components/headers/Pragma' },
     });
     expect(components.schemas).toHaveProperty('ProblemDetails');
+    expect(components.schemas?.['ProblemDetails']).toMatchObject({
+      additionalProperties: false,
+      properties: { correlationId: { type: 'string', format: 'uuid' } },
+    });
     expect(listInstances.responses?.['400']?.content?.['application/problem+json'])
       .toMatchObject({ schema: { $ref: '#/components/schemas/ProblemDetails' } });
     expect(document.components?.headers).toHaveProperty('XRequestId');
@@ -403,6 +407,24 @@ describe('OpenAPI público da JRC', () => {
     expect(document.paths['/v1/integrations/chatwoot/control/context']?.get?.security).toEqual([{ bearerAuth: [] }, { jrcApiKeyAuth: [] }]);
     expect(document.paths['/v1/integrations/chatwoot/control-credentials']?.post?.security).toEqual([{ bearerAuth: [] }]);
     expect(document.paths['/v1/integrations/chatwoot']?.get?.security).toEqual([{ bearerAuth: [] }]);
+  });
+
+  it('documents actual control failures and optional audit attribution without weakening campaign attribution', async () => {
+    const document = await createOpenApiDocument() as any;
+    const pair = document.paths['/v1/integrations/chatwoot/control/connections/{integrationId}/pair'].post;
+    for (const status of ['400', '401', '403', '404', '409', '502', '503']) {
+      expect(pair.responses[status]?.content['application/problem+json']).toBeDefined();
+    }
+    // Upstream 429 becomes 502; the public-ingress limiter excludes control routes.
+    for (const [path, methods] of Object.entries(document.paths) as Array<[string, any]>) {
+      if (path.startsWith('/v1/integrations/chatwoot/control/')) {
+        for (const operation of Object.values(methods) as any[]) expect(operation.responses['429'], path).toBeUndefined();
+      }
+    }
+    expect(pair.parameters).toContainEqual(expect.objectContaining({ name: 'X-JRC-External-Actor', in: 'header', required: false }));
+    const campaign = document.paths['/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents'].post;
+    expect(campaign.parameters.filter((p: any) => p.name.toLowerCase() === 'x-jrc-external-actor'))
+      .toEqual([expect.objectContaining({ required: true, schema: expect.objectContaining({ pattern: '^[1-9]\\d{0,15}$' }) })]);
   });
 
   it('documents NICO takeovers with only the bound service key accepted by their handlers', async () => {

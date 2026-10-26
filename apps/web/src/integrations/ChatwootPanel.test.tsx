@@ -67,6 +67,30 @@ it('lets the platform review an exact destination revision and media origins', a
   fireEvent.click(screen.getByRole('button', { name: 'Aprovar destino revisado' }));
   await waitFor(() => expect(request).toHaveBeenCalledWith('/destination/approve', 'POST', { revision: 2, mediaOrigins: ['https://cdn.example.com'] }));
 });
+it('lets platform administrators update attachment origins on an approved destination without changing its address', async () => {
+  const request = vi.fn(async (path: string) => path === '' ? { ...status, externalDestinationsEnabled: true,
+    destination: { organizationId: id, baseUrl: 'https://customer.example.com', mode: 'EXTERNAL', approvalStatus: 'APPROVED', revision: 3,
+      mediaOrigins: ['https://existing.example.com'] } } : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform />);
+  const origins = await screen.findByLabelText('Domínios de anexos autorizados');
+  expect(origins).toHaveValue('https://existing.example.com');
+  fireEvent.change(origins, { target: { value: 'https://existing.example.com\nhttps://cdn.example.com' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Atualizar domínios de anexos' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/destination/approve', 'POST', {
+    revision: 3, mediaOrigins: ['https://existing.example.com', 'https://cdn.example.com'],
+  }));
+  expect(request).not.toHaveBeenCalledWith('/destination', expect.anything(), expect.anything());
+});
+it.each([{ platform: false, canManage: true }, { platform: true, canManage: false }])(
+  'does not expose attachment approval outside platform management: %j', async permissions => {
+    const request = vi.fn(async (path: string) => path === '' ? { ...status, externalDestinationsEnabled: true,
+      destination: { organizationId: id, baseUrl: 'https://customer.example.com', mode: 'EXTERNAL', approvalStatus: 'APPROVED', revision: 3,
+        mediaOrigins: ['https://existing.example.com'] } } : { data: [] });
+    render(<ChatwootPanel request={request} {...permissions} />);
+    expect(await screen.findByText('Destino autorizado. A compatibilidade e a entrega ainda precisam ser verificadas.')).toBeVisible();
+    expect(screen.queryByLabelText('Domínios de anexos autorizados')).not.toBeInTheDocument();
+  }
+);
 it("loads inbox agents after the StrictMode mount cycle", async () => {
   const request = vi.fn(async (path: string) => path === "" ? {
     ...status,

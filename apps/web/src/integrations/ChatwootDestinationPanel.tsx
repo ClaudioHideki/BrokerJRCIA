@@ -26,15 +26,15 @@ export function ChatwootDestinationPanel({ data, platform, canManage, blocked, a
       {mode === 'EXTERNAL' && <label>Endereço do Chatwoot<input type="url" value={url} required disabled={blocked} onChange={e => setUrl(e.target.value)} placeholder="https://atendimento.suaempresa.com.br" /></label>}
       <button className="button" disabled={blocked}>Solicitar destino</button>
     </form>}
-    {platform && canManage && destination && destination.approvalStatus !== 'APPROVED' && <form className="integration-form" onSubmit={e => {
+    {platform && canManage && destination && <form className="integration-form" onSubmit={e => {
       e.preventDefault();
       const form = new FormData(e.currentTarget);
       void action('/destination/approve', 'POST', { revision: destination.revision,
         mediaOrigins: String(form.get('mediaOrigins') ?? '').split(/[\n,]/).map(x => x.trim()).filter(Boolean) }, 'Destino aprovado.');
     }}>
       <p>Revise o endereço acima e os domínios de anexos antes de autorizar esta empresa.</p>
-      <label>Domínios de anexos autorizados<textarea name="mediaOrigins" placeholder="https://arquivos.suaempresa.com.br" disabled={blocked} /></label>
-      <button className="button" disabled={blocked}>Aprovar destino revisado</button>
+      <label>Domínios de anexos autorizados<textarea name="mediaOrigins" defaultValue={destination.mediaOrigins.join('\n')} placeholder="https://arquivos.suaempresa.com.br" disabled={blocked} /></label>
+      <button className="button" disabled={blocked}>{destination.approvalStatus === 'APPROVED' ? 'Atualizar domínios de anexos' : 'Aprovar destino revisado'}</button>
     </form>}
   </section>;
 }

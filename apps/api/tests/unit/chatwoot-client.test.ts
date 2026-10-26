@@ -47,3 +47,22 @@ it('keeps platform user email validation strict for provisioning identity', asyn
   const client = new ChatwootClient({ baseUrl: 'https://conversas.test', token: 'synthetic-token', fetch: vi.fn().mockResolvedValue(Response.json({ id: 12, email: 'operator@internal', access_token: 'synthetic-user-token' })) });
   await expect(client.platformUser(12)).rejects.toThrow();
 });
+
+const campaignConversation={id:21,account_id:7,inbox_id:9,meta:{sender:{id:12,phone_number:'+12025550123'}}};
+const campaignRoute={id:81,contact_id:12,inbox_id:9,source_id:'opaque-conversation-route'};
+it('retains only the canonical conversation route fields needed for campaign recipient proof',async()=>{
+  const client=new ChatwootClient({baseUrl:'https://conversas.test',token:'synthetic-token',fetch:vi.fn().mockResolvedValue(Response.json({
+    ...campaignConversation,contact_inbox:{...campaignRoute,pubsub_token:'synthetic-private-channel-token'},
+  }))});
+  await expect(client.conversation(7,21)).resolves.toEqual({...campaignConversation,contact_inbox:campaignRoute});
+});
+it.each([{id:0},{contact_id:0},{inbox_id:0},{source_id:''},{source_id:'x'.repeat(256)}])('rejects malformed canonical route evidence instead of dropping it: %j',async patch=>{
+  const client=new ChatwootClient({baseUrl:'https://conversas.test',token:'synthetic-token',fetch:vi.fn().mockResolvedValue(Response.json({
+    ...campaignConversation,contact_inbox:{...campaignRoute,...patch},
+  }))});
+  await expect(client.conversation(7,21)).rejects.toThrow();
+});
+it('preserves a legacy conversation response without manufacturing a canonical route',async()=>{
+  const client=new ChatwootClient({baseUrl:'https://conversas.test',token:'synthetic-token',fetch:vi.fn().mockResolvedValue(Response.json(campaignConversation))});
+  await expect(client.conversation(7,21)).resolves.toEqual(campaignConversation);
+});

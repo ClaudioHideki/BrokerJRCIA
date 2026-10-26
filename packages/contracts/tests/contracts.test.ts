@@ -85,4 +85,13 @@ describe('contratos HTTP canônicos', () => {
     })).toMatchObject({ status: 400, code: 'INVALID_REQUEST' });
     expect(() => ProblemDetailsSchema.parse({ title: 'Invalid', status: 99, code: 'INVALID' })).toThrow();
   });
+
+  it('aceita os identificadores de rastreamento emitidos nas respostas HTTP de erro', () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    const response = { type: 'about:blank', title: 'Authentication failed', status: 401,
+      code: 'INVALID_CREDENTIALS', requestId: id, correlationId: id };
+    expect(ProblemDetailsSchema.parse(response)).toEqual(response);
+    expect(ProblemDetailsSchema.safeParse({ ...response, correlationId: 'not-a-uuid' }).success).toBe(false);
+    expect(ProblemDetailsSchema.safeParse({ ...response, unknownField: true }).success).toBe(false);
+  });
 });

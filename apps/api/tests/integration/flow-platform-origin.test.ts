@@ -46,6 +46,41 @@ it('rolls back destination approval atomically when the origin declaration is mi
  expect((await db.database.pool.query('SELECT approval_status FROM chatwoot_destinations WHERE organization_id=$1',[t.org])).rows).toEqual([{approval_status:'PENDING'}]);
  expect((await db.database.pool.query('SELECT id FROM platform_audit_logs WHERE organization_id=$1',[t.org])).rows).toEqual([]);
 });
+it('updates attachment origins on an approved destination without requiring or creating a Flow declaration',async()=>{
+ const t=await fixture();
+ await db.database.pool.query("UPDATE chatwoot_destinations SET approval_status='APPROVED' WHERE organization_id=$1",[t.org]);
+ const result=await t.service.approveChatwootDestination(t.token,t.csrf,'Update reviewed attachment origins only',t.org,{revision:1,mediaOrigins:['https://cdn.example.com']});
+ expect(result).toMatchObject({baseUrl:t.origin,approvalStatus:'APPROVED',revision:1,mediaOrigins:['https://cdn.example.com']});
+ expect((await db.database.pool.query('SELECT kind FROM flow_executor_origins WHERE base_url=$1',[t.origin])).rows).toEqual([]);
+ expect((await db.database.pool.query("SELECT count(*)::int AS n FROM platform_audit_logs WHERE organization_id=$1 AND action='chatwoot-destination-approve'",[t.org])).rows).toEqual([{n:1}]);
+});
+it('preserves an existing native Flow origin during an attachment-only update even when new native evidence is configured',async()=>{
+ const t=await fixture();
+ const native={kind:'JRC_NATIVE' as const,provenance:'VERIFIED_DEPLOYMENT' as const,hostSourceSha:'a'.repeat(40),hostImageDigest:`sha256:${'b'.repeat(64)}`,fenceProtocolVersion:1};
+ const initial=new PlatformService(pool,Buffer.alloc(32,35),{mfaRequired:false},createFlowOriginApproval({nativeDeployments:new Map([[t.origin,native]])}));
+ await initial.approveChatwootDestination(t.token,t.csrf,'Initial verified native destination approval',t.org,{revision:1,mediaOrigins:[]});
+ const changed=new PlatformService(pool,Buffer.alloc(32,35),{mfaRequired:false},createFlowOriginApproval({nativeDeployments:new Map([[t.origin,{...native,hostSourceSha:'c'.repeat(40)}]])}));
+ await changed.approveChatwootDestination(t.token,t.csrf,'Update attachment origins without changing Flow',t.org,{revision:1,mediaOrigins:['https://cdn.example.com']});
+ expect((await db.database.pool.query('SELECT kind,revision,host_source_sha FROM flow_executor_origins WHERE base_url=$1',[t.origin])).rows).toEqual([{kind:'JRC_NATIVE',revision:1,host_source_sha:native.hostSourceSha}]);
+ expect((await db.database.pool.query("SELECT count(*)::int AS n FROM platform_audit_logs WHERE organization_id IS NULL AND action='flow-origin-approve' AND actor_id=$1",[t.actor])).rows).toEqual([{n:1}]);
+});
+it('still processes an explicit Flow declaration when the destination is already approved',async()=>{
+ const t=await fixture();
+ await db.database.pool.query("UPDATE chatwoot_destinations SET approval_status='APPROVED' WHERE organization_id=$1",[t.org]);
+ const result=await t.service.approveChatwootDestination(t.token,t.csrf,'Explicitly review a stock Flow declaration',t.org,{revision:1,mediaOrigins:[],flowExecutor:{kind:'STOCK',expectedOriginRevision:0}});
+ expect(result).toMatchObject({approvalStatus:'APPROVED',flowExecutor:{kind:'STOCK',revision:1}});
+ expect((await db.database.pool.query('SELECT kind,revision FROM flow_executor_origins WHERE base_url=$1',[t.origin])).rows).toEqual([{kind:'STOCK',revision:1}]);
+});
+it('retains current platform role, CSRF and destination revision checks for approved attachment updates',async()=>{
+ const t=await fixture(),input={revision:1,mediaOrigins:['https://cdn.example.com']};
+ await db.database.pool.query("UPDATE chatwoot_destinations SET approval_status='APPROVED' WHERE organization_id=$1",[t.org]);
+ await expect(t.service.approveChatwootDestination(t.token,'wrong-csrf','Update reviewed attachment origins only',t.org,input)).rejects.toMatchObject({code:'PLATFORM_FORBIDDEN'});
+ await expect(t.service.approveChatwootDestination(t.token,t.csrf,'Update reviewed attachment origins only',t.org,{...input,revision:2})).rejects.toMatchObject({code:'DESTINATION_REVISION_CHANGED'});
+ await db.database.pool.query("UPDATE platform_users SET role='SUPPORT' WHERE id=$1",[t.actor]);
+ await expect(t.service.approveChatwootDestination(t.token,t.csrf,'Update reviewed attachment origins only',t.org,input)).rejects.toMatchObject({code:'PLATFORM_FORBIDDEN'});
+ expect((await db.database.pool.query('SELECT media_origins FROM chatwoot_destinations WHERE organization_id=$1',[t.org])).rows).toEqual([{media_origins:[]}]);
+ expect((await db.database.pool.query('SELECT id FROM platform_audit_logs WHERE organization_id=$1',[t.org])).rows).toEqual([]);
+});
 it('lets positive native deployment evidence prevail over stock declaration for every tenant and prevents SQL downgrade',async()=>{
  const t=await fixture();
  const native={kind:'JRC_NATIVE' as const,provenance:'VERIFIED_DEPLOYMENT' as const,hostSourceSha:'a'.repeat(40),hostImageDigest:`sha256:${'b'.repeat(64)}`,fenceProtocolVersion:1};

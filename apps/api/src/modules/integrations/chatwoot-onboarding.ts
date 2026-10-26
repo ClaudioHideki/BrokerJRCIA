@@ -101,7 +101,7 @@ export function createOnboardingService(options: OnboardingOptions) {
         if (row.reconcile_only) throw uncertain();
         await validate();
         try { await options.chatwoot.connect(org, { channelId: row.channel_id!, name: input.name, requireIdentity: true,
-          ...(input.inboxId ? { inboxId: input.inboxId } : {}), replaceExistingWebhook: input.replaceExistingWebhook }, principal.authentication.actorId ?? undefined); }
+          ...(input.inboxId ? { inboxId: input.inboxId } : {}), replaceExistingWebhook: input.replaceExistingWebhook }, principal.authentication.actorId ?? undefined, principal); }
         finally { await connection(row); await remember(row); }
       } else if (c.status !== 'READY') {
         await validate();

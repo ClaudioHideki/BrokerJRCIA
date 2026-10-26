@@ -13,7 +13,7 @@ it('issues an account-limited key and shows the native setup links without a con
   render(<NativeJrcSetup request={request} accountId={3} baseUrl="https://conversas.example.test" />);
   fireEvent.click(screen.getByRole('button', { name: 'Emitir chave para o módulo JRC' }));
   await waitFor(() => expect(request).toHaveBeenCalledWith('/control-credentials', 'POST', {
-    name: 'Módulo JRC Conversas — conta 3',
+    name: expect.stringMatching(/^Módulo JRC Conversas — conta 3 — [0-9a-f-]{36}$/),
     scopes: ['chatwoot:read', 'chatwoot:manage', 'chatwoot:pair', 'chatwoot:disconnect'], expiresAt: null,
   }, { idempotencyKey: expect.any(String) }));
   expect(await screen.findByLabelText('Chave de controle da conta')).toHaveValue(secret);
@@ -35,5 +35,27 @@ it('keeps the same request identity after an uncertain response instead of issui
   fireEvent.click(screen.getByRole('button', { name: 'Repetir consulta da emissão' }));
   await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
   expect(request.mock.calls[0]![3]).toEqual(request.mock.calls[1]![3]);
+  expect(request.mock.calls[0]![2]).toEqual(request.mock.calls[1]![2]);
+  expect(request.mock.calls[0]![2].name).toContain(request.mock.calls[0]![3].idempotencyKey);
   expect(screen.queryByLabelText('Chave de controle da conta')).not.toBeInTheDocument();
+});
+
+it('gives each deliberate issuance a distinct bounded name tied to its idempotency intent without altering the previous key', async () => {
+  const request = vi.fn().mockResolvedValue(issued);
+  render(<NativeJrcSetup request={request} accountId={3} baseUrl="https://conversas.example.test" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Emitir chave para o módulo JRC' }));
+  await screen.findByLabelText('Chave de controle da conta');
+  fireEvent.click(screen.getByRole('button', { name: 'Fechar e apagar chave desta tela' }));
+  expect(screen.queryByLabelText('Chave de controle da conta')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Emitir chave para o módulo JRC' }));
+  await screen.findByLabelText('Chave de controle da conta');
+  expect(request).toHaveBeenCalledTimes(2);
+  const [first, second] = request.mock.calls;
+  expect(first![2].name).not.toBe(second![2].name);
+  expect(first![3].idempotencyKey).not.toBe(second![3].idempotencyKey);
+  for (const call of request.mock.calls) {
+    expect(call.slice(0, 2)).toEqual(['/control-credentials', 'POST']);
+    expect(call[2].name).toContain(call[3].idempotencyKey);
+    expect(call[2].name.length).toBeLessThanOrEqual(100);
+  }
 });

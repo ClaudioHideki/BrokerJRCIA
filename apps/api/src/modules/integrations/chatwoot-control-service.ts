@@ -179,6 +179,7 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
         const childKey = window.active && window.pair_window_key ? window.pair_window_key : randomUUID();
         if (!window.active || !window.pair_window_key) await t.query(`UPDATE chatwoot_connection_health SET pair_window_key=$3,pair_window_expires_at=now()+interval '60 seconds'
           WHERE organization_id=$1 AND integration_id=$2`, [p.organizationId, id, childKey]);
+        await options.chatwoot.initialIdentity?.arm(t, p, id, childKey);
         await completeIdempotencyRecord(t, { organizationId: p.organizationId, recordId: claimed.recordId, status: 'COMPLETED', responseMetadata: { providerKey: childKey } });
         return childKey;
       });
@@ -197,6 +198,7 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
         } catch { /* The immediate response remains usable; short-lived recovery is unavailable. */ }
       }
       const expiry = 'expiresAt' in result.action ? result.action.expiresAt : null;
+      await options.chatwoot.initialIdentity?.settled(p, id, providerKey, result.operationId, expiry);
       if (expiry) await tx(p.organizationId, t => t.query(`UPDATE chatwoot_connection_health SET pair_window_expires_at=LEAST(pair_window_expires_at,$4)
         WHERE organization_id=$1 AND integration_id=$2 AND pair_window_key=$3`, [p.organizationId, id, providerKey, expiry]));
       return result;
@@ -205,7 +207,10 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
       ControlIdempotencyKeySchema.parse(key);
       const c = await tx(p.organizationId, t => mapping(t, p, id, 'chatwoot:disconnect'));
       const result = await options.instances.disconnectInstance(delegated(p, id), { instanceId: c.instance_id, idempotencyKey: `cw:${id}:${key}` });
-      await tx(p.organizationId, t => options.health.observe(t, p.organizationId, c.channel_id, { connected: false, phone: null }));
+      await tx(p.organizationId, async t => {
+        await options.chatwoot.initialIdentity?.cancelPair(t, p.organizationId, id);
+        await options.health.observe(t, p.organizationId, c.channel_id, { connected: false, phone: null });
+      });
       return result;
     },
     async confirmIdentity(p: ChatwootControlPrincipal, id: string, revision: number, key: string) {
@@ -217,6 +222,7 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
           requestHash: hashIdempotencyRequest({ revision }), expiresAt: new Date(Date.now() + 86400000) });
         if (claim.kind === 'REPLAY') return;
         const updated = await t.query(`UPDATE chatwoot_connection_health SET approved_fingerprint=observed_fingerprint,identity_enforced=true,identity_error=NULL,
+          initial_identity_intent=NULL,initial_identity_expires_at=NULL,initial_identity_pair_expires_at=NULL,
           callback_verified_at=NULL,callback_destination_revision=NULL,callback_credential_version=NULL,updated_at=now()
           WHERE organization_id=$1 AND integration_id=$2 AND identity_revision=$3 AND observed_connected AND observed_fingerprint IS NOT NULL`, [p.organizationId, id, revision]);
         if (!updated.rowCount) throw new IntegrationError('IDENTITY_OBSERVATION_CHANGED', 409);
