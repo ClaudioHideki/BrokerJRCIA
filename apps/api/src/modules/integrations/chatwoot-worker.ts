@@ -68,10 +68,48 @@ export function createChatwootWorker(options: ChatwootOptions) {
     repo = createPostgresMessagingRepository(),
     tx = options.transact;
   // An uncertain mirror must fence its contact, including later physical cycles,
-  // without stopping inbound mirrors for unrelated contacts. Keep every reply to
-  // WhatsApp stopped until the integration's uncertain writes are reconciled.
+  // without stopping inbound mirrors for unrelated contacts. Only a separately
+  // authenticated campaign with an exact current map can pass a proven unrelated
+  // mirror; historical human/legacy replies and ambiguous context stay stopped.
   // Both claim queries use the same predicate so a blocked connection cannot
   // starve another connection that has eligible work.
+  const independentCampaignReply = `j.kind='CHATWOOT_REPLY' AND j.payload->>'attendanceKind'='AUTOMATED_REPLY' AND EXISTS(
+    SELECT 1 FROM chatwoot_campaign_intents intent
+    JOIN chatwoot_conversations campaign_map ON campaign_map.organization_id=intent.organization_id
+      AND campaign_map.integration_id=intent.integration_id AND campaign_map.remote_conversation_id=intent.remote_conversation_id
+      AND campaign_map.contact_id=intent.remote_contact_id AND campaign_map.source_id=intent.recipient_source_id
+    JOIN messaging_conversations campaign_conversation ON campaign_conversation.organization_id=campaign_map.organization_id
+      AND campaign_conversation.id=campaign_map.conversation_id AND campaign_conversation.channel_id=intent.channel_id
+      AND campaign_conversation.remote_conversation_key IS NULL
+    JOIN messaging_contacts recipient ON recipient.organization_id=campaign_conversation.organization_id
+      AND recipient.id=campaign_conversation.contact_id AND recipient.external_id=substring(intent.recipient_phone from 2)
+    JOIN chatwoot_attendance_observations observation ON observation.organization_id=intent.organization_id
+      AND observation.integration_id=intent.integration_id AND observation.channel_id=intent.channel_id
+      AND observation.account_id=intent.account_id AND observation.inbox_id=intent.inbox_id
+      AND observation.destination_revision=intent.destination_revision AND observation.credential_revision=intent.credential_version
+      AND observation.remote_conversation_id=intent.remote_conversation_id AND observation.id::text=j.payload->>'attendanceObservationId'
+      AND observation.disposition IN ('APPLIED','WAITING_MAP') AND observation.event->>'kind'='AUTOMATED_REPLY'
+      AND observation.event->>'campaignIntentId'=intent.id::text AND observation.event->>'senderId'=intent.actor_id
+      AND observation.event->>'remoteMessageId'=intent.remote_message_id::text
+      AND observation.event->>'remoteConversationId'=intent.remote_conversation_id::text
+    WHERE intent.organization_id=j.organization_id AND intent.integration_id=j.integration_id AND intent.channel_id=c.channel_id
+      AND intent.inbox_id=c.inbox_id AND intent.id::text=j.payload->>'campaignIntentId'
+      AND intent.remote_message_id::text=j.payload->>'messageId' AND intent.remote_conversation_id::text=j.payload->>'conversationId'
+      AND intent.destination_revision::text=j.payload->>'destinationRevision'
+      AND (intent.local_conversation_id IS NULL OR intent.local_conversation_id=campaign_conversation.id)
+      AND campaign_intent_authorized(intent.organization_id,intent.id,false)
+      AND NOT EXISTS(SELECT 1 FROM integration_jobs blocked
+        LEFT JOIN messaging_messages blocked_message ON blocked_message.organization_id=blocked.organization_id
+          AND blocked_message.id=blocked.message_id AND blocked_message.channel_id=c.channel_id
+        LEFT JOIN messaging_conversations blocked_conversation ON blocked_conversation.organization_id=blocked_message.organization_id
+          AND blocked_conversation.id=blocked_message.conversation_id AND blocked_conversation.channel_id=blocked_message.channel_id
+        WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
+          AND (blocked.kind<>'MIRROR_MESSAGE' OR blocked.payload->>'operation' IS DISTINCT FROM 'SEND_MESSAGE'
+            OR blocked_conversation.contact_id IS NULL OR blocked_conversation.contact_id=campaign_conversation.contact_id
+            OR NOT EXISTS(SELECT 1 FROM chatwoot_conversations blocked_map
+              WHERE blocked_map.organization_id=blocked.organization_id AND blocked_map.integration_id=blocked.integration_id
+                AND blocked_map.conversation_id=blocked_conversation.id
+                AND blocked_map.remote_conversation_id::text=blocked.payload->>'conversationId'))))`;
   const eligibleJob = `j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now()
     AND (NOT EXISTS(SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=j.organization_id
       AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN')
@@ -86,7 +124,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
           LEFT JOIN messaging_conversations blocked_conversation ON blocked_conversation.organization_id=blocked_message.organization_id
             AND blocked_conversation.channel_id=blocked_message.channel_id AND blocked_conversation.id=blocked_message.conversation_id
           WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
-            AND (blocked_conversation.contact_id IS NULL OR blocked_conversation.contact_id=candidate_conversation.contact_id)))))`;
+             AND (blocked_conversation.contact_id IS NULL OR blocked_conversation.contact_id=candidate_conversation.contact_id))))
+    OR (${independentCampaignReply}))`;
   async function claim(org: string): Promise<Job | undefined> {
     return tx(org, async (t) => {
       // An expired POST might have succeeded remotely. Replies are local, idempotent transactions.

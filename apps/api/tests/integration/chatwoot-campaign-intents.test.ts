@@ -51,6 +51,132 @@ async function fixture(kind:'text'|'image'|'document'|'video'|'audio'='text'){
 }
 const canonicalRoute=(patch:Record<string,unknown>={})=>({id:81,contact_id:12,inbox_id:9,source_id:'synthetic-source',...patch});
 const contactLink=(source_id:string,inboxId=9)=>({source_id,inbox:{id:inboxId}});
+
+async function uncertainMirror(t:Awaited<ReturnType<typeof fixture>>,sameContact=false){
+ const original=(await db.database.pool.query('SELECT contact_id FROM messaging_conversations WHERE organization_id=$1 AND id=$2',[t.org,t.conversation])).rows[0]!.contact_id;
+ const contact=sameContact?original:(await db.database.pool.query("INSERT INTO messaging_contacts(organization_id,external_id) VALUES($1,'12025550199') RETURNING id",[t.org])).rows[0]!.id;
+ const conversation=randomUUID();
+ await db.database.pool.query(`INSERT INTO messaging_conversations(id,organization_id,channel_id,contact_id,remote_conversation_key)
+  VALUES($1,$2,$3,$4,$5)`,[conversation,t.org,t.channel,contact,sameContact?`chatwoot-cycle:${t.integration}:31`:null]);
+ await db.database.pool.query(`INSERT INTO chatwoot_conversations(organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id)
+  VALUES($1,$2,$3,$4,$5,31)`,[t.org,t.integration,conversation,sameContact?12:99,sameContact?'synthetic-source':'synthetic-unknown-source']);
+ const message=(await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)
+  VALUES($1,$2,$3,'INCOMING','CONTACT','{"type":"TEXT","text":"Synthetic uncertain mirror"}','DELIVERED') RETURNING id`,[t.org,t.channel,conversation])).rows[0]!.id as string;
+ const job=(await db.database.pool.query('SELECT id FROM integration_jobs WHERE organization_id=$1 AND message_id=$2',[t.org,message])).rows[0]!.id as string;
+ await db.database.pool.query(`UPDATE integration_jobs SET status='UNKNOWN',attempts=1,last_error='CHATWOOT_OUTCOME_UNKNOWN',
+  payload='{"operation":"SEND_MESSAGE","conversationId":31}' WHERE organization_id=$1 AND id=$2`,[t.org,job]);
+ const attempt=(await db.database.pool.query(`INSERT INTO chatwoot_mirror_attempts(organization_id,channel_id,integration_id,destination_revision,
+  account_id,inbox_id,conversation_id,remote_conversation_id,cycle,message_id,job_id,lease_token,state)
+  VALUES($1,$2,$3,1,7,9,$4,31,1,$5,$6,$7,'UNKNOWN') RETURNING id`,[t.org,t.channel,t.integration,conversation,message,job,randomUUID()])).rows[0]!.id as string;
+ return {job,message,conversation,contact,attempt};
+}
+
+it.each(['text','image'] as const)('admits a proven %s campaign for another physical contact without changing the uncertain mirror or releasing an old reply',async kind=>{
+ const t=await fixture(kind),blocked=await uncertainMirror(t),reserved=await t.reserve();
+ const oldReply=(await db.database.pool.query(`INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,payload,created_at)
+  VALUES($1,$2,'CHATWOOT_REPLY','synthetic-old-human','{"messageId":77,"conversationId":31,"attendanceKind":"HUMAN_PUBLIC","content":{"type":"TEXT","text":"Synthetic old reply"}}',now()-interval '2 days') RETURNING id`,[t.org,t.integration])).rows[0]!.id;
+ await t.callback();await t.worker.runOnce(t.org);
+ expect((await db.database.pool.query("SELECT status,attempts FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY' AND payload->>'messageId'='25'",[t.org])).rows)
+  .toEqual([{status:'SUCCEEDED',attempts:1}]);
+ const outgoing=(await db.database.pool.query("SELECT campaign_intent_id,content FROM messaging_messages WHERE organization_id=$1 AND direction='OUTGOING'",[t.org])).rows;
+ expect(outgoing).toEqual([{campaign_intent_id:reserved.intentId,content:kind==='text'?{type:'TEXT',text:'Synthetic campaign'}:{type:'MEDIA',kind:'image',mediaId:expect.any(String),fileName:'image',caption:'Synthetic campaign'}}]);
+ expect((await db.database.pool.query('SELECT * FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(1);
+ expect((await db.database.pool.query('SELECT status,attempts,last_error FROM integration_jobs WHERE organization_id=$1 AND id=$2',[t.org,blocked.job])).rows)
+  .toEqual([{status:'UNKNOWN',attempts:1,last_error:'CHATWOOT_OUTCOME_UNKNOWN'}]);
+ expect((await db.database.pool.query('SELECT state,remote_message_id FROM chatwoot_mirror_attempts WHERE organization_id=$1 AND id=$2',[t.org,blocked.attempt])).rows)
+  .toEqual([{state:'UNKNOWN',remote_message_id:null}]);
+ expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE organization_id=$1 AND id=$2',[t.org,oldReply])).rows)
+  .toEqual([{status:'PENDING',attempts:0}]);
+ expect((await db.database.pool.query('SELECT mode FROM messaging_conversations WHERE organization_id=$1 AND id=$2',[t.org,t.conversation])).rows[0]!.mode).toBe('BOT');
+});
+
+it('keeps a campaign fenced by an uncertain mirror for the same physical contact across different conversation cycles',async()=>{
+ const t=await fixture();await uncertainMirror(t,true);await t.reserve();await t.callback();await t.worker.runOnce(t.org);
+ expect((await db.database.pool.query("SELECT status,attempts FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows)
+  .toEqual([{status:'PENDING',attempts:0}]);
+ expect((await db.database.pool.query('SELECT * FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
+});
+
+it.each(['missing-message','missing-operation','other-operation','other-channel','non-mirror','second-ambiguous','missing-map','missing-remote-target','mismatched-target'] as const)('keeps an independent campaign blocked by an unknown with %s evidence',async change=>{
+ const t=await fixture(),blocked=await uncertainMirror(t);await t.reserve();await t.callback();
+ if(change==='missing-message')await db.database.pool.query('UPDATE integration_jobs SET message_id=NULL WHERE id=$1',[blocked.job]);
+ if(change==='missing-operation')await db.database.pool.query("UPDATE integration_jobs SET payload=payload-'operation' WHERE id=$1",[blocked.job]);
+ if(change==='other-operation')await db.database.pool.query("UPDATE integration_jobs SET payload=payload||'{\"operation\":\"CREATE_CONTACT\"}' WHERE id=$1",[blocked.job]);
+ if(change==='non-mirror')await db.database.pool.query("UPDATE integration_jobs SET kind='CHATWOOT_REPLY' WHERE id=$1",[blocked.job]);
+ if(change==='missing-map')await db.database.pool.query('DELETE FROM chatwoot_conversations WHERE organization_id=$1 AND conversation_id=$2',[t.org,blocked.conversation]);
+ if(change==='missing-remote-target')await db.database.pool.query("UPDATE integration_jobs SET payload=payload-'conversationId' WHERE id=$1",[blocked.job]);
+ if(change==='mismatched-target')await db.database.pool.query("UPDATE integration_jobs SET payload=payload||'{\"conversationId\":21}' WHERE id=$1",[blocked.job]);
+ if(change==='other-channel'){
+  const channel=randomUUID();
+  await db.database.pool.query(`INSERT INTO messaging_channels(id,organization_id,provider_account_id,phone_number_id,waba_id,credential_reference)
+   SELECT $1,organization_id,provider_account_id,$2,'synthetic','vault://test' FROM messaging_channels WHERE organization_id=$3 AND id=$4`,[channel,randomUUID(),t.org,t.channel]);
+  const conversation=randomUUID();await db.database.pool.query('INSERT INTO messaging_conversations(id,organization_id,channel_id,contact_id) VALUES($1,$2,$3,$4)',[conversation,t.org,channel,blocked.contact]);
+  const message=(await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)
+   VALUES($1,$2,$3,'INCOMING','CONTACT','{"type":"TEXT","text":"Synthetic foreign channel"}','DELIVERED') RETURNING id`,[t.org,channel,conversation])).rows[0]!.id;
+  await db.database.pool.query('UPDATE integration_jobs SET message_id=$2 WHERE id=$1',[blocked.job,message]);
+ }
+ if(change==='second-ambiguous')await db.database.pool.query(`INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,status,payload)
+  VALUES($1,$2,'MIRROR_MESSAGE','synthetic-second-unknown','UNKNOWN','{"operation":"SEND_MESSAGE"}')`,[t.org,t.integration]);
+ await t.worker.runOnce(t.org);
+ expect((await db.database.pool.query("SELECT status,attempts FROM integration_jobs WHERE organization_id=$1 AND payload->>'messageId'='25'",[t.org])).rows)
+  .toEqual([{status:'PENDING',attempts:0}]);
+ expect((await db.database.pool.query('SELECT * FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
+});
+
+it.each(['missing-map','source','remote-contact','physical-phone','bound-conversation','superseded-map','missing-observation','foreign-observation','observation-scope','observation-account','observation-destination','observation-credential','observation-message','observation-kind','observation-intent','observation-actor','observation-reconcile','job-kind','job-message','job-conversation','destination','forged-intent','foreign-intent','expired-intent','revoked-key'] as const)('does not exempt a campaign with changed %s proof from an uncertain mirror',async change=>{
+ const t=await fixture();await uncertainMirror(t);await t.reserve();await t.callback();
+ if(change==='missing-map')await db.database.pool.query('DELETE FROM chatwoot_conversations WHERE organization_id=$1 AND remote_conversation_id=21',[t.org]);
+ if(change==='source')await db.database.pool.query("UPDATE chatwoot_conversations SET source_id='different-source' WHERE organization_id=$1 AND remote_conversation_id=21",[t.org]);
+ if(change==='remote-contact')await db.database.pool.query('UPDATE chatwoot_conversations SET contact_id=13 WHERE organization_id=$1 AND remote_conversation_id=21',[t.org]);
+ if(change==='physical-phone')await db.database.pool.query("UPDATE messaging_contacts SET external_id='12025550198' WHERE organization_id=$1 AND id=(SELECT contact_id FROM messaging_conversations WHERE id=$2)",[t.org,t.conversation]);
+ if(change==='bound-conversation')await db.database.pool.query('UPDATE chatwoot_campaign_intents SET local_conversation_id=(SELECT conversation_id FROM chatwoot_conversations WHERE organization_id=$1 AND remote_conversation_id=31) WHERE organization_id=$1',[t.org]);
+ if(change==='superseded-map'){
+  await db.database.pool.query("UPDATE messaging_conversations SET remote_conversation_key=$3 WHERE organization_id=$1 AND id=$2",[t.org,t.conversation,`chatwoot-cycle:${t.integration}:21`]);
+  await db.database.pool.query(`INSERT INTO messaging_conversations(organization_id,channel_id,contact_id)
+   SELECT organization_id,channel_id,contact_id FROM messaging_conversations WHERE organization_id=$1 AND id=$2`,[t.org,t.conversation]);
+ }
+ if(change==='missing-observation')await db.database.pool.query("UPDATE integration_jobs SET payload=payload-'attendanceObservationId' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+ if(change==='foreign-observation'){
+  const other=await fixture();await other.reserve();await other.callback();
+  const observation=(await db.database.pool.query('SELECT id FROM chatwoot_attendance_observations WHERE organization_id=$1',[other.org])).rows[0]!.id;
+  await db.database.pool.query("UPDATE integration_jobs SET payload=payload||jsonb_build_object('attendanceObservationId',$2::text) WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org,observation]);
+ }
+ if(change==='observation-scope')await db.database.pool.query('UPDATE chatwoot_attendance_observations SET inbox_id=10 WHERE organization_id=$1',[t.org]);
+ if(change==='observation-account')await db.database.pool.query('UPDATE chatwoot_attendance_observations SET account_id=8 WHERE organization_id=$1',[t.org]);
+ if(change==='observation-destination')await db.database.pool.query('UPDATE chatwoot_attendance_observations SET destination_revision=2 WHERE organization_id=$1',[t.org]);
+ if(change==='observation-credential')await db.database.pool.query('UPDATE chatwoot_attendance_observations SET credential_revision=2 WHERE organization_id=$1',[t.org]);
+ if(change==='observation-message')await db.database.pool.query("UPDATE chatwoot_attendance_observations SET event=event||'{\"remoteMessageId\":26}' WHERE organization_id=$1",[t.org]);
+ if(change==='observation-kind')await db.database.pool.query("UPDATE chatwoot_attendance_observations SET event=event||'{\"kind\":\"HUMAN_PUBLIC\"}' WHERE organization_id=$1",[t.org]);
+ if(change==='observation-intent')await db.database.pool.query("UPDATE chatwoot_attendance_observations SET event=event||jsonb_build_object('campaignIntentId',$2::text) WHERE organization_id=$1",[t.org,randomUUID()]);
+ if(change==='observation-actor')await db.database.pool.query("UPDATE chatwoot_attendance_observations SET event=event||'{\"senderId\":18}' WHERE organization_id=$1",[t.org]);
+ if(change==='observation-reconcile')await db.database.pool.query("UPDATE chatwoot_attendance_observations SET disposition='RECONCILE' WHERE organization_id=$1",[t.org]);
+ if(change==='job-kind')await db.database.pool.query("UPDATE integration_jobs SET payload=payload||'{\"attendanceKind\":\"HUMAN_PUBLIC\"}' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+ if(change==='job-message')await db.database.pool.query("UPDATE integration_jobs SET payload=payload||'{\"messageId\":26}' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+ if(change==='job-conversation')await db.database.pool.query("UPDATE integration_jobs SET payload=payload||'{\"conversationId\":22}' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+ if(change==='destination')await db.database.pool.query("UPDATE integration_jobs SET payload=payload||'{\"destinationRevision\":2}' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+ if(change==='forged-intent')await db.database.pool.query("UPDATE integration_jobs SET payload=payload||jsonb_build_object('campaignIntentId',$2::text) WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org,randomUUID()]);
+ if(change==='foreign-intent'){
+  const other=await fixture(),reservation=await other.reserve();
+  await db.database.pool.query("UPDATE integration_jobs SET payload=payload||jsonb_build_object('campaignIntentId',$2::text) WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org,reservation.intentId]);
+ }
+ if(change==='expired-intent')await db.database.pool.query("UPDATE chatwoot_campaign_intents SET expires_at=now()-interval '1 second' WHERE organization_id=$1",[t.org]);
+ if(change==='revoked-key')await db.database.pool.query('UPDATE api_keys SET revoked_at=now() WHERE organization_id=$1',[t.org]);
+ await t.worker.runOnce(t.org);
+ expect((await db.database.pool.query("SELECT status,attempts FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows)
+  .toEqual([{status:'PENDING',attempts:0}]);
+ expect((await db.database.pool.query('SELECT * FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
+});
+
+it('claims the proven campaign only once with concurrent workers and preserves its uncertain barrier',async()=>{
+ const t=await fixture(),blocked=await uncertainMirror(t);await t.reserve();await t.callback();
+ await Promise.all([t.worker.runOnce(t.org),t.worker.runOnce(t.org)]);
+ expect((await db.database.pool.query('SELECT * FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(1);
+ expect((await db.database.pool.query("SELECT status,attempts FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows)
+  .toEqual([{status:'SUCCEEDED',attempts:1}]);
+ expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE organization_id=$1 AND id=$2',[t.org,blocked.job])).rows)
+  .toEqual([{status:'UNKNOWN',attempts:1}]);
+});
+
 it.each(['text','image'] as const)('selects the exact canonical conversation route for a %s campaign among three same-inbox links',async kind=>{
  const t=await fixture(kind);t.setCanonicalRoute(canonicalRoute());
  t.setContactLinks([contactLink(`jrc-${randomUUID()}`),contactLink('synthetic-source'),contactLink(randomUUID())]);
