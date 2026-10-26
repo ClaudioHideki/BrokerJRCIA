@@ -321,6 +321,10 @@ describe('OpenAPI público da JRC', () => {
       Pragma: { $ref: '#/components/headers/Pragma' },
     });
     expect(components.schemas).toHaveProperty('ProblemDetails');
+    expect(components.schemas?.['ProblemDetails']).toMatchObject({
+      additionalProperties: false,
+      properties: { correlationId: { type: 'string', format: 'uuid' } },
+    });
     expect(listInstances.responses?.['400']?.content?.['application/problem+json'])
       .toMatchObject({ schema: { $ref: '#/components/schemas/ProblemDetails' } });
     expect(document.components?.headers).toHaveProperty('XRequestId');
