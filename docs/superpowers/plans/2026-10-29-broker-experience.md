@@ -8,7 +8,10 @@
 
 ## Restrições globais
 
-- Desenvolvimento e testes reversíveis autorizados; nenhum deploy, publicação de imagem, migração produtiva, troca de engine/credencial de cliente ou envio real neste lote.
+- Desenvolvimento e testes reversíveis autorizados. Atualização do usuário em
+  29/10: seguir até a publicação das imagens da revisão validada, preservando a
+  branch e sem merge automático na main. Deploy, migração produtiva, troca de
+  engine/credencial de cliente e envio real continuam fora desta etapa.
 - Chaves de empresa, sessão administrativa, grants de QR/Flow e segredos de eventos permanecem separados.
 - Não incluir dados de clientes, telefone real, sessões, payloads ou tokens no repositório.
 - Primeiro confirmar a fonte mais recente do `jrc-conversas-lab2`, origem corrigida expressamente pelo usuário em 29/10; não escolher uma release específica de outra instalação apenas pela data.
@@ -53,7 +56,10 @@
 
 **Entradas reais:** `http/routes/messaging*.ts`, `http/plugins/authorization.ts`, `modules/partner-events`, `modules/messaging/media-store.ts`, `packages/contracts`, `scripts/docs/public-api.mjs`, `docs/api/openapi.json`, `integrations/partner-qr`.
 
-- [ ] Acrescentar upload/envio público de mídia com escopos próprios, limites, quota e reautorização dos bytes. Console/adaptador interno não é prova de API pública.
+- [x] Acrescentar upload/envio público individual QR com escopos próprios, limites,
+  quota e reautorização dos bytes. Implementação e testes reais de mídia da CI
+  passaram; gate global aguarda corrigir quatro expectativas antigas de baseline.
+  Ver [evidência](../../validation/2026-10-29-partner-media.md). Não encerra outros providers/grupos.
 - [ ] Definir leitura por inbox/grant para a persona operador onde o contrato exige atribuição; hoje alguns handlers de mensagens são por organização.
 - [ ] Conciliar recibos distinguindo aceitação do motor, confirmação, entrega e leitura, sem reenvio de resultado incerto.
 - [ ] Manter S3 existente; medir uso real (`storageBytes` está nulo), documentar deployment/retention, testar integridade/UNKNOWN.
@@ -76,7 +82,9 @@
 
 ## Entregas 6–7 — pacote e release revisável
 
-- [ ] OpenAPI/Postman/PDF sincronizados com o contrato; portal abre sem fallback SPA e sem executar escritas automaticamente.
+- [x] OpenAPI/Postman/PDF sincronizados com os 37 contratos públicos; portal
+  conferido no build, sem fallback SPA ou escrita automática. Newman sintético
+  verificou três ações de anexos; PDF técnico de oito páginas renderizado e revisado.
 - [ ] Adapter host com bindings/inbox/outbox e guia de instalação limpa/atualização; versão CCLX exata permanece dependência externa.
 - [ ] Regressão, HTTP/RLS, storage/container/compiled, carga controlada, restart e restauração com RPO/RTO medidos.
 - [ ] Revisão independente e candidata com SHAs/digests, configuração, rollout/retorno e checklist de aprovação.

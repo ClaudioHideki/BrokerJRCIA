@@ -47,6 +47,20 @@ migrations históricas ou adicionar tabela de tenant.
 
 ## Gates de publicação
 
+A primeira CI da candidata `9d1d7f6`, run `40955652997`, passou build, migrations
+vazias, compiled, 3.525 testes unitários/contratos/HTTP/PDF e 729 testes web.
+Na integração real passaram 1.505 testes, incluindo store de parceiro (24),
+envio (11) e fence de autoridade (13). Quatro assertions de readiness ainda
+esperavam a baseline 0073, enquanto o runtime corretamente retornou 0074;
+foram atualizadas sem alterar os guards. A CI inteira continua reprovada nessa
+revisão; MinIO/E2E/container/restore não foram executados após a falha. A nova
+revisão deve repetir os gates completos.
+
+Após corrigir essas quatro expectativas, a suíte local completa foi repetida:
+454 arquivos / 3.525 testes passaram, exit 0, 316,80 s. O diff de código desta
+correção contém somente as quatro strings esperadas; guards, probes de corrupção,
+produto, migrations e workflow foram preservados.
+
 Full suite local, build/typecheck, diff check e revisão independente final
 passaram. Ainda exigida CI bem-sucedida do SHA exato. A CI usa PostgreSQL,
 Redis, MinIO fixado, browser journeys, container entrypoint, restore isolado e
