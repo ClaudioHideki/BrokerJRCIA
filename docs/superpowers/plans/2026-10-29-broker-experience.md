@@ -58,7 +58,8 @@
 
 - [x] Acrescentar upload/envio público individual QR com escopos próprios, limites,
   quota e reautorização dos bytes. Implementação e testes reais de mídia da CI
-  passaram; gate global aguarda corrigir quatro expectativas antigas de baseline.
+  passaram; as expectativas antigas de baseline foram corrigidas e passaram na
+  CI seguinte. O gate global aguarda a repetição dos seletores E2E atualizados.
   Ver [evidência](../../validation/2026-10-29-partner-media.md). Não encerra outros providers/grupos.
 - [ ] Definir leitura por inbox/grant para a persona operador onde o contrato exige atribuição; hoje alguns handlers de mensagens são por organização.
 - [ ] Conciliar recibos distinguindo aceitação do motor, confirmação, entrega e leitura, sem reenvio de resultado incerto.

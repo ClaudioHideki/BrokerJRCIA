@@ -61,6 +61,27 @@ Após corrigir essas quatro expectativas, a suíte local completa foi repetida:
 correção contém somente as quatro strings esperadas; guards, probes de corrupção,
 produto, migrations e workflow foram preservados.
 
+A CI seguinte, `6a00583` / run `40958981635`, passou os **1.509 testes de
+PostgreSQL/Redis** e os **5 testes do MinIO real**. E2E teve 33 aprovados, quatro
+falhas e cinco combinações de viewport intencionalmente não aplicáveis: os
+seletores do editor de Flow confundiam seu botão de visão geral com a seção de
+navegação, e dois cenários buscavam o nome/ordem de tabulação anteriores.
+Corrigidos os seletores nos três arquivos E2E, mantendo cliques, foco e asserts
+da jornada, sem alterar produto, timeout, retries ou skips.
+
+Chromium local com `AppShell` e `FlowCanvas` reais e sessão sintética confirmou
+o seletor exclusivo do canvas, o link atual `/channels` e a sequência mobile
+Dashboard → seção Atendimento → Conexões e caixas. Isso não substitui E2E
+autenticado: container, restore e checks posteriores não rodaram nesse CI falho.
+Uma inspeção complementar confirmou que o trigger 0074 bloqueia expiração antes
+do envio no último validateClaim; o possível bypass levantado foi descartado
+com prova de zero efeitos, sem patch adicional no runtime.
+
+Após os ajustes E2E, a suíte local completa passou novamente: **454 arquivos /
+3.525 testes**, exit 0, 298,92 s. O diff desta rodada contém somente testes e
+documentação; a aprovação das jornadas autenticadas continua condicionada ao CI
+da nova revisão.
+
 Full suite local, build/typecheck, diff check e revisão independente final
 passaram. Ainda exigida CI bem-sucedida do SHA exato. A CI usa PostgreSQL,
 Redis, MinIO fixado, browser journeys, container entrypoint, restore isolado e
