@@ -2,6 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { MediaError, safeMediaName, validateMedia, type BinaryMedia } from '@jrc/providers';
 import { createIntegrationSecrets } from '../integrations/secrets.js';
+import type { TenantTransaction } from '../../db/tenant-transaction.js';
+import { requireActiveOrganization } from '../tenancy/operational-limits.js';
+import { requireCurrentPartnerKey, recheckCurrentPartnerKey, requirePartnerMediaChannelOpen } from './partner-authority.js';
 import type { PrivateObjectStore, PrivateObjectRef, ObjectStoreControl, ExpectedCiphertext, ObjectStoreMutation } from './private-object-store.js';
 
 type Tx = Pick<PoolClient, 'query'>;
@@ -43,6 +46,7 @@ interface MediaRow {
   private_object_id: string | null; encrypted_data: string | null; byte_size: number; sha256: string;
   mime_type: string; file_name: string; kind: BinaryMedia['kind']; updated_at: Date; last_error: string | null;
   lease_token: string | null; lease_expires_at: Date | null;
+  source: string; descriptor: Record<string, unknown>;
 }
 interface DeletionRow {
   id: string; organization_id: string; messaging_channel_id: string | null; kind: 'CHANNEL' | 'ORGANIZATION';
@@ -81,8 +85,9 @@ export function createDurablePrivateMediaStore(options: DurablePrivateMediaOptio
   }
   async function lockObject(tx: Tx, org: string, id: string) {
     const peek = await getObject(tx, org, id), live = await scope(tx, org, peek.channel_id);
-    await tx.query('SELECT id FROM messaging_media WHERE organization_id=$1 AND id=$2 FOR UPDATE', [org, peek.media_id]);
-    return { object: await getObject(tx, org, id, true), live };
+    const media = (await tx.query<MediaRow>('SELECT * FROM messaging_media WHERE organization_id=$1 AND id=$2 FOR UPDATE', [org, peek.media_id])).rows[0];
+    if (!media) invalid('MEDIA_NOT_FOUND');
+    return { object: await getObject(tx, org, id, true), media, live };
   }
   async function getOperation(tx: Tx, id: string, kind: 'PUT' | 'DELETE', lock = false) {
     return (await tx.query<OperationRow>('SELECT * FROM media_private_operations WHERE object_id=$1 AND kind=$2' + (lock ? ' FOR UPDATE' : ''), [id, kind])).rows[0];
@@ -151,8 +156,36 @@ export function createDurablePrivateMediaStore(options: DurablePrivateMediaOptio
   }
   async function dispatchPut(org: string, id: string): Promise<PrivateMediaOperationState> {
     const claimed: Claim | { state: PrivateMediaOperationState } = await transact(org, async tx => {
-      const { object, live } = await lockObject(tx, org, id), op = await getOperation(tx, id, 'PUT', true);
+      const peek = await getObject(tx, org, id), initial = await getOperation(tx, id, 'PUT');
+      if (!initial) invalid('MEDIA_NOT_FOUND'); if (initial.state !== 'PREPARED') return { state: initial.state };
+      const upload = (await tx.query<MediaRow>('SELECT * FROM messaging_media WHERE organization_id=$1 AND id=$2', [org, peek.media_id])).rows[0];
+      if (!upload) invalid('MEDIA_NOT_FOUND');
+      let denied: string | undefined;
+      if (upload.source === 'UPLOAD' && upload.descriptor.uploadKind === 'PARTNER') {
+        // The HTTP callback does not survive restart. Resolve the persisted
+        // upload intent before acquiring media/object/operation locks, keeping
+        // organization -> key -> instance -> channel -> media/object order.
+        try {
+          if (typeof upload.descriptor.apiKeyId !== 'string') invalid('PARTNER_CREDENTIAL_REVOKED');
+          await requireActiveOrganization(tx as TenantTransaction, org);
+          await requireCurrentPartnerKey(tx as TenantTransaction, org, upload.descriptor.apiKeyId, ['media:upload']);
+          await requirePartnerMediaChannelOpen(tx as TenantTransaction, org, peek.channel_id);
+        } catch (error) {
+          const code = (error as { code?: unknown })?.code;
+          if (typeof code !== 'string' || !['PARTNER_CREDENTIAL_REVOKED','ORGANIZATION_NOT_ACTIVE','CHANNEL_ARCHIVED','RESOURCE_DELETING'].includes(code)) throw error;
+          denied = code;
+        }
+      }
+      const { object, media, live } = await lockObject(tx, org, id), op = await getOperation(tx, id, 'PUT', true);
       if (!op) invalid('MEDIA_NOT_FOUND'); if (op.state !== 'PREPARED') return { state: op.state };
+      if (media.source !== upload.source || media.descriptor.uploadKind !== upload.descriptor.uploadKind || media.descriptor.apiKeyId !== upload.descriptor.apiKeyId) invalid('MEDIA_CONTEXT_CHANGED');
+      if (!denied && upload.source === 'UPLOAD' && upload.descriptor.uploadKind === 'PARTNER') {
+        // The already-held key SHARE prevents mutation; wall-clock expiration
+        // still advances while waiting for media/object/operation locks.
+        try { await recheckCurrentPartnerKey(tx as TenantTransaction, org, upload.descriptor.apiKeyId as string, ['media:upload']); }
+        catch (error) { if ((error as {code?:unknown})?.code !== 'PARTNER_CREDENTIAL_REVOKED') throw error; denied = 'PARTNER_CREDENTIAL_REVOKED'; }
+      }
+      if (denied) { await failPrepared(tx, object, denied); return { state: 'REJECTED' as const }; }
       if (!live) { await failPrepared(tx, object, 'RESOURCE_DELETING'); return { state: 'REJECTED' as const }; }
       ref(object); const token = randomUUID();
       const operation = (await tx.query<OperationRow>(`UPDATE media_private_operations SET state='DISPATCHED',dispatched_at=clock_timestamp(),

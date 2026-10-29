@@ -9,12 +9,16 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('carrega o manifesto real até a migration 0073', async () => {
+  it('carrega o manifesto real até a migration 0074', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(73);
+    expect(migrations).toHaveLength(74);
     expect(migrations.slice(-3).map(entry => entry.name)).toEqual([
-      '0071_partner_messaging_authority', '0072_chatwoot_campaign_intents', '0073_chatwoot_initial_identity',
+      '0072_chatwoot_campaign_intents', '0073_chatwoot_initial_identity', '0074_partner_media',
     ]);
+  });
+  it('keeps the text-only schema pending until the partner media fence is applied',async()=>{
+    const migrations=await loadExpectedMigrations();
+    expect(compareMigrationStatus(migrations,migrations.slice(0,73))).toMatchObject({state:'PENDING',compatible:false,expectedVersion:'0074_partner_media',appliedVersion:'0073_chatwoot_initial_identity',pending:['0074_partner_media']});
   });
 
   it('informa a versão aplicada e migrations pendentes sem expor hashes', () => {

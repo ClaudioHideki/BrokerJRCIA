@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useSession } from '../auth/SessionProvider.js';
@@ -22,6 +22,7 @@ export function AppShell() {
   const firstNavigationLink = useRef<HTMLAnchorElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const restoreMenuFocus = useRef(false);
+  const previousOrganization = useRef(session?.activeOrganization.id);
   const [mobile, setMobile] = useState(
     () => typeof window !== 'undefined' && window.innerWidth <= 760,
   );
@@ -51,7 +52,9 @@ export function AppShell() {
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [menuOpen]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (previousOrganization.current === session?.activeOrganization.id) return;
+    previousOrganization.current = session?.activeOrganization.id;
     setQuery('');
     setCollapsedSections(new Set());
     setMenuOpen(false);

@@ -3,7 +3,7 @@ export { buildControlPostman } from './postman-control.mjs';
 const profiles = {
   messaging: {
     title: 'Mensageria — API JRC para sistemas parceiros',
-    description: 'Tenant inferido da chave JRC. Use messaging:read para consultas e messaging:send para texto QR; ativar canal exige também instances:write. Não exige URL, Account ID ou credencial Chatwoot. Envio atual deste perfil: texto individual WhatsApp QR; inclui download privado de anexo, mas não envio de mídia, grupos, templates Meta nem Flows. 202 confirma fila, não entrega; acompanhe mensagens/eventos. Nunca repita uma operação UNKNOWN com outra chave de idempotência.',
+    description: 'Tenant inferido da chave JRC. Use messaging:read para consultas e messaging:send para texto QR; ativar canal exige também instances:write. media:upload permite carregar/consultar arquivo privado; envio por referência exige messaging:send e media:send. Chaves anteriores não recebem novos scopes automaticamente. Perfil individual WhatsApp QR, sem grupos, templates Meta ou gestão de Flows. Não exige URL, Account ID ou credencial Chatwoot. Upload 201 retorna estado READY/STORING/FAILED; envio 202 confirma fila, não entrega. Nunca repita uma operação UNKNOWN com outra chave de idempotência.',
     operations: [
       ['post','/v1/messaging/instances/{id}/partner-activate'],
       ['get','/v1/messaging/channels'],
@@ -12,6 +12,9 @@ const profiles = {
       ['get','/v1/messaging/conversations/{id}/messages'],
       ['get','/v1/messaging/media/{id}'],
       ['post','/v1/messaging/channels/{id}/partner-text'],
+      ['post','/v1/messaging/channels/{id}/media'],
+      ['get','/v1/messaging/channels/{id}/media/{mediaId}'],
+      ['post','/v1/messaging/channels/{id}/partner-media'],
     ],
   },
   events: {
@@ -61,7 +64,7 @@ export function buildPublicDocument(document, profile) {
   if (!selected) throw new Error('PUBLIC_DOCUMENT_PROFILE_UNKNOWN');
   const result = {
     openapi: document.openapi,
-    info: { title: selected.title, version: '2026-10-23', description: selected.description },
+    info: { title: selected.title, version: '2026-10-29', description: selected.description },
     servers: [{ url: '/', description: 'Esta instalação do Broker JRC' }],
     paths: {}, components: { securitySchemes: {} },
   };

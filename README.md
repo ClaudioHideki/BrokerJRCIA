@@ -13,8 +13,13 @@ e os [dois modos de integração](docs/api/integration-modes.md).
 O segundo incremento corrige acompanhamento de pareamento, retenção do QR,
 seleção de inbox e substituição/revalidação de agentes; consulte as
 [evidências de lifecycle](docs/validation/2026-10-29-lifecycle-evidence.md).
-Esta candidata não representa a conclusão dos módulos pendentes, publicação de imagem,
-deploy produtivo ou homologação real com providers/CCLX.
+O terceiro incremento acrescenta upload privado, consulta de estado e envio de
+anexos individuais QR por API, com novos escopos explícitos, migration aditiva
+0074 e documentação pública de 37 operações. Upload e envio são intenções
+separadas; HTTP 202 confirma admissão na fila. O manual técnico tem oito páginas.
+A publicação das imagens API/web foi autorizada e depende dos gates da revisão
+exata. Esta candidata não representa a conclusão dos módulos pendentes, deploy
+produtivo ou homologação real com providers/CCLX.
 
 ## Histórico: jornadas do Broker e integração com JRC Conversas
 

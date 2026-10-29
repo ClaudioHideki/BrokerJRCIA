@@ -1,8 +1,13 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { useLayoutEffect } from 'react';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import type { ApiClient } from '../api/client.js';
 import { App } from '../app/App.js';
+import { SessionProvider } from '../auth/SessionProvider.js';
+import { ProtectedRoute } from '../auth/guards.js';
+import { AppShell } from './AppShell.js';
 
 afterEach(()=>Object.defineProperty(window,'innerWidth',{configurable:true,value:1024}));
 
@@ -91,4 +96,20 @@ it('busca sem resultados mantém foco acessível ao reabrir e ao limpar', async 
   await waitFor(()=>expect(screen.getByRole('searchbox',{name:'Buscar páginas e configurações'})).toHaveFocus());
   fireEvent.click(screen.getByRole('button',{name:'Limpar busca de páginas'}));
   expect(screen.getByRole('searchbox',{name:'Buscar páginas e configurações'})).toHaveFocus();
+});
+
+it('does not erase the first mobile menu action with a delayed initial tenant reset', async () => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+  function FirstFrameInteraction() {
+    useLayoutEffect(() => { document.querySelector<HTMLButtonElement>('button[aria-controls="console-navigation"]')?.click(); }, []);
+    return <h1>Primeira interação</h1>;
+  }
+  render(<SessionProvider client={fixture()}><MemoryRouter><Routes>
+    <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
+      <Route path="/" element={<FirstFrameInteraction />} />
+    </Route>
+  </Routes></MemoryRouter></SessionProvider>);
+  await screen.findByRole('heading', { name: 'Primeira interação' });
+  expect(screen.getByRole('button', { name: 'Fechar navegação' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('searchbox', { name: 'Buscar páginas e configurações' })).toBeVisible();
 });

@@ -1,6 +1,7 @@
 # Integração Broker JRC: API de parceiro e integração direta
 
-Baseline: `16a2a371e44de65a901cf1a9405bf4939ee1f213`, inspecionada em 29/10/2026.
+Base histórica: `16a2a371e44de65a901cf1a9405bf4939ee1f213`; revisão candidata de
+29/10/2026 na branch `codex/broker-experience-20261029`, incluindo mídia de parceiro.
 Este documento descreve contratos implementados e limites observados. Não habilita
 consumidores nem altera conexões existentes. Consulte também
 [onboarding de parceiro](partner-onboarding.md), [eventos](partner-webhooks.md) e
@@ -33,12 +34,14 @@ Exemplos usam placeholders; nenhuma chamada é executada ao ler o portal.
 | Perfil | Operações |
 | --- | --- |
 | Instâncias (7) | GET `/v1/provider-accounts`; GET/POST `/v1/instances`; GET `/v1/instances/{id}`; POST `.../{id}/connect`; GET `.../{id}/status`; POST `.../{id}/disconnect` |
-| Mensageria (7) | POST `/v1/messaging/instances/{id}/partner-activate`; GET `/v1/messaging/channels`; GET `/v1/messaging/channels/{id}/conversations`; GET `/v1/messaging/conversations/{id}`; GET `.../{id}/messages`; GET `/v1/messaging/media/{id}`; POST `/v1/messaging/channels/{id}/partner-text` |
+| Mensageria (10) | POST `/v1/messaging/instances/{id}/partner-activate`; GET `/v1/messaging/channels`; GET `/v1/messaging/channels/{id}/conversations`; GET `/v1/messaging/conversations/{id}`; GET `.../{id}/messages`; GET `/v1/messaging/media/{id}`; POST `/v1/messaging/channels/{id}/partner-text`; POST `.../{id}/media`; GET `.../{id}/media/{mediaId}`; POST `.../{id}/partner-media` |
 | Eventos (5) | GET/POST `/v1/partner-webhooks`; DELETE `/v1/partner-webhooks/{id}`; GET `/v1/partner-events`; GET `/v1/partner-webhook-deliveries` |
 
 Consultas de instâncias usam `instances:read`; alterações usam `instances:write`.
 Ativação exige também `messaging:send`. Consultas de mensageria e bytes exigem
-`messaging:read`; texto de parceiro exige `messaging:send`. Eventos e endpoints
+`messaging:read`; texto de parceiro exige `messaging:send`. Upload e seus metadados
+exigem `media:upload`; envio de referência exige `messaging:send` e `media:send`.
+Eventos e endpoints
 exigem `webhooks:manage`. O issuer genérico também reconhece `api_keys:manage`,
 mas gestão de chaves não integra estes três perfis publicados. Uma chave emissora
 não pode delegar novos scopes de parceiro que não conserva atualmente.
@@ -49,8 +52,14 @@ conversa do mesmo canal ou destinatário E164. `Idempotency-Key` é obrigatório
 `UNKNOWN` exige reconciliação. API key revogada/expirada ou sem scope bloqueia
 despacho pendente; revogação não desfaz request já enviado ao provider.
 
-**Ainda não contratados pelo perfil genérico:** upload/envio de mídia, mensagens
-de grupo, templates/envio Meta e gestão/publicação de Flows. Adapters internos e
+Upload privado retorna 201 com estado explícito e não envia. O parceiro consulta
+metadados até `READY`, então admite a referência na outbox por POST `partner-media`.
+Ambos os POSTs têm idempotência independente; um resultado incerto não autoriza
+novo efeito físico. Mídia permanece restrita ao mesmo tenant/canal QR e a chaves
+com autoridade atual. Não há ampliação automática das chaves existentes.
+
+**Ainda não contratados pelo perfil genérico:** mensagens de grupo,
+templates/envio Meta e gestão/publicação de Flows. Adapters internos e
 endpoints JWT existentes não delegam automaticamente essas capacidades. GET
 privado de mídia já existe e deve continuar protegido durante toda a leitura.
 O catálogo publicado também não equivale à allowlist de autenticação: conferir os

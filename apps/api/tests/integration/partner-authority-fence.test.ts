@@ -47,6 +47,22 @@ it('permits a valid partner and checks SENDING to SENDING again after revocation
   await expect(oldWorkerMarkSending(t)).rejects.toMatchObject({ code: '42501', message: 'PARTNER_CREDENTIAL_REVOKED' });
 });
 
+it('blocks partner MEDIA SENDING to SENDING after only media:send is removed while preserving TEXT',async()=>{
+  const t=await queued();
+  await db.database.pool.query("UPDATE api_keys SET scopes=ARRAY['messaging:send','media:send'] WHERE id=$1",[t.key]);
+  // A stored media reference is needed by the existing composite FK.
+  const asset=randomUUID();
+  await db.transact(t.org,tx=>tx.query(`INSERT INTO messaging_media(id,organization_id,channel_id,source,source_key,kind,file_name,descriptor)
+    VALUES($1,$2,$3,'QR',$4,'image','synthetic.png',$5::jsonb)`,[asset,t.org,t.channel,randomUUID(),JSON.stringify({messageId:'synthetic-media-fence'})]));
+  await db.database.pool.query(`UPDATE messaging_messages SET content=$2::jsonb WHERE id=$1`,[t.message,
+    JSON.stringify({type:'MEDIA',mediaId:asset,kind:'image',fileName:'synthetic.png'})]);
+  expect((await oldWorkerMarkSending(t)).rows[0]?.state).toBe('SENDING');
+  await db.database.pool.query("UPDATE api_keys SET scopes=ARRAY['messaging:send'] WHERE id=$1",[t.key]);
+  await expect(oldWorkerMarkSending(t)).rejects.toMatchObject({code:'42501',message:'PARTNER_CREDENTIAL_REVOKED'});
+  const text=await queued();
+  expect((await oldWorkerMarkSending(text)).rows[0]?.state).toBe('SENDING');
+});
+
 it('rejects a foreign-tenant authorizing identity without affecting legacy null-authority messages', async () => {
   const t = await queued(), other = await queued();
   await db.database.pool.query('UPDATE messaging_messages SET authorizing_api_key_id=$2 WHERE id=$1', [t.message, other.key]);

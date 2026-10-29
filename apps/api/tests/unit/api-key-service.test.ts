@@ -70,6 +70,13 @@ function createHarness(overrides: Partial<ApiKeyRepository> = {}) {
 }
 
 describe('serviço de API keys', () => {
+  it.each(['media:upload', 'media:send'] as const)('does not delegate %s when the issuing key lacks the current scope inside the insertion transaction', async scope => {
+    const harness = createHarness();
+    await expect(harness.service.issueApiKey({ organizationId: ORGANIZATION_A, actorId: null, credentialKind: 'API_KEY',
+      apiKeyId: USER_ID, requestId: REQUEST_ID }, { name: 'media delegation', scopes: [scope], expiresAt: null }))
+      .rejects.toMatchObject({ code: 'PARTNER_SCOPE_DELEGATION_FORBIDDEN' });
+    expect(harness.inserted).toEqual([]); expect(harness.audits).toEqual([]);
+  });
   it('exibe o segredo apenas na emissão e persiste somente prefixo e HMAC', async () => {
     const harness = createHarness();
 

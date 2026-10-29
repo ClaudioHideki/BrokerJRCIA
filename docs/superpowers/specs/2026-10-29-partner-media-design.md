@@ -106,5 +106,6 @@ A obtenção local de OpenSSL e o ajuste process-local de Git da entrega anterio
 
 - D1: HTTP 201 para recurso durável, estado explícito e GET de metadados; não afirma prontidão/entrega.
 - D2: compartilhamento restrito ao mesmo tenant/canal, com scopes e chave atuais em cada fronteira.
-- Implementação: não iniciada neste documento.
+- Implementação: código local em revisão, incluindo migration aditiva 0074 e
+  documentação sincronizada. Ver checkpoint do plano para gates ainda pendentes.
 - Homologação: não executada.

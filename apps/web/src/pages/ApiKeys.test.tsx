@@ -25,7 +25,7 @@ it('offers explicit partner messaging and webhook scopes without selecting them 
   const request = vi.fn(async () => ({ data: [], pageInfo: { hasNextPage: false, nextCursor: null } })) as ApiClient['request'];
   render(<App client={client(request)} initialEntries={['/chaves-api']} />);
   await screen.findByText('Nenhuma chave emitida');
-  for (const label of ['Ler mensagens', 'Enviar mensagens pela API', 'Gerenciar webhooks e eventos']) {
+  for (const label of ['Ler mensagens', 'Enviar mensagens pela API', 'Gerenciar webhooks e eventos', 'Carregar anexos privados pela API', 'Enviar anexos pela API']) {
     expect(screen.getByRole('checkbox', { name: label })).not.toBeChecked();
   }
   expect(screen.getByLabelText('Validade da chave')).toHaveValue('15');

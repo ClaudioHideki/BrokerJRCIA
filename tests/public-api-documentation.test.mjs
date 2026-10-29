@@ -4,6 +4,20 @@ import { buildPublicDocument, buildReadOnlyPostman } from '../scripts/docs/publi
 
 const source = JSON.parse(await readFile(new URL('../docs/api/openapi.json', import.meta.url), 'utf8'));
 describe('public partner contract', () => {
+  it('publishes separate private upload, metadata and canonical media-send contracts with explicit key scopes', () => {
+    const contract = buildPublicDocument(source, 'messaging'), prefix = '/v1/messaging/channels/{id}';
+    const upload = contract.paths[prefix + '/media']?.post;
+    expect(upload).toBeDefined();
+    expect(upload.security).toEqual([{ jrcApiKeyAuth: [] }]);
+    expect(upload.requestBody.content['application/octet-stream'].schema).toMatchObject({ type: 'string', format: 'binary', maxLength: 16 * 1024 * 1024 });
+    expect(upload.responses['201']).toBeDefined(); expect(upload.description).toContain('media:upload');
+    const get = contract.paths[prefix + '/media/{mediaId}']?.get;
+    expect(get.security).toEqual([{ jrcApiKeyAuth: [] }]); expect(get.description).toContain('não envia');
+    const send = contract.paths[prefix + '/partner-media']?.post;
+    expect(send.security).toEqual([{ jrcApiKeyAuth: [] }]); expect(send.description).toContain('messaging:send + media:send');
+    expect(send.description).toContain('UNKNOWN');
+    expect(contract.info.description).not.toContain('não envio de mídia');
+  });
   it('distinguishes authorized new enrollment from legacy approval and pair-only reconnection', () => {
     const contract = buildPublicDocument(source, 'chatwoot'), base = '/v1/integrations/chatwoot/control/connections/{integrationId}';
     expect(contract.info.description).toContain('GET não aprova identidade');

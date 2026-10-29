@@ -35,8 +35,10 @@ export function ApiWebhooksPage() {
     </section>
     <section className="panel" aria-labelledby="api-public-profile-title">
       <h2 id="api-public-profile-title">Cobertura atual do perfil de parceiro</h2>
-      <p>O perfil público de mensageria documenta texto individual por WhatsApp QR e consulta de mensagens, incluindo download privado de anexos. Aceitação em fila não confirma entrega: acompanhe os estados e eventos.</p>
-      <p>Envio de mídia, grupos, templates Meta e gestão de Flows ainda exigem ampliação explícita do contrato público e de sua autorização. A existência dessas funções em outras áreas do Broker não as habilita nesta credencial.</p>
+      <p>O perfil público de mensageria permite texto e anexos individuais por WhatsApp QR, consulta de mensagens e download privado de arquivos. Aceitação em fila não confirma entrega: acompanhe os estados e eventos.</p>
+      <p>Use media:upload para carregar e consultar o arquivo privado; o envio por referência exige messaging:send e media:send. Chaves anteriores não recebem essas permissões automaticamente.</p>
+      <p>Upload não envia mensagem. HTTP 201 cria uma referência com estado READY, STORING ou FAILED; aguarde READY antes de solicitar o envio. HTTP 202 confirma apenas a admissão da mensagem na fila.</p>
+      <p>Grupos, templates Meta e gestão de Flows ainda exigem ampliação explícita do contrato público e de sua autorização. A existência dessas funções em outras áreas do Broker não as habilita nesta credencial.</p>
       <p>Um resultado incerto exige reconciliação antes de novo envio. A documentação identifica limites e diferenças entre os perfis; não use endpoints internos ou de plataforma como API de parceiro.</p>
     </section>
     <section className="panel" aria-labelledby="api-documents-title">
@@ -51,6 +53,7 @@ export function ApiWebhooksPage() {
         <li><a href="/documentation/openapi-chatwoot.json">OpenAPI de integração direta</a></li>
         <li><a href="/documentation/postman-messaging.json">Postman de mensagens</a></li>
         <li><a href="/documentation/postman-events.json">Postman de eventos</a></li>
+        <li><a href="/documentation/postman-media.json">Postman de anexos</a></li>
       </ul>
       <p>O portal recebe credenciais somente em memória e mantém as operações de escrita sob escolha explícita. Esta página não recebe nem armazena segredos.</p>
     </section>

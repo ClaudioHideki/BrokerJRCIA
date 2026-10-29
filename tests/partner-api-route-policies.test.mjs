@@ -24,10 +24,21 @@ it('classifies all generic partner operations with exact scopes, tenant and sour
   if(method==='POST')expect(route.challengeExposure).toBe('NO_STORE_ENCRYPTED_SIGNING_SECRET_EXACT_AUTHORIZED_REPLAY_ONLY');
  }
 });
+it('classifies media upload/state/send as key-only with separate scopes and byte/storage boundaries',async()=>{
+ const openapi=JSON.parse(await readFile(resolve(root,'docs/api/openapi.json'),'utf8'));
+ const inventory=await buildRouteInventory({rootDirectory:root,openapi});
+ for(const [method,path,permission] of [
+  ['POST','/v1/messaging/channels/{id}/media','MEDIA_UPLOAD_SCOPE'],
+  ['GET','/v1/messaging/channels/{id}/media/{mediaId}','MEDIA_UPLOAD_SCOPE'],
+  ['POST','/v1/messaging/channels/{id}/partner-media','MESSAGING_SEND_AND_MEDIA_SEND_SCOPES'],
+ ]){
+  expect(inventory.find(route=>route.method===method&&route.path===path)).toMatchObject({authentication:'CURRENT_ORGANIZATION_API_KEY',permission,tenantRls:true,handlerFile:'apps/api/src/http/routes/messaging.ts'});
+ }
+});
 it('records messaging:read on every existing literal GET guard, including private media',async()=>{
  const openapi=JSON.parse(await readFile(resolve(root,'docs/api/openapi.json'),'utf8'));
  const inventory=await buildRouteInventory({rootDirectory:root,openapi});
- const reads=inventory.filter(route=>route.method==='GET'&&route.path.startsWith('/v1/messaging/'));
+ const reads=inventory.filter(route=>route.method==='GET'&&route.path.startsWith('/v1/messaging/')&&!route.path.endsWith('/media/{mediaId}'));
  expect(reads).toHaveLength(9);
  for(const route of reads)expect(route).toMatchObject({authentication:'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY',permission:'CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE',tenantRls:true,handlerFile:'apps/api/src/http/routes/messaging.ts'});
  expect(reads.find(route=>route.path==='/v1/messaging/media/{id}').ownershipCheck).toContain('RECHECK_AFTER_PRIVATE_MEDIA_READ');

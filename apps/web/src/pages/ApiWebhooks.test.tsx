@@ -22,6 +22,7 @@ describe('ApiWebhooksPage', () => {
     expect(screen.getByRole('link', { name: 'OpenAPI de mensagens' })).toHaveAttribute('href', '/documentation/openapi-messaging.json');
     expect(screen.getByRole('link', { name: 'OpenAPI de eventos' })).toHaveAttribute('href', '/documentation/openapi-events.json');
     expect(screen.getByRole('link', { name: 'Postman de eventos' })).toHaveAttribute('href', '/documentation/postman-events.json');
+    expect(screen.getByRole('link', { name: 'Postman de anexos' })).toHaveAttribute('href', '/documentation/postman-media.json');
     expect(screen.getByRole('link', { name: 'Gerenciar chaves de API' })).toHaveAttribute('href', '/chaves-api');
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
@@ -34,7 +35,9 @@ describe('ApiWebhooksPage', () => {
     expect(screen.getByRole('heading', { name: 'Modo B — integração direta' })).toBeVisible();
     expect(screen.getByText(/não cria automaticamente uma caixa/i)).toBeVisible();
     expect(screen.getByText(/callback HTTPS.*polling/i)).toBeVisible();
-    expect(screen.getByText(/envio de mídia, grupos, templates Meta e gestão de Flows/i)).toBeVisible();
+    expect(screen.getByText(/media:upload.*messaging:send.*media:send/i)).toBeVisible();
+    expect(screen.getByText(/upload não envia mensagem/i)).toBeVisible();
+    expect(screen.getByText(/grupos, templates Meta e gestão de Flows/i)).toBeVisible();
     expect(screen.getByText(/segredo de assinatura.*separado/i)).toBeVisible();
     expect(screen.getByRole('link', { name: 'Configurar integração direta' })).toHaveAttribute('href', '/integracoes');
   });

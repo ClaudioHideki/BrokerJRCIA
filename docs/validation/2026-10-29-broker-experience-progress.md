@@ -98,8 +98,9 @@ com provider real. A aba usada pelo usuário não foi substituída para capturar
 
 O próximo contrato de mídia e suas decisões de interface estão registrados em
 `docs/superpowers/specs/2026-10-29-partner-media-design.md` e no plano correspondente.
-Scopes novos, migration proposta `0074` e envio público de mídia **não foram implementados**.
-Permanecem pendentes. O incremento 2 recebeu as correções parciais abaixo; seu
+Naquele checkpoint, scopes novos, migration proposta `0074` e envio público de
+mídia ainda não estavam implementados; ver o terceiro incremento abaixo para a
+situação posterior. O incremento 2 recebeu as correções parciais abaixo; seu
 aceite conjunto e os incrementos 3–7 continuam abertos.
 
 ## Segundo incremento — correções de lifecycle e integração
@@ -147,4 +148,51 @@ para contornar a dependência. O programa completo não está concluído.
 
 ## Retomada exata
 
-Abrir a branch `codex/broker-experience-20261029`, ler spec/plano/este registro e consultar `git status` preservando arquivos alheios. Revalidar refs antes da próxima alteração. Navegação e as correções locais de lifecycle estão verificadas; não reconstruir onboarding/adoção existentes. Prosseguir às pendências de composição real da entrega 2 e ao plano de mídia pública da entrega 3, mantendo os fences propostos de banco/worker antes do efeito. Executar as verificações pendentes e atualizar este registro com resultado real. Não iniciar envio real, deploy ou troca de engine a partir deste checkpoint.
+Abrir a branch `codex/broker-experience-20261029`, ler spec/plano/este registro e
+consultar `git status` preservando arquivos alheios. Não reconstruir onboarding,
+adoção ou o código de mídia já existente. Usar o checkpoint abaixo para concluir
+os gates da revisão exata e publicar as imagens autorizadas. Não iniciar envio
+real, deploy ou troca de engine a partir deste checkpoint.
+
+## Terceiro incremento — API pública de anexos e publicação autorizada
+
+O usuário autorizou continuar o desenvolvimento até publicar as imagens do
+Broker em 29/10. API e web devem usar o mesmo SHA validado, sem merge automático
+na main. Nenhum deploy, migration produtiva ou envio real faz parte desta etapa.
+O push inicial de `ed51ae6` para a branch de trabalho preservou a main.
+
+Implementados localmente: scopes explícitos `media:upload`/`media:send`, upload
+privado, GET de metadados e envio por referência para QR individual. Reutilizam
+store, quota, outbox e recibos; não criam tabela de tenant paralela. A migration
+aditiva 0074 preserva uploads de automação e exige autoridade de mídia em toda
+transição SQL para SENDING, inclusive workers anteriores. A referência permanece
+restrita ao mesmo tenant/canal; chaves antigas não ganham scopes automaticamente.
+
+Swagger, portal e Postman incluem três novas operações; total público de 37.
+O PDF técnico foi condensado em oito páginas, com exemplos sintéticos validados.
+A coleção de anexos possui upload/envio opt-in independentes e não encadeia efeitos.
+202 significa fila; 201 significa recurso de upload, incluindo estado pendente.
+
+O primeiro full suite local desta fatia passou 3.516 testes e falhou em dois:
+inventário OpenAPI antigo (corrigido) e teste que selecionava a fonte WhatsApp
+antes de sua option ser carregada (corrigido com barreira explícita, sem timeout
+ou retry). A CI da base `ed51ae6` encontrou também uma corrida de abertura mobile;
+uma regressão determinística reproduziu o erro e o reset de contexto foi corrigido.
+Essas execuções com falha não constituem aprovação da candidata posterior.
+
+A repetição final da candidata congelada passou **454 arquivos / 3.525 testes**,
+exit 0, em 308,46 s. Build/typecheck, scanner de 32 assets e revisão independente
+passaram. Newman real verificou as três ações separadamente contra API loopback
+sintética; nenhum envio físico foi executado.
+
+A revisão independente identificou PUT recuperado após revogação e conflito
+HTTP incorreto; ambos corrigidos e reavaliados. O caso de expiração durante
+espera de locks também foi corrigido e reavaliado, com checagem de relógio após
+os locks e antes da admissão/PUT. Build e scanner de
+bundle passaram; PostgreSQL/MinIO/E2E da nova migration aguardam a CI em
+laboratório descartável. Detalhes e resultado final devem constar em
+[`2026-10-29-partner-media.md`](2026-10-29-partner-media.md).
+
+Não concluídos por este incremento: homologação de provider/host, codec/reprodução,
+Meta/grupos/voz, gestão pública de Flow, instalação CCLX e as demais frentes do
+programa. Publicação de imagem e implantação são evidências distintas.

@@ -9,16 +9,16 @@ it('binds the manual to profile selection, authored PDF prose and exporter, not 
   for (const [key, file] of Object.entries({ profilesSha256: 'public-api.mjs', exporterSha256: 'export-guide.mjs', pdfGeneratorSha256: 'generate-partner-pdf.py' })) {
     expect(manifest[key], file).toBe(sourceTextHash(await readFile(new URL('../scripts/docs/' + file, import.meta.url))));
   }
-  expect(manifest.operationCount).toBe(34);
+  expect(manifest.operationCount).toBe(37);
 });
 
 it('rejects changed manual inputs, operation selection or PDF bytes before packaging', async () => {
   const manifest = JSON.parse(await readFile(new URL('../scripts/docs/assets/guia-api-jrc.json', import.meta.url), 'utf8'));
   const pdf = await readFile(new URL('../scripts/docs/assets/guia-api-jrc.pdf', import.meta.url)), sources = await documentationProvenance();
-  expect(() => verifyPdfProvenance(manifest, sources, pdf, 34)).not.toThrow();
-  for (const key of Object.keys(sources)) expect(() => verifyPdfProvenance(manifest, { ...sources, [key]: 'changed' }, pdf, 34)).toThrow('PDF_STALE');
-  expect(() => verifyPdfProvenance(manifest, sources, pdf, 33)).toThrow('PDF_STALE');
-  expect(() => verifyPdfProvenance(manifest, sources, Buffer.from('changed'), 34)).toThrow('PDF_STALE');
+  expect(() => verifyPdfProvenance(manifest, sources, pdf, 37)).not.toThrow();
+  for (const key of Object.keys(sources)) expect(() => verifyPdfProvenance(manifest, { ...sources, [key]: 'changed' }, pdf, 37)).toThrow('PDF_STALE');
+  expect(() => verifyPdfProvenance(manifest, sources, pdf, 36)).toThrow('PDF_STALE');
+  expect(() => verifyPdfProvenance(manifest, sources, Buffer.from('changed'), 37)).toThrow('PDF_STALE');
 });
 
 it('packages local Swagger UI, notices and filtered contracts without a CDN or embedded key', async () => {
@@ -26,6 +26,7 @@ it('packages local Swagger UI, notices and filtered contracts without a CDN or e
   const html = String(assets['documentation/index.html']);
   expect(html).toContain('/documentation/swagger-ui-bundle.js');
   expect(html).toContain('/documentation/guia-api-jrc.pdf');
+  expect(html).toContain('/documentation/postman-media.json');
   expect(Buffer.from(assets['documentation/guia-api-jrc.pdf']).subarray(0,5).toString()).toBe('%PDF-');
   expect(html).not.toMatch(/(?:src|href)="https?:/);
   expect(assets['documentation/swagger-ui-bundle.js']).toBeDefined();
@@ -37,6 +38,10 @@ it('packages local Swagger UI, notices and filtered contracts without a CDN or e
   const postman = JSON.parse(String(assets['documentation/postman-instances.json']));
   expect(postman.variable.find(value => value.key === 'jrc_api_key').value).toBe('');
   expect(postman.item.every(item => item.request.method === 'GET')).toBe(true);
+  expect(assets['documentation/postman-media.json']).toBeDefined();
+  const media = JSON.parse(String(assets['documentation/postman-media.json']));
+  expect(media.item.flatMap(folder => folder.item)).toHaveLength(3);
+  expect(media.variable.filter(value => value.key.startsWith('allow_')).every(value => value.value === 'false')).toBe(true);
   const poc = JSON.parse(String(assets['documentation/postman-poc.json']));
   expect(poc.variable.find(value => value.key === 'jrc_api_key').value).toBe('');
   expect(poc.variable.find(value => value.key === 'allow_writes').value).toBe('false');

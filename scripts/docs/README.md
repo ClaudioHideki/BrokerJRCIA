@@ -22,14 +22,14 @@ Source text digests normalize CRLF to Git's LF checkout; the PDF digest verifies
 the exact binary bytes. Content changes still require regeneration and review.
 
 `build-portal.mjs` packages the local Swagger UI and notices, filtered OpenAPI,
-read-only Postman collections, the explicit POC collection and PDF. No CDN and no
+read-only Postman collections, explicit POC and media collections, and PDF. No CDN and no
 credential are embedded. The web server serves these files independently of the
 SPA/API; missing documents are errors, not console HTML.
 
 ## Postman/Newman validation
 
 The four `postman-{instances,messaging,events,chatwoot}.json` downloads contain only
-GETs (4/5/3/8 queries); their profiles describe 7/7/5/15 operations. They are not
+GETs (4/6/3/8 queries); their profiles describe 7/10/5/15 operations. They are not
 full write collections. `postman-control.json` covers the existing 15 account-bound
 control operations. Each mutation has a separate `allow_*=false` flag, requires
 private IDs and a valid control idempotency key, and ends the Runner after its
@@ -37,6 +37,14 @@ response. Select only the intended action folder; do not enable every flag.
 Identity confirmation is an explicit legacy/replacement decision, not a required
 step after every new binding. A new eligible binding enrolls only under the
 finite authenticated intent described by the shared guide and runbook.
+
+`postman-media.json` contains three partner operations: binary upload (201),
+read-only metadata (200), and reference send (202). Upload and send have separate
+`allow_media_upload=false` / `allow_media_send=false` flags; required private
+variables and UUID idempotency keys must be supplied deliberately. Run one action
+folder at a time. Upload never triggers send, scripts do not copy resource IDs
+automatically, and every write stops the Runner after its response. A READY upload
+is a storage result; provider delivery still depends on message receipts.
 
 `postman-environment.json` has empty origin/key/resource values and every write
 flag false. Fill a private local copy only. The generic key, account-bound control

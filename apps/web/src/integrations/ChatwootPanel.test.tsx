@@ -173,7 +173,8 @@ it("offers only the selected company connections and creates an API inbox", asyn
         : { data: [] },
   );
   render(<ChatwootPanel request={request} canManage platform={false} />);
-  fireEvent.change(await screen.findByLabelText("Conexão WhatsApp"), {
+  await screen.findByRole('option', { name: 'Comercial · QR Code' });
+  fireEvent.change(screen.getByLabelText("Conexão WhatsApp"), {
     target: { value: id },
   });
   fireEvent.change(screen.getByLabelText("Nome da caixa"), {
@@ -189,14 +190,25 @@ it("offers only the selected company connections and creates an API inbox", asyn
 });
 it('requires an explicit destination choice after refresh removes the selected inbox', async () => {
   let inboxes = [{ id: 31, name: 'Destino original', hasWebhook: false }];
+  const sources = { data: [{ kind: 'instance', id, name: 'Comercial', label: 'QR Code' }] };
+  let releaseSources!: () => void;
+  const initialSources = new Promise<typeof sources>(resolve => { releaseSources = () => resolve(sources); });
+  let sourceReads = 0;
   const ready = { ...status, account: { accountId: 1, status: 'READY', hasCredential: true, lastError: null } };
   const request = vi.fn(async (path: string, _method?: string) => path === '' ? ready
     : path === '/inboxes' ? { data: inboxes }
-    : path === '/sources' ? { data: [{ kind: 'instance', id, name: 'Comercial', label: 'QR Code' }] }
+    : path === '/sources' ? ++sourceReads === 1 ? initialSources : sources
     : { data: [] });
   render(<ChatwootPanel request={request} canManage platform={false} />);
   await screen.findByRole('option', { name: 'Destino original · Caixa 31' });
+  // The inbox and WhatsApp source catalogs load independently. An option in
+  // one select is not a readiness barrier for an option in the other select.
+  expect(screen.queryByRole('option', { name: 'Comercial · QR Code' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeDisabled();
+  releaseSources();
+  await screen.findByRole('option', { name: 'Comercial · QR Code' });
   fireEvent.change(screen.getByLabelText('Conexão WhatsApp'), { target: { value: id } });
+  expect(screen.getByLabelText('Conexão WhatsApp')).toHaveValue(id);
   fireEvent.change(screen.getByLabelText('Destino'), { target: { value: '31' } });
   fireEvent.change(screen.getByLabelText('Nome da caixa'), { target: { value: 'Nova caixa deliberada' } });
   inboxes = [];
@@ -221,6 +233,7 @@ it('preserves the selected inbox when refresh confirms that it remains available
     : { data: [] });
   render(<ChatwootPanel request={request} canManage platform={false} />);
   await screen.findByRole('option', { name: 'Destino original · Caixa 31' });
+  await screen.findByRole('option', { name: 'Comercial · QR Code' });
   fireEvent.change(screen.getByLabelText('Conexão WhatsApp'), { target: { value: id } });
   fireEvent.change(screen.getByLabelText('Destino'), { target: { value: '31' } });
   fireEvent.change(screen.getByLabelText('Nome da caixa'), { target: { value: 'Caixa existente deliberada' } });

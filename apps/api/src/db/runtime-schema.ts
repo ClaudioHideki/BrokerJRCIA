@@ -11,7 +11,7 @@ import {historyImportRuntimeSql} from './history-import-runtime-schema.js';
 import {flowDomainRuntimeSql} from './flow-domain-runtime-schema.js';
 import {metaOnboardingRuntimeSql} from './meta-onboarding-runtime-schema.js';
 import {partnerApiRuntimeSql} from './partner-api-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0073_chatwoot_initial_identity';
+export const RUNTIME_SCHEMA_BASELINE = '0074_partner_media';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 

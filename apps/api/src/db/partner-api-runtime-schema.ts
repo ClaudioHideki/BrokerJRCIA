@@ -53,6 +53,10 @@ export const partnerApiRuntimeSql = `
   AND t.tgtype=19 AND t.tgqual IS NULL AND t.tgfoid=pg_catalog.to_regprocedure('public.partner_require_message_authority()')
   AND t.tgattr::text=(SELECT a.attnum::text FROM pg_catalog.pg_attribute a
    WHERE a.attrelid=t.tgrelid AND a.attname='state'))
+ -- Compare the audited body too: the text-only 0071 function has identical
+ -- signature/owner/ACL/trigger but cannot protect partner MEDIA dispatch.
+ AND EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.oid=pg_catalog.to_regprocedure('public.partner_require_message_authority()')
+  AND md5(replace(p.prosrc,chr(13),''))='2d8fe6b18686fed07fd049683878ef24')
  AND NOT EXISTS(SELECT 1 FROM (VALUES
   ('public.partner_capture_event()',false),('public.partner_publish_events()',true),
   ('public.partner_event_worker_organizations(uuid,integer)',true),('public.partner_event_catalogue_ready()',true),

@@ -10,7 +10,11 @@
 
 **Spec:** [2026-10-29-partner-media-design.md](../specs/2026-10-29-partner-media-design.md).
 
-**Estado:** próxima entrega planejada; nenhuma caixa marcada representa implementação ou homologação. D1/D2 foram resolvidas pelo executor principal no spec, dentro das decisões rotineiras delegadas pelo usuário. A capacidade está no programa autorizado, sem microaprovação humana.
+**Estado em 29/10:** implementação local em revisão, sem homologação de provider.
+D1/D2 foram resolvidas pelo executor principal no spec. O usuário autorizou
+continuar até publicar as imagens API/web da revisão aprovada. Isso não autoriza
+deploy, migrations produtivas, credenciais ou envio real nesta etapa. O registro
+de validação separa testes locais, CI com laboratório e publicação por digest.
 
 ## Global Constraints
 
@@ -121,4 +125,14 @@ Interfaces propostas para fixar no RED de contrato:
 
 ## Checkpoint de retomada
 
-Preparação documental e decisões D1/D2 concluídas; produto, migration, testes novos e geração de contrato ainda pendentes. Último migration observado: `0073`. Docker `desktop-linux` sem named pipe funcional segundo coleta do executor principal; não há teste PostgreSQL/storage/E2E desta fatia. Retomar pela conferência de pré-requisitos da Tarefa 0; não começar gerando OpenAPI ou autorizando mídia pela chave antiga.
+Produto e migration aditiva `0074_partner_media` implementados localmente, com
+testes HTTP/unitários, portal, coleção Postman de três ações e PDF técnico de oito
+páginas. A revisão independente identificou e corrigiu PUT recuperado após
+revogação e conflito de idempotência HTTP; a expiração durante espera por locks
+também foi corrigida e reavaliada. O primeiro teste completo local identificou
+inventário OpenAPI desatualizado e uma barreira incorreta no teste de catálogos,
+ambos corrigidos. A repetição final passou 454 arquivos / 3.525 testes, exit 0.
+Build/typecheck, scanner e revisão independente também passaram.
+Docker local não oferece laboratório PostgreSQL/MinIO utilizável;
+os gates reais serão executados na CI da revisão exata, sem usar produção.
+Casos externos acima permanecem pendentes; não marcar como aceitos por publicar imagem.

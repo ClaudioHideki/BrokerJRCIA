@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPublicDocument, buildReadOnlyPostman, buildControlPostman, publicProfiles } from './public-api.mjs';
 import { buildPocPostman } from './postman-poc.mjs';
+import { buildMediaPostman } from './postman-media.mjs';
 import { identityEnrollmentGuide } from './operation-guide.mjs';
 import { documentationProvenance, verifyPdfProvenance } from './provenance.mjs';
 
@@ -34,6 +35,7 @@ export async function createDocumentationAssets() {
   verifyPdfProvenance(manifest, await documentationProvenance(), pdf, count);
   add('guia-api-jrc.pdf', pdf);
   add('postman-poc.json', JSON.stringify(buildPocPostman(), null, 2) + '\n');
+  add('postman-media.json', JSON.stringify(buildMediaPostman(contracts.messaging), null, 2) + '\n');
   const control = buildControlPostman(contracts.chatwoot);
   add('postman-control.json', JSON.stringify(control, null, 2) + '\n');
   const variables = new Map([...buildPocPostman().variable, ...control.variable, { key: 'id', value: '' }].map(value => [value.key, value]));

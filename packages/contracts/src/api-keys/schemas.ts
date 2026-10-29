@@ -8,6 +8,8 @@ export const ApiKeyScopeSchema = z.enum([
   'api_keys:manage',
   'messaging:read',
   'messaging:send',
+  'media:upload',
+  'media:send',
   'webhooks:manage',
   'chatwoot:read',
   'chatwoot:manage',
@@ -18,7 +20,7 @@ export const ApiKeyScopeSchema = z.enum([
 export const IssueApiKeyRequestSchema = z.object({
   name: z.string().trim().min(1).max(100),
   // Control keys require an account binding and their dedicated issuer.
-  scopes: z.array(z.enum(['instances:read', 'instances:write', 'api_keys:manage', 'messaging:read', 'messaging:send', 'webhooks:manage'])).min(1).max(6),
+  scopes: z.array(z.enum(['instances:read', 'instances:write', 'api_keys:manage', 'messaging:read', 'messaging:send', 'webhooks:manage', 'media:upload', 'media:send'])).min(1).max(8),
   expiresAt: z.iso.datetime({ offset: true }).nullable().default(null),
 }).strict();
 

@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { mkdir } from "node:fs/promises";
 import { z } from 'zod';
-import { AutomationMediaAssetSchema } from '@jrc/contracts';
+import { AutomationMediaAssetSchema, PartnerMediaMetadataSchema } from '@jrc/contracts';
 import { SUPPORTED_UPLOAD_MIME_TYPES } from '@jrc/providers';
 
 import type { InstanceService } from "../modules/instances/service.js";
@@ -346,6 +346,9 @@ function normalizeDocument(document: JsonObject): JsonObject {
         operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
       if (['/v1/messaging/channels/{id}/partner-text','/v1/messaging/instances/{id}/partner-activate','/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents'].includes(path) && method === 'post')
         operation.security = [{ jrcApiKeyAuth: [] }];
+      const partnerUpload = path === '/v1/messaging/channels/{id}/media' && method === 'post';
+      if (partnerUpload || path === '/v1/messaging/channels/{id}/media/{mediaId}' && method === 'get'
+        || path === '/v1/messaging/channels/{id}/partner-media' && method === 'post') operation.security = [{ jrcApiKeyAuth: [] }];
       if (path === '/v1/messaging/media/{id}' && method === 'get') {
         operation.responses = { ...((operation.responses ?? {}) as JsonObject),
           '200': {description:'Bytes privados do anexo; MIME depende do arquivo. Não retorna JSON.',content:{'application/octet-stream':{schema:{type:'string',format:'binary'}}}} };
@@ -353,10 +356,12 @@ function normalizeDocument(document: JsonObject): JsonObject {
       if (['/v1/partner-webhooks', '/v1/partner-events', '/v1/partner-webhook-deliveries'].some(prefix => path === prefix || path.startsWith(prefix + '/')))
         operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
       if(path.startsWith('/v1/delegated-flows'))operation.security=[{flowSessionAuth:[]}];
-      if (method === 'post' && /^\/v1\/(?:automations|delegated-flows)\/\{id\}\/channels\/\{channelId\}\/media$/.test(path)) {
-        operation.description = 'Arquivo privado binário de 1 a 16 MiB, sujeito ao limite por MIME e à quota. Não é um grafo JSON nem uma URL pública. A mesma chave exige os mesmos bytes, raiz e caixa; autorização é revalidada durante o armazenamento.';
+      if (partnerUpload || method === 'post' && /^\/v1\/(?:automations|delegated-flows)\/\{id\}\/channels\/\{channelId\}\/media$/.test(path)) {
+        operation.description = partnerUpload
+          ? 'Upload privado por chave com media:upload, de 1 a 16 MiB e limites por MIME/quota. HTTP 201 cria uma referência durável; consulte READY/STORING/FAILED no recurso Location. Não envia mensagem. Replays conservam bytes e metadados; conflito retorna 409. Revalida autoridade durante armazenamento e recuperação.'
+          : 'Arquivo privado binário de 1 a 16 MiB, sujeito ao limite por MIME e à quota. Não é um grafo JSON nem uma URL pública. A mesma chave exige os mesmos bytes, raiz e caixa; autorização é revalidada durante o armazenamento.';
         operation.parameters = [
-          ...['id', 'channelId'].map(name => ({ name, in: 'path', required: true, schema: { type: 'string', format: 'uuid' } })),
+          ...(partnerUpload ? ['id'] : ['id', 'channelId']).map(name => ({ name, in: 'path', required: true, schema: { type: 'string', format: 'uuid' } })),
           { name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string', format: 'uuid' } },
           { name: 'X-JRC-Media-Mime', in: 'header', required: true, schema: { type: 'string', enum: [...SUPPORTED_UPLOAD_MIME_TYPES] } },
           { name: 'X-JRC-Media-Kind', in: 'header', required: true, schema: { type: 'string', enum: ['image', 'audio', 'video', 'document'] } },
@@ -366,10 +371,11 @@ function normalizeDocument(document: JsonObject): JsonObject {
           schema: { type: 'string', format: 'binary', minLength: 1, maxLength: 16 * 1024 * 1024 },
         } } };
         operation.responses = {
-          '201': { description: 'Metadados do arquivo privado na raiz e caixa autorizadas.', content: {
-            'application/json': { schema: z.toJSONSchema(AutomationMediaAssetSchema, { target: 'openapi-3.0' }) },
+          '201': { description: partnerUpload ? 'Referência privada com estado explícito; não confirma bytes prontos nem entrega.' : 'Metadados do arquivo privado na raiz e caixa autorizadas.',
+            ...(partnerUpload ? { headers: { Location: { description: 'Caminho relativo da consulta de metadados da referência.', schema: { type: 'string' } } } } : {}), content: {
+            'application/json': { schema: z.toJSONSchema(partnerUpload ? PartnerMediaMetadataSchema : AutomationMediaAssetSchema, { target: 'openapi-3.0' }) },
           } },
-          ...Object.fromEntries([400, 401, 403, 409, 413, 422, 500, 503].map(status => [String(status), { description: 'Upload recusado ou armazenamento indisponível.' }])),
+          ...Object.fromEntries([400, 401, 403, ...(partnerUpload ? [404] : []), 409, 413, ...(partnerUpload ? [415, 429] : []), 422, 500, 503].map(status => [String(status), { description: 'Upload recusado ou armazenamento indisponível.' }])),
         };
       }
       if(path.startsWith('/v1/flow-delegations'))operation.security=[{bearerAuth:[]}];

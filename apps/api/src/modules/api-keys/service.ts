@@ -124,7 +124,7 @@ export class ApiKeyServiceError extends Error {
 }
 
 export function requestedPartnerScopes(scopes: readonly string[]): string[] {
-  return scopes.filter(scope => ['messaging:read','messaging:send','webhooks:manage'].includes(scope));
+  return scopes.filter(scope => ['messaging:read','messaging:send','webhooks:manage','media:upload','media:send'].includes(scope));
 }
 
 function view(row: ApiKeyRow): ApiKeyView {

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createPartnerTextSender } from './partner-text.js';
+import { createPartnerMediaService } from './partner-media.js';
 import {
   ConfigureBotRequestSchema,
   CreateTextTemplateRequestSchema,
@@ -101,6 +102,10 @@ export function createMessagingService(
 ): MessagingService {
   const repository = options.repository;
   const transact = options.runInOrganizationTransaction;
+  function partnerMedia() {
+    if(!options.media)throw new MediaError('MEDIA_NOT_CONFIGURED');
+    return createPartnerMediaService({repository,media:options.media,transact});
+  }
   async function findChannel(organizationId: string, id: string) {
     const channel = await transact(organizationId, (tx) =>
       repository.findChannel(tx, organizationId, id),
@@ -111,6 +116,9 @@ export function createMessagingService(
   }
   return {
     sendPartnerText: createPartnerTextSender({ repository, transact }),
+    uploadPartnerMedia:(...args)=>partnerMedia().upload(...args),
+    getPartnerMedia:(...args)=>partnerMedia().get(...args),
+    sendPartnerMedia:(...args)=>partnerMedia().send(...args),
     listQrOutboundObservations:(org,conversation)=>transact(org,tx=>listQrOutboundObservations(tx,org,conversation)),
     listQrDispatchAttempts:(org,conversation)=>transact(org,tx=>listQrDispatchAttempts(tx,org,conversation)),
     abandonQrDispatchAttempt:(org,id,input,actorId)=>transact(org,async tx=>{
