@@ -64,7 +64,7 @@ function ChannelDetail(){
  if(channel?.provider==='QR')tabs.push({id:'settings',label:'Configurações WhatsApp'});
  else if(channel?.provider==='META')tabs.push({id:'settings',label:'Configurações'});
  if(!archived){
-  if(channel?.provider==='QR')tabs.push({id:'events',label:'Eventos'});
+  if(channel?.provider==='QR')tabs.push({id:'events',label:'Histórico operacional'});
   tabs.push({id:'attendance',label:'Atendimento'},{id:'flow',label:'Flow'});
   if(channel?.provider==='QR')tabs.push({id:'history',label:'Histórico e grupos'});
  }

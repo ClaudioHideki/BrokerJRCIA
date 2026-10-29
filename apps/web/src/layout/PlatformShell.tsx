@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink } from "react-router";
 import { Icon } from "../broker/Icon.js";
-import { sections, type StaffSession } from "../platform/model.js";
+import type { StaffSession } from "../platform/model.js";
+import { platformNavigationFor } from './navigation.js';
 
 export function PlatformShell({
   session,
@@ -15,13 +16,25 @@ export function PlatformShell({
   children: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [mobile, setMobile] = useState(() => window.innerWidth <= 760);
+  const [query, setQuery] = useState('');
+  const [groupCollapsed, setGroupCollapsed] = useState(false);
+  const [mobile, setMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 760);
   const trigger = useRef<HTMLButtonElement>(null);
   const firstLink = useRef<HTMLAnchorElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const navigation = platformNavigationFor(query);
+  const groupExpanded = Boolean(query.trim()) || !groupCollapsed;
+  useLayoutEffect(() => {
+    setQuery('');
+    setGroupCollapsed(false);
+    setMenuOpen(false);
+  }, [session.user.id]);
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const media = window.matchMedia?.("(max-width: 760px)");
     const update = () =>
       setMobile(media ? media.matches : window.innerWidth <= 760);
+    update();
     media?.addEventListener("change", update);
     window.addEventListener("resize", update);
     return () => {
@@ -31,7 +44,7 @@ export function PlatformShell({
   }, []);
   useEffect(() => {
     if (!menuOpen || !mobile) return;
-    firstLink.current?.focus();
+    (firstLink.current ?? searchInput.current)?.focus();
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setMenuOpen(false);
@@ -67,19 +80,35 @@ export function PlatformShell({
           </div>
         </div>
         <div className="admin-nav-label">GESTÃO DA PLATAFORMA</div>
+        <div className="navigation-search" role="search" aria-label="Páginas da plataforma">
+          <label htmlFor="platform-navigation-search">Buscar páginas da plataforma</label>
+          <input ref={searchInput} id="platform-navigation-search" type="search" value={query}
+            onChange={(event) => setQuery(event.target.value)} />
+          {query && <button type="button" aria-label="Limpar busca da plataforma" onClick={() => {
+            setQuery('');
+            searchInput.current?.focus();
+          }}>Limpar</button>}
+        </div>
         <nav aria-label="Administração JRC">
-          {sections.map((section, index) => (
+          {navigation.length ? <div className="navigation-group">
+            <button type="button" className="navigation-group-toggle" aria-expanded={groupExpanded}
+              aria-controls="platform-navigation-group" disabled={Boolean(query.trim())}
+              onClick={() => setGroupCollapsed((current) => !current)}>Plataforma<span aria-hidden="true">{groupExpanded ? '−' : '+'}</span></button>
+            <div id="platform-navigation-group" hidden={!groupExpanded}>
+          {navigation.map((section, index) => (
             <NavLink
               key={section.path}
               to={section.path}
               end
-              ref={index === 0 ? firstLink : undefined}
+              ref={index === 0 && groupExpanded ? firstLink : undefined}
               onClick={closeMenu}
             >
               <Icon name={section.icon} />
               <span>{section.label}</span>
             </NavLink>
           ))}
+            </div>
+          </div> : <p role="status" className="navigation-empty">Nenhuma página encontrada. Limpe a busca para ver os destinos disponíveis.</p>}
         </nav>
         <div className="admin-sidebar-info">
           <Icon name="globe" size={24} />
@@ -90,7 +119,7 @@ export function PlatformShell({
           <span className="sidebar-avatar">J</span>
           <div>
             <strong>Equipe JRC</strong>
-            <small>Console administrativa</small>
+            <small>Contexto: plataforma</small>
           </div>
         </div>
       </aside>

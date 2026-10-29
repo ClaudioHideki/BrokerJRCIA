@@ -74,7 +74,7 @@ describe('canonical connection workspace areas', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'Configurações WhatsApp' }));
     expect(await screen.findAllByRole('checkbox')).toHaveLength(6);
     fireEvent.click(screen.getByRole('checkbox', { name: /Manter online/ }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Eventos' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Histórico operacional' }));
     expect(await screen.findByRole('heading', { name: 'Histórico operacional' })).toBeVisible();
     expect(screen.getByText('Concluída')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Salvar configurações' })).not.toBeInTheDocument();
@@ -102,7 +102,7 @@ describe('canonical connection workspace areas', () => {
     const { request } = setup(provider);
     await screen.findByRole('tab', { name: 'Visão geral' });
     expect(screen.queryByRole('tab', { name: 'Configurações WhatsApp' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'Eventos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Histórico operacional' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Histórico e grupos' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reconectar' })).not.toBeInTheDocument();
     if (provider === 'META') {

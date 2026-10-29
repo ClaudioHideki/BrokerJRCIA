@@ -24,7 +24,7 @@ async function openFlow(){fireEvent.click(await screen.findByRole('tab',{name:'F
 it('provides keyboard-accessible areas and keeps publication, binding and the real test in order',async()=>{
  const request=mount();await screen.findByRole('heading',{name:'Caixa sintética'});
  const tabs=screen.getByRole('tablist',{name:'Áreas da conexão'});
- expect(within(tabs).getAllByRole('tab').map(tab=>tab.textContent)).toEqual(['Visão geral','Configurações WhatsApp','Eventos','Atendimento','Flow','Histórico e grupos']);
+ expect(within(tabs).getAllByRole('tab').map(tab=>tab.textContent)).toEqual(['Visão geral','Configurações WhatsApp','Histórico operacional','Atendimento','Flow','Histórico e grupos']);
  const overview=within(tabs).getByRole('tab',{name:'Visão geral',selected:true});overview.focus();
  fireEvent.keyDown(overview,{key:'ArrowRight'});expect(within(tabs).getByRole('tab',{name:'Configurações WhatsApp',selected:true})).toHaveFocus();
  fireEvent.keyDown(document.activeElement!,{key:'ArrowRight'});fireEvent.keyDown(document.activeElement!,{key:'ArrowRight'});fireEvent.keyDown(document.activeElement!,{key:'ArrowRight'});

@@ -23,7 +23,7 @@ const toggles = [
 export type InstanceWorkspaceArea = 'overview' | 'settings' | 'events' | 'integrations';
 const areas: { id: InstanceWorkspaceArea; label: string }[] = [
   { id: 'overview', label: 'Visão geral' }, { id: 'settings', label: 'Configurações' },
-  { id: 'events', label: 'Eventos' }, { id: 'integrations', label: 'Integrações' },
+  { id: 'events', label: 'Histórico operacional' }, { id: 'integrations', label: 'Integrações' },
 ];
 
 function isWorkspace(value: unknown, id: string): value is Workspace {
