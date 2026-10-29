@@ -99,8 +99,52 @@ com provider real. A aba usada pelo usuário não foi substituída para capturar
 O próximo contrato de mídia e suas decisões de interface estão registrados em
 `docs/superpowers/specs/2026-10-29-partner-media-design.md` e no plano correspondente.
 Scopes novos, migration proposta `0074` e envio público de mídia **não foram implementados**.
-Permanecem pendentes, assim como os incrementos 2–7 do plano principal.
+Permanecem pendentes. O incremento 2 recebeu as correções parciais abaixo; seu
+aceite conjunto e os incrementos 3–7 continuam abertos.
+
+## Segundo incremento — correções de lifecycle e integração
+
+O primeiro incremento foi registrado no commit local
+`526e2ac53de1e84cbba089ee43f85ee98fc8bb1b`, sem push, PR, imagem ou deploy.
+A continuidade nesta mesma branch corrigiu bugs demonstrados por testes RED:
+
+- Acompanhamento de pareamento após reload/ação `NONE`, uma consulta em voo,
+  pausa por visibilidade, abort e parada por revogação; nenhum POST automático.
+- Validação PNG pelo componente existente, limpeza do QR/código e rejeição de
+  resposta tardia após `pagehide`; refresh terminal descarta o desafio antigo.
+- Invalidação de inbox removida do catálogo, exigindo escolha explícita sem
+  criar outra caixa silenciosamente.
+- PUT de agentes substitui o conjunto remoto, inclusive lista vazia, e confere
+  o readback antes de concluir. POST aditivo preservado. Destino, credencial,
+  binding e caller revalidados após GET no controle, onboarding, legado e
+  plataforma. A última checagem não desfaz uma requisição já despachada.
+
+Evidência detalhada, testes focais e limites:
+[`2026-10-29-lifecycle-evidence.md`](2026-10-29-lifecycle-evidence.md).
+Revisão independente não encontrou P1/P2 nos arquivos UI e no núcleo backend;
+callback final de plataforma revisado pelo coordenador, com regressões de
+sessão revogada e rebaixamento de papel. Nenhuma migration ou scope novo.
+
+O build e o scanner de bundle passaram; a geração OpenAPI não alterou o contrato.
+A primeira regressão geral deste lote passou 3458 testes e falhou em um fixture
+antigo que tratava o texto `hello` em base64 como PNG. O fixture foi corrigido para
+PNG válido; 26 testes focais passaram, preservando os testes de rejeição de QR.
+A repetição final de `npm test -- --maxWorkers=4` passou **448 arquivos / 3459
+testes**, exit 0, em 378,80 s. O pacote QR de parceiro passou novamente **2
+arquivos / 34 testes**, exit 0. Logs locais fora do Git:
+`broker-experience-lifecycle-final-suite-20261029.log`,
+`broker-experience-lifecycle-build-20261029.log` e
+`broker-partner-qr-lifecycle-20261029.log`, em `New project/output/`.
+
+O portal estático foi verificado na prévia do build em
+`http://127.0.0.1:5200/documentation/`, sem credencial ou escrita habilitada.
+A demonstração Vite em 5199 não gera esses assets durante desenvolvimento;
+não confundir seu fallback SPA com a prova do portal gerado pelo build.
+
+PostgreSQL/RLS, storage, restart e provider real não foram executados. Docker
+local não respondeu de forma utilizável; nenhum servidor produtivo foi usado
+para contornar a dependência. O programa completo não está concluído.
 
 ## Retomada exata
 
-Abrir a branch `codex/broker-experience-20261029`, ler spec/plano/este registro e consultar `git status` preservando arquivos alheios. Revalidar refs antes da próxima alteração. Executar as verificações pendentes e atualizar este registro com resultado real. Não iniciar envio real, deploy ou troca de engine a partir deste checkpoint.
+Abrir a branch `codex/broker-experience-20261029`, ler spec/plano/este registro e consultar `git status` preservando arquivos alheios. Revalidar refs antes da próxima alteração. Navegação e as correções locais de lifecycle estão verificadas; não reconstruir onboarding/adoção existentes. Prosseguir às pendências de composição real da entrega 2 e ao plano de mídia pública da entrega 3, mantendo os fences propostos de banco/worker antes do efeito. Executar as verificações pendentes e atualizar este registro com resultado real. Não iniciar envio real, deploy ou troca de engine a partir deste checkpoint.

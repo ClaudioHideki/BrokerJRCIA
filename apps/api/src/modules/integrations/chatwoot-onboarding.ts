@@ -118,7 +118,8 @@ export function createOnboardingService(options: OnboardingOptions) {
         if (!input.agentIds.every(id => assigned.has(id))) {
           if (row.reconcile_only) throw uncertain();
           await validate();
-          await options.chatwoot.addAgents(org, row.integration_id!, [...new Set([...assigned, ...input.agentIds])], principal.authentication.actorId ?? undefined);
+          await options.chatwoot.addAgents(org, row.integration_id!, [...new Set([...assigned, ...input.agentIds])],
+            principal.authentication.actorId ?? undefined, t => validateLease(t, row));
         }
       }
     } else if (row.stage === 'VERIFY') {

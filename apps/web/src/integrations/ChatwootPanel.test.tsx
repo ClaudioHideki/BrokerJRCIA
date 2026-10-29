@@ -187,6 +187,53 @@ it("offers only the selected company connections and creates an API inbox", asyn
     }),
   );
 });
+it('requires an explicit destination choice after refresh removes the selected inbox', async () => {
+  let inboxes = [{ id: 31, name: 'Destino original', hasWebhook: false }];
+  const ready = { ...status, account: { accountId: 1, status: 'READY', hasCredential: true, lastError: null } };
+  const request = vi.fn(async (path: string, _method?: string) => path === '' ? ready
+    : path === '/inboxes' ? { data: inboxes }
+    : path === '/sources' ? { data: [{ kind: 'instance', id, name: 'Comercial', label: 'QR Code' }] }
+    : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform={false} />);
+  await screen.findByRole('option', { name: 'Destino original · Caixa 31' });
+  fireEvent.change(screen.getByLabelText('Conexão WhatsApp'), { target: { value: id } });
+  fireEvent.change(screen.getByLabelText('Destino'), { target: { value: '31' } });
+  fireEvent.change(screen.getByLabelText('Nome da caixa'), { target: { value: 'Nova caixa deliberada' } });
+  inboxes = [];
+  fireEvent.click(screen.getByRole('button', { name: 'Atualizar integração' }));
+  await waitFor(() => expect(screen.queryByRole('option', { name: 'Destino original · Caixa 31' })).not.toBeInTheDocument());
+  expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeDisabled();
+  expect(screen.getByLabelText('Destino')).toHaveValue('UNAVAILABLE');
+  expect(screen.getByText(/A caixa selecionada não está mais disponível/)).toBeVisible();
+  expect(request.mock.calls.some(([, method]) => method === 'POST')).toBe(false);
+  fireEvent.change(screen.getByLabelText('Destino'), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Conectar caixa' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/connections', 'POST', {
+    instanceId: id, name: 'Nova caixa deliberada',
+  }));
+});
+
+it('preserves the selected inbox when refresh confirms that it remains available', async () => {
+  const ready = { ...status, account: { accountId: 1, status: 'READY', hasCredential: true, lastError: null } };
+  const request = vi.fn(async (path: string, _method?: string) => path === '' ? ready
+    : path === '/inboxes' ? { data: [{ id: 31, name: 'Destino original', hasWebhook: false }] }
+    : path === '/sources' ? { data: [{ kind: 'instance', id, name: 'Comercial', label: 'QR Code' }] }
+    : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform={false} />);
+  await screen.findByRole('option', { name: 'Destino original · Caixa 31' });
+  fireEvent.change(screen.getByLabelText('Conexão WhatsApp'), { target: { value: id } });
+  fireEvent.change(screen.getByLabelText('Destino'), { target: { value: '31' } });
+  fireEvent.change(screen.getByLabelText('Nome da caixa'), { target: { value: 'Caixa existente deliberada' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Atualizar integração' }));
+  await waitFor(() => expect(request.mock.calls.filter(([path]) => path === '/inboxes')).toHaveLength(2));
+  expect(screen.getByLabelText('Destino')).toHaveValue('31');
+  expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeEnabled();
+  expect(request.mock.calls.some(([, method]) => method === 'POST')).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Conectar caixa' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/connections', 'POST', {
+    instanceId: id, name: 'Caixa existente deliberada', inboxId: 31,
+  }));
+});
 it("keeps viewers read-only and never loads administrative choices", async () => {
   const request = vi.fn(async (path: string) =>
     path === "" ? status : { data: [] },

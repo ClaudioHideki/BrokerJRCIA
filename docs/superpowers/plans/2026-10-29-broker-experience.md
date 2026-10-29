@@ -43,7 +43,8 @@
 
 **Entradas reais:** `modules/channels`, `modules/instances`, `modules/integrations`, `ChatwootPanel`, `ChatwootControlPanel`, `NativeJrcSetup`, `ChannelDetail` e testes HTTP/RLS.
 
-- [ ] Consolidar matriz requisito → rota → UI → autorização → teste, sem reimplementar onboarding/adoção existentes.
+- [x] Consolidar matriz inicial de evidências de lifecycle e testes existentes, sem reimplementar onboarding/adoção. Ver [evidências de lifecycle](../../validation/2026-10-29-lifecycle-evidence.md).
+- [x] Corrigir acompanhamento de pareamento após reload/NONE, desafio PNG efêmero, inbox removida da seleção e substituição/revalidação de agentes. Cobertura local não encerra o aceite de lifecycle.
 - [ ] Mostrar separadamente sessão, identidade, conta remota, callback, entrega e caixa; retomar falha parcial sem repetir POST ou criar inbox duplicada.
 - [ ] Validar grants/revogação em voo, proprietários de sessão/envio/projeção e limpeza após troca de empresa.
 - [ ] Testar reinício de consumidores no laboratório; registrar versão instalada e contratos de evento reais.

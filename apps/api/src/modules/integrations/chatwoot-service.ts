@@ -206,6 +206,34 @@ export function createChatwootService(options: ChatwootOptions) {
       );
     });
   }
+  async function mutateAgents(org: string, id: string, userIds: number[], mode: 'ADD' | 'REPLACE',
+    actorId?: string, beforeMutation?: (t: TenantTransaction) => Promise<void>) {
+    const a = await account(org), c = await tx(org, t => readChatwootConnection(t, org, id));
+    if (!c?.inbox_id || !['READY', 'DISABLED'].includes(c.status))
+      throw new IntegrationError('INTEGRATION_NOT_FOUND', 404);
+    const client = env.client(a), users = await client.agents(Number(a.account_id));
+    if ((mode === 'ADD' && !userIds.length) || userIds.some(userId => !users.some(user => user.id === userId)))
+      throw new IntegrationError('CHATWOOT_AGENT_NOT_IN_ACCOUNT');
+    await tx(org, async t => {
+      await requireActiveOrganization(t, org);
+      const current = await readChatwootAccount(t, org), binding = await readChatwootConnection(t, org, id);
+      if (current?.status !== 'READY' || current.credential_version !== a.credential_version
+        || current.encrypted_token !== a.encrypted_token || current.account_id !== a.account_id
+        || current.base_url !== a.base_url || current.destination?.revision !== a.destination?.revision
+        || current.destination?.approvalStatus !== 'APPROVED' || !binding
+        || binding.channel_id !== c.channel_id || binding.inbox_id !== c.inbox_id || binding.status !== c.status
+        || binding.encrypted_webhook_secret !== c.encrypted_webhook_secret)
+        throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
+      await beforeMutation?.(t);
+      await integrationAudit(t, org, 'INBOX_AGENTS_REQUESTED', id,
+        mode === 'REPLACE' ? 'Replace inbox agents with existing account agents' : 'Assign existing account agents to inbox', actorId);
+    });
+    // HTTP stays outside the transaction. Revalidation fences changes observed
+    // during the catalogue GET; it cannot undo a request already dispatched.
+    const ids = [...new Set(userIds)];
+    if (mode === 'REPLACE') await client.replaceAgents(Number(a.account_id), Number(c.inbox_id), ids);
+    else await client.assignAgents(Number(a.account_id), Number(c.inbox_id), ids);
+  }
   return {
     destinations,
     attendanceCatalog:attendance.catalog,
@@ -376,33 +404,18 @@ export function createChatwootService(options: ChatwootOptions) {
       id: string,
       userIds: number[],
       actorId?: string,
+      beforeMutation?: (t: TenantTransaction) => Promise<void>,
     ) {
-      const a = await account(org),
-        c = await tx(org, (t) => readChatwootConnection(t, org, id));
-      if (!c?.inbox_id || !["READY", "DISABLED"].includes(c.status))
-        throw new IntegrationError("INTEGRATION_NOT_FOUND", 404);
-      const client = env.client(a),
-        users = await client.agents(Number(a.account_id));
-      if (
-        !userIds.length ||
-        userIds.some((id) => !users.some((user) => user.id === id))
-      )
-        throw new IntegrationError("CHATWOOT_AGENT_NOT_IN_ACCOUNT");
-      await tx(org, async (t) => {
-        await requireActiveOrganization(t, org);
-        await integrationAudit(
-          t,
-          org,
-          "INBOX_AGENTS_REQUESTED",
-          id,
-          "Assign existing account agents to inbox",
-          actorId,
-        );
-      });
-      await client.assignAgents(Number(a.account_id), Number(c.inbox_id), [
-        ...new Set(userIds),
-      ]);
+      await mutateAgents(org, id, userIds, 'ADD', actorId, beforeMutation);
       return this.agents(org, id);
+    },
+    async replaceAgents(org: string, id: string, userIds: number[], actorId?: string,
+      beforeMutation?: (t: TenantTransaction) => Promise<void>) {
+      await mutateAgents(org, id, userIds, 'REPLACE', actorId, beforeMutation);
+      const result = await this.agents(org, id), assigned = result.data.filter(user => user.assigned).map(user => user.id);
+      if (assigned.length !== userIds.length || userIds.some(userId => !assigned.includes(userId)))
+        throw new IntegrationError('CHATWOOT_AGENTS_RECONCILIATION_REQUIRED', 409);
+      return result;
     },
     initialIdentity,
     async connect(

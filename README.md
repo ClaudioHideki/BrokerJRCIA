@@ -10,6 +10,9 @@ o portal público e os guards de backend são preservados. O alvo JRC confirmado
 Consulte o [plano por entregas](docs/superpowers/plans/2026-10-29-broker-experience.md),
 o [registro de progresso e verificações](docs/validation/2026-10-29-broker-experience-progress.md)
 e os [dois modos de integração](docs/api/integration-modes.md).
+O segundo incremento corrige acompanhamento de pareamento, retenção do QR,
+seleção de inbox e substituição/revalidação de agentes; consulte as
+[evidências de lifecycle](docs/validation/2026-10-29-lifecycle-evidence.md).
 Esta candidata não representa a conclusão dos módulos pendentes, publicação de imagem,
 deploy produtivo ou homologação real com providers/CCLX.
 

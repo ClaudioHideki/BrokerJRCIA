@@ -391,6 +391,12 @@ export class ChatwootClient {
       user_ids: z.array(integer).max(100).parse(userIds),
     });
   }
+  async replaceAgents(accountId: number, inboxId: number, userIds: number[]): Promise<void> {
+    await this.request('PATCH', this.account(accountId) + '/inbox_members', {
+      inbox_id: integer.parse(inboxId),
+      user_ids: z.array(integer).max(100).parse(userIds),
+    });
+  }
   async agents(accountId: number) {
     return parseCatalog(catalogAgents, await this.request("GET", this.account(accountId) + "/agents"));
   }

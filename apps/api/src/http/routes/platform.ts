@@ -589,6 +589,13 @@ export async function registerPlatformRoutes(
               })
               .parse(req.body).userIds,
             actor,
+            async () => {
+              const session = await options.service.session(cookie(req));
+              if (session.user.id !== actor || session.user.role !== 'SUPER_ADMIN')
+                throw new PlatformError(403, 'PLATFORM_FORBIDDEN');
+              if (req.headers['x-csrf-token'] !== session.csrfToken)
+                throw new PlatformError(403, 'PLATFORM_CSRF_REJECTED');
+            },
           );
         },
       );

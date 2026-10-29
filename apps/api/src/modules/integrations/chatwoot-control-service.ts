@@ -243,7 +243,8 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
         return { ok: true as const };
       }
       // The remote write is outside the transaction; an uncertain result cannot trigger a blind replay.
-      if (ids.length) await options.chatwoot.addAgents(p.organizationId, id, ids, p.authentication.actorId ?? undefined);
+      await options.chatwoot.replaceAgents(p.organizationId, id, ids, p.authentication.actorId ?? undefined,
+        async t => { await mapping(t, p, id, 'chatwoot:manage'); });
       await tx(p.organizationId, async t => {
         await mapping(t, p, id, 'chatwoot:manage'); await options.auth.audit(t, p, 'CONTROL_AGENTS_CHANGED', id);
         await completeIdempotencyRecord(t, { organizationId: p.organizationId, recordId: claim.recordId, status: 'COMPLETED', responseMetadata: { ok: true } });

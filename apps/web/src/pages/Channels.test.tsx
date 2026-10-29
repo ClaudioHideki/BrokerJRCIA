@@ -202,7 +202,8 @@ it('never renders an expired QR challenge and provides a new request action',asy
 });
 
 it('renders a BASE64 pairing challenge as an image data URL',async()=>{
+ const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z3aQAAAAASUVORK5CYII=';
  const channel={schemaVersion:1,id,organizationId:org,provider:'QR',identity:{displayName:'Parear',maskedAddress:null},providerReference:{providerAccountId:account,instanceId:id},transportStatus:'DISCONNECTED',providerStatus:'READY',automationStatus:'UNBOUND',humanStatus:'UNBOUND',revision:1,createdAt:timestamp,updatedAt:timestamp};
- const request=vi.fn(async(path:string)=>{if(path.endsWith('/pair'))return {provider:'QR',channel,operationId:null,replayed:false,pending:false,reconciliationRequired:false,action:{type:'QR_CODE',encoding:'BASE64',value:'aGVsbG8=',expiresAt:new Date(Date.now()+60000).toISOString()}};if(path.endsWith('/automation'))return {binding:null};if(path==='/v1/automations')return {data:[]};return channel;}) as ApiClient['request'];
- render(<App client={client(request)} initialEntries={['/channels/'+id]}/>);fireEvent.click(await screen.findByRole('button',{name:'Gerar QR Code'}));expect(await screen.findByRole('img',{name:'QR Code para conectar o WhatsApp'})).toHaveAttribute('src','data:image/png;base64,aGVsbG8=');
+ const request=vi.fn(async(path:string)=>{if(path.endsWith('/pair'))return {provider:'QR',channel,operationId:null,replayed:false,pending:false,reconciliationRequired:false,action:{type:'QR_CODE',encoding:'BASE64',value:png,expiresAt:new Date(Date.now()+60000).toISOString()}};if(path.endsWith('/automation'))return {binding:null};if(path==='/v1/automations')return {data:[]};return channel;}) as ApiClient['request'];
+ render(<App client={client(request)} initialEntries={['/channels/'+id]}/>);fireEvent.click(await screen.findByRole('button',{name:'Gerar QR Code'}));expect(await screen.findByRole('img',{name:'QR Code para conectar o WhatsApp'})).toHaveAttribute('src','data:image/png;base64,'+png);
 });

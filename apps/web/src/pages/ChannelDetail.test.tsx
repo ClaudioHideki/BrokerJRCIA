@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { welcomeFlow, type ChannelV1 } from '@jrc/contracts';
 import type { ApiClient, BrowserSession } from '../api/client.js';
+import { ApiClientError } from '../api/client.js';
 import { SessionProvider } from '../auth/SessionProvider.js';
 import { ProtectedRoute } from '../auth/guards.js';
 import { ChannelDetailPage } from './ChannelDetail.js';
@@ -129,5 +130,120 @@ describe('canonical connection workspace areas', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Vincular automação' }));
     expect(await screen.findByText('Automação vinculada. Novas mensagens usarão esta versão.')).toBeVisible();
     expect(request).toHaveBeenCalledWith(`/v1/channels/${id}/automation`, expect.objectContaining({ method: 'PUT', body: JSON.stringify({ automationId, expectedOwnerRevision: 7 }) }));
+  });
+});
+
+describe('canonical pairing status recovery', () => {
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+  function lifecycle(initial: ChannelV1['transportStatus'], status: () => Promise<unknown>, pairStatus: ChannelV1['transportStatus'] = 'PAIRING') {
+    const organization = { id: organizationId, name: 'Empresa', slug: 'empresa', role: 'OWNER' as const };
+    let channel: ChannelV1 = { schemaVersion: 1, id, organizationId, provider: 'QR',
+      providerReference: { providerAccountId: account, instanceId }, identity: { displayName: 'Pareamento sintético', maskedAddress: null },
+      transportStatus: initial, providerStatus: 'READY', automationStatus: 'UNBOUND', humanStatus: 'UNBOUND',
+      revision: 1, createdAt: timestamp, updatedAt: timestamp };
+    const purges = new Set<() => void>();
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === `/v1/channels/${id}`) return channel;
+      if (path === `/v1/channels/${id}/status`) return status();
+      if (path === `/v1/channels/${id}/pair`) {
+        channel = { ...channel, transportStatus: pairStatus };
+        return { provider: 'QR', channel, operationId: account, replayed: false, pending: true,
+          reconciliationRequired: false, action: { type: 'NONE', reason: 'CONNECTION_PENDING' } };
+      }
+      if (path.endsWith('/workspace')) throw new Error('Workspace not configured in this pairing test');
+      throw new Error(`Unexpected ${path} ${init?.method ?? 'GET'}`);
+    });
+    const client = { request, restore: vi.fn(async () => ({ user: { id: account, email: 'owner@example.test' }, activeOrganization: organization, organizations: [organization] })),
+      registerTenantPurge: (purge: () => void) => { purges.add(purge); return () => purges.delete(purge); },
+      subscribeToSessionExpiration: () => () => undefined } as unknown as ApiClient;
+    const view = render(<SessionProvider client={client}><MemoryRouter initialEntries={[`/channels/${id}`]}><Routes>
+      <Route path="/channels/:id" element={<ProtectedRoute><ChannelDetailPage /></ProtectedRoute>} />
+    </Routes></MemoryRouter></SessionProvider>);
+    return { ...view, request, purges, connected: () => ({ ...channel, transportStatus: 'CONNECTED' as const }) };
+  }
+  const statusCalls = (request: ReturnType<typeof vi.fn>) => request.mock.calls.filter(([path]) => path === `/v1/channels/${id}/status`);
+
+  it('reconciles a reloaded PAIRING channel without a QR challenge or another pairing POST', async () => {
+    vi.useFakeTimers();
+    const fixture = lifecycle('PAIRING', async () => fixture.connected());
+    await act(async () => { await Promise.resolve(); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+    expect(screen.getByText('Conectado', { exact: true })).toBeVisible();
+    await act(async () => { await vi.advanceTimersByTimeAsync(12000); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+    expect(fixture.request.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+  });
+
+  it('follows a pending NONE pairing response using GET only after the deliberate POST', async () => {
+    vi.useFakeTimers();
+    const fixture = lifecycle('DISCONNECTED', async () => fixture.connected());
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(12000); });
+    expect(statusCalls(fixture.request)).toHaveLength(0);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Gerar QR Code' })); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+    expect(screen.getByText('Conectado', { exact: true })).toBeVisible();
+    await act(async () => { await vi.advanceTimersByTimeAsync(12000); });
+    expect(fixture.request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+  });
+
+  it.each(['tenant purge', 'pagehide', 'unmount'])('keeps one status request in flight and stops after %s', async (event) => {
+    vi.useFakeTimers();
+    let finish!: (value: unknown) => void;
+    const fixture = lifecycle('PAIRING', () => new Promise((resolve) => { finish = resolve; }));
+    await act(async () => { await Promise.resolve(); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+    const signal = statusCalls(fixture.request)[0]![1]!.signal as AbortSignal;
+    await act(async () => { await vi.advanceTimersByTimeAsync(12000); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+    act(() => {
+      if (event === 'tenant purge') for (const purge of [...fixture.purges]) purge();
+      else if (event === 'pagehide') window.dispatchEvent(new Event('pagehide'));
+      else fixture.unmount();
+    });
+    expect(signal.aborted).toBe(true);
+    await act(async () => { finish(fixture.connected()); });
+    expect(screen.queryByText('Conectado', { exact: true })).not.toBeInTheDocument();
+    fixture.unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(12000); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+  });
+
+  it('checks a pending NONE result once when the canonical channel is already disconnected', async () => {
+    vi.useFakeTimers();
+    const fixture = lifecycle('DISCONNECTED', async () => ({ ...fixture.connected(), transportStatus: 'DISCONNECTED' }), 'DISCONNECTED');
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Gerar QR Code' })); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(12000); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+    expect(fixture.request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+  });
+
+  it('pauses while hidden and resumes with a GET when visible', async () => {
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    let checks = 0;
+    const fixture = lifecycle('PAIRING', async () => ({ ...fixture.connected(), transportStatus: ++checks === 1 ? 'PAIRING' : 'CONNECTED' }));
+    await act(async () => { await Promise.resolve(); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+    visibility.mockReturnValue('hidden');
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    await act(async () => { await vi.advanceTimersByTimeAsync(12000); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+    visibility.mockReturnValue('visible');
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+    expect(statusCalls(fixture.request)).toHaveLength(2);
+    expect(screen.getByText('Conectado', { exact: true })).toBeVisible();
+  });
+
+  it.each([401, 403, 404])('stops automatic reconciliation after HTTP %s', async (status) => {
+    vi.useFakeTimers();
+    const fixture = lifecycle('PAIRING', async () => { throw new ApiClientError('Acesso indisponível', status); });
+    await act(async () => { await Promise.resolve(); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(12000); });
+    expect(statusCalls(fixture.request)).toHaveLength(1);
+    expect(fixture.request.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
   });
 });

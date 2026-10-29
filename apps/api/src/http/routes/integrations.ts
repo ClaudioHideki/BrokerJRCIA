@@ -277,6 +277,11 @@ export async function registerIntegrationRoutes(
         request.params.id,
         request.body.userIds,
         actor(request),
+        async () => {
+          const identity = request.authentication;
+          const role = identity?.kind === 'JWT' ? await options.resolveCurrentRole(identity.actorId, identity.organizationId) : null;
+          if (!role || !['OWNER', 'ADMIN'].includes(role)) throw new IntegrationError('CHATWOOT_CONTROL_FORBIDDEN', 403);
+        },
       ),
   );
   api.post(

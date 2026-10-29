@@ -11,6 +11,7 @@ import {ChannelDeletion} from '../channels/ChannelDeletion.js';
 import {ChannelOperationSetup} from '../channels/ChannelOperationSetup.js';
 import {WhatsAppGroups} from './WhatsAppGroups.js';
 import {InstanceWorkspace,type InstanceWorkspaceArea} from '../connections/components/InstanceWorkspace.js';
+import {ChallengePanel} from '../connections/components/ChallengePanel.js';
 type Area='overview'|'settings'|'events'|'attendance'|'flow'|'history';
 const failures:Record<string,string>={
  CHANNEL_DISCONNECT_REQUIRED:'Desconecte o WhatsApp e confirme o status antes de arquivar.',CHANNEL_HAS_PENDING_WORK:'Há envios ou operações pendentes. Conclua ou reconcilie antes de arquivar.',
@@ -30,11 +31,20 @@ function ChannelDetail(){
  const {id=''}=useParams(),client=useApiClient(),{session,tenantRevision}=useSession();
  const [ownerRevision,setOwnerRevision]=useState(0),[bindingLoaded,setBindingLoaded]=useState(false);const selectionEdited=useRef(false);
  const [channel,setChannel]=useState<ChannelV1|null>(null),[action,setAction]=useState<ConnectionAction|null>(null),[binding,setBinding]=useState<AutomationBindingV1|null>(null);
+ const [pairingPending,setPairingPending]=useState(false);
+ const [challengeBlocked,setChallengeBlocked]=useState(false);const challengeGeneration=useRef(0);
  const [area,setArea]=useState<Area>('overview'),[flowRequested,setFlowRequested]=useState(false);
  const [automations,setAutomations]=useState<AutomationDefinitionV1[]>([]),[catalogState,setCatalogState]=useState<'IDLE'|'LOADING'|'LOADED'|'ERROR'>('IDLE'),[automationId,setAutomationId]=useState(''),[displayName,setDisplayName]=useState(''),[destination,setDestination]=useState('');
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[now,setNow]=useState(Date.now());const pending=useRef(false);
  const [deleted,setDeleted]=useState(false);
  const canManage=Boolean(session&&['OWNER','ADMIN'].includes(session.activeOrganization.role)),canPair=Boolean(session&&session.activeOrganization.role!=='VIEWER'),archived=Boolean(channel?.archivedAt);
+ useEffect(()=>{
+  const clearChallenge=()=>{challengeGeneration.current+=1;setAction(null);setPairingPending(false);setChallengeBlocked(true);};
+  window.addEventListener('pagehide',clearChallenge);
+  const unregister=client.registerTenantPurge(clearChallenge);
+  return()=>{challengeGeneration.current+=1;unregister();window.removeEventListener('pagehide',clearChallenge);};
+ },[client,id]);
+ useEffect(()=>{if(!canPair){challengeGeneration.current+=1;setAction(null);setPairingPending(false);}},[canPair]);
  async function load(includeBinding=flowRequested){const value=await getChannel(client,id);setChannel(value);setDisplayName(value.identity.displayName??'');if(includeBinding){const linked=await getChannelAutomation(client,id);setBinding(linked.binding);setOwnerRevision(linked.ownerRevision);setAutomationId(linked.binding?.automationId??'');setBindingLoaded(true);selectionEdited.current=false;}}
  useEffect(()=>{let live=true;void getChannel(client,id).then(value=>{if(live){setChannel(value);setDisplayName(value.identity.displayName??'');}}).catch(()=>{if(live)setError('Não foi possível carregar a caixa.');});return()=>{live=false;};},[client,id]);
  useEffect(()=>{if(!flowRequested)return;let live=true;setCatalogState('LOADING');
@@ -42,9 +52,41 @@ function ChannelDetail(){
  void listAutomations(client).then(value=>{if(live){setAutomations(value.filter(item=>item.activeVersion!==null&&item.lifecycleStatus!=='ARCHIVED'));setCatalogState('LOADED');}}).catch(()=>{if(live)setCatalogState('ERROR');});return()=>{live=false;};},[client,id,flowRequested]);
  useEffect(()=>{if(!action||action.type==='NONE')return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[action]);
  const expiresAt=action&&'expiresAt' in action?new Date(action.expiresAt).getTime():0,expired=Boolean(expiresAt&&expiresAt<=now);
- useEffect(()=>{if(!action||action.type==='NONE'||expired||archived)return;let live=true;const timer=setInterval(()=>{void refreshChannelStatus(client,id).then(value=>{if(live){setChannel(value);if(value.transportStatus==='CONNECTED'){setAction(null);setNotice('WhatsApp conectado. Agora confira o vínculo de atendimento e a automação.');}}}).catch(()=>{if(live)setError('Não foi possível atualizar o pareamento. Use Atualizar status.');});},4000);return()=>{live=false;clearInterval(timer);};},[action,expired,archived,client,id]);
- async function run(work:()=>Promise<void>,success=''){if(pending.current)return;pending.current=true;setBusy(true);setError('');setNotice('');try{await work();if(success)setNotice(success);}catch(reason){setError(reason instanceof ApiClientError?(failures[reason.code??'']??reason.message):'Não foi possível concluir. Atualize e tente novamente.');}finally{pending.current=false;setBusy(false);}}
- async function pair(reconnect=false){await run(async()=>{const result=await(reconnect?reconnectChannel:pairChannel)(client,id,crypto.randomUUID());setNow(Date.now());setAction(result.action);setChannel(await getChannel(client,id));if(result.action.type==='NONE')setNotice(result.channel.transportStatus==='CONNECTED'?'WhatsApp já conectado.':'Solicitação em processamento. Atualize o status; aguarde a conclusão antes de iniciar outro pareamento.');});}
+ const polling=Boolean(channel?.provider==='QR'&&!archived&&!busy&&!challengeBlocked&&channel.transportStatus!=='CONNECTED'
+  &&(channel.transportStatus==='PAIRING'||pairingPending||(action&&action.type!=='NONE'&&!expired)));
+ useEffect(()=>{
+  if(!polling)return;
+  let stopped=false,inFlight=false,timer:ReturnType<typeof setTimeout>|undefined,controller:AbortController|undefined;
+  const clear=()=>{if(timer!==undefined)clearTimeout(timer);timer=undefined;controller?.abort();};
+  const stop=()=>{stopped=true;clear();};
+  const schedule=()=>{if(!stopped&&document.visibilityState!=='hidden')timer=setTimeout(()=>void poll(),4000);};
+  async function poll(){
+   if(stopped||inFlight||document.visibilityState==='hidden')return;
+   inFlight=true;controller=new AbortController();
+   try{
+    const value=await refreshChannelStatus(client,id,controller.signal);
+    if(stopped||controller.signal.aborted)return;
+    setChannel(value);setPairingPending(false);
+    if(value.transportStatus!=='PAIRING'){
+     setAction(null);stop();
+     if(value.transportStatus==='CONNECTED')setNotice('WhatsApp conectado. Agora confira o vínculo de atendimento e a automação.');
+    }
+   }catch(reason){
+    if(!stopped&&!controller.signal.aborted){
+     setError('Não foi possível atualizar o pareamento. Use Atualizar status.');
+     if(reason instanceof ApiClientError&&[401,403,404].includes(reason.status)){setAction(null);setPairingPending(false);setChallengeBlocked(true);stop();}
+    }
+   }finally{inFlight=false;controller=undefined;if(!stopped)schedule();}
+  }
+  const visibilityChanged=()=>{clear();if(document.visibilityState!=='hidden')void poll();};
+  document.addEventListener('visibilitychange',visibilityChanged);
+  window.addEventListener('pagehide',stop);
+  const unregister=client.registerTenantPurge(stop);
+  void poll();
+  return()=>{stop();unregister();document.removeEventListener('visibilitychange',visibilityChanged);window.removeEventListener('pagehide',stop);};
+ },[client,id,polling]);
+ async function run(work:()=>Promise<void>,success=''){if(pending.current)return;pending.current=true;setBusy(true);setError('');setNotice('');try{await work();if(success)setNotice(success);}catch(reason){if(reason instanceof ApiClientError&&[401,403,404].includes(reason.status)){challengeGeneration.current+=1;setAction(null);setPairingPending(false);setChallengeBlocked(true);}setError(reason instanceof ApiClientError?(failures[reason.code??'']??reason.message):'Não foi possível concluir. Atualize e tente novamente.');}finally{pending.current=false;setBusy(false);}}
+ async function pair(reconnect=false){const generation=challengeGeneration.current;await run(async()=>{setAction(null);const result=await(reconnect?reconnectChannel:pairChannel)(client,id,crypto.randomUUID());if(generation!==challengeGeneration.current)return;const current=await getChannel(client,id);if(generation!==challengeGeneration.current)return;setNow(Date.now());setAction(result.action);setPairingPending(result.pending&&result.action.type==='NONE');setChallengeBlocked(false);setChannel(current);if(result.action.type==='NONE')setNotice(result.channel.transportStatus==='CONNECTED'?'WhatsApp já conectado.':'Solicitação em processamento. Atualize o status; aguarde a conclusão antes de iniciar outro pareamento.');});}
  async function disconnect(){if(!window.confirm('Desconectar este WhatsApp? Será necessário parear novamente. O histórico será preservado.'))return;await run(async()=>{const result=await disconnectChannel(client,id,crypto.randomUUID());setChannel(await getChannel(client,id));setAction(null);setNotice(result.pending?'Desconexão em processamento. Atualize o status.':'WhatsApp desconectado.');});}
  async function rename(event:FormEvent){event.preventDefault();await run(async()=>{setChannel(await patchChannel(client,id,{displayName:displayName.trim()}));},'Nome atualizado.');}
  async function bind(event:FormEvent){event.preventDefault();await run(async()=>{setChannel(await bindChannelDestination(client,id,{name:destination.trim(),replaceExistingWebhook:false}));},'Caixa vinculada. Confira a entrega no sistema de atendimento.');}
@@ -99,17 +141,15 @@ function ChannelDetail(){
      </div>
      <p><Link className="button button--secondary" to="/mensagens">Abrir conversas</Link></p>
      {!archived&&<section className="panel" id="channel-connect"><h2>Conexão do WhatsApp</h2>
-      <div className="button-row"><button className="button button--secondary" disabled={busy} onClick={()=>void run(async()=>{setChannel(await refreshChannelStatus(client,id));},'Status atualizado.')}>Atualizar status</button>
+      <div className="button-row"><button className="button button--secondary" disabled={busy} onClick={()=>void run(async()=>{const value=await refreshChannelStatus(client,id);setChannel(value);setChallengeBlocked(false);if(value.transportStatus!=='PAIRING'){setAction(null);setPairingPending(false);}},'Status atualizado.')}>Atualizar status</button>
        {channel.provider==='QR'&&canPair&&<><button className="button button--secondary" disabled={busy} onClick={()=>void pair(true)}>Reconectar</button>
         {channel.transportStatus!=='DISCONNECTED'&&<button className="button button--danger" disabled={busy} onClick={()=>void disconnect()}>Desconectar</button>}</>}
       </div>
       {channel.provider==='QR'&&canPair&&channel.transportStatus!=='CONNECTED'&&<>
        <p>No celular, abra WhatsApp → Dispositivos conectados → Conectar dispositivo.</p>
        <button className="button button--primary" disabled={busy} onClick={()=>void pair()}>Gerar QR Code</button>
-       {expired?<p role="status">QR ou código expirado. Atualize o status antes de solicitar outro.</p>:action?.type==='QR_CODE'?<>
-        <img className="channel-qr" src={action.encoding==='BASE64'?'data:image/png;base64,'+action.value:action.value} alt="QR Code para conectar o WhatsApp"/>
-        <p>Expira em {Math.max(0,Math.ceil((expiresAt-now)/1000))} segundos.</p>
-       </>:action?.type==='PAIRING_CODE'?<p>Código de pareamento: <strong>{action.code}</strong></p>:null}
+       {action&&<ChallengePanel action={action} onExpire={()=>{setAction(null);setNotice('QR ou código expirado. Atualize o status antes de solicitar outro.');}}/>}
+       {action&&expiresAt&&!expired?<p>Expira em {Math.max(0,Math.ceil((expiresAt-now)/1000))} segundos.</p>:null}
       </>}
       {channel.provider==='META'&&<p>A conexão oficial depende da autorização dos ativos no cadastro da Meta. {canManage&&<Link to="/channels/meta/connect">Abrir configuração oficial</Link>}</p>}
       {channel.provider==='CENTRAL'&&<p>Confira a conexão do WhatsApp no JRC Conversas ou Chatwoot. {canManage&&<Link to={'/channels/new?provider=central&channel='+channel.id}>Gerenciar o vínculo do bot e a reversão</Link>}</p>}

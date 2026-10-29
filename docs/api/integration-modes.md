@@ -64,6 +64,13 @@ pareamento e sua operação, confirmação de identidade, desconexão, agentes,
 capacidade de campanhas, reserva de campaign-intents e consulta de recibo de
 campanha. O prefixo é `/v1/integrations/chatwoot/control`.
 
+`PUT /connections/{integrationId}/agents` recebe o conjunto completo em
+`agentIds`: IDs ausentes são retirados da caixa, e `[]` remove todos os vínculos
+de agentes dessa caixa, sem excluir os usuários. O Broker confere o conjunto
+observado antes de concluir a intenção. Se o resultado permanecer incerto,
+reconcilie antes de emitir outra tentativa. O POST administrativo legado e a
+etapa de agentes do onboarding conservam a semântica de adição.
+
 A chave específica usa `chatwoot:read`, `chatwoot:manage`, `chatwoot:pair` e/ou
 `chatwoot:disconnect`, vinculada à Account/origem/revisão; o issuer genérico não
 emite esses scopes. O ator externo e sua autoridade são verificados nos contratos
