@@ -23,6 +23,7 @@ const scopeOptions: Array<{ value: ApiKeyScope; label: string }> = [
   { value: 'webhooks:manage', label: 'Gerenciar webhooks e eventos' },
   { value: 'media:upload', label: 'Carregar anexos privados pela API' },
   { value: 'media:send', label: 'Enviar anexos pela API' },
+  { value: 'media:archive', label: 'Registrar custódia de anexos pela API' },
   { value: "api_keys:manage", label: "Gerenciar chaves" },
 ];
 

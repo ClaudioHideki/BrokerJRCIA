@@ -17,7 +17,7 @@ describe('repository baseline', () => {
       .filter((name) => /manifest.*sha256|sha256.*manifest/iu.test(name))
       .sort();
 
-    expect(migrations.slice(-32)).toEqual([
+    expect(migrations.slice(-35)).toEqual([
       '0043_user_password_reset.sql',
       '0044_attendance_resume_operations.sql',
       '0045_local_attendance_directory.sql',
@@ -50,6 +50,9 @@ describe('repository baseline', () => {
       '0072_chatwoot_campaign_intents.sql',
       '0073_chatwoot_initial_identity.sql',
       '0074_partner_media.sql',
+      '0075_media_custody.sql',
+      '0076_qr_connection_watermark.sql',
+      '0077_partner_delivery_replay.sql',
     ]);
     expect(rootManifests).toEqual(['MANIFESTO_ARQUIVOS_SHA256.txt']);
   });

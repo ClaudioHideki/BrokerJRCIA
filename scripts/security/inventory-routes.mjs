@@ -4,6 +4,24 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'POST /v1/media-custody/receipts': policy(
+    'apps/api/src/http/routes/media-custody.ts','CURRENT_ORGANIZATION_API_KEY','MEDIA_ARCHIVE_SCOPE',true,
+    'TENANT_IDEMPOTENCY_HASH_MESSAGE_MEDIA_ENDPOINT_REFERENCE','NO_STORE_CUSTODY_METADATA',
+    'RLS_CURRENT_KEY_EXPLICIT_ARCHIVE_SCOPE_NO_CONTROL_BINDING_ACTIVE_DESTINATION_READY_MEDIA_HASH_SIZE_KEEP_ONLY'),
+  'GET /v1/media-custody/receipts/{id}': policy(
+    'apps/api/src/http/routes/media-custody.ts','CURRENT_ORGANIZATION_API_KEY','MEDIA_ARCHIVE_SCOPE',true,
+    'READ_ONLY_CUSTODY_ID','NO_STORE_CUSTODY_METADATA','RLS_CURRENT_KEY_MEDIA_ARCHIVE_SCOPE_SAME_ORGANIZATION'),
+  'GET /v1/media-custody/receipts/{id}/retention': policy(
+    'apps/api/src/http/routes/media-custody.ts','CURRENT_ORGANIZATION_API_KEY','MEDIA_ARCHIVE_SCOPE',true,
+    'READ_ONLY_KEEP_POLICY_NO_DELETE','NO_STORE_CUSTODY_METADATA','RLS_CURRENT_KEY_MEDIA_ARCHIVE_SCOPE_KEEP_ONLY_NO_GC'),
+  'POST /v1/partner-webhook-deliveries/{id}/replay': policy(
+    'apps/api/src/http/routes/partner-webhooks.ts','CURRENT_ORGANIZATION_API_KEY','WEBHOOKS_MANAGE_SCOPE',true,
+    'TENANT_KEY_INTENT_SAME_DELIVERY_EVENT_ENDPOINT_DURABLE_LEDGER','NO_STORE_METADATA_ONLY',
+    'RLS_CURRENT_KEY_NO_CONTROL_BINDING_FAILED_DELIVERY_ACTIVE_ENDPOINT_RETAINED_EVENT_RECHECK_AFTER_LOCK_NO_WHATSAPP_SEND'),
+  'GET /v1/partner-webhook-delivery-stats': policy(
+    'apps/api/src/http/routes/partner-webhooks.ts','CURRENT_ORGANIZATION_API_KEY','WEBHOOKS_MANAGE_SCOPE',true,
+    'READ_ONLY_TENANT_ENDPOINT_COUNTERS','NO_STORE_METADATA_ONLY',
+    'RLS_CURRENT_KEY_NO_CONTROL_BINDING_METADATA_COUNTS_ONLY_NO_PAYLOAD'),
   'POST /v1/messaging/channels/{id}/media': policy(
     'apps/api/src/http/routes/messaging.ts','CURRENT_ORGANIZATION_API_KEY','MEDIA_UPLOAD_SCOPE',true,
     'TENANT_CHANNEL_KEY_MEDIA_BYTES_AND_METADATA_HASH','NO_STORE_PRIVATE_MEDIA_METADATA',

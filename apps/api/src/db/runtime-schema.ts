@@ -11,7 +11,8 @@ import {historyImportRuntimeSql} from './history-import-runtime-schema.js';
 import {flowDomainRuntimeSql} from './flow-domain-runtime-schema.js';
 import {metaOnboardingRuntimeSql} from './meta-onboarding-runtime-schema.js';
 import {partnerApiRuntimeSql} from './partner-api-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0074_partner_media';
+import {auditCorrectionsRuntimeSql} from './audit-corrections-runtime-schema.js';
+export const RUNTIME_SCHEMA_BASELINE = '0077_partner_delivery_replay';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -435,7 +436,7 @@ const requiredObjectsSql = `SELECT
         FROM unnest(i.indkey) WITH ORDINALITY k(attnum,ordinality)
         JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum)
         =ARRAY['organization_id','channel_id','contact_id','id'])
-   AND (${flowDelegationRuntimeSql}) AND (${nativeFlowGuardCoverageRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AND (${consolidatedRuntimeSql}) AND (${inputTimeoutRuntimeSql}) AND (${nicoTakeoverRuntimeSql}) AND (${conversationEffectsRuntimeSql}) AND (${qrIdentityRuntimeSql}) AND (${historyImportRuntimeSql}) AND (${flowDomainRuntimeSql}) AND (${metaOnboardingRuntimeSql}) AND (${partnerApiRuntimeSql}) AND (${campaignRuntimeSql}) AND (${initialIdentityRuntimeSql}) AS ready`;
+   AND (${flowDelegationRuntimeSql}) AND (${nativeFlowGuardCoverageRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AND (${consolidatedRuntimeSql}) AND (${inputTimeoutRuntimeSql}) AND (${nicoTakeoverRuntimeSql}) AND (${conversationEffectsRuntimeSql}) AND (${qrIdentityRuntimeSql}) AND (${historyImportRuntimeSql}) AND (${flowDomainRuntimeSql}) AND (${metaOnboardingRuntimeSql}) AND (${partnerApiRuntimeSql}) AND (${campaignRuntimeSql}) AND (${initialIdentityRuntimeSql}) AND (${auditCorrectionsRuntimeSql}) AS ready`;
 
 export async function probeRequiredRuntimeSchema(query: SchemaProbeQuery): Promise<boolean> {
   const result = await query(requiredObjectsSql);
@@ -444,7 +445,7 @@ export async function probeRequiredRuntimeSchema(query: SchemaProbeQuery): Promi
   // calls while parsing, including calls in an unreachable CASE branch. Only
   // parse these calls after both functions' existence, owner and ACL pass above.
   try {
-    const catalogue = await query('SELECT public.partner_event_catalogue_ready() AND public.campaign_catalogue_ready() AS ready');
+    const catalogue = await query('SELECT public.partner_event_catalogue_ready() AND public.campaign_catalogue_ready() AND public.audit_corrections_catalogue_ready() AS ready');
     return catalogue.rows[0]?.ready === true;
   } catch(error) {
     // A concurrent schema change can remove a checked function between queries.

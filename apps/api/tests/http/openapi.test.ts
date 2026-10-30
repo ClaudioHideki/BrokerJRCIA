@@ -10,6 +10,11 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'POST /v1/media-custody/receipts',
+  'GET /v1/media-custody/receipts/{id}',
+  'GET /v1/media-custody/receipts/{id}/retention',
+  'POST /v1/partner-webhook-deliveries/{id}/replay',
+  'GET /v1/partner-webhook-delivery-stats',
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/campaign-transport',
   'POST /v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents',
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{conversationId}/campaign-messages/{messageId}',
@@ -290,6 +295,13 @@ describe('OpenAPI público da JRC', () => {
     );
     expect(document.paths).not.toHaveProperty('/v1/instances/{id}/deprovision');
     expect(serialized).not.toMatch(/Evolution|reconcileProvisioning|deprovisionInstance|lookupInstance/i);
+    for (const [path, method] of [
+      ['/v1/media-custody/receipts','post'],
+      ['/v1/media-custody/receipts/{id}','get'],
+      ['/v1/media-custody/receipts/{id}/retention','get'],
+      ['/v1/partner-webhook-deliveries/{id}/replay','post'],
+      ['/v1/partner-webhook-delivery-stats','get'],
+    ] as const) expect(document.paths[path]?.[method]?.security).toEqual([{jrcApiKeyAuth:[]}]);
   });
 
   it('declara autenticação, paginação, request id e respostas problem+json', async () => {

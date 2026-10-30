@@ -29,7 +29,7 @@ export type QrEvent =
   | {kind:'group-text';groupJid:string;upstreamMessageId:string;fromMe:boolean;participantJid:string|null;
       participantJidAlt:string|null;content:{type:'TEXT';text:string};occurredAt:Date}
   | {kind:'group-status';groupJid:string;upstreamMessageId:string;state:'SENT'|'DELIVERED'|'READ'|'FAILED'}
-  | { kind: "connection"; state: "CONNECTED" | "DISCONNECTED"; identity?: string }
+  | { kind: "connection"; state: "CONNECTED" | "DISCONNECTED"; identity?: string; observedAt?: Date }
   | {
       kind: "status";
       upstreamMessageId: string;
@@ -90,10 +90,19 @@ export function normalizeQrEvent(
     return normalizeQrGroupEvents(payload, expectedInstance);
   if (event === "connection.update") {
     const data = object(envelope.data), state = data.state, identity = qrPhone(data.wuid);
+    let observedAt: Date | undefined;
+    if (Object.hasOwn(envelope, 'date_time')) {
+      const parsed = z.iso.datetime({ offset: true }).safeParse(envelope.date_time);
+      // Evolution's pinned source may label local time as Z. Compare this clock only within its binding.
+      if (!parsed.success || !Number.isFinite(Date.parse(parsed.data)))
+        throw new Error('QR_CONNECTION_TIMESTAMP_INVALID');
+      observedAt = new Date(parsed.data);
+    }
+    const clock = observedAt ? { observedAt } : {};
     return state === "open"
-      ? [{ kind: "connection", state: "CONNECTED", ...(identity ? { identity } : {}) }]
+      ? [{ kind: "connection", state: "CONNECTED", ...(identity ? { identity } : {}), ...clock }]
       : state === "close"
-        ? [{ kind: "connection", state: "DISCONNECTED" }]
+        ? [{ kind: "connection", state: "DISCONNECTED", ...clock }]
         : [];
   }
   if (!["messages.upsert", "messages.update"].includes(event)) return [];

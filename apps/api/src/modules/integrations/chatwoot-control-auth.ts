@@ -1,5 +1,5 @@
 import { createOrganizationApiKey } from '@jrc/security';
-import { IssueControlCredentialSchema, OperatorGrantsSchema, ControlIdempotencyKeySchema, type ChatwootControlScope } from '@jrc/contracts';
+import { IssueControlCredentialSchema, OperatorGrantsSchema, ControlIdempotencyKeySchema, ChatwootControlScopeSchema, type ChatwootControlScope } from '@jrc/contracts';
 import type { z } from 'zod';
 import type { AuthenticationContext, Role } from '../../http/plugins/authorization.js';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
@@ -17,7 +17,7 @@ export function authorizeControlRequest(v: {
   binding: { organizationId: string; active: boolean; destinationRevision: number };
   requestedOrganizationId: string; requiredScope: string;
 }): boolean {
-  return !v.credential.revoked && v.binding.active &&
+  return ChatwootControlScopeSchema.safeParse(v.requiredScope).success && !v.credential.revoked && v.binding.active &&
     v.credential.organizationId === v.binding.organizationId &&
     v.binding.organizationId === v.requestedOrganizationId && v.credential.scopes.includes(v.requiredScope);
 }

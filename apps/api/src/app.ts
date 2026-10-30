@@ -1,5 +1,7 @@
 import {registerFlowDelegationRoutes,type FlowDelegationRouteOptions} from './http/routes/flow-delegation.js';
 import {registerPartnerWebhookRoutes,type PartnerWebhookRouteOptions} from './http/routes/partner-webhooks.js';
+import {registerMediaCustodyRoutes,type MediaCustodyRouteOptions} from './http/routes/media-custody.js';
+import {createMediaCustodyService} from './modules/media-custody/service.js';
 import {createPartnerEventService,PartnerEventError} from './modules/partner-events/service.js';
 import {createIntegrationSecrets} from './modules/integrations/secrets.js';
 import {registerNativeFlowRoutes,type NativeFlowRouteOptions} from './http/routes/flow-native.js';
@@ -181,6 +183,7 @@ export interface BuildAppOptions {
   whatsappGroups?: WhatsAppGroupsRouteOptions;
   messaging?: MessagingRouteOptions;
   partnerWebhooks?: PartnerWebhookRouteOptions;
+  mediaCustody?: MediaCustodyRouteOptions;
   flows?: FlowRouteOptions;
   automations?: AutomationRouteOptions;
   flowDelegation?:FlowDelegationRouteOptions;
@@ -255,6 +258,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       options.instanceWorkspace !== undefined ||
       options.whatsappGroups !== undefined ||
       options.messaging !== undefined ||
+      options.mediaCustody !== undefined ||
       options.flows !== undefined ||
       options.automations !== undefined ||
       options.flowDelegation !== undefined || options.nativeFlow !== undefined ||
@@ -287,6 +291,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   let channels = nodeEnv === "test" ? options.channels : undefined;
   let messaging = nodeEnv === "test" ? options.messaging : undefined;
   let partnerWebhooks = nodeEnv === 'test' ? options.partnerWebhooks : undefined;
+  let mediaCustody = nodeEnv === 'test' ? options.mediaCustody : undefined;
   let flows = nodeEnv === "test" ? options.flows : undefined;
   let automations = nodeEnv === "test" ? options.automations : undefined;
   let flowDelegation=nodeEnv==="test"?options.flowDelegation:undefined;
@@ -420,6 +425,10 @@ export function buildApp(options: BuildAppOptions = {}) {
         listApiKeys: service.listApiKeys,
         revokeApiKey: service.revokeApiKey,
       };
+    }
+    if (!mediaCustody) {
+      mediaCustody = {jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,
+        service:createMediaCustodyService({transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work)})};
     }
     if (!partnerWebhooks) {
       const encryptionKey = (options.environment ?? process.env).PARTNER_WEBHOOK_ENCRYPTION_KEY?.trim();
@@ -1014,6 +1023,10 @@ export function buildApp(options: BuildAppOptions = {}) {
   if (partnerWebhooks) {
     const configured = partnerWebhooks;
     void app.register(scope => registerPartnerWebhookRoutes(scope, configured));
+  }
+  if (mediaCustody) {
+    const configured=mediaCustody;
+    void app.register(scope=>registerMediaCustodyRoutes(scope,configured));
   }
   if (integrations) {
     const configured = integrations;

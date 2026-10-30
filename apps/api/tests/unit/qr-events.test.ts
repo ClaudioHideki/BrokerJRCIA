@@ -4,6 +4,23 @@ import { normalizeQrEvent, normalizeQrHistoryEvent } from '../../src/modules/mes
 const envelope = (data: unknown, event = 'messages.upsert') => ({ event, instance: 'jrc-private-instance', data });
 const message = { key: { id: 'qr-message-1', remoteJid: '15550000001@s.whatsapp.net', fromMe: false }, messageTimestamp: 1789470000, pushName: 'Contato de teste', message: { conversation: 'Olá JRC' } };
 describe('eventos QR canônicos', () => {
+  it('preserves the authenticated source timestamp for ordering connection facts', () => {
+    const occurredAt = '2026-01-01T10:00:00.123Z';
+    expect(normalizeQrEvent({ ...envelope({ state: 'close' }, 'connection.update'), date_time: occurredAt }, 'jrc-private-instance'))
+      .toEqual([{ kind: 'connection', state: 'DISCONNECTED', observedAt: new Date(occurredAt) }]);
+  });
+  it('rejects malformed connection clocks rather than treating them as legacy facts', () => {
+    for (const date_time of ['invalid', ['2026-01-01T10:00:00Z'], null, '2026-02-30T10:00:00Z']) {
+      expect(() => normalizeQrEvent({ ...envelope({ state: 'open' }, 'connection.update'), date_time }, 'jrc-private-instance'))
+        .toThrow('QR_CONNECTION_TIMESTAMP_INVALID');
+    }
+  });
+  it('does not confuse the Evolution source clock domain with broker wall clock time', () => {
+    // The pinned source can label local ISO time as Z. Ordering is within an authenticated binding.
+    const date_time = new Date(Date.now() + 3600000).toISOString();
+    expect(normalizeQrEvent({ ...envelope({ state: 'open' }, 'connection.update'), date_time }, 'jrc-private-instance'))
+      .toMatchObject([{ kind: 'connection', observedAt: new Date(date_time) }]);
+  });
   it('normalizes historical text chronologically with explicit provenance and original direction',()=>{
     const history=normalizeQrHistoryEvent(envelope([
       {...message,key:{...message.key,id:'later',fromMe:true},messageTimestamp:1789470100},message

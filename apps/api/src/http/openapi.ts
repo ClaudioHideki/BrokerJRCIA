@@ -51,6 +51,10 @@ function documentationOptions() {
     },
   ) as ProviderAccountService;
   return {
+    mediaCustody: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
+      service: new Proxy({}, {get() { return unavailable; }}) as import('../modules/media-custody/service.js').MediaCustodyService,
+    },
     partnerWebhooks: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
       service: new Proxy({}, {get() { return unavailable; }}) as import('../modules/partner-events/service.js').PartnerEventService,
@@ -355,6 +359,9 @@ function normalizeDocument(document: JsonObject): JsonObject {
       }
       if (['/v1/partner-webhooks', '/v1/partner-events', '/v1/partner-webhook-deliveries'].some(prefix => path === prefix || path.startsWith(prefix + '/')))
         operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
+      if (path.startsWith('/v1/media-custody/') || path === '/v1/partner-webhook-delivery-stats'
+        || path.endsWith('/replay') && path.startsWith('/v1/partner-webhook-deliveries/'))
+        operation.security = [{ jrcApiKeyAuth: [] }];
       if(path.startsWith('/v1/delegated-flows'))operation.security=[{flowSessionAuth:[]}];
       if (partnerUpload || method === 'post' && /^\/v1\/(?:automations|delegated-flows)\/\{id\}\/channels\/\{channelId\}\/media$/.test(path)) {
         operation.description = partnerUpload

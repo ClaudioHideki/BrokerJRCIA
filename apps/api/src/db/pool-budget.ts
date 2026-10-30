@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export type DatabasePoolProfile = 'API_APP' | 'API_AUTH' | 'API_PLATFORM' | 'MESSAGING_WORKER' | 'MESSAGING_AUTH' |
-  'AUTOMATION_WORKER' | 'AUTOMATION_IO_WORKER' | 'SCHEDULER_WORKER' | 'LIFECYCLE_WORKER' | 'PARTNER_EVENTS_WORKER';
+  'AUTOMATION_WORKER' | 'AUTOMATION_IO_WORKER' | 'SCHEDULER_WORKER' | 'LIFECYCLE_WORKER' | 'PARTNER_EVENTS_WORKER' | 'HISTORY_IMPORT_WORKER';
 
 export interface DatabasePoolBudget {
   max: number;
@@ -20,6 +20,7 @@ const defaults: Record<DatabasePoolProfile, DatabasePoolBudget> = {
   SCHEDULER_WORKER: { max: 2, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 },
   LIFECYCLE_WORKER: { max: 2, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 },
   PARTNER_EVENTS_WORKER: { max: 2, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 },
+  HISTORY_IMPORT_WORKER: { max: 2, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 },
 };
 
 /** Per-process input bounds are validation guards, not a server capacity budget. */
@@ -36,7 +37,7 @@ export function loadDatabasePoolBudget(
     return result.data;
   };
   return {
-    max: read('MAX', current.max, 1, 100),
+    max: read('MAX', current.max, 1, profile === 'HISTORY_IMPORT_WORKER' ? 8 : 100),
     connectionTimeoutMillis: read('CONNECT_TIMEOUT_MS', current.connectionTimeoutMillis, 0, 120000),
     idleTimeoutMillis: read('IDLE_TIMEOUT_MS', current.idleTimeoutMillis, 0, 3600000),
   };

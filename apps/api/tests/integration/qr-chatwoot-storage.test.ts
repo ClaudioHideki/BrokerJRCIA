@@ -311,4 +311,23 @@ describe('QR e integração JRC Conversas no PostgreSQL real', () => {
     expect(attempts).toBe(1);
     expect((await service.jobs(org)).data.find(job=>job.id===pending!.id)?.status).toBe('UNKNOWN');
   });
+  it('keeps a newer open connection when an older, equal or undated close arrives', async () => {
+    const connection = (state: string, date_time?: string) => ({ event: 'connection.update', instance: 'private-test-engine',
+      ...(date_time ? { date_time } : {}), data: { state } });
+    await qr.ingest(channel, auth(), connection('open', '2026-01-01T10:00:10Z'));
+    for (const value of [connection('close', '2026-01-01T10:00:09Z'), connection('close', '2026-01-01T10:00:10Z'), connection('close')]) {
+      await qr.ingest(channel, auth(), value);
+      const row = (await withOrganizationTransaction(pool, org, tx => tx.query('SELECT status,connection_observed_at FROM instances WHERE id=$1', [instance]))).rows[0];
+      expect(row.status).toBe('CONNECTED');
+      expect(row.connection_observed_at.toISOString()).toBe('2026-01-01T10:00:10.000Z');
+    }
+  });
+  it('serializes simultaneous connection facts with the instance lock before channel locks', async () => {
+    await Promise.all([
+      qr.ingest(channel, auth(), { event: 'connection.update', instance: 'private-test-engine', date_time: '2026-01-01T10:00:11Z', data: { state: 'close' } }),
+      qr.ingest(channel, auth(), { event: 'connection.update', instance: 'private-test-engine', date_time: '2026-01-01T10:00:12Z', data: { state: 'open' } }),
+    ]);
+    expect((await withOrganizationTransaction(pool, org, tx => tx.query('SELECT status FROM instances WHERE id=$1', [instance]))).rows[0].status).toBe('CONNECTED');
+    expect((await withOrganizationTransaction(pool, other, tx => tx.query('SELECT connection_observed_at FROM instances WHERE id=$1', [instance]))).rows).toEqual([]);
+  });
 });

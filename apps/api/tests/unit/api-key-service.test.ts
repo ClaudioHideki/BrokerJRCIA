@@ -70,7 +70,25 @@ function createHarness(overrides: Partial<ApiKeyRepository> = {}) {
 }
 
 describe('serviço de API keys', () => {
-  it.each(['media:upload', 'media:send'] as const)('does not delegate %s when the issuing key lacks the current scope inside the insertion transaction', async scope => {
+  it.each(['after-lock', 'during-insert'] as const)('does not delegate archive authority if its issuer expires %s', async phase => {
+    let reads = 0, inserted = false;
+    const audits: unknown[] = [];
+    const service = createApiKeyService({ hmacSecret: HMAC_SECRET, now: () => NOW,
+      repository: { ...createHarness().repository, insert: async (_tx, input) => { inserted = true; return row(input); } },
+      runInOrganizationTransaction: async (_org, work) => work({ query: async () => {
+        reads++;
+        const expired = phase === 'after-lock' ? reads > 1 : inserted;
+        return { rows: expired ? [] : [{ id: USER_ID }], rowCount: expired ? 0 : 1 };
+      } } as unknown as TenantTransaction),
+      writeAudit: async (_tx, value) => { audits.push(value); },
+    });
+    await expect(service.issueApiKey({ organizationId: ORGANIZATION_A, actorId: null, credentialKind: 'API_KEY',
+      apiKeyId: USER_ID, requestId: REQUEST_ID }, { name: 'archive delegation', scopes: ['media:archive'], expiresAt: null }))
+      .rejects.toMatchObject({ code: 'PARTNER_SCOPE_DELEGATION_FORBIDDEN' });
+    expect(audits).toEqual([]);
+    if (phase === 'after-lock') expect(inserted).toBe(false);
+  });
+  it.each(['media:upload', 'media:send', 'media:archive'] as const)('does not delegate %s when the issuing key lacks the current scope inside the insertion transaction', async scope => {
     const harness = createHarness();
     await expect(harness.service.issueApiKey({ organizationId: ORGANIZATION_A, actorId: null, credentialKind: 'API_KEY',
       apiKeyId: USER_ID, requestId: REQUEST_ID }, { name: 'media delegation', scopes: [scope], expiresAt: null }))

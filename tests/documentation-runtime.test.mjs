@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createWebServer } from '../infra/web/server.mjs';
+import { createDocumentationAssets } from '../scripts/docs/build-portal.mjs';
 const cleanups = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 async function fixture() {
@@ -66,5 +67,18 @@ it('serves only the explicit control catalogue and empty environment downloads',
     expect(response.headers.get('content-type')).toContain('application/json');
     expect((await fetch(f.origin + '/documentation/' + name, { method: 'HEAD' })).status).toBe(200);
     expect((await fetch(f.origin + '/documentation/' + name + '?key=no')).status).toBe(404);
+  }
+});
+
+it('makes every generated public documentation asset downloadable through the production server', async () => {
+  const f = await fixture();
+  const assets = await createDocumentationAssets();
+  for (const asset of assets) {
+    await writeFile(join(f.root, asset.fileName), asset.source);
+    const response = await fetch(f.origin + '/' + asset.fileName);
+    expect(response.status, asset.fileName).toBe(200);
+    expect(Buffer.from(await response.arrayBuffer()).equals(Buffer.from(asset.source)), asset.fileName).toBe(true);
+    expect((await fetch(f.origin + '/' + asset.fileName, { method: 'HEAD' })).status, asset.fileName).toBe(200);
+    expect((await fetch(f.origin + '/' + asset.fileName + '?key=no')).status, asset.fileName).toBe(404);
   }
 });

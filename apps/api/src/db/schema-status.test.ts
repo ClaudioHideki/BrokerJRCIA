@@ -9,16 +9,16 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('carrega o manifesto real até a migration 0074', async () => {
+  it('carrega o manifesto real até a migration 0077', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(74);
+    expect(migrations).toHaveLength(77);
     expect(migrations.slice(-3).map(entry => entry.name)).toEqual([
-      '0072_chatwoot_campaign_intents', '0073_chatwoot_initial_identity', '0074_partner_media',
+      '0075_media_custody', '0076_qr_connection_watermark', '0077_partner_delivery_replay',
     ]);
   });
-  it('keeps the text-only schema pending until the partner media fence is applied',async()=>{
+  it('keeps the previous media schema pending until all audit corrections are applied',async()=>{
     const migrations=await loadExpectedMigrations();
-    expect(compareMigrationStatus(migrations,migrations.slice(0,73))).toMatchObject({state:'PENDING',compatible:false,expectedVersion:'0074_partner_media',appliedVersion:'0073_chatwoot_initial_identity',pending:['0074_partner_media']});
+    expect(compareMigrationStatus(migrations,migrations.slice(0,74))).toMatchObject({state:'PENDING',compatible:false,expectedVersion:'0077_partner_delivery_replay',appliedVersion:'0074_partner_media',pending:['0075_media_custody','0076_qr_connection_watermark','0077_partner_delivery_replay']});
   });
 
   it('informa a versão aplicada e migrations pendentes sem expor hashes', () => {

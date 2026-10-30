@@ -7,10 +7,34 @@ import { normalizeWebhookUrl } from './worker.js';
 export class PartnerEventError extends Error {constructor(readonly code:string,readonly statusCode:number,readonly cursorInfo?:{retentionDays:30;earliestCursor:string|null;lastPrunedCursor:string;resetCursor:'0'}){super(code);}}
 export interface PartnerEndpoint {id:string;url:string;status:'ACTIVE'|'REVOKED';createdAt:Date;revokedAt:Date|null}
 export interface PartnerEvent {eventId:string;cursor:string;organizationId:string;type:string;occurredAt:Date;data:Record<string,unknown>}
+export interface PartnerDeliveryReplay {schemaVersion:1;replay:{id:string;deliveryId:string;endpointId:string;eventId:string;replayNumber:number;priorAttempts:number;acceptedAt:string};replayed:boolean}
+export interface PartnerDeliveryStats {schemaVersion:1;retentionDays:30;counts:{PENDING:number;RUNNING:number;DELIVERED:number;FAILED:number;CANCELLED:number};oldestPendingAt:string|null;expiredLeases:number;replays:number;lifetimeAttempts:number}
+const replayProblems:Record<string,[string,number]>={partner_replay_forbidden:['PARTNER_REPLAY_FORBIDDEN',403],partner_delivery_not_found:['PARTNER_DELIVERY_NOT_FOUND',404],partner_replay_conflict:['PARTNER_REPLAY_CONFLICT',409],partner_delivery_not_failed:['PARTNER_DELIVERY_NOT_FAILED',409],partner_endpoint_revoked:['PARTNER_ENDPOINT_REVOKED',409],partner_event_expired:['PARTNER_EVENT_EXPIRED',409]};
+function replayError(error:unknown):never{
+ const constraint=(error as {constraint?:string})?.constraint;
+ const mapped=constraint?replayProblems[constraint]:undefined;
+ if(mapped)throw new PartnerEventError(...mapped);
+ throw error;
+}
 const endpointColumns=`id,url,status,created_at AS "createdAt",revoked_at AS "revokedAt"`;
 const endpointView=(row:PartnerEndpoint)=>({...row,createdAt:row.createdAt.toISOString(),revokedAt:row.revokedAt?.toISOString()??null});
 export function createPartnerEventService(options:{transact<T>(org:string,operation:OrganizationTransaction<T>):Promise<T>;secrets:ReturnType<typeof createIntegrationSecrets>}){
  return {
+  replay:async(org:string,key:string,id:string,idempotencyKey:string)=>{
+   if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(idempotencyKey))throw new PartnerEventError('INVALID_IDEMPOTENCY_KEY',422);
+   try{return await options.transact(org,async tx=>{
+    await requireActiveOrganization(tx,org);
+    const result=(await tx.query<{result:PartnerDeliveryReplay}>('SELECT partner_replay_delivery($1::uuid,$2::uuid,$3::uuid) AS result',[key,id,idempotencyKey])).rows[0]!.result;
+    return {...result,replay:{...result.replay,acceptedAt:new Date(result.replay.acceptedAt).toISOString()}};
+   });}catch(error){return replayError(error);}
+  },
+  deliveryStats:async(org:string,key:string,input:{endpointId?:string|undefined})=>{
+   try{return await options.transact(org,async tx=>{
+    await requireActiveOrganization(tx,org);
+    const result=(await tx.query<{result:PartnerDeliveryStats}>('SELECT partner_delivery_stats($1::uuid,$2::uuid) AS result',[key,input.endpointId??null])).rows[0]!.result;
+    return {...result,oldestPendingAt:result.oldestPendingAt?new Date(result.oldestPendingAt).toISOString():null};
+   });}catch(error){return replayError(error);}
+  },
   list:(org:string)=>options.transact(org,async tx=>{await requireActiveOrganization(tx,org);return {data:(await tx.query<PartnerEndpoint>(`SELECT ${endpointColumns} FROM partner_webhook_endpoints WHERE organization_id=$1 ORDER BY created_at DESC LIMIT 100`,[org])).rows.map(endpointView)};}),
   create:async(org:string,input:{url:string},idempotencyKey:string)=>{
    let url:string;try{url=normalizeWebhookUrl(input.url);}catch{throw new PartnerEventError('INVALID_WEBHOOK_URL',422);}
