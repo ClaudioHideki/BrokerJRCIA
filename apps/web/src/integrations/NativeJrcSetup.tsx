@@ -22,7 +22,7 @@ export function NativeJrcSetup({ request, accountId, baseUrl, external = false }
     const revision = generation.current;
     try {
       const value = IssuedControlCredentialSchema.parse(await request('/control-credentials', 'POST', {
-        name: `Módulo JRC Conversas — conta ${accountId}`,
+        name: `Módulo JRC Conversas — conta ${accountId} — ${intent.current}`,
         scopes: ['chatwoot:read', 'chatwoot:manage', 'chatwoot:pair', 'chatwoot:disconnect'], expiresAt: null,
       }, { idempotencyKey: intent.current }));
       if (value.binding.accountId !== accountId) throw new Error('ACCOUNT_MISMATCH');

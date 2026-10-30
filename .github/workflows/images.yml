@@ -25,10 +25,12 @@ jobs:
       postgres:
         image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
         env:
+          POSTGRES_DB: lab_broker_ci
+          POSTGRES_USER: lab_broker_admin
           POSTGRES_HOST_AUTH_METHOD: trust
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U lab_broker_admin -d lab_broker_ci"
           --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
         image: redis:7.4.0-alpine@sha256:c35af3bbcef51a62c8bae5a9a563c6f1b60d7ebaea4cb5a3ccbcc157580ae098
@@ -63,12 +65,14 @@ jobs:
         run: npm run build:native-flow-editor -- --out .sessions/native-flow-editor-images
       - name: Verify tenant storage and durable automation before building images
         env:
-          TEST_DATABASE_ADMIN_URL: postgresql://postgres@127.0.0.1:5432/postgres
+          TEST_DATABASE_ADMIN_URL: postgresql://lab_broker_admin@127.0.0.1:5432/lab_broker_ci
+          TEST_MEDIA_CUSTODY_EXCLUSIVE_CLUSTER: "1"
+          TEST_PARTNER_REPLAY_EXCLUSIVE_CLUSTER: "1"
           TEST_REDIS_URL: redis://127.0.0.1:6379/15
         run: npm run test:integration -- --maxWorkers=1
       - name: Verify private storage against the pinned real MinIO server
         env:
-          TEST_DATABASE_ADMIN_URL: postgresql://postgres@127.0.0.1:5432/postgres
+          TEST_DATABASE_ADMIN_URL: postgresql://lab_broker_admin@127.0.0.1:5432/lab_broker_ci
         run: npm run test:storage:ci
       - name: Prepare BuildKit
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3

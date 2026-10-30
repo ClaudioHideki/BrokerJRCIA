@@ -31,7 +31,18 @@ export const consolidatedRuntimeSql=`
  OR pg_catalog.has_table_privilege('jrc_auth',pg_catalog.to_regclass('public.'||required.name),'SELECT,INSERT,UPDATE,DELETE')
  OR pg_catalog.has_table_privilege('jrc_platform',pg_catalog.to_regclass('public.'||required.name),'SELECT,INSERT,UPDATE,DELETE')
  OR EXISTS(SELECT 1 FROM pg_catalog.pg_class c,LATERAL pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault('r',c.relowner))) a WHERE c.oid=pg_catalog.to_regclass('public.'||required.name) AND a.grantee=0))
- AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass('public.messaging_media') AND c.conname='messaging_media_upload_identity' AND c.convalidated)
+ AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass('public.messaging_media')
+  AND c.conname='messaging_media_upload_identity' AND c.contype='c' AND c.convalidated
+  AND regexp_replace(pg_catalog.pg_get_expr(c.conbin,c.conrelid),'[[:space:]()]','','g')
+   ='source<>''UPLOAD''::textORpartner_media_upload_identity_validdescriptor,source_key')
+ AND EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.oid=pg_catalog.to_regprocedure('public.partner_media_upload_identity_valid(jsonb,text)')
+  AND NOT p.prosecdef AND p.provolatile='i' AND pg_catalog.pg_get_userbyid(p.proowner)='jrc_migrator'
+  AND p.proconfig @> ARRAY['search_path=pg_catalog, public']::text[]
+  AND md5(replace(p.prosrc,chr(13),''))='26e0f678d0906fbd829da07c904d6ada'
+  AND pg_catalog.has_function_privilege('jrc_app',p.oid,'EXECUTE')
+  AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE a.grantee=0)
+  AND NOT EXISTS(SELECT 1 FROM (VALUES ('jrc_auth'),('jrc_platform'),('jrc_lifecycle')) forbidden(role_name)
+   WHERE pg_catalog.has_function_privilege(forbidden.role_name,p.oid,'EXECUTE')))
  AND EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid=pg_catalog.to_regclass('public.automation_conversation_effects') AND t.tgname='automation_conversation_effect_immutable' AND t.tgenabled='O')
  AND EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid=pg_catalog.to_regclass('public.chatwoot_group_scopes') AND t.tgname='group_scope_retirement' AND t.tgenabled='O')
  AND NOT EXISTS(SELECT 1 FROM (VALUES ('resolve_flow_installation_grant(text)','jrc_auth'),('resolve_flow_installation_reduction(text)','jrc_auth'),('evolution_assert_binding(uuid,uuid,text,bigint,text,boolean,boolean)','jrc_app'),('evolution_acquire_io(uuid,uuid,text,bigint,text,uuid,boolean,integer,uuid,jsonb)','jrc_app'),('evolution_settle_io(uuid,uuid,uuid,boolean,text,boolean)','jrc_app'),('evolution_cleanup_snapshot(uuid,uuid,uuid,boolean)','jrc_lifecycle')) required(signature,role_name)

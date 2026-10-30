@@ -3,7 +3,7 @@ import {expect,test} from '@playwright/test';
 import {welcomeFlow} from '@jrc/contracts';
 import {signIn,expectNoAutomaticAccessibilityViolations} from './helpers.js';
 test('caixa QR, rascunho JSON, publicação, vínculo e arquivamento na jornada atual',async({page,isMobile})=>{
- test.setTimeout(120000);await signIn(page);if(isMobile)await page.goto('/channels');else await page.getByRole('link',{name:'Caixas de entrada',exact:true}).click();
+ test.setTimeout(120000);await signIn(page);if(isMobile)await page.goto('/channels');else await page.getByRole('navigation',{name:'Navegação principal',exact:true}).getByRole('link',{name:'Conexões e caixas',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Caixas de entrada'})).toBeVisible();
  await page.getByRole('link',{name:'+ Conectar WhatsApp'}).click();await page.getByRole('button',{name:/WhatsApp por QR Code/}).click();
  const name='QA caixa '+(isMobile?'mobile':'desktop');await page.getByLabel('Nome da conexão').fill(name);await page.getByRole('button',{name:'Criar conexão'}).click();
@@ -27,12 +27,15 @@ test('caixa QR, rascunho JSON, publicação, vínculo e arquivamento na jornada 
   else await route.continue();
  });
  await page.goto(boxUrl);
+ await page.getByRole('tab',{name:'Flow',exact:true}).click();
  const choice=page.getByLabel('Automação publicada'),button=page.getByRole('button',{name:'Vincular automação',exact:true});
  await choice.selectOption({label:'QA automação '+name+' · v1'});const selected=await choice.inputValue();
  await expect(button).toBeDisabled();releaseBinding();await expect(button).toBeEnabled();await expect(choice).toHaveValue(selected);
  await button.click();await expect(page.getByText('Automação vinculada. Novas mensagens usarão esta versão.')).toBeVisible();
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Desvincular automação'}).click();await expect(page.getByText('Vínculo atualizado.')).toBeVisible();
+ await page.getByRole('tab',{name:'Visão geral',exact:true}).click();
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Desconectar',exact:true}).click();await expect(page.getByText('WhatsApp desconectado.',{exact:true})).toBeVisible();
+ await page.getByRole('tab',{name:'Configurações WhatsApp',exact:true}).click();
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Arquivar cadastro'}).click();await expect(page.getByRole('button',{name:'Restaurar cadastro'})).toBeVisible();
  await page.getByRole('link',{name:'← Caixas de entrada'}).click();await expect(page.getByRole('heading',{name,exact:true})).toHaveCount(0);
  await page.getByLabel('Mostrar arquivadas').check();await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();

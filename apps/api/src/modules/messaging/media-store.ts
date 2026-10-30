@@ -15,7 +15,10 @@ import type {
 import { createIntegrationSecrets } from "../integrations/secrets.js";
 import type { DurablePrivateMediaStore, PrivateMediaReadControl } from "./durable-private-media.js";
 const descriptor = z.discriminatedUnion("source", [
-  z.object({source:z.literal('UPLOAD'),descriptor:z.strictObject({rootAutomationId:z.uuid(),idempotencyKey:z.uuid(),sha256:z.string().regex(/^[a-f0-9]{64}$/u)})}),
+  z.object({source:z.literal('UPLOAD'),descriptor:z.union([
+    z.strictObject({rootAutomationId:z.uuid(),idempotencyKey:z.uuid(),sha256:z.string().regex(/^[a-f0-9]{64}$/u)}),
+    z.strictObject({uploadKind:z.literal('PARTNER'),apiKeyId:z.uuid(),idempotencyKey:z.uuid(),sha256:z.string().regex(/^[a-f0-9]{64}$/u),requestHash:z.string().regex(/^[a-f0-9]{64}$/u),mimeType:z.string().min(1),byteSize:z.number().int().positive().max(16*1024*1024)}),
+  ])}),
   z.object({
     source: z.literal("QR"),
     descriptor: z.strictObject({ messageId: z.string().min(1).max(256) }),
@@ -93,6 +96,14 @@ export interface MediaStoreOptions {
   /** Trusted server port; use the same logical quota as this facade. */
   privateStore?: Pick<DurablePrivateMediaStore, "stage" | "dispatchPut" | "runOnce" | "read">;
 }
+export type MediaUploadIdentity = {rootAutomationId:string;idempotencyKey:string} | {
+  uploadKind:'PARTNER';apiKeyId:string;idempotencyKey:string;sha256:string;requestHash:string;
+};
+/** Bind replay to validated content and metadata in this tenant/channel/key. */
+export function partnerMediaUploadRequestHash(org:string,channel:string,apiKeyId:string,input:BinaryMedia):string {
+  return createHash('sha256').update(JSON.stringify(['partner-media-upload-v1',org,channel,apiKeyId,
+    createHash('sha256').update(input.bytes).digest('hex'),input.mimeType,input.kind,safeMediaName(input.fileName)])).digest('hex');
+}
 export function createMediaStore(options: MediaStoreOptions) {
   const vault = createIntegrationSecrets(options.encryptionKey),
     tx = options.transact,
@@ -104,16 +115,20 @@ export function createMediaStore(options: MediaStoreOptions) {
     .max(1_099_511_627_776)
     .parse(options.maxStorageBytes ?? 1_073_741_824);
   return {
-    async writeUpload(org:string,channel:string,identity:{rootAutomationId:string;idempotencyKey:string},input:BinaryMedia,control?:PrivateMediaReadControl):Promise<string>{
+    async writeUpload(org:string,channel:string,identity:MediaUploadIdentity,input:BinaryMedia,control?:PrivateMediaReadControl):Promise<string>{
       const file={...input,bytes:new Uint8Array(input.bytes),fileName:safeMediaName(input.fileName)};validateUploadMedia(file);
-      const sha256=createHash('sha256').update(file.bytes).digest('hex'),sourceKey=`${identity.rootAutomationId}:${identity.idempotencyKey}`;
-      const uploadDescriptor={...identity,sha256};descriptor.parse({source:'UPLOAD',descriptor:uploadDescriptor});
+      const sha256=createHash('sha256').update(file.bytes).digest('hex');
+      const partner='uploadKind' in identity;
+      if(partner&&(identity.sha256!==sha256||identity.requestHash!==partnerMediaUploadRequestHash(org,channel,identity.apiKeyId,file)))throw new MediaError('MEDIA_UPLOAD_IDEMPOTENCY_CONFLICT');
+      const sourceKey=partner?`partner:${identity.apiKeyId}:${identity.idempotencyKey}`:`${identity.rootAutomationId}:${identity.idempotencyKey}`;
+      const uploadDescriptor=partner?{...identity,sha256,mimeType:file.mimeType,byteSize:file.bytes.byteLength}:{...identity,sha256};descriptor.parse({source:'UPLOAD',descriptor:uploadDescriptor});
       const id=await tx(org,async t=>{
         await control?.authorize?.(t);
         if(!(await t.query<{open:boolean}>('select media_private_channel_open($1,$2) as open',[org,channel])).rows[0]?.open)throw new MediaError('RESOURCE_DELETING');
         const id=await registerPendingMedia(t,org,channel,{source:'UPLOAD',sourceKey,kind:file.kind,fileName:file.fileName,descriptor:uploadDescriptor});
         const existing=(await t.query<MediaAsset>('select * from messaging_media where organization_id=$1 and id=$2',[org,id])).rows[0];
-        if(!existing||JSON.stringify(existing.descriptor)!==JSON.stringify(uploadDescriptor)&&existing.descriptor.sha256!==sha256||existing.kind!==file.kind||existing.file_name!==file.fileName)throw new MediaError('MEDIA_UPLOAD_IDEMPOTENCY_CONFLICT');
+        if(!existing||existing.descriptor.sha256!==sha256||existing.kind!==file.kind||existing.file_name!==file.fileName
+          ||partner&&(existing.descriptor.uploadKind!=='PARTNER'||existing.descriptor.apiKeyId!==identity.apiKeyId||existing.descriptor.idempotencyKey!==identity.idempotencyKey||existing.descriptor.requestHash!==identity.requestHash))throw new MediaError('MEDIA_UPLOAD_IDEMPOTENCY_CONFLICT');
         return id;
       });
       if(privateStore){

@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { mkdir } from "node:fs/promises";
 import { z } from 'zod';
-import { AutomationMediaAssetSchema } from '@jrc/contracts';
+import { AutomationMediaAssetSchema, PartnerMediaMetadataSchema } from '@jrc/contracts';
 import { SUPPORTED_UPLOAD_MIME_TYPES } from '@jrc/providers';
 
 import type { InstanceService } from "../modules/instances/service.js";
@@ -51,6 +51,10 @@ function documentationOptions() {
     },
   ) as ProviderAccountService;
   return {
+    mediaCustody: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
+      service: new Proxy({}, {get() { return unavailable; }}) as import('../modules/media-custody/service.js').MediaCustodyService,
+    },
     partnerWebhooks: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
       service: new Proxy({}, {get() { return unavailable; }}) as import('../modules/partner-events/service.js').PartnerEventService,
@@ -346,17 +350,25 @@ function normalizeDocument(document: JsonObject): JsonObject {
         operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
       if (['/v1/messaging/channels/{id}/partner-text','/v1/messaging/instances/{id}/partner-activate','/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents'].includes(path) && method === 'post')
         operation.security = [{ jrcApiKeyAuth: [] }];
+      const partnerUpload = path === '/v1/messaging/channels/{id}/media' && method === 'post';
+      if (partnerUpload || path === '/v1/messaging/channels/{id}/media/{mediaId}' && method === 'get'
+        || path === '/v1/messaging/channels/{id}/partner-media' && method === 'post') operation.security = [{ jrcApiKeyAuth: [] }];
       if (path === '/v1/messaging/media/{id}' && method === 'get') {
         operation.responses = { ...((operation.responses ?? {}) as JsonObject),
           '200': {description:'Bytes privados do anexo; MIME depende do arquivo. Não retorna JSON.',content:{'application/octet-stream':{schema:{type:'string',format:'binary'}}}} };
       }
       if (['/v1/partner-webhooks', '/v1/partner-events', '/v1/partner-webhook-deliveries'].some(prefix => path === prefix || path.startsWith(prefix + '/')))
         operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
+      if (path.startsWith('/v1/media-custody/') || path === '/v1/partner-webhook-delivery-stats'
+        || path.endsWith('/replay') && path.startsWith('/v1/partner-webhook-deliveries/'))
+        operation.security = [{ jrcApiKeyAuth: [] }];
       if(path.startsWith('/v1/delegated-flows'))operation.security=[{flowSessionAuth:[]}];
-      if (method === 'post' && /^\/v1\/(?:automations|delegated-flows)\/\{id\}\/channels\/\{channelId\}\/media$/.test(path)) {
-        operation.description = 'Arquivo privado binário de 1 a 16 MiB, sujeito ao limite por MIME e à quota. Não é um grafo JSON nem uma URL pública. A mesma chave exige os mesmos bytes, raiz e caixa; autorização é revalidada durante o armazenamento.';
+      if (partnerUpload || method === 'post' && /^\/v1\/(?:automations|delegated-flows)\/\{id\}\/channels\/\{channelId\}\/media$/.test(path)) {
+        operation.description = partnerUpload
+          ? 'Upload privado por chave com media:upload, de 1 a 16 MiB e limites por MIME/quota. HTTP 201 cria uma referência durável; consulte READY/STORING/FAILED no recurso Location. Não envia mensagem. Replays conservam bytes e metadados; conflito retorna 409. Revalida autoridade durante armazenamento e recuperação.'
+          : 'Arquivo privado binário de 1 a 16 MiB, sujeito ao limite por MIME e à quota. Não é um grafo JSON nem uma URL pública. A mesma chave exige os mesmos bytes, raiz e caixa; autorização é revalidada durante o armazenamento.';
         operation.parameters = [
-          ...['id', 'channelId'].map(name => ({ name, in: 'path', required: true, schema: { type: 'string', format: 'uuid' } })),
+          ...(partnerUpload ? ['id'] : ['id', 'channelId']).map(name => ({ name, in: 'path', required: true, schema: { type: 'string', format: 'uuid' } })),
           { name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string', format: 'uuid' } },
           { name: 'X-JRC-Media-Mime', in: 'header', required: true, schema: { type: 'string', enum: [...SUPPORTED_UPLOAD_MIME_TYPES] } },
           { name: 'X-JRC-Media-Kind', in: 'header', required: true, schema: { type: 'string', enum: ['image', 'audio', 'video', 'document'] } },
@@ -366,10 +378,11 @@ function normalizeDocument(document: JsonObject): JsonObject {
           schema: { type: 'string', format: 'binary', minLength: 1, maxLength: 16 * 1024 * 1024 },
         } } };
         operation.responses = {
-          '201': { description: 'Metadados do arquivo privado na raiz e caixa autorizadas.', content: {
-            'application/json': { schema: z.toJSONSchema(AutomationMediaAssetSchema, { target: 'openapi-3.0' }) },
+          '201': { description: partnerUpload ? 'Referência privada com estado explícito; não confirma bytes prontos nem entrega.' : 'Metadados do arquivo privado na raiz e caixa autorizadas.',
+            ...(partnerUpload ? { headers: { Location: { description: 'Caminho relativo da consulta de metadados da referência.', schema: { type: 'string' } } } } : {}), content: {
+            'application/json': { schema: z.toJSONSchema(partnerUpload ? PartnerMediaMetadataSchema : AutomationMediaAssetSchema, { target: 'openapi-3.0' }) },
           } },
-          ...Object.fromEntries([400, 401, 403, 409, 413, 422, 500, 503].map(status => [String(status), { description: 'Upload recusado ou armazenamento indisponível.' }])),
+          ...Object.fromEntries([400, 401, 403, ...(partnerUpload ? [404] : []), 409, 413, ...(partnerUpload ? [415, 429] : []), 422, 500, 503].map(status => [String(status), { description: 'Upload recusado ou armazenamento indisponível.' }])),
         };
       }
       if(path.startsWith('/v1/flow-delegations'))operation.security=[{bearerAuth:[]}];
@@ -396,8 +409,31 @@ function normalizeDocument(document: JsonObject): JsonObject {
         operation.security = path.endsWith("/events")
             ? [{ chatwootSignature: [] }]
             : [{ bearerAuth: [] }];
-      if (path.startsWith('/v1/integrations/chatwoot/control/'))
+      if (path.startsWith('/v1/integrations/chatwoot/control/')) {
         operation.security = [{ bearerAuth: [] }, { jrcApiKeyAuth: [] }];
+        // Documentation of the existing control error handler, not new runtime behavior.
+        const errors: Record<string, string> = {
+          '400': 'INVALID_REQUEST: parâmetros, corpo ou chave idempotente inválidos.',
+          '401': 'INVALID_CREDENTIALS: informe uma única credencial válida.',
+          '403': 'CHATWOOT_CONTROL_FORBIDDEN: escopo, vínculo ou papel atual insuficiente.',
+          '404': 'Controle desligado ou recurso indisponível no tenant autenticado.',
+          '409': 'Conflito de revisão, identidade, contexto ou operação; consultar e conciliar antes de repetir.',
+          '413': 'Corpo excede o limite da API.', '415': 'Tipo de conteúdo não aceito.',
+          '502': 'O provedor ou a central remota recusou a operação ou está indisponível.',
+          '503': 'Controle ou dependência indisponível; resultado de mutação pode exigir conciliação.',
+        };
+        const responses = (operation.responses ?? {}) as Record<string, JsonObject>;
+        for (const [status, description] of Object.entries(errors)) responses[status] ??= { description };
+        operation.responses = responses;
+        if (method !== 'get') {
+          const parameters = (operation.parameters ?? []) as JsonObject[];
+          if (!parameters.some(p => String(p.name).toLowerCase() === 'x-jrc-external-actor')) {
+            operation.parameters = [...parameters, { name: 'X-JRC-External-Actor', in: 'header', required: false,
+              description: 'Atribuição auditável opcional para chave de controle. Não autentica nem autoriza o usuário remoto. Campanhas exigem o ID numérico do administrador.',
+              schema: { type: 'string', pattern: '^[A-Za-z0-9:_-]{1,80}$' } }];
+          }
+        }
+      }
       if (method === 'post' && path === '/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents')
         operation.security = [{ jrcApiKeyAuth: [] }];
       if (path.startsWith('/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/'))

@@ -124,7 +124,7 @@ export class ApiKeyServiceError extends Error {
 }
 
 export function requestedPartnerScopes(scopes: readonly string[]): string[] {
-  return scopes.filter(scope => ['messaging:read','messaging:send','webhooks:manage'].includes(scope));
+  return scopes.filter(scope => ['messaging:read','messaging:send','webhooks:manage','media:upload','media:send','media:archive'].includes(scope));
 }
 
 function view(row: ApiKeyRow): ApiKeyView {
@@ -211,16 +211,20 @@ export function createApiKeyService(dependencies: ApiKeyServiceDependencies): Ap
             context.organizationId,
             async (transaction) => {
               const partnerScopes = requestedPartnerScopes(input.scopes);
-              if (context.credentialKind === 'API_KEY' && partnerScopes.length) {
-                // Recheck the issuing key in the same transaction as insertion:
-                // authentication-time scopes alone can race revocation/downgrade.
+              const delegated = context.credentialKind === 'API_KEY' && partnerScopes.length > 0;
+              const assertIssuer = async (lock = false) => {
+                if (!delegated) return;
+                // Use database wall-clock time after every blocking operation, not
+                // a JS timestamp captured before a lock wait or transaction start.
                 const issuer = await transaction.query(`SELECT id FROM api_keys
                   WHERE organization_id=$1 AND id=$2 AND revoked_at IS NULL
-                    AND (expires_at IS NULL OR expires_at>$3)
-                    AND scopes @> $4::text[] FOR SHARE`,
-                  [context.organizationId, context.apiKeyId, now(), ['api_keys:manage',...partnerScopes]]);
+                    AND (expires_at IS NULL OR expires_at>clock_timestamp())
+                    AND scopes @> $3::text[] ${lock ? 'FOR SHARE' : ''}`,
+                  [context.organizationId, context.apiKeyId, ['api_keys:manage',...partnerScopes]]);
                 if (!issuer.rows.length) throw new ApiKeyServiceError('PARTNER_SCOPE_DELEGATION_FORBIDDEN');
-              }
+              };
+              await assertIssuer(true);
+              await assertIssuer();
               const row = await dependencies.repository.insert(transaction, {
                 organizationId: context.organizationId,
                 name: input.name,
@@ -229,6 +233,7 @@ export function createApiKeyService(dependencies: ApiKeyServiceDependencies): Ap
                 scopes: [...new Set(input.scopes)],
                 expiresAt,
               });
+              await assertIssuer();
               await dependencies.writeAudit(transaction, {
                 type: 'API_KEY_ISSUED',
                 organizationId: context.organizationId,
@@ -236,6 +241,7 @@ export function createApiKeyService(dependencies: ApiKeyServiceDependencies): Ap
                 resourceId: row.id,
                 requestId: context.requestId,
               });
+              await assertIssuer();
               return row;
             },
           );

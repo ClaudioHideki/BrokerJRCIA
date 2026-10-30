@@ -33,6 +33,16 @@ export function createChatwootHealth(options: ChatwootHealthOptions) {
     await t.query(`UPDATE chatwoot_connection_health SET
       identity_revision=identity_revision+CASE WHEN observed_fingerprint IS DISTINCT FROM $3 OR observed_connected<>$4 THEN 1 ELSE 0 END,
       observed_fingerprint=$3,observed_last4=$5,observed_connected=$4,observed_at=now(),updated_at=now(),
+      initial_identity_intent=CASE WHEN initial_identity_intent IS NOT NULL AND $4 AND $3::text IS NOT NULL
+        AND initial_identity_intent->>'expectedFingerprint' IS NULL THEN jsonb_set(initial_identity_intent,'{expectedFingerprint}',to_jsonb($3::text))
+        WHEN initial_identity_intent IS NOT NULL AND $4 AND $3::text IS NOT NULL
+        AND initial_identity_intent->>'expectedFingerprint' IS DISTINCT FROM $3 THEN NULL ELSE initial_identity_intent END,
+      initial_identity_expires_at=CASE WHEN initial_identity_intent IS NOT NULL AND $4 AND $3::text IS NOT NULL
+        AND initial_identity_intent->>'expectedFingerprint' IS NOT NULL AND initial_identity_intent->>'expectedFingerprint' IS DISTINCT FROM $3
+        THEN NULL ELSE initial_identity_expires_at END,
+      initial_identity_pair_expires_at=CASE WHEN initial_identity_intent IS NOT NULL AND $4 AND $3::text IS NOT NULL
+        AND initial_identity_intent->>'expectedFingerprint' IS NOT NULL AND initial_identity_intent->>'expectedFingerprint' IS DISTINCT FROM $3
+        THEN NULL ELSE initial_identity_pair_expires_at END,
       identity_error=CASE WHEN $4 AND $3::text IS NULL THEN 'IDENTITY_UNVERIFIED' WHEN approved_fingerprint IS NOT NULL AND $3::text IS NOT NULL AND approved_fingerprint<>$3 THEN 'IDENTITY_CONFIRMATION_REQUIRED' ELSE NULL END
       WHERE organization_id=$1 AND channel_id=$2`, [org, channel, fingerprint, observed.connected, phone?.slice(-4) ?? null]);
   }
@@ -45,9 +55,11 @@ export function createChatwootHealth(options: ChatwootHealthOptions) {
     const snapshot = await options.transact(org, t => readChatwootHealth(t, org, mapped.integration_id));
     try {
       const current = await options.readIdentity(org, mapped.instance_id);
-      await options.transact(org, async t => {
+      return await options.transact(org, async t => {
         const locked = (await t.query<HealthRow>('SELECT * FROM chatwoot_connection_health WHERE organization_id=$1 AND channel_id=$2 FOR UPDATE', [org, channel])).rows[0];
-        if (locked?.identity_revision === snapshot?.identity_revision) await observe(t, org, channel, current);
+        if (locked?.identity_revision !== snapshot?.identity_revision) return undefined;
+        await observe(t, org, channel, current);
+        return readChatwootHealth(t, org, mapped.integration_id);
       });
     } catch {
       await options.transact(org, t => t.query(`UPDATE chatwoot_connection_health SET observed_connected=false,identity_error='IDENTITY_UNVERIFIED',observed_at=now(),updated_at=now()

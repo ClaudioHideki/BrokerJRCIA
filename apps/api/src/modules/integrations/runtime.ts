@@ -42,6 +42,7 @@ import { createGroupAutomationRuntime } from '../whatsapp-groups/automation-runt
 import { createWhatsAppGroupCatalog } from '../whatsapp-groups/service.js';
 import {createConversationEffectRuntime} from '../automations/conversation-runtime.js';
 import {assertQueuedMediaAuthority} from '../automations/conversation-media.js';
+import {assertPartnerMessageAuthority} from '../messaging/partner-authority.js';
 import type {TenantTransaction} from '../../db/tenant-transaction.js';
 
 type QrConfig = Pick<
@@ -196,6 +197,7 @@ export function createIntegrationRuntime(
           }),
         ...(qr ? { activateQr: qr.activate } : {}),
         ...(identity ? { assertIdentity: identity.assertReady } : {}),
+        ...(identity && control ? { health: identity, controlAuth: control.auth } : {}),
         ...(groupPolicy ? {groupPolicy} : {}),
         async resolveIntegration(id) {
           return (
@@ -274,6 +276,7 @@ export function createIntegrationRuntime(
     const content = claim.message.content;
     const file = {
       ...(await media.read(claim.message.organizationId, content.mediaId,{authorize:async tx=>{
+        await assertPartnerMessageAuthority(tx as TenantTransaction,claim.message.organizationId,claim.message.id);
         await assertQueuedMediaAuthority(tx as TenantTransaction,claim.message.organizationId,claim.message.id);
       }})),
       ...(content.caption ? { caption: content.caption } : {}),
@@ -281,6 +284,9 @@ export function createIntegrationRuntime(
     if (claim.channel.provider === "BAILEYS") {
       if (!qr) throw new MediaError("MEDIA_NOT_CONFIGURED");
       const client = await qr.resolveClient(claim.channel,claim);
+      // dispatchClaim repeats validateClaim after preparation, immediately
+      // before invoking this physical effect. Keep the callback send-only so
+      // known policy failures are never classified as uncertain provider ACKs.
       return () => client.sendMedia(claim.contact.externalId, file);
     }
     if (!resolveMetaClient) throw new MediaError("MEDIA_NOT_CONFIGURED");

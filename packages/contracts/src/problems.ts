@@ -10,6 +10,7 @@ export const ProblemDetailsSchema = z.object({
   instance: z.string().optional(),
   code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
   requestId: z.string().uuid().optional(),
+  correlationId: z.string().uuid().optional(),
 }).strict();
 
 z.globalRegistry.add(ProblemDetailsSchema, { id: 'ProblemDetails' });

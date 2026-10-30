@@ -20,23 +20,30 @@ function mount(options:{role?:'OWNER'|'ADMIN'|'OPERATOR'|'VIEWER';items?:unknown
  const client={request,restore:vi.fn(async()=>({user:{id:org,email:'operator@example.test'},activeOrganization,organizations:[activeOrganization]})),registerTenantPurge:vi.fn(()=>()=>{}),subscribeToSessionExpiration:vi.fn(()=>()=>{}),login:vi.fn(),logout:vi.fn(),selectOrganization:vi.fn(),switchOrganization:vi.fn()} as unknown as ApiClient;
  render(<App client={client} initialEntries={[options.entry??`/channels/${id}`]}/>);return request;
 }
-it('provides keyboard-accessible ordered setup links and places the real test after binding',async()=>{
- mount();await screen.findByRole('heading',{name:'Caixa sintética'});
- const steps=screen.getByRole('navigation',{name:'Configurar bot nesta caixa'});
- const links=within(steps).getAllByRole('link');expect(links.map(link=>link.textContent)).toEqual(['1. Conectar WhatsApp','2. Publicar fluxo','3. Vincular bot à caixa','4. Testar atendimento']);
- links[2]!.focus();expect(links[2]).toHaveFocus();expect(links[2]).toHaveAttribute('href','#channel-bot-binding');
- const binding=screen.getByRole('heading',{name:'3. Vincular bot à caixa'}),test=screen.getByRole('heading',{name:'4. Testar atendimento'});
- expect(binding.compareDocumentPosition(test)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+async function openFlow(){fireEvent.click(await screen.findByRole('tab',{name:'Flow'}));return screen.getByRole('tabpanel',{name:'Flow'});}
+it('provides keyboard-accessible areas and keeps publication, binding and the real test in order',async()=>{
+ const request=mount();await screen.findByRole('heading',{name:'Caixa sintética'});
+ const tabs=screen.getByRole('tablist',{name:'Áreas da conexão'});
+ expect(within(tabs).getAllByRole('tab').map(tab=>tab.textContent)).toEqual(['Visão geral','Configurações WhatsApp','Histórico operacional','Atendimento','Flow','Histórico e grupos']);
+ const overview=within(tabs).getByRole('tab',{name:'Visão geral',selected:true});overview.focus();
+ fireEvent.keyDown(overview,{key:'ArrowRight'});expect(within(tabs).getByRole('tab',{name:'Configurações WhatsApp',selected:true})).toHaveFocus();
+ fireEvent.keyDown(document.activeElement!,{key:'ArrowRight'});fireEvent.keyDown(document.activeElement!,{key:'ArrowRight'});fireEvent.keyDown(document.activeElement!,{key:'ArrowRight'});
+ expect(within(tabs).getByRole('tab',{name:'Flow',selected:true})).toHaveFocus();
+ await screen.findByRole('option',{name:'Fluxo sintético · v2'});
+ const publication=screen.getByRole('heading',{name:'Criar ou publicar o fluxo'}),binding=screen.getByRole('heading',{name:'Vincular bot à caixa'}),test=screen.getByRole('heading',{name:'Testar atendimento'});
+ expect(publication.compareDocumentPosition(binding)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(binding.compareDocumentPosition(test)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  expect(screen.getByText(/Vincular permite novas entradas/i)).toBeVisible();expect(screen.getByRole('link',{name:'Retomar uma conversa em atendimento humano'})).toHaveAttribute('href','/mensagens');
+ expect(screen.getByText(/a entrega só é comprovada após observar/)).toBeVisible();
+ expect((request as ReturnType<typeof vi.fn>).mock.calls.some(call=>call[1]?.method&&call[1].method!=='GET')).toBe(false);
 });
-it('offers publication as the next action when no published version exists',async()=>{
- mount({items:[{...automation,lifecycleStatus:'DRAFT',activeVersion:null}]});
+it('offers publication in Flow when no published version exists',async()=>{
+ mount({items:[{...automation,lifecycleStatus:'DRAFT',activeVersion:null}]});await openFlow();
  expect(await screen.findByText(/Nenhuma versão publicada disponível/)).toBeVisible();
  expect(screen.queryByRole('option',{name:/Fluxo sintético/})).toBeNull();expect(screen.getByRole('button',{name:'Vincular automação'})).toBeDisabled();
  expect(screen.getByRole('link',{name:'Criar ou publicar fluxo'})).toHaveAttribute('href',`/automations?channel=${id}`);
 });
 it('requires a selection and keeps the current owner revision in the binding request',async()=>{
- const request=mount();await screen.findByRole('option',{name:'Fluxo sintético · v2'});
+ const request=mount();await openFlow();await screen.findByRole('option',{name:'Fluxo sintético · v2'});
  expect(screen.getByRole('button',{name:'Vincular automação'})).toBeDisabled();
  fireEvent.change(screen.getByLabelText('Automação publicada'),{target:{value:automationId}});fireEvent.click(screen.getByRole('button',{name:'Vincular automação'}));
  await waitFor(()=>expect(request).toHaveBeenCalledWith(`/v1/channels/${id}/automation`,expect.objectContaining({method:'PUT',body:JSON.stringify({automationId,expectedOwnerRevision:7})})));
@@ -45,34 +52,49 @@ it('requires a selection and keeps the current owner revision in the binding req
  expect((request as ReturnType<typeof vi.fn>).mock.calls.some(call=>call[0].includes('/resume')||call[0].endsWith('/mode'))).toBe(false);
 });
 it.each([
- ['DISCONNECTED',undefined,[automation],'Conectar WhatsApp agora','#channel-connect'],
- ['CONNECTED',undefined,[],'Publicar um fluxo','#channel-flow'],
- ['CONNECTED',undefined,[automation],'Escolher e vincular fluxo','#channel-bot-binding'],
- ['CONNECTED','PAUSED',[automation],'Conferir vínculo do bot','#channel-bot-binding'],
- ['CONNECTED','ACTIVE',[automation],'Testar atendimento agora','#channel-test'],
-] as const)('shows one next action for transport %s and binding %s',async(transportStatus,bindingStatus,items,action,target)=>{
- mount({transportStatus,...(bindingStatus?{bindingStatus}:{}),items:[...items]});
- const next=await screen.findByRole('region',{name:'Próximo passo'});
- expect(await within(next).findByRole('link',{name:action})).toHaveAttribute('href',target);
- expect(within(next).getAllByRole('link')).toHaveLength(1);
- expect(next).not.toHaveTextContent(/entrega confirmada|bot retomado/);
+ ['DISCONNECTED',undefined,[automation]],
+ ['CONNECTED',undefined,[]],
+ ['CONNECTED',undefined,[automation]],
+ ['CONNECTED','PAUSED',[automation]],
+ ['CONNECTED','ACTIVE',[automation]],
+] as const)('keeps transport %s and binding %s visible in their areas without claiming delivery',async(transportStatus,bindingStatus,items)=>{
+ const request=mount({transportStatus,...(bindingStatus?{bindingStatus}:{}),items:[...items]});
+ const overview=await screen.findByRole('tabpanel',{name:'Visão geral'});
+ expect(within(overview).getByText(transportStatus==='DISCONNECTED'?'Desconectado':'Conectado',{exact:true})).toBeVisible();
+ expect(within(overview).getByRole('button',{name:'Reconectar'})).toBeEnabled();
+ if(transportStatus==='DISCONNECTED')expect(within(overview).getByRole('button',{name:'Gerar QR Code'})).toBeEnabled();
+ else expect(within(overview).queryByRole('button',{name:'Gerar QR Code'})).toBeNull();
+ expect((request as ReturnType<typeof vi.fn>).mock.calls.some(call=>call[0]===`/v1/channels/${id}/automation`||call[0]==='/v1/automations')).toBe(false);
+ const flow=await openFlow();
+ if(bindingStatus){
+  expect(await within(flow).findByText(`${bindingStatus==='ACTIVE'?'Ativo':'Pausado'} · versão 2`)).toBeVisible();
+  expect(within(flow).getByRole('button',{name:bindingStatus==='ACTIVE'?'Pausar novas entradas':'Retomar novas entradas'})).toBeEnabled();
+ }else expect(await within(flow).findByText('Nenhuma automação vinculada.')).toBeVisible();
+ if(items.length)await within(flow).findByRole('option',{name:'Fluxo sintético · v2'});
+ else expect(await within(flow).findByText(/Nenhuma versão publicada disponível/)).toBeVisible();
+ expect(within(flow).getByRole('link',{name:'Criar ou publicar fluxo'})).toHaveAttribute('href',`/automations?channel=${id}`);
+ expect(within(flow).getByRole('link',{name:'Abrir conversas para testar e retomar'})).toHaveAttribute('href','/mensagens');
+ expect(within(flow).getByText(/a entrega só é comprovada após observar/)).toBeVisible();
+ expect(flow).not.toHaveTextContent(/entrega confirmada|bot retomado/);
+ expect((request as ReturnType<typeof vi.fn>).mock.calls.some(call=>call[1]?.method&&call[1].method!=='GET')).toBe(false);
 });
-it('withholds readiness while the binding is pending and offers a read-only refresh after failure',async()=>{
- const request=mount({bindingError:true});
- const next=await screen.findByRole('region',{name:'Próximo passo'});
- expect(await within(next).findByRole('button',{name:'Atualizar configuração'})).toBeEnabled();
- expect(within(next).queryByRole('link',{name:'Testar atendimento agora'})).toBeNull();
+it('withholds binding changes and offers a read-only refresh after failure',async()=>{
+ const request=mount({bindingError:true});await openFlow();
+ expect(await screen.findByText(/Não foi possível conferir o vínculo atual/)).toBeVisible();
+ const refresh=screen.getByRole('button',{name:'Atualizar fluxos e vínculo'});await waitFor(()=>expect(refresh).toBeEnabled());
+ expect(screen.getByText('Vínculo ainda não conferido.')).toBeVisible();expect(screen.queryByText('Nenhuma automação vinculada.')).toBeNull();
  const requestCallsBefore=screen.getByRole('button',{name:'Vincular automação'});expect(requestCallsBefore).toBeDisabled();
- fireEvent.click(within(next).getByRole('button',{name:'Atualizar configuração'}));
+ fireEvent.click(refresh);
  await waitFor(()=>expect((request as ReturnType<typeof vi.fn>).mock.calls.filter(call=>call[0]===`/v1/channels/${id}/automation`)).toHaveLength(2));
  expect((request as ReturnType<typeof vi.fn>).mock.calls.some(call=>call[1]?.method&&call[1].method!=='GET')).toBe(false);
 });
-it('does not turn a delayed binding into an empty binding or offer a test action',async()=>{
- mount({delayedBinding:new Promise(()=>{})});await screen.findByRole('option',{name:'Fluxo sintético · v2'});
- const next=screen.getByRole('region',{name:'Próximo passo'});
- expect(within(next).getByRole('button',{name:'Conferindo configuração'})).toBeDisabled();
+it('does not turn a delayed binding into an empty binding or allow binding changes',async()=>{
+ mount({delayedBinding:new Promise(()=>{})});await openFlow();await screen.findByRole('option',{name:'Fluxo sintético · v2'});
+ expect(screen.getByText('Vínculo ainda não conferido.')).toBeVisible();
+ expect(screen.getByRole('button',{name:'Vincular automação'})).toBeDisabled();
  expect(screen.queryByText('Nenhuma automação vinculada.')).toBeNull();
- expect(within(next).queryByRole('link',{name:'Testar atendimento agora'})).toBeNull();
+ expect(screen.getByText(/Conferindo o vínculo atual antes de permitir alterações/)).toBeVisible();
+ expect(screen.getByText(/a entrega só é comprovada após observar/)).toBeVisible();
 });
 it('blocks changes to an earlier binding after refresh fails and restores controls only after a current read',async()=>{
  let bindingReads=0,catalogReads=0,activated=false;
@@ -89,9 +111,9 @@ it('blocks changes to an earlier binding after refresh fails and restores contro
  }) as ApiClient['request'];
  const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);
  try{
-  mount({request});const next=await screen.findByRole('region',{name:'Próximo passo'});
+  mount({request});await openFlow();
   expect(await screen.findByRole('button',{name:'Retomar novas entradas'})).toBeEnabled();
-  const refresh=await within(next).findByRole('button',{name:'Atualizar configuração'});await waitFor(()=>expect(refresh).toBeEnabled());fireEvent.click(refresh);
+  const refresh=screen.getByRole('button',{name:'Atualizar fluxos e vínculo'});await waitFor(()=>expect(refresh).toBeEnabled());fireEvent.click(refresh);
   await waitFor(()=>expect(bindingReads).toBe(2));await waitFor(()=>expect(refresh).toBeEnabled());
   const resume=screen.getByRole('button',{name:'Retomar novas entradas'}),unlink=screen.getByRole('button',{name:'Desvincular automação'});
   expect(resume).toBeDisabled();expect(unlink).toBeDisabled();expect(screen.getByText(/Estado anterior não confirmado/)).toHaveTextContent(/versão 2/);
@@ -104,12 +126,12 @@ it('blocks changes to an earlier binding after refresh fails and restores contro
  }finally{confirm.mockRestore();}
 });
 it('makes catalog failure actionable and does not render a secret or a false empty catalog',async()=>{
- mount({catalogError:true});expect(await screen.findByText(/Não foi possível consultar os fluxos/)).toBeVisible();
+ mount({catalogError:true});await openFlow();expect(await screen.findByText(/Não foi possível consultar os fluxos/)).toBeVisible();
  expect(screen.queryByText(/protected payload/)).toBeNull();expect(screen.queryByText(/Nenhuma versão publicada disponível/)).toBeNull();
  expect(screen.getByRole('button',{name:'Vincular automação'})).toBeDisabled();
 });
 it.each(['OPERATOR','VIEWER'] as const)('explains who can publish and bind for %s without presenting mutation controls',async(role)=>{
- mount({role});await screen.findByRole('heading',{name:'Caixa sintética'});
+ mount({role});await openFlow();
  expect(screen.getByText(/Um administrador da empresa deve publicar e vincular/)).toBeVisible();
  expect(screen.queryByRole('button',{name:'Vincular automação'})).toBeNull();expect(screen.queryByRole('link',{name:'Criar ou publicar fluxo'})).toBeNull();
 });

@@ -67,6 +67,30 @@ it('lets the platform review an exact destination revision and media origins', a
   fireEvent.click(screen.getByRole('button', { name: 'Aprovar destino revisado' }));
   await waitFor(() => expect(request).toHaveBeenCalledWith('/destination/approve', 'POST', { revision: 2, mediaOrigins: ['https://cdn.example.com'] }));
 });
+it('lets platform administrators update attachment origins on an approved destination without changing its address', async () => {
+  const request = vi.fn(async (path: string) => path === '' ? { ...status, externalDestinationsEnabled: true,
+    destination: { organizationId: id, baseUrl: 'https://customer.example.com', mode: 'EXTERNAL', approvalStatus: 'APPROVED', revision: 3,
+      mediaOrigins: ['https://existing.example.com'] } } : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform />);
+  const origins = await screen.findByLabelText('Domínios de anexos autorizados');
+  expect(origins).toHaveValue('https://existing.example.com');
+  fireEvent.change(origins, { target: { value: 'https://existing.example.com\nhttps://cdn.example.com' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Atualizar domínios de anexos' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/destination/approve', 'POST', {
+    revision: 3, mediaOrigins: ['https://existing.example.com', 'https://cdn.example.com'],
+  }));
+  expect(request).not.toHaveBeenCalledWith('/destination', expect.anything(), expect.anything());
+});
+it.each([{ platform: false, canManage: true }, { platform: true, canManage: false }])(
+  'does not expose attachment approval outside platform management: %j', async permissions => {
+    const request = vi.fn(async (path: string) => path === '' ? { ...status, externalDestinationsEnabled: true,
+      destination: { organizationId: id, baseUrl: 'https://customer.example.com', mode: 'EXTERNAL', approvalStatus: 'APPROVED', revision: 3,
+        mediaOrigins: ['https://existing.example.com'] } } : { data: [] });
+    render(<ChatwootPanel request={request} {...permissions} />);
+    expect(await screen.findByText('Destino autorizado. A compatibilidade e a entrega ainda precisam ser verificadas.')).toBeVisible();
+    expect(screen.queryByLabelText('Domínios de anexos autorizados')).not.toBeInTheDocument();
+  }
+);
 it("loads inbox agents after the StrictMode mount cycle", async () => {
   const request = vi.fn(async (path: string) => path === "" ? {
     ...status,
@@ -149,7 +173,8 @@ it("offers only the selected company connections and creates an API inbox", asyn
         : { data: [] },
   );
   render(<ChatwootPanel request={request} canManage platform={false} />);
-  fireEvent.change(await screen.findByLabelText("Conexão WhatsApp"), {
+  await screen.findByRole('option', { name: 'Comercial · QR Code' });
+  fireEvent.change(screen.getByLabelText("Conexão WhatsApp"), {
     target: { value: id },
   });
   fireEvent.change(screen.getByLabelText("Nome da caixa"), {
@@ -162,6 +187,65 @@ it("offers only the selected company connections and creates an API inbox", asyn
       name: "Atendimento JRC",
     }),
   );
+});
+it('requires an explicit destination choice after refresh removes the selected inbox', async () => {
+  let inboxes = [{ id: 31, name: 'Destino original', hasWebhook: false }];
+  const sources = { data: [{ kind: 'instance', id, name: 'Comercial', label: 'QR Code' }] };
+  let releaseSources!: () => void;
+  const initialSources = new Promise<typeof sources>(resolve => { releaseSources = () => resolve(sources); });
+  let sourceReads = 0;
+  const ready = { ...status, account: { accountId: 1, status: 'READY', hasCredential: true, lastError: null } };
+  const request = vi.fn(async (path: string, _method?: string) => path === '' ? ready
+    : path === '/inboxes' ? { data: inboxes }
+    : path === '/sources' ? ++sourceReads === 1 ? initialSources : sources
+    : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform={false} />);
+  await screen.findByRole('option', { name: 'Destino original · Caixa 31' });
+  // The inbox and WhatsApp source catalogs load independently. An option in
+  // one select is not a readiness barrier for an option in the other select.
+  expect(screen.queryByRole('option', { name: 'Comercial · QR Code' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeDisabled();
+  releaseSources();
+  await screen.findByRole('option', { name: 'Comercial · QR Code' });
+  fireEvent.change(screen.getByLabelText('Conexão WhatsApp'), { target: { value: id } });
+  expect(screen.getByLabelText('Conexão WhatsApp')).toHaveValue(id);
+  fireEvent.change(screen.getByLabelText('Destino'), { target: { value: '31' } });
+  fireEvent.change(screen.getByLabelText('Nome da caixa'), { target: { value: 'Nova caixa deliberada' } });
+  inboxes = [];
+  fireEvent.click(screen.getByRole('button', { name: 'Atualizar integração' }));
+  await waitFor(() => expect(screen.queryByRole('option', { name: 'Destino original · Caixa 31' })).not.toBeInTheDocument());
+  expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeDisabled();
+  expect(screen.getByLabelText('Destino')).toHaveValue('UNAVAILABLE');
+  expect(screen.getByText(/A caixa selecionada não está mais disponível/)).toBeVisible();
+  expect(request.mock.calls.some(([, method]) => method === 'POST')).toBe(false);
+  fireEvent.change(screen.getByLabelText('Destino'), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Conectar caixa' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/connections', 'POST', {
+    instanceId: id, name: 'Nova caixa deliberada',
+  }));
+});
+
+it('preserves the selected inbox when refresh confirms that it remains available', async () => {
+  const ready = { ...status, account: { accountId: 1, status: 'READY', hasCredential: true, lastError: null } };
+  const request = vi.fn(async (path: string, _method?: string) => path === '' ? ready
+    : path === '/inboxes' ? { data: [{ id: 31, name: 'Destino original', hasWebhook: false }] }
+    : path === '/sources' ? { data: [{ kind: 'instance', id, name: 'Comercial', label: 'QR Code' }] }
+    : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform={false} />);
+  await screen.findByRole('option', { name: 'Destino original · Caixa 31' });
+  await screen.findByRole('option', { name: 'Comercial · QR Code' });
+  fireEvent.change(screen.getByLabelText('Conexão WhatsApp'), { target: { value: id } });
+  fireEvent.change(screen.getByLabelText('Destino'), { target: { value: '31' } });
+  fireEvent.change(screen.getByLabelText('Nome da caixa'), { target: { value: 'Caixa existente deliberada' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Atualizar integração' }));
+  await waitFor(() => expect(request.mock.calls.filter(([path]) => path === '/inboxes')).toHaveLength(2));
+  expect(screen.getByLabelText('Destino')).toHaveValue('31');
+  expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeEnabled();
+  expect(request.mock.calls.some(([, method]) => method === 'POST')).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Conectar caixa' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/connections', 'POST', {
+    instanceId: id, name: 'Caixa existente deliberada', inboxId: 31,
+  }));
 });
 it("keeps viewers read-only and never loads administrative choices", async () => {
   const request = vi.fn(async (path: string) =>

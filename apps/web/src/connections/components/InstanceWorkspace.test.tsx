@@ -70,7 +70,7 @@ describe('instance workspace', () => {
   });
   it('shows real operations and truthful existing integration links', async () => {
     setup();
-    fireEvent.click(await screen.findByRole('button', { name: 'Eventos' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Histórico operacional' }));
     expect(await screen.findByText('Conectar')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Integrações' }));
     expect(screen.getByRole('link', { name: 'Configurar integração com JRC Conversas' })).toHaveAttribute('href', '/integracoes');

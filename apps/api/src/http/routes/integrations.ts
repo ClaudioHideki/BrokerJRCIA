@@ -252,7 +252,7 @@ export async function registerIntegrationRoutes(
         response: { 200: ChatwootStatusSchema },
       },
     },
-    (request) => service().connect(org(request), request.body, actor(request)),
+    (request) => service().connect(org(request), request.body, actor(request), request.authentication!),
   );
   api.get(
     "/v1/integrations/chatwoot/connections/:id/agents",
@@ -277,6 +277,11 @@ export async function registerIntegrationRoutes(
         request.params.id,
         request.body.userIds,
         actor(request),
+        async () => {
+          const identity = request.authentication;
+          const role = identity?.kind === 'JWT' ? await options.resolveCurrentRole(identity.actorId, identity.organizationId) : null;
+          if (!role || !['OWNER', 'ADMIN'].includes(role)) throw new IntegrationError('CHATWOOT_CONTROL_FORBIDDEN', 403);
+        },
       ),
   );
   api.post(

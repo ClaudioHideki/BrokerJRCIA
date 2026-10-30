@@ -14,6 +14,9 @@ const after=z.string().regex(/^(0|[1-9][0-9]{0,18})$/u).refine(value=>BigInt(val
 const EndpointSchema=z.strictObject({id:z.uuid(),url:z.url(),status:z.enum(['ACTIVE','REVOKED']),createdAt:z.iso.datetime(),revokedAt:z.iso.datetime().nullable()});
 const EventSchema=z.strictObject({schemaVersion:z.literal(1),eventId:z.uuid(),cursor:z.string(),organizationId:z.uuid(),type:z.string().describe('message.received, message.created, message.status or connection.status'),occurredAt:z.iso.datetime(),data:z.record(z.string(),z.unknown())});
 const DeliverySchema=z.strictObject({id:z.uuid(),endpointId:z.uuid(),eventId:z.uuid(),status:z.string().describe('PENDING, RUNNING, DELIVERED, FAILED or CANCELLED'),attempts:z.number().int().min(0).max(10),lastErrorCode:z.string().nullable(),availableAt:z.iso.datetime(),updatedAt:z.iso.datetime()});
+const count=z.number().int().nonnegative();
+const ReplaySchema=z.strictObject({schemaVersion:z.literal(1),replay:z.strictObject({id:z.uuid(),deliveryId:z.uuid(),endpointId:z.uuid(),eventId:z.uuid(),replayNumber:count,priorAttempts:z.number().int().min(0).max(10),acceptedAt:z.iso.datetime()}),replayed:z.boolean()});
+const StatsSchema=z.strictObject({schemaVersion:z.literal(1),retentionDays:z.literal(30),counts:z.strictObject({PENDING:count,RUNNING:count,DELIVERED:count,FAILED:count,CANCELLED:count}),oldestPendingAt:z.iso.datetime().nullable(),expiredLeases:count,replays:count,lifetimeAttempts:count});
 const errors={400:ProblemDetailsSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,404:ProblemDetailsSchema,409:ProblemDetailsSchema.extend({retentionDays:z.literal(30).optional(),earliestCursor:z.string().nullable().optional(),lastPrunedCursor:z.string().optional(),resetCursor:z.literal('0').optional()}),413:ProblemDetailsSchema,415:ProblemDetailsSchema,422:ProblemDetailsSchema,429:ProblemDetailsSchema,500:ProblemDetailsSchema,503:ProblemDetailsSchema};
 const problem=(reply:FastifyReply,request:FastifyRequest,status:number,code:string)=>reply.code(status).type('application/problem+json').send({type:'about:blank',title:code,status,code,requestId:request.id});
 export async function registerPartnerWebhookRoutes(app:FastifyInstance,options:PartnerWebhookRouteOptions){
@@ -31,7 +34,14 @@ export async function registerPartnerWebhookRoutes(app:FastifyInstance,options:P
   return problem(reply,request,500,'PARTNER_EVENTS_UNAVAILABLE');
  });
  const preHandler=[authenticateRequest(options),requirePermission('webhooks:manage')];
+ const partnerKeyOnly=async(request:FastifyRequest,reply:FastifyReply)=>{
+  if(request.authentication?.kind!=='API_KEY')return problem(reply,request,403,'FORBIDDEN');
+ };
+ const replayPreHandler=[...preHandler,partnerKeyOnly];
  const api=app.withTypeProvider<ZodTypeProvider>(),org=(request:FastifyRequest)=>request.authentication!.organizationId;
+ const key=(request:FastifyRequest)=>{const auth=request.authentication;if(auth?.kind!=='API_KEY')throw new PartnerEventError('FORBIDDEN',403);return auth.apiKeyId;};
+ api.post('/v1/partner-webhook-deliveries/:id/replay',{preHandler:replayPreHandler,schema:{tags:['Partner webhooks'],summary:'Explicitly replay a retained FAILED delivery with the same event and destination',params,headers:z.object({'idempotency-key':z.uuid()}),querystring:empty,body:empty,response:{200:ReplaySchema,...errors}}},request=>options.service.replay(org(request),key(request),request.params.id,request.headers['idempotency-key']));
+ api.get('/v1/partner-webhook-delivery-stats',{preHandler:replayPreHandler,schema:{tags:['Partner webhooks'],summary:'Aggregate retained delivery counts and lifetime attempts without event content',querystring:z.strictObject({endpointId:z.uuid().optional()}),response:{200:StatsSchema,...errors}}},request=>options.service.deliveryStats(org(request),key(request),request.query));
  api.get('/v1/partner-webhooks',{preHandler,schema:{tags:['Partner webhooks'],summary:'List webhook endpoints without secrets',querystring:empty,response:{200:z.strictObject({data:z.array(EndpointSchema)}),...errors}}},request=>options.service.list(org(request)));
  api.post('/v1/partner-webhooks',{preHandler,schema:{tags:['Partner webhooks'],summary:'Create an HTTPS endpoint with its independent signing secret',headers:IdempotencyHeadersSchema,querystring:empty,body:z.strictObject({url:z.string().url().max(2048)}),response:{201:z.strictObject({endpoint:EndpointSchema,signingSecret:z.string(),replayed:z.boolean()}),...errors}}},async(request,reply)=>reply.code(201).send(await options.service.create(org(request),request.body,request.headers['idempotency-key'])));
  api.delete('/v1/partner-webhooks/:id',{preHandler,schema:{tags:['Partner webhooks'],summary:'Revoke endpoint and cancel pending deliveries',params,querystring:empty,response:{200:EndpointSchema,...errors}}},request=>options.service.revoke(org(request),request.params.id));

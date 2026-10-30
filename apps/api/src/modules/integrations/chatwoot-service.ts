@@ -26,6 +26,10 @@ import { createChatwootDestinationService, lockChatwootDestination } from './cha
 import { IntegrationError } from './integration-error.js';
 import { accountCompatibility, observeChatwootCapabilities } from './chatwoot-compatibility.js';
 import { readChatwootAccount, resolveChatwootContext, requireApprovedDestination, mayUsePlatformToken, type AccountRow } from './chatwoot-context.js';
+import { createChatwootInitialIdentity } from './chatwoot-initial-identity.js';
+import type { ChatwootHealth } from './chatwoot-health.js';
+import type { ChatwootControlAuth, ChatwootControlPrincipal } from './chatwoot-control-auth.js';
+import type { AuthenticationContext } from '../../http/plugins/authorization.js';
 export { IntegrationError } from './integration-error.js';
 export { readChatwootAccount, type AccountRow } from './chatwoot-context.js';
 export interface ChatwootOptions {
@@ -45,6 +49,8 @@ export interface ChatwootOptions {
   resolveIntegration(id: string): Promise<string | undefined>;
   activateQr?(org: string, instanceId: string): Promise<{ id: string }>;
   assertIdentity?(org: string, channelId: string): Promise<void>;
+  health?: ChatwootHealth;
+  controlAuth?: ChatwootControlAuth;
 }
 type IntegrationState = "PENDING" | "READY" | "FAILED" | "UNKNOWN" | "DISABLED";
 export interface ConnectionRow {
@@ -135,6 +141,8 @@ export function createChatwootService(options: ChatwootOptions) {
   const attendance=createChatwootAttendanceService({transact:options.transact,client:env.client});
   const repo = createPostgresMessagingRepository();
   const tx = options.transact;
+  const initialIdentity = options.health && options.controlAuth?.enabled
+    ? createChatwootInitialIdentity({ ...options, health: options.health, auth: options.controlAuth }) : undefined;
   const destinations = createChatwootDestinationService({ enabled: options.externalDestinationsEnabled === true,
     managedOrigin: env.origin, transact: tx });
   function connectionView(row: ConnectionRow) {
@@ -197,6 +205,34 @@ export function createChatwootService(options: ChatwootOptions) {
         "API inbox and signed callback configured",
       );
     });
+  }
+  async function mutateAgents(org: string, id: string, userIds: number[], mode: 'ADD' | 'REPLACE',
+    actorId?: string, beforeMutation?: (t: TenantTransaction) => Promise<void>) {
+    const a = await account(org), c = await tx(org, t => readChatwootConnection(t, org, id));
+    if (!c?.inbox_id || !['READY', 'DISABLED'].includes(c.status))
+      throw new IntegrationError('INTEGRATION_NOT_FOUND', 404);
+    const client = env.client(a), users = await client.agents(Number(a.account_id));
+    if ((mode === 'ADD' && !userIds.length) || userIds.some(userId => !users.some(user => user.id === userId)))
+      throw new IntegrationError('CHATWOOT_AGENT_NOT_IN_ACCOUNT');
+    await tx(org, async t => {
+      await requireActiveOrganization(t, org);
+      const current = await readChatwootAccount(t, org), binding = await readChatwootConnection(t, org, id);
+      if (current?.status !== 'READY' || current.credential_version !== a.credential_version
+        || current.encrypted_token !== a.encrypted_token || current.account_id !== a.account_id
+        || current.base_url !== a.base_url || current.destination?.revision !== a.destination?.revision
+        || current.destination?.approvalStatus !== 'APPROVED' || !binding
+        || binding.channel_id !== c.channel_id || binding.inbox_id !== c.inbox_id || binding.status !== c.status
+        || binding.encrypted_webhook_secret !== c.encrypted_webhook_secret)
+        throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
+      await beforeMutation?.(t);
+      await integrationAudit(t, org, 'INBOX_AGENTS_REQUESTED', id,
+        mode === 'REPLACE' ? 'Replace inbox agents with existing account agents' : 'Assign existing account agents to inbox', actorId);
+    });
+    // HTTP stays outside the transaction. Revalidation fences changes observed
+    // during the catalogue GET; it cannot undo a request already dispatched.
+    const ids = [...new Set(userIds)];
+    if (mode === 'REPLACE') await client.replaceAgents(Number(a.account_id), Number(c.inbox_id), ids);
+    else await client.assignAgents(Number(a.account_id), Number(c.inbox_id), ids);
   }
   return {
     destinations,
@@ -368,34 +404,20 @@ export function createChatwootService(options: ChatwootOptions) {
       id: string,
       userIds: number[],
       actorId?: string,
+      beforeMutation?: (t: TenantTransaction) => Promise<void>,
     ) {
-      const a = await account(org),
-        c = await tx(org, (t) => readChatwootConnection(t, org, id));
-      if (!c?.inbox_id || !["READY", "DISABLED"].includes(c.status))
-        throw new IntegrationError("INTEGRATION_NOT_FOUND", 404);
-      const client = env.client(a),
-        users = await client.agents(Number(a.account_id));
-      if (
-        !userIds.length ||
-        userIds.some((id) => !users.some((user) => user.id === id))
-      )
-        throw new IntegrationError("CHATWOOT_AGENT_NOT_IN_ACCOUNT");
-      await tx(org, async (t) => {
-        await requireActiveOrganization(t, org);
-        await integrationAudit(
-          t,
-          org,
-          "INBOX_AGENTS_REQUESTED",
-          id,
-          "Assign existing account agents to inbox",
-          actorId,
-        );
-      });
-      await client.assignAgents(Number(a.account_id), Number(c.inbox_id), [
-        ...new Set(userIds),
-      ]);
+      await mutateAgents(org, id, userIds, 'ADD', actorId, beforeMutation);
       return this.agents(org, id);
     },
+    async replaceAgents(org: string, id: string, userIds: number[], actorId?: string,
+      beforeMutation?: (t: TenantTransaction) => Promise<void>) {
+      await mutateAgents(org, id, userIds, 'REPLACE', actorId, beforeMutation);
+      const result = await this.agents(org, id), assigned = result.data.filter(user => user.assigned).map(user => user.id);
+      if (assigned.length !== userIds.length || userIds.some(userId => !assigned.includes(userId)))
+        throw new IntegrationError('CHATWOOT_AGENTS_RECONCILIATION_REQUIRED', 409);
+      return result;
+    },
+    initialIdentity,
     async connect(
       org: string,
       input: {
@@ -407,7 +429,9 @@ export function createChatwootService(options: ChatwootOptions) {
         requireIdentity?: boolean | undefined;
       },
       actorId?: string,
+      authentication?: AuthenticationContext | ChatwootControlPrincipal,
     ) {
+      const initialPrincipal = authentication && initialIdentity ? await initialIdentity.authorize(authentication) : undefined;
       const a = await account(org),
         client = env.client(a);
       let channelId = input.channelId;
@@ -441,7 +465,8 @@ export function createChatwootService(options: ChatwootOptions) {
           )
         ).rows[0];
         if (!row) throw new IntegrationError("CONNECTION_ALREADY_EXISTS", 409);
-        if (input.requireIdentity) await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id,identity_enforced) VALUES($1,$2,$3,true)`, [org, id, channelId]);
+        if (initialPrincipal) await initialIdentity!.register(t, initialPrincipal, id);
+        if (input.requireIdentity) await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id,identity_enforced) VALUES($1,$2,$3,true) ON CONFLICT DO NOTHING`, [org, id, channelId]);
         await integrationAudit(
           t,
           org,
@@ -506,6 +531,7 @@ export function createChatwootService(options: ChatwootOptions) {
         );
         throw failure;
       }
+      if (initialPrincipal) await initialIdentity!.created(initialPrincipal, connection.id);
       return this.status(org);
     },
     async reconcileConnection(org: string, id: string) {

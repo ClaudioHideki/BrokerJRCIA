@@ -8,7 +8,7 @@ describe('runtime schema probe', () => {
     const query=vi.fn(async (_sql:string)=>({rows:[{ready:true}]}));
     expect(await probeRequiredRuntimeSchema(query)).toBe(true);
     expect(query.mock.calls[0]?.[0]).not.toContain('ELSE public.campaign_catalogue_ready()');
-    expect(query.mock.calls[1]?.[0]).toBe('SELECT public.partner_event_catalogue_ready() AND public.campaign_catalogue_ready() AS ready');
+    expect(query.mock.calls[1]?.[0]).toBe('SELECT public.partner_event_catalogue_ready() AND public.campaign_catalogue_ready() AND public.audit_corrections_catalogue_ready() AS ready');
   });
   it('returns false if a checked catalogue function disappears before invocation, without masking other failures',async()=>{
     const missing=vi.fn().mockResolvedValueOnce({rows:[{ready:true}]}).mockRejectedValueOnce(Object.assign(new Error('Missing function'),{code:'42883'}));

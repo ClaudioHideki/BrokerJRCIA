@@ -10,10 +10,18 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'POST /v1/media-custody/receipts',
+  'GET /v1/media-custody/receipts/{id}',
+  'GET /v1/media-custody/receipts/{id}/retention',
+  'POST /v1/partner-webhook-deliveries/{id}/replay',
+  'GET /v1/partner-webhook-delivery-stats',
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/campaign-transport',
   'POST /v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents',
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{conversationId}/campaign-messages/{messageId}',
   'POST /v1/messaging/channels/{id}/partner-text',
+  'POST /v1/messaging/channels/{id}/media',
+  'GET /v1/messaging/channels/{id}/media/{mediaId}',
+  'POST /v1/messaging/channels/{id}/partner-media',
   'POST /v1/messaging/instances/{id}/partner-activate',
   'GET /v1/partner-webhooks', 'POST /v1/partner-webhooks', 'DELETE /v1/partner-webhooks/{id}',
   'GET /v1/partner-events', 'GET /v1/partner-webhook-deliveries',
@@ -287,6 +295,13 @@ describe('OpenAPI público da JRC', () => {
     );
     expect(document.paths).not.toHaveProperty('/v1/instances/{id}/deprovision');
     expect(serialized).not.toMatch(/Evolution|reconcileProvisioning|deprovisionInstance|lookupInstance/i);
+    for (const [path, method] of [
+      ['/v1/media-custody/receipts','post'],
+      ['/v1/media-custody/receipts/{id}','get'],
+      ['/v1/media-custody/receipts/{id}/retention','get'],
+      ['/v1/partner-webhook-deliveries/{id}/replay','post'],
+      ['/v1/partner-webhook-delivery-stats','get'],
+    ] as const) expect(document.paths[path]?.[method]?.security).toEqual([{jrcApiKeyAuth:[]}]);
   });
 
   it('declara autenticação, paginação, request id e respostas problem+json', async () => {
@@ -321,6 +336,10 @@ describe('OpenAPI público da JRC', () => {
       Pragma: { $ref: '#/components/headers/Pragma' },
     });
     expect(components.schemas).toHaveProperty('ProblemDetails');
+    expect(components.schemas?.['ProblemDetails']).toMatchObject({
+      additionalProperties: false,
+      properties: { correlationId: { type: 'string', format: 'uuid' } },
+    });
     expect(listInstances.responses?.['400']?.content?.['application/problem+json'])
       .toMatchObject({ schema: { $ref: '#/components/schemas/ProblemDetails' } });
     expect(document.components?.headers).toHaveProperty('XRequestId');
@@ -403,6 +422,24 @@ describe('OpenAPI público da JRC', () => {
     expect(document.paths['/v1/integrations/chatwoot/control/context']?.get?.security).toEqual([{ bearerAuth: [] }, { jrcApiKeyAuth: [] }]);
     expect(document.paths['/v1/integrations/chatwoot/control-credentials']?.post?.security).toEqual([{ bearerAuth: [] }]);
     expect(document.paths['/v1/integrations/chatwoot']?.get?.security).toEqual([{ bearerAuth: [] }]);
+  });
+
+  it('documents actual control failures and optional audit attribution without weakening campaign attribution', async () => {
+    const document = await createOpenApiDocument() as any;
+    const pair = document.paths['/v1/integrations/chatwoot/control/connections/{integrationId}/pair'].post;
+    for (const status of ['400', '401', '403', '404', '409', '502', '503']) {
+      expect(pair.responses[status]?.content['application/problem+json']).toBeDefined();
+    }
+    // Upstream 429 becomes 502; the public-ingress limiter excludes control routes.
+    for (const [path, methods] of Object.entries(document.paths) as Array<[string, any]>) {
+      if (path.startsWith('/v1/integrations/chatwoot/control/')) {
+        for (const operation of Object.values(methods) as any[]) expect(operation.responses['429'], path).toBeUndefined();
+      }
+    }
+    expect(pair.parameters).toContainEqual(expect.objectContaining({ name: 'X-JRC-External-Actor', in: 'header', required: false }));
+    const campaign = document.paths['/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents'].post;
+    expect(campaign.parameters.filter((p: any) => p.name.toLowerCase() === 'x-jrc-external-actor'))
+      .toEqual([expect.objectContaining({ required: true, schema: expect.objectContaining({ pattern: '^[1-9]\\d{0,15}$' }) })]);
   });
 
   it('documents NICO takeovers with only the bound service key accepted by their handlers', async () => {

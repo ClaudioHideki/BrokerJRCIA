@@ -10,6 +10,19 @@ export const PartnerTextRequestSchema = z.union([
 ]);
 export type PartnerTextRequest = z.infer<typeof PartnerTextRequestSchema>;
 
+export const PartnerMediaRequestSchema = z.union([
+  z.strictObject({ conversationId: z.uuid(), mediaId: z.uuid(), caption: z.string().max(1024).optional() }),
+  z.strictObject({ phoneNumber: z.string().regex(/^\+[1-9]\d{7,14}$/), mediaId: z.uuid(), caption: z.string().max(1024).optional() }),
+]);
+export type PartnerMediaRequest = z.infer<typeof PartnerMediaRequestSchema>;
+export const PartnerMediaMetadataSchema = z.strictObject({
+  id: z.uuid(), channelId: z.uuid(), status: z.enum(['READY', 'STORING', 'FAILED']),
+  kind: z.enum(['image', 'audio', 'video', 'document']), fileName: z.string().min(1).max(255),
+  mimeType: z.string().min(1).max(100), byteSize: z.number().int().positive().max(16 * 1024 * 1024),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/), errorCode: z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/).nullable().optional(),
+});
+export type PartnerMediaMetadata = z.infer<typeof PartnerMediaMetadataSchema>;
+
 export const QrOutboundObservationViewSchema = z.strictObject({
   id:z.uuid(),revision:z.number().int().positive(),blocking:z.boolean(),
   disposition:z.enum(['RECONCILE','ABANDONED']),
