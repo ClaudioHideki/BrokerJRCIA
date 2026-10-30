@@ -76,3 +76,17 @@ O usuário solicitou aplicar as mudanças e atualizar o servidor. Build local re
 - Ordem obrigatória: validar imagem na CI, registrar imagens atuais, aplicar migrations 0075–0077 pela imagem candidata, atualizar API/web/workers, conferir readiness e regressões. O serviço migrate usa profile maintenance e não roda automaticamente como dependência da API.
 - 0075 cria UNIQUE em mensagens e 0077 altera/backfill de deliveries: conferir volumes/locks e limitar tempo de espera. Rollback binário deve preservar schema aditivo, recibos e ledger; não apagar tabelas para voltar imagem.
 - B02 permanece pendente; a atualização não promete replay durável na origem Evolution nem homologação definitiva CCLX.
+
+## Gate SQL da publicação de 30/10/2026
+
+Candidata `eed920ca9344f6a63ffd0b3267ccaa5f65906b5d`, PR draft #5, workflow de imagens 40994546327. Build, 3.602 testes unitários (incluindo seis de PDF), bundle, submódulo, auditoria npm e fonte do Flow passaram. Integração: **1.505 testes aprovados e 21 falhos em 16 arquivos**, de 1.526 testes/153 arquivos. Nenhuma imagem foi publicada por esse run; storage e builds Docker foram corretamente interrompidos pelo gate.
+
+Causas confirmadas nos stacks e SQL:
+
+1. A sonda nova de prontidão fazia cast direto de `partner_webhook_endpoints` para regclass. Em bases antigas anteriores à tabela, PostgreSQL falhava ao analisar a query, antes de retornar false. Os três alvos da FK agora usam `to_regclass`, preservando a contagem obrigatória e os demais checks; os testes de upgrade existentes continuam exigindo false antes e true depois de migrar.
+2. A leitura idempotente de `media_custody_receipts` usava FOR SHARE, que exige UPDATE no PostgreSQL. O ledger deliberadamente só concede SELECT/INSERT. Removido somente esse lock de linha: o advisory lock transacional por tenant, locks das referências, unicidade, revalidação de autoridade e imutabilidade permanecem. Não foram ampliados grants. Os cinco testes SQL existentes cobrem replay concorrente, isolamento, integridade, revogação e imutabilidade.
+3. O catálogo esperado no teste geral de migrations omitia `media_custody_tenant` e `partner_replay_tenant`. Incluídos os dois nomes, com role jrc_app e comando ALL previstos nas migrations, sem enfraquecer a comparação exata.
+
+Pré-verificação do servidor: 2.463 mensagens (estimativa pg_stat), zero partner deliveries, zero locks esperando e zero transações maiores que 30 segundos. As 99 variáveis existentes foram conferidas em memória, sem gravar segredos em arquivos. Environment, containers e banco produtivo permanecem sem alterações desta publicação enquanto os gates são corrigidos e repetidos.
+
+Verificação das correções: build e typecheck exit 0; revisão independente dos três arquivos sem bloqueador adicional, 19 testes focados aprovados. A regressão local completa teve 458 arquivos aprovados e cinco suítes afetadas por spawn EPERM do Git/OpenSSL no sandbox (9 falhas e 4 skips). Reexecução exclusiva dessas cinco suítes fora do sandbox: **5 arquivos / 41 testes aprovados, zero falhas**. Assim, os 463 arquivos/3.602 casos estão cobertos pelas duas execuções; os resultados SQL ainda dependem da nova CI. Nenhum grant foi ampliado e nenhuma migration foi reescrita.

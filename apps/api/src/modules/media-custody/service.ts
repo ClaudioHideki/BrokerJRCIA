@@ -50,8 +50,10 @@ export function createMediaCustodyService(options:{transact<T>(org:string,work:O
    await tx.query("SELECT pg_advisory_xact_lock(hashtextextended('media-custody:'||$1,0))",[org]);
    await validateReference(tx,org,key,input);
    const requestHash=createHash('sha256').update(JSON.stringify(input)).digest('hex');
+   // Receipts are immutable and writes are serialized by the tenant advisory lock.
+   // A row-locking SELECT would require UPDATE, intentionally denied on this ledger.
    const existing=(await tx.query<Row>(`SELECT ${columns} FROM media_custody_receipts WHERE organization_id=$1 AND
-    (idempotency_key=$2 OR (endpoint_id=$3 AND client_receipt_id=$4) OR (endpoint_id=$3 AND message_id=$5 AND media_id=$6)) FOR SHARE`,[org,idempotencyKey,input.endpointId,input.clientReceiptId,input.messageId,input.mediaId])).rows;
+    (idempotency_key=$2 OR (endpoint_id=$3 AND client_receipt_id=$4) OR (endpoint_id=$3 AND message_id=$5 AND media_id=$6))`,[org,idempotencyKey,input.endpointId,input.clientReceiptId,input.messageId,input.mediaId])).rows;
    await recheckCurrentPartnerKey(tx,org,key,scopes);
    if(existing.length){
     if(existing.length!==1||existing[0]!.requestHash!==requestHash||existing[0]!.idempotencyKey!==idempotencyKey)throw new MediaCustodyError('MEDIA_CUSTODY_CONFLICT',409);

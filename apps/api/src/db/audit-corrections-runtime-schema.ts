@@ -58,4 +58,4 @@ export const auditCorrectionsRuntimeSql = `
  AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass('public.messaging_messages')
   AND c.conname='messaging_messages_custody_reference_unique' AND c.contype='u' AND c.convalidated)
  AND (SELECT count(*)=3 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass('public.media_custody_receipts')
-  AND c.contype='f' AND c.convalidated AND c.confrelid IN ('public.messaging_messages'::regclass,'public.messaging_media'::regclass,'public.partner_webhook_endpoints'::regclass))`;
+  AND c.contype='f' AND c.convalidated AND c.confrelid IN (pg_catalog.to_regclass('public.messaging_messages'),pg_catalog.to_regclass('public.messaging_media'),pg_catalog.to_regclass('public.partner_webhook_endpoints')))`;
