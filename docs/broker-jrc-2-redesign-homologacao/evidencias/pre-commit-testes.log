@@ -1,0 +1,19 @@
+
+> @jrc/whatsapp-broker@0.0.0 test
+> vitest run apps/web/src/pages/OperationalHealth.test.tsx apps/web/src/operations/health-model.test.ts apps/web/src/broker/demo-health.test.ts apps/web/src/app/App.test.tsx packages/ui/tests/tokens.test.ts apps/api/tests/unit/observability.test.ts --maxWorkers=2
+
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ Test Files  6 passed (6)
+      Tests  32 passed (32)
+   Start at  10:00:22
+   Duration  10.11s (transform 5.65s, setup 3.45s, import 6.78s, tests 3.24s, environment 4.21s)
+
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice

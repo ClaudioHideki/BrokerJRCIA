@@ -1,0 +1,17 @@
+2026-10-30T03:29:07.2385494Z  Test Files  2 passed (2)
+2026-10-30T03:29:07.2385971Z       Tests  34 passed (34)
+2026-10-30T03:31:14.9690286Z  Test Files  462 passed (462)
+2026-10-30T03:31:14.9702317Z       Tests  3596 passed (3596)
+2026-10-30T03:32:17.2555601Z  Test Files  1 passed (1)
+2026-10-30T03:32:17.2555964Z       Tests  6 passed (6)
+2026-10-30T03:40:44.6794607Z  Test Files  153 passed (153)
+2026-10-30T03:40:44.6795138Z       Tests  1526 passed (1526)
+2026-10-30T03:40:53.6215743Z  Test Files  1 passed (1)
+2026-10-30T03:40:53.6216127Z       Tests  5 passed (5)
+2026-10-30T03:41:30.1673970Z #53 exporting manifest list sha256:fb54ad27beeb3e7777703959e08a13e0dd5da8b6f101f6d5e56d711d1af484e5 done
+2026-10-30T03:42:12.0694469Z #39 exporting manifest list sha256:1485c277f2e72d2b85e346d75d77dc5775c262a7cb389ffff16c39fb891059c4 done
+2026-10-30T03:42:22.6250407Z Pushing signature to: ghcr.io/claudiohideki/brokerjrcia-api
+2026-10-30T03:42:26.0138911Z Pushing signature to: ghcr.io/claudiohideki/brokerjrcia-web
+2026-10-30T03:42:28.8194797Z Artifact jrc-image-release-d1b66a56fe6d4f9202969784301abdf61490db45.zip successfully finalized. Artifact ID 12952536968
+2026-10-30T03:42:30.1938455Z Artifact successfully finalized (12952373267)
+2026-10-30T03:42:31.6838028Z Artifact successfully finalized (12952985104)

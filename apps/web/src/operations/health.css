@@ -1,0 +1,41 @@
+.ops-health { color: var(--jrc-text); background: var(--jrc-surface-muted); padding: var(--jrc-space-xl); border-radius: var(--jrc-radius-xl); font-family: var(--jrc-font-family-sans); line-height: var(--jrc-line-height-normal); }
+.ops-health[data-theme] h1, .ops-health[data-theme] h2, .ops-health[data-theme] h3 { color: var(--jrc-heading); margin: 0; }
+.ops-health[data-theme] h1 { font-size: 1.85rem; }
+.ops-health[data-theme] h2 { font-size: 1.2rem; }
+.ops-health[data-theme] h3 { font-size: 1rem; }
+.ops-health p { margin: .5rem 0; }
+.ops-heading, .ops-summary, .ops-card header, .ops-alert-list li { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--jrc-space-lg); }
+.ops-heading { flex-wrap: wrap; }
+.ops-heading > div:first-child { flex: 1 1 22rem; }
+.ops-eyebrow { font-size: .72rem; font-weight: 700; letter-spacing: .09em; }
+.ops-actions { display: flex; flex-wrap: wrap; gap: var(--jrc-space-sm); }
+.ops-health button { font: inherit; font-size: .85rem; font-weight: 700; color: var(--jrc-text); border: 1px solid var(--jrc-border); border-radius: var(--jrc-radius-md); background: var(--jrc-surface); padding: .6rem .85rem; min-height: 44px; cursor: pointer; }
+.ops-health button:disabled { opacity: var(--jrc-disabled-opacity); cursor: wait; }
+.ops-health button[aria-pressed=true] { outline: 2px solid var(--jrc-focus); }
+.ops-health :is(button, a, summary):focus-visible { outline: 3px solid var(--jrc-focus); outline-offset: 3px; }
+.ops-caption, .ops-description { color: var(--jrc-text-muted); font-size: .85rem; }
+.ops-summary { padding: var(--jrc-space-xl); border-radius: var(--jrc-radius-lg); margin: var(--jrc-space-lg) 0 var(--jrc-space-wide); flex-wrap: wrap; border: 1px solid currentColor; }
+.ops-health[data-theme] .ops-summary h2 { color: inherit; font-size: 1.5rem; }
+.ops-group { margin-top: var(--jrc-space-wide); }
+.ops-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: var(--jrc-space-lg); margin-top: var(--jrc-space-lg); }
+.ops-card { padding: var(--jrc-space-card); background: var(--jrc-surface); border: 1px solid var(--jrc-border); border-radius: var(--jrc-radius-lg); min-width: 0; display: flex; flex-direction: column; gap: .5rem; }
+.ops-card header { flex-wrap: wrap; gap: .5rem; }
+.ops-card > p:not(.ops-metric) { font-size: .85rem; color: var(--jrc-text-muted); }
+.ops-metric { font-size: 1.65rem; font-weight: 700; }
+.ops-metric span { font-size: .85rem; font-weight: 400; color: var(--jrc-text-muted); }
+.ops-badge { border-radius: var(--jrc-radius-pill); padding: .2rem .6rem; font-size: .75rem; font-weight: 700; display: inline-block; white-space: nowrap; }
+.ops-state--up { color: var(--jrc-state-success-text); background: var(--jrc-state-success-surface); }
+.ops-state--degraded { color: var(--jrc-state-warning-text); background: var(--jrc-state-warning-surface); }
+.ops-state--down { color: var(--jrc-state-danger-text); background: var(--jrc-state-danger-surface); }
+.ops-state--unknown { color: var(--jrc-state-neutral-text); background: var(--jrc-state-neutral-surface); }
+.ops-health a { color: var(--jrc-focus); font-weight: 700; text-underline-offset: 3px; font-size: .85rem; }
+.ops-health details { border-top: 1px solid var(--jrc-border); margin-top: auto; padding-top: .65rem; font-size: .8rem; color: var(--jrc-text-muted); }
+.ops-health summary { cursor: pointer; padding: .4rem 0; }
+.ops-health code { display: inline-block; overflow-wrap: anywhere; max-width: 100%; font-size: .75rem; }
+.ops-alert-list { list-style: none; padding: 0; }
+.ops-alert-list li { flex-wrap: wrap; padding: var(--jrc-space-card); background: var(--jrc-surface); border: 1px solid var(--jrc-border); border-radius: var(--jrc-radius-lg); margin-top: .75rem; font-size: .85rem; }
+.ops-alert-list li > div { flex: 1 1 22rem; min-width: 0; }
+.ops-alert-list .ops-badge { margin-left: .75rem; }
+.ops-notice { padding: var(--jrc-space-lg); border: 1px solid var(--jrc-border); border-radius: var(--jrc-radius-md); }
+.ops-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 600px) { .ops-health { padding: var(--jrc-space-lg); } .ops-summary { padding: var(--jrc-space-lg); } .ops-health[data-theme] h1 { font-size: 1.5rem; } }

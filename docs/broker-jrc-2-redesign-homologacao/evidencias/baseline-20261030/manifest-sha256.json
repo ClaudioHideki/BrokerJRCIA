@@ -1,0 +1,112 @@
+[
+  {
+    "file": "benchmark-plan.json",
+    "bytes": 1149,
+    "sha256": "DFBA2ECE086AD611C8FC9217037C3252DA051E613563BC2FA03A7DCB497E8DBD"
+  },
+  {
+    "file": "ci-verificado.log",
+    "bytes": 1317,
+    "sha256": "21EB298A7DFF4F314FE73E57BED8BE07661AC60B7C65983B547A09949FB35182"
+  },
+  {
+    "file": "code-audit.md",
+    "bytes": 17107,
+    "sha256": "66BF36F1CE556B078829D7FADA7EFC19D0BB814FA09A47AD4EFC06432E79467A"
+  },
+  {
+    "file": "code-focused-tests.exit",
+    "bytes": 3,
+    "sha256": "13BF7B3039C63BF5A50491FA3CFD8EB4E699D1BA1436315AEF9CBE5711530354"
+  },
+  {
+    "file": "code-focused-tests.log",
+    "bytes": 9368,
+    "sha256": "A4AAD6AE3AD1F9F20034C91B014903818DC08519BC00506E1A7F4F558072A33A"
+  },
+  {
+    "file": "diagnostico-readonly.sql",
+    "bytes": 2892,
+    "sha256": "63084E9CDF2A42C4F725762381E320A3B8645D0D4073919FD9043134E000ED8B"
+  },
+  {
+    "file": "infra-release.md",
+    "bytes": 16467,
+    "sha256": "0AF0AF3556EC407A62769FD6D0852EAE9CFACA84D6676E892F55026934FB6DD8"
+  },
+  {
+    "file": "matriz-pendencias.csv",
+    "bytes": 4253,
+    "sha256": "54BEED909DA74F249C4DA56F4B2CD59BA3B9DB26F4E25348E545FF3B7AC81F41"
+  },
+  {
+    "file": "RELATORIO-CONSOLIDADO.md",
+    "bytes": 19502,
+    "sha256": "8014D94A55ED88D43F9ECBDCA235BAA8A5F9CB6A001D3BB5A107E3D2A486ED5F"
+  },
+  {
+    "file": "servidor-evidencias.md",
+    "bytes": 4525,
+    "sha256": "3850583C4C42536087DD875966CC11C06FCC08B9DF482BDD3CE311FDE71D64A3"
+  },
+  {
+    "file": "simulator-benchmark.md",
+    "bytes": 18010,
+    "sha256": "9DB330FDB5343B2A5D30177CBC5FF2B387B05728A845ED50AD06F6C488D7AEEA"
+  },
+  {
+    "file": "simulator-final-review.log",
+    "bytes": 3072,
+    "sha256": "E2832FBCC963FCF4EA867D7346FC264327E53A635D1A62BE3EBFE2FD043EFDA2"
+  },
+  {
+    "file": "simulator-manifest.json",
+    "bytes": 2480,
+    "sha256": "4A2BEFE8AC263F06131180C2DF62888CA71D44BA86100EBF0AB8998D8ED373D7"
+  },
+  {
+    "file": "simulator-smoke.json",
+    "bytes": 477,
+    "sha256": "06B8D33BBF36EFB87400B30F701215EED6C09111162C7E5725FA4D3E8F572400"
+  },
+  {
+    "file": "simulator-tests-green.log",
+    "bytes": 3066,
+    "sha256": "63C8696EDAFAFD1D37311307DF636D3AE30FB54AF2853BBEF9A84A3F5F0CE68A"
+  },
+  {
+    "file": "simulador/cclx-receiver.mjs",
+    "bytes": 16863,
+    "sha256": "97A6BD8508CA5E7CD6D2B300E4FCD1196A6B3FCF2F77EBB26C65BFA337E453DE"
+  },
+  {
+    "file": "simulador/cclx-receiver.test.mjs",
+    "bytes": 11852,
+    "sha256": "7C20737EEE3736F213F694FACF3F61B15B19FE60AE6B084DDEABBEDC7148C4FB"
+  },
+  {
+    "file": "simulador/extended.test.mjs",
+    "bytes": 5224,
+    "sha256": "681B83E7ECB0653AEDB052F67EEAC71D6CBCE9263BE4140EC5EBC345D55056A4"
+  },
+  {
+    "file": "simulador/README.md",
+    "bytes": 4980,
+    "sha256": "C448A7E1C0B982C8BB87423C6493F9DADE9AB5EFA9B859B70F9A836BBB2AAA34"
+  },
+  {
+    "file": "simulador/run-safe-tests.mjs",
+    "bytes": 939,
+    "sha256": "BA811D3E7D4934994FA4DD6A48A41708BED15DB42DCC9D63B2B4FE7939F0A8F4"
+  },
+  {
+    "file": "simulador/scenario.mjs",
+    "bytes": 5031,
+    "sha256": "701E96D1933EA95F9A997A30CD87B2F2DC208E19D78B816086DCFFC0B33A6798"
+  },
+  {
+    "file": "simulador/scenario.test.mjs",
+    "bytes": 2175,
+    "sha256": "E5E21D76A519A7669C2D0BD5805E7D210DAD76EEEB46356026AB868AAA266949"
+  }
+]

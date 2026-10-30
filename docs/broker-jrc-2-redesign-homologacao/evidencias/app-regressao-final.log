@@ -1,0 +1,9 @@
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  09:56:20
+   Duration  17.37s (transform 8.67s, setup 887ms, import 9.35s, tests 3.27s, environment 3.00s)

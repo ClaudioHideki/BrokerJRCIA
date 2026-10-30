@@ -55,8 +55,8 @@ describe('Console JRC', () => {
 
     expect(await screen.findByRole('heading', { name: 'Saúde operacional' })).toBeVisible();
     expect(screen.getByRole('link', { name: 'Saúde operacional' })).toHaveAttribute('href', '/operations/health');
-    await waitFor(() => expect(api.request).toHaveBeenCalledWith('/v1/operations/health'));
-    expect(await screen.findByText('Nenhum alerta operacional ativo.')).toBeVisible();
+    await waitFor(() => expect(api.request).toHaveBeenCalledWith('/v1/operations/health', { signal: expect.any(AbortSignal) }));
+    expect(await screen.findByText('Nenhum alerta reportado nesta consulta.')).toBeVisible();
   });
 
   it('orienta a equipe para o login administrativo separado', async () => {

@@ -1,0 +1,46 @@
+[
+  {
+    "file": "C:\\Users\\DEV02\\Documents\\ChatGPT\\New project\\output\\broker-reconciliacao-20261030\\simulador\\cclx-receiver.mjs",
+    "sha256": "97A6BD8508CA5E7CD6D2B300E4FCD1196A6B3FCF2F77EBB26C65BFA337E453DE"
+  },
+  {
+    "file": "C:\\Users\\DEV02\\Documents\\ChatGPT\\New project\\output\\broker-reconciliacao-20261030\\simulador\\cclx-receiver.test.mjs",
+    "sha256": "7C20737EEE3736F213F694FACF3F61B15B19FE60AE6B084DDEABBEDC7148C4FB"
+  },
+  {
+    "file": "C:\\Users\\DEV02\\Documents\\ChatGPT\\New project\\output\\broker-reconciliacao-20261030\\simulador\\extended.test.mjs",
+    "sha256": "681B83E7ECB0653AEDB052F67EEAC71D6CBCE9263BE4140EC5EBC345D55056A4"
+  },
+  {
+    "file": "C:\\Users\\DEV02\\Documents\\ChatGPT\\New project\\output\\broker-reconciliacao-20261030\\simulador\\README.md",
+    "sha256": "C448A7E1C0B982C8BB87423C6493F9DADE9AB5EFA9B859B70F9A836BBB2AAA34"
+  },
+  {
+    "file": "C:\\Users\\DEV02\\Documents\\ChatGPT\\New project\\output\\broker-reconciliacao-20261030\\simulador\\run-safe-tests.mjs",
+    "sha256": "BA811D3E7D4934994FA4DD6A48A41708BED15DB42DCC9D63B2B4FE7939F0A8F4"
+  },
+  {
+    "file": "C:\\Users\\DEV02\\Documents\\ChatGPT\\New project\\output\\broker-reconciliacao-20261030\\simulador\\scenario.mjs",
+    "sha256": "701E96D1933EA95F9A997A30CD87B2F2DC208E19D78B816086DCFFC0B33A6798"
+  },
+  {
+    "file": "C:\\Users\\DEV02\\Documents\\ChatGPT\\New project\\output\\broker-reconciliacao-20261030\\simulador\\scenario.test.mjs",
+    "sha256": "E5E21D76A519A7669C2D0BD5805E7D210DAD76EEEB46356026AB868AAA266949"
+  },
+  {
+    "file": "C:\\Users\\DEV02\\Documents\\ChatGPT\\New project\\output\\broker-reconciliacao-20261030\\simulator-benchmark.md",
+    "sha256": "9DB330FDB5343B2A5D30177CBC5FF2B387B05728A845ED50AD06F6C488D7AEEA"
+  },
+  {
+    "file": "C:\\Users\\DEV02\\Documents\\ChatGPT\\New project\\output\\broker-reconciliacao-20261030\\simulator-tests-green.log",
+    "sha256": "63C8696EDAFAFD1D37311307DF636D3AE30FB54AF2853BBEF9A84A3F5F0CE68A"
+  },
+  {
+    "file": "C:\\Users\\DEV02\\Documents\\ChatGPT\\New project\\output\\broker-reconciliacao-20261030\\simulator-smoke.json",
+    "sha256": "06B8D33BBF36EFB87400B30F701215EED6C09111162C7E5725FA4D3E8F572400"
+  },
+  {
+    "file": "C:\\Users\\DEV02\\Documents\\ChatGPT\\New project\\output\\broker-reconciliacao-20261030\\benchmark-plan.json",
+    "sha256": "DFBA2ECE086AD611C8FC9217037C3252DA051E613563BC2FA03A7DCB497E8DBD"
+  }
+]

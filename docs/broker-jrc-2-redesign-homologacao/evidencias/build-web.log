@@ -1,0 +1,73 @@
+
+> @jrc/whatsapp-broker@0.0.0 build:web
+> npm --workspace @jrc/web run build
+
+
+> @jrc/web@0.0.0 build
+> vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+../../node_modules/zod/v4/core/util.js (400:0): A comment
+
+"// Wrapped in a `@__PURE__` IIFE: esbuild never tree-shakes a top-level initializer that contains a member access on `Number`, so the bare object literal survived into every bundle."
+
+in "../../node_modules/zod/v4/core/util.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+../../node_modules/zod/v4/core/regexes.js (74:0): A comment
+
+"/** Anchors a pattern source. The interpolation lives here rather than at the call site because
+ * esbuild will not drop a `@__PURE__` call whose own argument interpolates a variable, but it
+ * will drop `anchor(dateSource)`. Keeping it inline pinned `date` into every bundle. */"
+
+in "../../node_modules/zod/v4/core/regexes.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+✓ 309 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/documentation/NOTICE.txt                            0.06 kB │ gzip:   0.08 kB
+dist/index.html                                          0.62 kB │ gzip:   0.33 kB
+dist/embed.html                                          0.81 kB │ gzip:   0.37 kB
+dist/documentation/postman-environment.json              3.25 kB │ gzip:   0.44 kB
+dist/documentation/postman-events.json                   3.31 kB │ gzip:   0.94 kB
+dist/documentation/swagger-ui-bundle.js.LICENSE.txt      3.33 kB │ gzip:   1.33 kB
+dist/documentation/portal.js                             3.56 kB
+dist/documentation/postman-instances.json                4.09 kB │ gzip:   0.94 kB
+dist/documentation/postman-messaging.json                6.57 kB │ gzip:   1.34 kB
+dist/documentation/index.html                            6.78 kB │ gzip:   2.99 kB
+dist/documentation/postman-chatwoot.json                 9.33 kB │ gzip:   1.68 kB
+dist/documentation/LICENSE.txt                          11.36 kB │ gzip:   3.93 kB
+dist/documentation/postman-media.json                   13.07 kB │ gzip:   2.66 kB
+dist/documentation/guia-api-jrc.pdf                     22.25 kB
+dist/documentation/postman-control.json                 47.63 kB │ gzip:   4.93 kB
+dist/documentation/postman-poc.json                     55.60 kB │ gzip:   3.50 kB
+dist/documentation/openapi-events.json                  73.01 kB │ gzip:   4.14 kB
+dist/documentation/openapi-messaging.json              101.85 kB │ gzip:   7.02 kB
+dist/documentation/openapi-instances.json              104.45 kB │ gzip:   4.86 kB
+dist/documentation/openapi-chatwoot.json               208.36 kB │ gzip:  10.94 kB
+dist/documentation/swagger-ui-bundle.js              1,526.59 kB
+dist/assets/ChallengePanel-CGxnOWQA.css                  1.27 kB │ gzip:   0.59 kB
+dist/documentation/portal.css                            1.33 kB │ gzip:   0.65 kB
+dist/assets/App-CFLOYtVr.css                            74.52 kB │ gzip:  14.93 kB
+dist/documentation/swagger-ui.css                      178.94 kB │ gzip:  26.99 kB
+dist/assets/modulepreload-polyfill-B5Qt9EMX.js           0.71 kB │ gzip:   0.40 kB
+dist/assets/main-BZjD5xtU.js                             1.94 kB │ gzip:   1.06 kB
+dist/assets/index-ZPy6ftWH.js                            8.10 kB │ gzip:   3.09 kB
+dist/assets/main-wxNO7SIF.js                            10.40 kB │ gzip:   4.12 kB
+dist/assets/ChallengePanel-Day7P3IK.js                 165.47 kB │ gzip:  47.66 kB
+dist/assets/client-DpgfPZwB.js                         184.04 kB │ gzip:  57.63 kB
+dist/assets/App-CxYUm51r.js                            581.19 kB │ gzip: 165.26 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 8.94s
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice

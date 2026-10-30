@@ -1,0 +1,1049 @@
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > advances a versioned capture deadline using only a virtual elapsed event 1031ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > explains queued attendance blocked by a human instead of claiming a send failure 40ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > keeps publication separate from binding and offers the original box after publishing 311ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > discards a pending simulation when its clock is changed and preserves the new input 496ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > offers explicit partner messaging and webhook scopes without selecting them automatically 637ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > explains the public prefix, one-time secret and supported API usage 207ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > advances a virtual wait and preserves the ordered timeline when answering after it 664ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > labels a local handoff simulation without claiming an assignment at a central 246ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > lista, pagina e revoga com confirmação 244ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available start 167ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > revela o segredo uma vez, copia somente por ação e limpa ao fechar 248ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available message 172ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available input 227ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > informa falha do clipboard e permite cópia manual 292ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available menu 169ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available condition 199ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > limpa segredo no purge de tenant e Escape 327ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available switch 155ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > limpa formulário e metadados e recarrega a lista ao trocar de tenant 248ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > recarrega as chaves do tenant de origem quando a troca é rejeitada 198ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available variable 168ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > mantém OPERATOR sem acesso ao gerenciamento 66ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > mantém VIEWER sem acesso ao gerenciamento 64ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available data-set 200ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > preserva orientação e request ID quando a resposta de emissão pode ter sido perdida 167ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > mostra indisponibilidade e request ID ao falhar a listagem 76ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available data-rename 181ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available data-pick 168ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > mantém a chave e mostra request ID quando a revogação falha 148ms
+ ✓ apps/web/src/pages/ApiKeys.test.tsx > ApiKeysPage > indica chave revogada e não oferece nova revogação 90ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available data-merge 164ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available data-map 219ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available data-filter 202ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available json-parse 170ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available json-stringify 177ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available expression 161ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available http 194ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available ai-generate 209ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available ai-classify 192ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available ai-extract 193ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available ai-summarize 186ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available delay 202ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available subflow 228ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available handoff 222ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available end 241ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available media 238ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available schedule 166ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available tag 153ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available attribute 152ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > refreshes the remote attendance mode with the history without losing the draft or changing attendance 407ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available note 160ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available resolve 183ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > does not overwrite a confirmed human takeover with an older refresh response 239ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > opens a configuration form for available domain 165ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > keeps offline drafts visible and editable with an explicit publication pause 35ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > keeps confirmed human attendance when history was refreshed during the pending takeover 190ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > creates drafts while publication is paused and explains the capability separately 33ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > previews JSON automatically and lets the user cancel before creating an automation 46ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > persists a reviewed import only on confirmation and avoids persisting it twice if draft creation is retried 108ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > explains disabled automation runtime and prevents an import from being sent 31ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > does not apply a late history refresh to the next selected conversation 150ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > explains the separate explicit resume for the selected human conversation without writing on load 67ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > archives with confirmation and offers restore without deleting the definition 35ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > invalida os dois painéis de reconciliação após abandonar uma tentativa 145ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > identifica saída externa observada sem inventar agente no histórico 28ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > cancels unsaved edits and clears the local recovery copy 168ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > lists only real automations returned by the runtime 41ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > loads later automation pages without duplicating a definition seen in an earlier page 48ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > preserves the selected conversation and draft when the current channel is selected again (BOT) 93ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > preserves the selected conversation and draft when the current channel is selected again (HUMAN) 83ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > keeps the second claimed conversation open when the first lookup finishes later 119ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > does not expose the local queue until the initial channel load has completed 65ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > does not reopen an assigned conversation after a later explicit selection during lookup 97ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > keeps a local draft and exposes the request id when saving returns 5xx 234ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > moves a selected block with the keyboard for accessible canvas editing 149ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > does not reopen an assigned conversation after a later explicit selection during claim 94ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > opens the confirmed queue conversation and never retains the previous composer (listed=true) 130ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > opens the confirmed queue conversation and never retains the previous composer (listed=false) 108ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > rejects a channel response without ownerRevision before loading history or enabling mutations 12ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > locates the exact node in structured validation even when labels are duplicated 368ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > submete modelo de texto para revisão Meta e apresenta estado pendente 134ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > não apresenta aprovação presumida quando Graph confirmou apenas o ID 120ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > consulta a revisão oficial do template e distingue aprovação de ID ainda não observado 228ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > orienta consulta da lista após resposta incerta sem repetir a submissão automaticamente 189ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > oculta criação de template para OPERATOR 70ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > oculta criação de template para VIEWER 55ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > não oferece criação de template para caixa QR 40ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > shows the honest empty state when no Meta channel is configured 20ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > loads channels, templates, conversations, and ordered message history 138ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > sends ordered BODY variables only for a supported approved template 144ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > sends an approved fixed BODY without variable inputs 79ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > does not enable sending when no approved template exists 78ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > configures a three-team URA through the catalog and labels handoff as simulation only 1288ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > lets an operator assume a bot conversation through the mode endpoint 81ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > uses only the JRC automation journey for OWNER 68ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > uses only the JRC automation journey for ADMIN 52ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > uses only the JRC automation journey for OPERATOR 60ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > uses only the JRC automation journey for VIEWER 37ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > keeps viewer access read-only 45ms
+ ✓ apps/web/src/pages/Messaging.test.tsx > MessagingPage > aborts pending work and clears conversation state on tenant purge 69ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > Automation Studio > continues a menu simulation using the conversation transcript 348ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > shows a committed local queue receipt without claiming confirmation by a central 32ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > keeps a PENDING local handoff diagnosis independent of a central before any receipt exists 52ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > keeps a FAILED local handoff diagnosis independent of a central before any receipt exists 22ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > keeps a UNKNOWN local handoff diagnosis independent of a central before any receipt exists 20ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > cancels a queued execution only after confirmation and refreshes its status 34ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > directs a handed-off conversation to its mode control instead of resuming a terminal execution 25ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > keeps uncertain handoffs read-only while preserving manual reconciliation for other effects 125ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > shows action-required and pending handoff states without displaying raw remote errors 31ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > shows the safe local target diagnostic LOCAL_AGENT_UNAVAILABLE 23ms
+ ✓ apps/web/src/pages/AutomationStudio.test.tsx > shows the safe local target diagnostic LOCAL_TEAM_EMPTY 24ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > permite recuperar um novo QR quando o motor permanece conectando após recarregar 413ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > explica a falha de provisionamento sem oferecer pareamento indisponível 156ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > exige número no modo código e limpa o número ao voltar para QR 283ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > consulta manualmente o provider mesmo quando o estado local é terminal 164ms
+ ✓ apps/web/src/pages/Connections.test.tsx > ConnectionsPage > filters loaded connections by name and status without claiming a global search 811ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > após reload acompanha AWAITING_ACTION até o estado terminal CONNECTED 116ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > após reload acompanha PROVISIONING até o estado terminal CREATED 139ms
+ ✓ apps/web/src/pages/Connections.test.tsx > ConnectionsPage > mostra loading, vazio e não inventa total global 136ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > após reload acompanha CONNECTING até o estado terminal CONNECTED 167ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > remove o erro transitório quando um polling posterior se recupera 122ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > mostra QR PNG validado sem persistir o desafio 104ms
+ ✓ apps/web/src/pages/Connections.test.tsx > ConnectionsPage > lista, pagina sem duplicar e mantém o cursor opaco 466ms
+ ✓ apps/web/src/pages/Connections.test.tsx > ConnectionsPage > mostra erro normalizado e request ID para suporte 59ms
+ ✓ apps/web/src/pages/Connections.test.tsx > ConnectionsPage > mostra o estado proibido recebido do servidor 52ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > renderiza pairing code somente como texto e limpa em nova intenção 163ms
+ ✓ apps/web/src/pages/Connections.test.tsx > ConnectionsPage > remove mutações para VIEWER 125ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > não transforma REDIRECT/EMBEDDED_SIGNUP em navegação 175ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > explica desafio perdido após reload e mantém VIEWER somente leitura 103ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > trata ausência 404 sem revelar detalhes internos 69ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > confirma desconexão e apresenta o novo estado 122ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > remove desafio e pairing, e recarrega o detalhe ao trocar de tenant 254ms
+ ✓ apps/web/src/pages/Connections.test.tsx > ConnectionsPage > limpa a lista anterior e recarrega conexões ao trocar de tenant 591ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > recarrega o detalhe do tenant de origem quando a troca é rejeitada 112ms
+ ✓ apps/web/src/pages/Connections.test.tsx > ConnectionsPage > recarrega o tenant de origem quando a troca é rejeitada após o purge 315ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > reutiliza a chave de connect incerto e gera outra após editar o pareamento 242ms
+ ✓ apps/web/src/pages/Connections.test.tsx > NewConnectionPage > descobre conta Baileys, cria com intenção em memória e abre o detalhe 159ms
+ ✓ apps/web/src/pages/Connections.test.tsx > NewConnectionPage > bloqueia criação sem provider account 80ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > gera nova intenção após status manual comprovar encerramento da tentativa incerta 194ms
+ ✓ apps/web/src/pages/ConnectionDetail.test.tsx > ConnectionDetailPage > reutiliza a chave de disconnect após falha de rede incerta 126ms
+ ✓ apps/web/src/pages/Connections.test.tsx > NewConnectionPage > limpa o formulário e recarrega provider accounts ao trocar de tenant 162ms
+ ✓ apps/web/src/pages/Connections.test.tsx > NewConnectionPage > recarrega as contas do tenant de origem quando a troca é rejeitada 148ms
+ ✓ apps/web/src/pages/Connections.test.tsx > NewConnectionPage > mostra indisponibilidade de rede ao descobrir provider accounts 66ms
+ ✓ apps/web/src/pages/Connections.test.tsx > NewConnectionPage > reutiliza a chave em resposta incerta e gera outra após mudar a intenção 339ms
+ ✓ apps/web/src/pages/Platform.test.tsx > uses email and password without an authenticator when the server enables the local mode 356ms
+ ✓ apps/web/src/pages/Platform.test.tsx > requires a separate platform login and authenticator code 63ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > provides keyboard-accessible areas and keeps publication, binding and the real test in order 877ms
+ ✓ apps/web/src/pages/Platform.test.tsx > explica o código temporário e orienta quando a chave de matrícula é digitada no campo 74ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > offers publication in Flow when no published version exists 344ms
+ ✓ apps/web/src/pages/Platform.test.tsx > does not restore an old operator company list after logout and another login 373ms
+ ✓ apps/web/src/pages/Platform.test.tsx > support can inspect companies but cannot edit or create them 307ms
+ ✓ apps/web/src/pages/Platform.test.tsx > shows the sanitized correlation reference when the company list fails 86ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > requires a selection and keeps the current owner revision in the binding request 520ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > keeps transport DISCONNECTED and binding undefined visible in their areas without claiming delivery 303ms
+ ✓ apps/web/src/pages/Platform.test.tsx > loads later company pages so a tenant beyond the first page remains manageable 173ms
+ ✓ apps/web/src/pages/Platform.test.tsx > opens the executive admin shell with real company totals and dedicated navigation 320ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > keeps transport CONNECTED and binding undefined visible in their areas without claiming delivery 202ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > keeps transport CONNECTED and binding undefined visible in their areas without claiming delivery 213ms
+ ✓ apps/web/src/pages/Platform.test.tsx > saves company status without replacing its commercial assignment 407ms
+ ✓ apps/web/src/pages/Platform.test.tsx > shows an unavailable state instead of zero companies when loading fails 97ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > keeps transport CONNECTED and binding PAUSED visible in their areas without claiming delivery 239ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > keeps transport CONNECTED and binding ACTIVE visible in their areas without claiming delivery 229ms
+ ✓ apps/web/src/pages/Platform.test.tsx > does not mix company users when a previous inspection finishes late 343ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > withholds binding changes and offers a read-only refresh after failure 239ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > does not turn a delayed binding into an empty binding or allow binding changes 306ms
+ ✓ apps/web/src/pages/Platform.test.tsx > preserves support permissions in every company tab 331ms
+ ✓ apps/web/src/pages/Platform.test.tsx > creates a company with its owner and limits using the audited admin endpoint 416ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > blocks changes to an earlier binding after refresh fails and restores controls only after a current read 488ms
+ ✓ apps/web/src/pages/Platform.test.tsx > saves a membership for the selected company and clears the password field 424ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > makes catalog failure actionable and does not render a secret or a false empty catalog 562ms
+ ✓ apps/web/src/pages/Platform.test.tsx > opens the mobile navigation with keyboard focus and restores it on Escape 549ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > explains who can publish and bind for OPERATOR without presenting mutation controls 463ms
+ ✓ apps/web/src/pages/Platform.test.tsx > resets an existing user globally from /jrc/usuarios with the staff session, CSRF and a fixed audit reason 608ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > explains who can publish and bind for VIEWER without presenting mutation controls 267ms
+ ✓ apps/web/src/pages/Platform.test.tsx > hides global password reset from support on /jrc/usuarios 216ms
+ ✓ apps/web/src/pages/BotSetupJourney.test.tsx > preserves the selected box while navigating to an existing or new automation 322ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > previews the global identity and every company, including disabled memberships and companies 1762ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > does not expose the action to support or when the admin action is disabled 408ms
+ ✓ apps/web/src/broker/pages.test.tsx > mostra indicadores do servidor e refaz a consulta ao trocar o período 2705ms
+ ✓ apps/web/src/broker/pages.test.tsx > uma falha de indicadores não vira zeros ou gráfico fictício 752ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > requires the exact confirmed email, matching passwords, and the existing 12–256 character policy 1438ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > submits the preview token once, clears sensitive fields immediately, and reports verified success 1026ms
+ ✓ apps/web/src/broker/pages.test.tsx > limpa indicadores na troca de empresa e ignora resposta antiga atrasada 1563ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > clears the form on cancel and restores focus; reopening starts with a fresh preview 1443ms
+ ✓ apps/web/src/broker/pages.test.tsx > apresenta os dois canais JRC sem expor os motores técnicos ao cliente 1264ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > ignores preview responses from a dismissed dialog 614ms
+ ✓ apps/web/src/broker/pages.test.tsx > JRC Brain distingue diagnóstico por regras de uma IA generativa 998ms
+ ✓ apps/web/src/broker/pages.test.tsx > VIEWER não acessa o assistente de criação em massa 291ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > clears the dialog on tab changes, company changes, and loss of superadmin access 1526ms
+ ✓ apps/web/src/broker/pages.test.tsx > cria somente após revisão explícita e para em resultado incerto 2315ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > requires a new preview and clears the password after PASSWORD_RESET_PREVIEW_CHANGED 1904ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > requires a new preview and clears the password after PASSWORD_RESET_PREVIEW_EXPIRED 2033ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > does not claim success or replay after an uncertain response 1028ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > rejects a preview for another user rather than enabling a reset 162ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > keeps keyboard focus inside the dialog and supports Escape while the preview is loading 351ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > ignores the first effect response when StrictMode remounts the dialog 390ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > rejects malformed success responses and never shows an unverified success 353ms
+ ✓ apps/web/src/platform/CompanyWorkspace.password-reset.test.tsx > global user password reset > ignores a late successful mutation after dismissal and company navigation 744ms
+ ✓ apps/web/src/automations/node-editors/MenuEditor.test.tsx > visual menu configuration > reorders display without renumbering choices or changing branch identities 1113ms
+ ✓ apps/web/src/automations/node-editors/MenuEditor.test.tsx > visual menu configuration > removes only the branch belonging to the removed option and keeps at least two options 226ms
+ ✓ apps/web/src/automations/node-editors/MenuEditor.test.tsx > visual menu configuration > changes a choice number atomically with its connection and disallows duplicate numbers 1235ms
+ ✓ apps/web/src/automations/node-editors/MenuEditor.test.tsx > visual menu configuration > adds an unused number and stops at the supported ten choices 1835ms
+ ✓ apps/web/src/automations/node-editors/MenuEditor.test.tsx > visual menu configuration > keeps keyboard focus on the renamed choice number 135ms
+ ✓ apps/web/src/automations/node-editors/MenuEditor.test.tsx > visual menu configuration > preserves invalid imported entries until explicitly repaired and identifies a missing label 274ms
+ ✓ apps/web/src/automations/node-editors/MenuEditor.test.tsx > visual menu configuration > disables configuration and mutations for a reader 131ms
+ ✓ apps/web/src/automations/node-editors/DataNodeEditor.test.tsx > P3 typed data inspector in canonical canvas > builds an object with typed values using fields, without a JSON textarea 1458ms
+ ✓ apps/web/src/automations/node-editors/DataNodeEditor.test.tsx > P3 typed data inspector in canonical canvas > offers references from typed outputs and keeps a dotted variable key intact 355ms
+ ✓ apps/web/src/automations/node-editors/DataNodeEditor.test.tsx > P3 typed data inspector in canonical canvas > associates unsafe destination diagnostics with fields and displays two typed ports 577ms
+ ✓ apps/web/src/automations/node-editors/DataNodeEditor.test.tsx > P3 typed data inspector in canonical canvas > uses an operation selector for expressions and never asks for executable text 479ms
+ ✓ apps/web/src/automations/node-editors/DataNodeEditor.test.tsx > P3 typed data inspector in canonical canvas > keeps configuration controls disabled and does not mutate a historical graph on render 303ms
+ ✓ apps/web/src/automations/node-editors/DataNodeEditor.test.tsx > P3 typed data inspector in canonical canvas > preserves legacy next ports and configuration when selecting and renaming the block 247ms
+ ✓ apps/web/src/automations/node-editors/DataNodeEditor.test.tsx > P3 typed data inspector in canonical canvas > reorders and removes typed list values without coercing zero or false 600ms
+ ✓ apps/web/src/automations/node-editors/DataNodeEditor.test.tsx > P3 typed data inspector in canonical canvas > refuses duplicate object field names rather than overwriting their value 187ms
+ ✓ apps/web/src/automations/node-editors/DataNodeEditor.test.tsx > P3 typed data inspector in canonical canvas > keeps an empty numeric draft invalid rather than silently storing zero or null 337ms
+ ✓ apps/web/src/automations/node-editors/DataNodeEditor.test.tsx > P3 typed data inspector in canonical canvas > configures a filter with a nested field and typed comparison value 288ms
+ ✓ apps/web/src/automations/node-editors/DataNodeEditor.test.tsx > P3 typed data inspector in canonical canvas > associates an invalid custom reference with the actual text field 219ms
+ ✓ apps/web/src/layout/navigation.test.tsx > agrupa os destinos reais e distingue configurações dos limites da empresa 1395ms
+ ✓ apps/web/src/layout/navigation.test.tsx > OPERATOR mantém leitura permitida sem atalho de gestão de chaves 553ms
+ ✓ apps/web/src/layout/navigation.test.tsx > VIEWER mantém leitura permitida sem atalho de gestão de chaves 764ms
+ ✓ apps/web/src/layout/navigation.test.tsx > pesquisa páginas por sinônimo sem acentos e informa ausência de resultados 717ms
+ ✓ apps/web/src/layout/navigation.test.tsx > recolhe uma seção mantendo seus rótulos descobríveis e restaura os links 644ms
+ ✓ apps/web/src/layout/navigation.test.tsx > preserva deep link restrito com orientação sem consultar chaves 139ms
+ ✓ apps/web/src/layout/navigation.test.tsx > ao reabrir no mobile foca o primeiro destino visível quando a primeira seção foi recolhida 594ms
+ ✓ apps/web/src/layout/navigation.test.tsx > busca sem resultados mantém foco acessível ao reabrir e ao limpar 364ms
+ ✓ apps/web/src/layout/navigation.test.tsx > does not erase the first mobile menu action with a delayed initial tenant reset 166ms
+ ✓ apps/web/src/connections/components/InstanceWorkspace.test.tsx > instance workspace > shows real profile and distinguishes zero from unknown counts 1887ms
+ ✓ apps/web/src/connections/components/InstanceWorkspace.test.tsx > instance workspace > saves only explicit settings changes and preserves the rejection message 1168ms
+ ✓ apps/web/src/connections/components/InstanceWorkspace.test.tsx > instance workspace > keeps settings read only for operators 419ms
+ ✓ apps/web/src/connections/components/InstanceWorkspace.test.tsx > instance workspace > does not claim a failed save succeeded or change the stored configuration 526ms
+ ✓ apps/web/src/connections/components/InstanceWorkspace.test.tsx > instance workspace > clears profile on tenant purge and rejects a late response 182ms
+ ✓ apps/web/src/connections/components/InstanceWorkspace.test.tsx > instance workspace > handles unavailable workspace without breaking connection controls 191ms
+ ✓ apps/web/src/connections/components/InstanceWorkspace.test.tsx > instance workspace > shows real operations and truthful existing integration links 374ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical connection workspace areas > opens a compact overview using the provider instance ID without loading setup forms 1567ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical connection workspace areas > keeps all six WhatsApp settings and an unsaved draft across areas, then persists only an explicit save 2091ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical connection workspace areas > keeps WhatsApp settings read only for OPERATOR 378ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical connection workspace areas > keeps WhatsApp settings read only for VIEWER 411ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical connection workspace areas > keeps META away from QR workspace and settings endpoints 425ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical connection workspace areas > keeps CENTRAL away from QR workspace and settings endpoints 331ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical connection workspace areas > loads Flow only on request and binds only the selected published version with the current owner revision 245ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical pairing status recovery > reconciles a reloaded PAIRING channel without a QR challenge or another pairing POST 66ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical pairing status recovery > follows a pending NONE pairing response using GET only after the deliberate POST 82ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical pairing status recovery > keeps one status request in flight and stops after tenant purge 68ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical pairing status recovery > keeps one status request in flight and stops after pagehide 47ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical pairing status recovery > keeps one status request in flight and stops after unmount 15ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical pairing status recovery > checks a pending NONE result once when the canonical channel is already disconnected 97ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical pairing status recovery > pauses while hidden and resumes with a GET when visible 93ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical pairing status recovery > stops automatic reconciliation after HTTP 401 57ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical pairing status recovery > stops automatic reconciliation after HTTP 403 54ms
+ ✓ apps/web/src/pages/ChannelDetail.test.tsx > canonical pairing status recovery > stops automatic reconciliation after HTTP 404 35ms
+ ✓ apps/web/src/pages/Channels.test.tsx > canonical channels UI > queries groups with the messaging channel scope when the QR instance has a different ID 1378ms
+ ✓ apps/web/src/pages/Channels.test.tsx > canonical channels UI > preserves the chosen automation when the initial binding response arrives later 1070ms
+ ✓ apps/web/src/pages/Channels.test.tsx > canonical channels UI > shows the request ID when the inbox list is unavailable so support can trace the failure 228ms
+ ✓ apps/web/src/pages/Channels.test.tsx > canonical channels UI > shows four independent states and keeps legacy list URL as a redirect 434ms
+ × apps/web/src/app/App.test.tsx > Console JRC > opens operational health directly at its console URL without using the API liveness path 11200ms
+   → expected "vi.fn()" to be called with arguments: [ '/v1/operations/health' ]
+
+Received:
+
+  1st vi.fn() call:
+
+  [
+    "/v1/operations/health",
++   {
++     "signal": AbortSignal {
++       Symbol(kEvents): undefined,
++       Symbol(events.maxEventTargetListeners): 0,
++       Symbol(events.maxEventTargetListenersWarned): false,
++       Symbol(kHandlers): undefined,
++       Symbol(kAborted): false,
++       Symbol(kReason): undefined,
++       Symbol(kComposite): false,
++     },
++   },
+  ]
+
+
+Number of calls: 1
+
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"jrc-app"[39m
+        [33mstyle[39m=[32m"--jrc-primary: #007392; --jrc-secondary: #2CB4F1; --jrc-highlight: #FDD704; --jrc-heading: #153243; --jrc-surface: #FFFFFF; --jrc-surface-muted: #F4F7F8; --jrc-text: #153243; --jrc-text-muted: #45616D; --jrc-border: #B8C6CB; --jrc-focus: #005FCC; --jrc-danger: #B42318; --jrc-on-primary: #FFFFFF; --jrc-on-highlight: #153243; --jrc-font-family-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; --jrc-font-size-xs: 0.78rem; --jrc-font-size-sm: 0.85rem; --jrc-font-size-body-small: 0.9rem; --jrc-font-size-base: 1rem; --jrc-font-size-lead: 1.4rem; --jrc-font-size-display: 2.3rem; --jrc-font-weight-regular: 400; --jrc-font-weight-semibold: 700; --jrc-font-weight-strong: 750; --jrc-font-weight-bold: 800; --jrc-font-weight-black: 900; --jrc-line-height-tight: 1.15; --jrc-line-height-normal: 1.5; --jrc-letter-spacing-label: 0.09em; --jrc-letter-spacing-code: 0.12em; --jrc-space-xs: 0.25rem; --jrc-space-compact: 0.35rem; --jrc-space-sm: 0.5rem; --jrc-space-control: 0.65rem; --jrc-space-md: 0.75rem; --jrc-space-cozy: 0.8rem; --jrc-space-field: 0.9rem; --jrc-space-lg: 1rem; --jrc-space-card: 1.25rem; --jrc-space-shell: 1.4rem; --jrc-space-xl: 1.5rem; --jrc-space-wide: 2rem; --jrc-space-xxl: 2.5rem; --jrc-radius-sm: 0.35rem; --jrc-radius-md: 0.55rem; --jrc-radius-lg: 0.75rem; --jrc-radius-xl: 1rem; --jrc-radius-pill: 999px; --jrc-border-width: 1px; --jrc-border-subtle: #D8E1E4; --jrc-border-brand: rgb(0 115 146 / 18%); --jrc-border-danger: rgb(180 35 24 / 28%); --jrc-shadow-sm: 0 8px 24px rgb(21 50 67 / 6%); --jrc-shadow-md: 0 10px 24px rgb(21 50 67 / 9%); --jrc-shadow-lg: 0 16px 40px rgb(21 50 67 / 12%); --jrc-disabled-opacity: 0.6; --jrc-primary-hover: #005F79; --jrc-state-success-text: #05603A; --jrc-state-success-surface: #E9F8F0; --jrc-state-pending-text: #075985; --jrc-state-pending-surface: #E8F6FC; --jrc-state-warning-text: #7A4D00; --jrc-state-warning-surface: #FFF6D6; --jrc-state-danger-text: #8D2118; --jrc-state-danger-surface: #FFF1F0; --jrc-state-neutral-text: #334E5A; --jrc-state-neutral-surface: #EDF2F4; --jrc-state-secret-text: #102F3D; --jrc-state-secret-surface: #EEF5F7; --jrc-sidebar-note: #C8D8DE; --jrc-backdrop: rgb(10 28 38 / 65%); --jrc-auth-accent: rgb(44 180 241 / 18%); --jrc-auth-start: #EDF7F9; --jrc-auth-middle: #F8FAFC; --jrc-auth-end: #EEF4F6;"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"console-shell"[39m
+        [36m>[39m
+          [36m<aside[39m
+            [33mclass[39m=[32m"sidebar "[39m
+            [33mid[39m=[32m"console-navigation"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"brand-lockup"[39m
+            [36m>[39m
+              [36m<img[39m
+                [33malt[39m=[32m"JRC PABX"[39m
+                [33mheight[39m=[32m"75"[39m
+                [33msrc[39m=[32m"/brand/logo-jrc-2024.png"[39m
+                [33mwidth[39m=[32m"112"[39m
+              [36m/>[39m
+              [36m<div>[39m
+                [36m<strong>[39m
+                  [0mJRC Broker[0m
+                [36m</strong>[39m
+                [36m<small>[39m
+                  [0mWHATSAPP WORKSPACE[0m
+                [36m</small>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33maria-label[39m=[32m"Páginas da empresa"[39m
+              [33mclass[39m=[32m"navigation-search"[39m
+              [33mrole[39m=[32m"search"[39m
+            [36m>[39m
+              [36m<label[39m
+                [33mfor[39m=[32m"navigation-search"[39m
+              [36m>[39m
+                [0mBuscar páginas e configurações[0m
+              [36m</label>[39m
+              [36m<input[39m
+                [33mid[39m=[32m"navigation-search"[39m
+                [33mtype[39m=[32m"search"[39m
+                [33mvalue[39m=[32m""[39m
+              [36m/>[39m
+            [36m</div>[39m
+            [36m<nav[39m
+              [33maria-label[39m=[32m"Navegação principal"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"navigation-group"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-controls[39m=[32m"navigation-group-0"[39m
+                  [33maria-expanded[39m=[32m"true"[39m
+                  [33maria-label[39m=[32m"Seção Visão geral"[39m
+                  [33mclass[39m=[32m"navigation-group-toggle"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0mVisão geral[0m
+                  [36m<span[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                  [36m>[39m
+                    [0m−[0m
+                  [36m</span>[39m
+                [36m</button>[39m
+                [36m<div[39m
+                  [33mid[39m=[32m"navigation-group-0"[39m
+                [36m>[39m
+                  [36m<a[39m
+                    [33mclass[39m=[32m""[39m
+                    [33mdata-discover[39m=[32m"true"[39m
+                    [33mhref[39m=[32m"/dashboard"[39m
+                  [36m>[39m
+                    [36m<svg[39m
+                      [33maria-hidden[39m=[32m"true"[39m
+                      [33mfill[39m=[32m"none"[39m
+                      [33mheight[39m=[32m"18"[39m
+                      [33mstroke[39m=[32m"currentColor"[39m
+                      [33mstroke-linecap[39m=[32m"round"[39m
+                      [33mstroke-linejoin[39m=[32m"round"[39m
+                      [33mstroke-width[39m=[32m"1.7"[39m
+                      [33mviewBox[39m=[32m"0 0 24 24"[39m
+                      [33mwidth[39m=[32m"18"[39m
+                    [36m>[39m
+                      [36m<path[39m
+                        [33md[39m=[32m"M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z"[39m
+                      [36m/>[39m
+                    [36m</svg>[39m
+                    [36m<span>[39m
+                      [0mDashboard[0m
+                    [36m</span>[39m
+                  [36m</a>[39m
+                [36m</div>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"navigation-group"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-controls[39m=[32m"navigation-group-1"[39m
+                  [33maria-expanded[39m=[32m"true"[39m
+                  [33maria-label[39m=[32m"Seção Atendimento"[39m
+                  [33mclass[39m=[32m"navigation-group-toggle"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0mAtendimento[0m
+                  [36m<span[39m
+            ...
+ ✓ apps/web/src/pages/Channels.test.tsx > canonical channels UI > loads a bounded next page of inboxes on demand 468ms
+ ✓ apps/web/src/app/App.test.tsx > Console JRC > orienta a equipe para o login administrativo separado 92ms
+ ✓ apps/web/src/app/App.test.tsx > Console JRC > renderiza shell, identidade, organização e papel ativos 442ms
+ ✓ apps/web/src/pages/Channels.test.tsx > canonical channels UI > unlocks pagination when archived filter changes during an older load-more request 472ms
+ ✓ apps/web/src/pages/Channels.test.tsx > canonical channels UI > offers both providers and includes identity and delivery verification in setup 262ms
+ ✓ apps/web/src/app/App.test.tsx > Console JRC > não persiste estado de autenticação e não coloca token no DOM 182ms
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+ ✓ apps/web/src/pages/Channels.test.tsx > canonical channels UI > exposes status, reconnection, disconnection, rename and published automation controls 559ms
+ ✓ apps/web/src/pages/Channels.test.tsx > canonical channels UI > explica ao administrador o bloqueio de reconciliação sem sugerir novo QR 279ms
+ ✓ apps/web/src/app/App.test.tsx > Console JRC > não apresenta violações automáticas de acessibilidade no shell desktop 910ms
+ ✓ apps/web/src/pages/Channels.test.tsx > never renders an expired QR challenge and provides a new request action 272ms
+ ✓ apps/web/src/pages/Channels.test.tsx > renders a BASE64 pairing challenge as an image data URL 194ms
+ ✓ apps/web/src/app/App.test.tsx > Console JRC > mantém o controle mobile semanticamente expansível 667ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > distinguishes historical work from live messages and counts its pending lane 1354ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > describes configured bindings without advertising unverified delivery as ready 812ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > keeps new control/embed surfaces hidden when flags are off without hiding the integration 510ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > requests an external destination without collecting a token before approval 400ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > lets the platform review an exact destination revision and media origins 207ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > lets platform administrators update attachment origins on an approved destination without changing its address 341ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > does not expose attachment approval outside platform management: {"platform":false,"canManage":true} 61ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > does not expose attachment approval outside platform management: {"platform":true,"canManage":false} 66ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > loads inbox agents after the StrictMode mount cycle 442ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > explains missing server configuration without displaying a false ready state 36ms
+ ✓ apps/web/src/flows/FlowCanvas.switch.test.tsx > creates and connects switch cases through the canvas and preserves the connection on rename 4612ms
+ ✓ apps/web/src/flows/FlowCanvas.switch.test.tsx > preserves an invalid imported case and displays recovery instead of crashing 295ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > binds the chosen account and clears the submitted credential 100ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > offers only the selected company connections and creates an API inbox 118ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > requires an explicit destination choice after refresh removes the selected inbox 385ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > preserves the selected inbox when refresh confirms that it remains available 406ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > keeps viewers read-only and never loads administrative choices 35ms
+ ✓ apps/web/src/integrations/ChatwootPanel.test.tsx > offers reconciliation instead of a blind retry for an uncertain delivery 183ms
+ ✓ apps/web/src/flows/FlowCanvas.test.tsx > imported graph viewport > pans the empty canvas without editing node coordinates, including in read-only mode 176ms
+ ✓ apps/web/src/flows/FlowCanvas.test.tsx > imported graph viewport > zooms with the wheel around the mouse without changing the graph 73ms
+ ✓ apps/web/src/flows/FlowCanvas.test.tsx > imported graph viewport > stops panning when the pointer is cancelled 54ms
+ ✓ apps/web/src/flows/FlowCanvas.test.tsx > imported graph viewport > does not treat a node header drag as a background pan 412ms
+ ✓ apps/web/src/flows/FlowCanvas.test.tsx > imported graph viewport > opens a widely spread import at a usable scale and can focus the selection at 100% 379ms
+ ✓ apps/web/src/automations/node-editors/SubflowEditor.test.tsx > published subflow selection with the real scoped DTO > selects only an actual catalog version without inventing version one 432ms
+ ✓ apps/web/src/flows/FlowCanvas.test.tsx > imported graph viewport > renders negative source coordinates inside the visible canvas without rewriting the graph 198ms
+ ✓ apps/web/src/automations/node-editors/SubflowEditor.test.tsx > published subflow selection with the real scoped DTO > loads the next page without clearing the pinned selection or imposing a 200-total cap 324ms
+ ✓ apps/web/src/automations/node-editors/SubflowEditor.test.tsx > published subflow selection with the real scoped DTO > rejects a tenant or root mismatch at the API consumer and exposes no forged catalog 149ms
+ ✓ apps/web/src/automations/node-editors/SubflowEditor.test.tsx > published subflow selection with the real scoped DTO > keeps read-only and imported configuration intact without fetching or emitting defaults 233ms
+ ✓ apps/web/src/automations/node-editors/SubflowEditor.test.tsx > published subflow selection with the real scoped DTO > does not rewrite a stored version when a catalog reload no longer includes it 184ms
+ ✓ apps/web/src/flows/FlowCanvas.test.tsx > imported graph viewport > fits a distant imported graph and resets scrolling when requesting the overview 221ms
+ ✓ apps/web/src/automations/node-editors/SubflowEditor.test.tsx > published subflow selection with the real scoped DTO > ignores a late response from a previous tenant/root/block context 210ms
+ ✓ apps/web/src/flows/FlowCanvas.test.tsx > imported graph viewport > duplicates a selected block with a fresh id and restores graph edits through undo and redo 916ms
+ ✓ apps/web/src/automations/node-editors/SubflowEditor.test.tsx > published subflow selection with the real scoped DTO > preserves typed JSON inputs and advanced schemas when changing timeout, without silently fixing invalid input 314ms
+ ✓ apps/web/src/automations/node-editors/SubflowEditor.test.tsx > published subflow selection with the real scoped DTO > cannot select a valid new reference while loading, empty or failed 89ms
+ ✓ apps/web/src/flows/FlowCanvas.test.tsx > imported graph viewport > focuses start and an error block at a readable scale without editing the graph 365ms
+ ✓ apps/web/src/automations/node-editors/SubflowEditor.test.tsx > published subflow selection with the real scoped DTO > adds the canonical exact-variable input mapping without changing existing typed values 124ms
+ ✓ apps/web/src/automations/node-editors/SubflowEditor.test.tsx > published subflow selection with the real scoped DTO > preserves the internal start policy during normal canvas editing and never renders it as a field 106ms
+ ✓ apps/web/src/automations/node-editors/SubflowEditor.test.tsx > published subflow selection with the real scoped DTO > adds an unconfigured subflow without inventing an ID or version and keeps the canonical next port 96ms
+ ✓ apps/web/src/flows/FlowCanvas.test.tsx > imported graph viewport > moves a node by screen distance divided by zoom and keeps the move as one undo step 218ms
+ ✓ apps/web/src/flows/FlowCanvas.test.tsx > creates handoff nodes with an explicit version and incomplete destination rather than the legacy empty config 392ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > consulta pelo UUID canônico e oferece configuração explícita do bot 1285ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > permite consulta e recarga ao operador, mas não mutações 205ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > não permite selecionar a partir de catálogo desatualizado 132ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > trata ausência de catálogo como instrução, sem exibir erro bruto 20ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > apresenta catálogo atual vazio sem confundi-lo com ausência de consulta 18ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > atualiza o catálogo com POST vazio e nenhuma habilitação implícita 373ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > preserva catálogo após falha de refresh, marca STALE e consulta estado confirmado 445ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > usa checkbox nativo acessível por teclado e envia todas as expectativas de revisão 765ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > desmarca uma seleção com enabled false sem habilitar automação 248ms
+ ✓ apps/web/src/flows/FlowCanvas.menu.test.tsx > menu editing in the canvas > keeps the chosen branch executable after reorder and number change 2766ms
+ ✓ apps/web/src/flows/FlowCanvas.menu.test.tsx > menu editing in the canvas > undoes a removal together with the connection and keeps destination nodes 2349ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > pagina com cursor base64url de JSON e volta pela pilha local 874ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > seleciona na página dois e recarrega essa página com snapshot/revisão novos 206ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > reinicia paginação se outro refresh substituir o snapshot 147ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > bloqueia duplo clique e conserva seleção confirmada enquanto PUT está aberto 170ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > revoga controles com tela aberta sem abortar mutação em andamento 253ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > uma recarga GET não aborta PUT e o commit recarrega o estado posterior 197ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > falha de seleção não altera checkbox e relê o catálogo STALE 184ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > não aceita GET anterior à revisão confirmada pelo PUT 385ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > troca de canal aborta mutação antiga e descarta seu retorno tardio 146ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > troca de cliente descarta GET anterior mesmo se o transporte ignorar abort 28ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > limpa dados e aborta trabalho quando ApiClient purga o tenant 18ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > aborta GET ao desmontar o painel 3ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > validação estrita e privacidade da resposta > rejeita campo adicional sem renderizar payload 20ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > validação estrita e privacidade da resposta > rejeita flag de automação inválida sem renderizar payload 26ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > validação estrita e privacidade da resposta > rejeita canal divergente sem renderizar payload 10ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > validação estrita e privacidade da resposta > rejeita cursor divergente sem renderizar payload 49ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > validação estrita e privacidade da resposta > rejeita página maior que limite pedido sem renderizar payload 31ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > validação estrita e privacidade da resposta > remove catálogo se consulta passar a ser proibida 74ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > validação estrita e privacidade da resposta > não aceita mudar organizationId em respostas da mesma sessão 92ms
+ ✓ apps/web/src/pages/WhatsAppGroups.test.tsx > validação estrita e privacidade da resposta > renderiza nomes e caracteres UTF8 como texto, nunca como HTML 68ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > builds revision-pinned targets using only catalog selectors and clears the other target 627ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > keeps a legacy graph intact until the operator selects a destination 109ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > shows stale revisions without silently repinning the saved target 46ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > does not offer an agent whose inbox membership cannot be verified 72ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > preserves the draft and explains deleted targets and denied reads 74ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > drops old-tenant in-flight results and never offers a catalog from another scope 282ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > refreshes the catalog without repinning a stale revision or allowing old options during loading 272ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > clears the chosen target immediately when changing boxes and ignores the old catalog response 140ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > follows restored graph configuration instead of keeping a local uncommitted selection 48ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > explains active or unverified greeting, inbox assignment and selected-team assignment (true) 77ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > explains active or unverified greeting, inbox assignment and selected-team assignment (null) 81ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > never treats an unobserved Agent Bot as absent (UNSUPPORTED) 22ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > never treats an unobserved Agent Bot as absent (UNVERIFIED) 44ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > explains a competing Agent Bot while preserving the saved destination 27ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > requires selected-team policy only for a team target and keeps missing catalog policy untrusted 71ms
+ ✓ apps/web/src/automations/node-editors/HandoffEditor.test.tsx > native handoff destination editor > does not fetch or change protected destinations without editing permission 8ms
+ ✓ apps/web/src/pages/Flows.test.tsx > Native Flows workspace > lets the administrator publish and choose a remote inbox without a WhatsApp channel 1191ms
+ ✓ apps/web/src/pages/Flows.test.tsx > Native Flows workspace > shows no editor when the company has not been granted access 41ms
+ ✓ apps/web/src/pages/Flows.test.tsx > Native Flows workspace > creates a flow, edits a node and saves its graph before publication 1286ms
+ ✓ apps/web/src/pages/Flows.test.tsx > Native Flows workspace > adds and configures a menu block with one output for each option 1549ms
+ ✓ apps/web/src/pages/Flows.test.tsx > Native Flows workspace > keeps creation controls unavailable for a reader 96ms
+ ✓ apps/web/src/automations/node-editors/ConversationActionEditor.test.tsx > scoped conversation action editor > configures a native task by owner name and keeps public sending separate 1301ms
+ ✓ apps/web/src/automations/node-editors/ConversationActionEditor.test.tsx > scoped conversation action editor > chooses a label by name and preserves the resource revision without fetching unrelated media 145ms
+ ✓ apps/web/src/automations/node-editors/ConversationActionEditor.test.tsx > scoped conversation action editor > keeps boolean false and numeric zero typed when selecting an attribute 194ms
+ ✓ apps/web/src/automations/node-editors/ConversationActionEditor.test.tsx > scoped conversation action editor > ignores a late catalog after the root changes and clears the old selection 110ms
+ ✓ apps/web/src/automations/node-editors/ConversationActionEditor.test.tsx > scoped conversation action editor > pins a READY private upload but never publishes a storing file as ready 195ms
+ ✓ apps/web/src/automations/node-editors/ConversationActionEditor.test.tsx > scoped conversation action editor > does not attach an upload that completes after changing root or node 256ms
+ ✓ apps/web/src/automations/node-editors/ConversationActionEditor.test.tsx > scoped conversation action editor > keeps read-only controls disabled and describes a private note without a public send action 32ms
+ ✓ apps/web/src/automations/node-editors/ConversationActionEditor.test.tsx > scoped conversation action editor > requires explicit reconfiguration to replace a historical marker 83ms
+ ✓ apps/web/src/automations/node-editors/ConversationActionEditor.test.tsx > scoped conversation action editor > shows a changed resource and updates its pinned revision only after an explicit choice 70ms
+ ✓ apps/web/src/automations/node-editors/ConversationActionEditor.test.tsx > scoped conversation action editor > requires an explicit selection for a newer revision of the same private asset 82ms
+ ✓ apps/web/src/support/SupportDesk.test.tsx > lets a company create and follow a ticket, retaining the request id on an uncertain retry 994ms
+ ✓ apps/web/src/support/SupportDesk.test.tsx > gives the JRC team a received queue and assignment controls 193ms
+ ✓ apps/web/src/support/SupportDesk.test.tsx > offers read-only support history to viewers 110ms
+ ✓ apps/web/src/support/SupportDesk.test.tsx > keeps a typed reply while refreshing after another operator updates the ticket 238ms
+ ✓ apps/web/src/support/SupportDesk.test.tsx > filters the staff queue and distinguishes an overdue first response 128ms
+ ✓ apps/web/src/support/SupportDesk.test.tsx > refreshes the open ticket after reconnect without replacing an unsent reply 131ms
+ ✓ apps/web/src/support/SupportDesk.test.tsx > keeps an unsent reply when refreshing the same ticket fails and is retried 169ms
+ ✓ apps/web/src/support/SupportDesk.test.tsx > releases the busy state when staff changes a filter during a pending reply 181ms
+ ✓ apps/web/src/support/SupportDesk.test.tsx > keeps the committed reply when a reconnect GET before POST finishes last 197ms
+ ✓ apps/web/src/support/SupportDesk.test.tsx > keeps the committed reply when a reconnect GET after POST finishes last 224ms
+ ✓ apps/web/src/pages/OperationalHealth.test.tsx > separates current signals from accumulated failures and does not promise delivery 635ms
+ ✓ apps/web/src/pages/OperationalHealth.test.tsx > marks retained data as stale after refresh failure and can recover 400ms
+ ✓ apps/web/src/pages/OperationalHealth.test.tsx > never overlaps polling while a request is pending 19ms
+ ✓ apps/web/src/pages/OperationalHealth.test.tsx > aborts a stalled request, releases refresh and ignores its late result 139ms
+ ✓ apps/web/src/pages/OperationalHealth.test.tsx > discards late responses from a previous company/client 104ms
+ ✓ apps/web/src/pages/OperationalHealth.test.tsx > handles malformed responses and empty valid snapshots without crashing 107ms
+ ✓ apps/web/src/pages/OperationalHealth.test.tsx > provides an accessible local theme switch 264ms
+ ✓ apps/web/src/pages/OperationalHealth.test.tsx > has no automated accessibility violations in the pilot region 1136ms
+ ✓ apps/web/src/pages/Channels.deletion.test.tsx > offers deletion in QR and Meta cards to OWNER without a second route or CENTRAL deletion 1871ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > explains absent JRC configuration without requesting customer application secrets 998ms
+ ✓ apps/web/src/pages/Channels.deletion.test.tsx > offers deletion in QR and Meta cards to ADMIN without a second route or CENTRAL deletion 1277ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > explains the official connection journey while setup is pending 553ms
+ ✓ apps/web/src/pages/Channels.deletion.test.tsx > does not expose deletion to OPERATOR 570ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > purges connections and a deferred signup when switching between two owner organizations 459ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > ignores an old connection list arriving after the new tenant list 161ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > removes signup listeners and ignores old SDK callbacks after switching tenants 78ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > ends CANCEL immediately and ignores a late SDK callback 150ms
+ ✓ apps/web/src/pages/Channels.deletion.test.tsx > does not expose deletion to VIEWER 593ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > ends ERROR immediately and ignores a late SDK callback 169ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > requires both an allowed-origin finish and a code and completes only once 345ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > requires a fresh state after a completion failure instead of replaying the consumed state 96ms
+ ✓ apps/web/src/pages/Channels.deletion.test.tsx > uses the tenant lifecycle path and refreshes the list only after proven completion 827ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > recovers when SDK login throws synchronously 171ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > allows SDK loading to retry if script loaded without FB 8ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > an operator cannot initialize signup 11ms
+ ✓ apps/web/src/pages/MetaConnect.test.tsx > shows pending setup and sends refresh to the selected authorized connection 91ms
+ ✓ apps/web/src/pages/AutomationEditorSurface.test.tsx > refuses a definition for another organization before displaying or editing its draft 124ms
+ ✓ apps/web/src/pages/Settings.test.tsx > SettingsPage > directs administrators to existing settings with explicit company and deployment scope 984ms
+ ✓ apps/web/src/pages/AutomationEditorSurface.test.tsx > mounts the shared editor with an injected authorized client and no console session provider 606ms
+ ✓ apps/web/src/pages/Settings.test.tsx > SettingsPage > lets readers find their existing read surfaces without advertising key management 201ms
+ ✓ apps/web/src/pages/Settings.test.tsx > SettingsPage > clears the previous company search when the active company changes 218ms
+ ✓ apps/web/src/pages/AutomationEditorSurface.test.tsx > does not offer publishing to a native session with edit permission only 1038ms
+ ✓ apps/web/src/pages/AutomationEditorSurface.test.tsx > sends a synthetic action outcome with the exact wait identity through the injected client 747ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > shows the verified identity boundary and refuses an older cache range before POST 1095ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > updates progress automatically when background work finishes, without another click 243ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > honestly disables import when no source is configured 39ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > starts, advances a bounded page and cancels without claiming completion 292ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > aborts and discards late capability after a tenant change 123ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > rejects a capability from a different channel 53ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > recovers an uncertain start by request id without repeating POST 291ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > reloads a saved operation with scoped ids and rejects another operation 132ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > keeps source API failures honest and does not allow import 113ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > hydrates only validated recovery ids and preserves a saved open operation 171ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > preserves the same request and selection across an uncertain start and lookup 404 746ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > serializes double submits before creating a recovery request 158ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > shows definitive source errors and allows a corrected new selection 451ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > does not let a late hydration response reopen a newer completed revision 391ms
+ ✓ apps/web/src/platform/EconomicGroups.test.tsx > explains that grouping companies does not share tenant data or grant access 1488ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > retains an uncertain recovery after a later retry is denied 109ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > ignores malformed local recovery rather than using it as authority 17ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > discards a late start result after switching companies 151ms
+ ✓ apps/web/src/platform/EconomicGroups.test.tsx > loads subsequent group pages before allowing a company to be assigned twice 787ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > does not replace a new operation with a late previous recovery response 169ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > does not retry a saved start while capability is unavailable 20ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > does not retry a saved start while capability is loading 30ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > does not retry a saved start while capability is error 69ms
+ ✓ apps/web/src/channels/HistoryImportPanel.test.tsx > does not retry a saved start while capability is over-limit 49ms
+ ✓ apps/web/src/platform/EconomicGroups.test.tsx > assigns companies with the revision read from the server and keeps other groups unavailable 664ms
+ ✓ apps/web/src/platform/EconomicGroups.test.tsx > keeps support users read-only 137ms
+ ✓ apps/web/src/platform/EconomicGroups.test.tsx > renames the selected group with its current revision 637ms
+ ✓ apps/web/src/platform/EconomicGroups.test.tsx > shows a fresh preview and requires an explicit decision to preserve linked companies 439ms
+ ✓ apps/web/src/platform/EconomicGroups.test.tsx > requires a new preview after a conflicting removal and never submits the stale confirmation again 584ms
+ ✓ apps/web/src/automations/node-editors/ScheduleEditor.test.tsx > schedule visual editor > edits timezone and weekly fields without dropping imported metadata 1780ms
+ ✓ apps/web/src/flows/FlowCanvas.actions.test.tsx > creates a version2 private note by choosing a named authorized box 2761ms
+ ✓ apps/web/src/flows/FlowCanvas.actions.test.tsx > creates resolve as a terminal node without a next-message connector 968ms
+ ✓ apps/web/src/automations/node-editors/ScheduleEditor.test.tsx > schedule visual editor > adds and removes weekly intervals while retaining at least one 463ms
+ ✓ apps/web/src/automations/node-editors/ScheduleEditor.test.tsx > schedule visual editor > creates a closed holiday and allows explicit exception intervals 707ms
+ ✓ apps/web/src/automations/node-editors/ScheduleEditor.test.tsx > schedule visual editor > marks exact invalid fields and preserves a malformed draft until repaired 119ms
+ ✓ apps/web/src/automations/node-editors/ScheduleEditor.test.tsx > schedule visual editor > preserves extra fields on exception and interval edits 137ms
+ ✓ apps/web/src/automations/node-editors/ScheduleEditor.test.tsx > schedule visual editor > limits interval creation and keeps controls read-only without edit permission 803ms
+ ✓ apps/web/src/automations/node-editors/ScheduleEditor.test.tsx > schedule visual editor > disables every editable field and action without permission 95ms
+ ✓ apps/web/src/pages/AttendanceResumeDialog.test.tsx > explains ATTENDANCE_CONVERSATION_SUPERSEDED without claiming the bot resumed 703ms
+ ✓ apps/web/src/pages/AttendanceResumeDialog.test.tsx > explains ATTENDANCE_PREVIOUS_CYCLE_SEND_PENDING without claiming the bot resumed 176ms
+ ✓ apps/web/src/pages/AttendanceResumeDialog.test.tsx > explains the scope of resuming and keeps keyboard dismissal free from a resume mutation 176ms
+ ✓ apps/web/src/pages/AttendanceResumeDialog.test.tsx > requires an explicit new session for a legacy conversation and only confirms after APPLIED 239ms
+ ✓ apps/web/src/pages/AttendanceResumeDialog.test.tsx > keeps uncertain operations blocked and gives a next action instead of reporting bot active 154ms
+ ✓ apps/web/src/pages/AttendanceResumeDialog.test.tsx > reuses the original request key after a lost acceptance response and aborts on close 171ms
+ ✓ apps/web/src/platform/CompanyChannels.test.tsx > shows the first admin channel page and loads more only when requested 425ms
+ ✓ apps/web/src/platform/CompanyChannels.test.tsx > keeps loaded channels visible and reports a repeated cursor 109ms
+ ✓ apps/web/src/platform/CompanyChannels.test.tsx > refreshes from page one after archiving and offers the new continuation cursor 211ms
+ ✓ apps/web/src/platform/CompanyChannels.test.tsx > uses the company-relative deletion path and preserves remote inboxes in the confirmation 166ms
+ ✓ apps/web/src/platform/CompanyChannels.test.tsx > does not expose deletion for support readers or for externally managed CENTRAL channels 57ms
+ ✓ apps/web/src/platform/CompanyChannels.test.tsx > ignores a late deletion outcome after the administrator switches company workspaces 121ms
+ ✓ apps/web/src/channels/ChannelDeletion.confirmation.test.tsx > confirms once with the authenticated preview name and audit reason without manual fields 731ms
+ ✓ apps/web/src/channels/ChannelDeletion.confirmation.test.tsx > cancels the impact preview without sending a deletion request 95ms
+ ✓ apps/web/src/channels/ChannelDeletion.confirmation.test.tsx > reconciles uncertain cleanup without a manual reason or a second deletion 120ms
+ ✓ apps/web/src/channels/ChannelDeletion.confirmation.test.tsx > does not offer a retry before reading the existing ACTION_REQUIRED error 75ms
+ ✓ apps/web/src/channels/ChannelDeletion.confirmation.test.tsx > keeps a lost deletion response fenced even when the next preview has no receipt yet 118ms
+ ✓ apps/web/src/channels/ChannelDeletion.confirmation.test.tsx > blocks rapid duplicate submits and completes only once after server proof 78ms
+ ✓ apps/web/src/channels/ChannelDeletion.confirmation.test.tsx > requires a fresh impact preview after an explicit server rejection instead of trapping a rejected request as uncertain 95ms
+ ✓ apps/web/src/channels/ChannelDeletion.confirmation.test.tsx > ignores a late preview after tenant scope changes without changing the relative path 23ms
+ ✓ apps/web/src/channels/ChannelDeletion.confirmation.test.tsx > does not invoke completion or poll a new tenant after a late POST response 45ms
+ ✓ apps/web/src/channels/ChannelDeletion.confirmation.test.tsx > rejects an impact preview for another resource 70ms
+ ✓ apps/web/src/automations/node-editors/LocalHandoffEditor.test.tsx > explicitly selects a local queue without any remote account or inbox identity 596ms
+ ✓ apps/web/src/automations/node-editors/LocalHandoffEditor.test.tsx > rejects another tenant catalog and preserves the saved node 150ms
+ ✓ apps/web/src/automations/node-editors/LocalHandoffEditor.test.tsx > discards a pending local catalog when the company changes 169ms
+ ✓ apps/web/src/automations/node-editors/LocalHandoffEditor.test.tsx > selects scoped local team and agent targets through an ordinary keyboard-accessible select 234ms
+ ✓ apps/web/src/automations/node-editors/LocalHandoffEditor.test.tsx > clears the previous target only after an explicit channel change 213ms
+ ✓ apps/web/src/automations/node-editors/LocalHandoffEditor.test.tsx > discards a delayed directory response after switching company and preserves the node 148ms
+ ✓ apps/web/src/channels/CentralChannelSetup.test.tsx > requires explicit replacement and submits the observed central revisions without a physical identity 927ms
+ ✓ apps/web/src/channels/CentralChannelSetup.test.tsx > discards a late operation result after the tenant changes 81ms
+ ✓ apps/web/src/channels/CentralChannelSetup.test.tsx > reloads the operation associated with a channel and offers an explicit rollback 114ms
+ ✓ apps/web/src/channels/CentralChannelSetup.test.tsx > records the operation immediately and reloads the authoritative revision after a lost advance response 130ms
+ ✓ apps/web/src/channels/CentralChannelSetup.test.tsx > recovers a prepare whose response was lost using the tenant scoped persisted key after reload 70ms
+ ✓ apps/web/src/channels/CentralChannelSetup.test.tsx > clears a completed operation key so a later new channel can select another inbox 130ms
+ ✓ apps/web/src/channels/CentralChannelSetup.test.tsx > loads the inbox list after a persisted prepare key is proven absent on reload 80ms
+ ✓ apps/web/src/pages/ChannelDetail.challenge.test.tsx > canonical channel ephemeral challenge > rejects a QR value outside the existing PNG boundary: https://outside.example.test/qr.png 695ms
+ ✓ apps/web/src/pages/ChannelDetail.challenge.test.tsx > canonical channel ephemeral challenge > rejects a QR value outside the existing PNG boundary: data:image/svg+xml;base64,PHN2Zy8+ 150ms
+ ✓ apps/web/src/pages/ChannelDetail.challenge.test.tsx > canonical channel ephemeral challenge > renders a validated PNG only after the explicit pair action 404ms
+ ✓ apps/web/src/pages/ChannelDetail.challenge.test.tsx > canonical channel ephemeral challenge > removes the QR when the document leaves and does not request a replacement 309ms
+ ✓ apps/web/src/pages/ChannelDetail.challenge.test.tsx > canonical channel ephemeral challenge > removes a pairing code on pagehide as well 135ms
+ ✓ apps/web/src/pages/ChannelDetail.challenge.test.tsx > canonical channel ephemeral challenge > does not restore a challenge whose request finishes after pagehide 226ms
+ ✓ apps/web/src/pages/ChannelDetail.challenge.test.tsx > canonical channel ephemeral challenge > clears the old challenge after a manual refresh rejects current access 253ms
+ ✓ apps/web/src/pages/ChannelDetail.challenge.test.tsx > canonical channel ephemeral challenge > does not restore an old challenge after a terminal manual refresh followed by PAIRING 182ms
+ ✓ apps/web/src/layout/PlatformShell.test.tsx > PlatformShell navigation > searches actual platform labels and descriptions independently from tenant pages 1377ms
+ ✓ apps/web/src/layout/PlatformShell.test.tsx > PlatformShell navigation > keeps labeled read navigation and an accessible collapsible group for SUPER_ADMIN 335ms
+ ✓ apps/web/src/layout/PlatformShell.test.tsx > PlatformShell navigation > keeps labeled read navigation and an accessible collapsible group for SUPPORT 321ms
+ ✓ apps/web/src/layout/PlatformShell.test.tsx > PlatformShell navigation > restores mobile trigger focus on Escape and link selection, then focuses the filtered first link 226ms
+ ✓ apps/web/src/layout/PlatformShell.test.tsx > PlatformShell navigation > clears discovery state when the staff identity changes without persistent storage 155ms
+ ✓ apps/web/src/flows/FlowCanvas.schedule.test.tsx > creates business hours in the canvas and connects both human-readable branches 1741ms
+ ✓ apps/web/src/channels/ChannelDeletion.test.tsx > reconciles uncertain cleanup without submitting a second deletion 799ms
+ ✓ apps/web/src/channels/ChannelDeletion.test.tsx > uses the preview name and never mistakes an accepted job for completed deletion 117ms
+ ✓ apps/web/src/channels/ChannelDeletion.test.tsx > recovers an existing operation after reload without submitting another deletion 59ms
+ ✓ apps/web/src/channels/ChannelDeletion.test.tsx > explains the remote Flow blocker and never carries a preview across channels 49ms
+ ✓ apps/web/src/channels/ChannelDeletion.test.tsx > shows impact blockers and refuses to submit 32ms
+ ✓ apps/web/src/automations/node-editors/HttpQueryEditor.test.tsx > HTTP query configuration and simulation controls > selects credentials by name and pins revision without token, UUID input or invented defaults 602ms
+ ✓ apps/web/src/automations/node-editors/HttpQueryEditor.test.tsx > HTTP query configuration and simulation controls > pages and reloads metadata without truncation or rewriting stale selected revisions 242ms
+ ✓ apps/web/src/automations/node-editors/HttpQueryEditor.test.tsx > HTTP query configuration and simulation controls > rejects a catalog from another organization 26ms
+ ✓ apps/web/src/automations/node-editors/HttpQueryEditor.test.tsx > HTTP query configuration and simulation controls > explains how to configure a credential whose allowed origins are missing 36ms
+ ✓ apps/web/src/automations/node-editors/HttpQueryEditor.test.tsx > HTTP query configuration and simulation controls > ignores a late response after organization/root context changes 36ms
+ ✓ apps/web/src/automations/node-editors/HttpQueryEditor.test.tsx > HTTP query configuration and simulation controls > preserves historical mutations and read-only configuration until explicit conversion 15ms
+ ✓ apps/web/src/automations/node-editors/HttpQueryEditor.test.tsx > HTTP query configuration and simulation controls > edits query values separately from the static URL and explains a disallowed destination 96ms
+ ✓ apps/web/src/automations/node-editors/HttpQueryEditor.test.tsx > HTTP query configuration and simulation controls > emits an explicit bounded synthetic result for the exact node without requesting a service 49ms
+ ✓ apps/web/src/automations/node-editors/HttpQueryEditor.test.tsx > HTTP query configuration and simulation controls > does not require status/body for synthetic timeout or unknown outcomes 18ms
+ ✓ apps/web/src/flows/FlowCanvas.questions.test.tsx > building a question and branch without manual reference syntax > selects the captured variable and executes the configured branch 1389ms
+ ✓ apps/web/src/automations/node-editors/SwitchEditor.test.tsx > edits scalar types without losing the stable output identity 630ms
+ ✓ apps/web/src/automations/node-editors/SwitchEditor.test.tsx > adds cases with distinct stable ids and makes removal explicit 422ms
+ ✓ apps/web/src/automations/node-editors/SwitchEditor.test.tsx > preserves invalid numeric input for validation instead of converting it to zero 97ms
+ ✓ apps/web/src/automations/node-editors/SwitchEditor.test.tsx > does not offer object or list comparisons and keeps the default branch explained 162ms
+ ✓ apps/web/src/automations/node-editors/SwitchEditor.test.tsx > disables mutations in a published read-only graph 48ms
+ ✓ apps/web/src/automations/node-editors/SwitchEditor.test.tsx > never reuses the identity of a removed output when adding another case 135ms
+ ✓ apps/web/src/automations/LegacyMigrationPanel.test.tsx > LegacyMigrationPanel > shows every migration state, checksums, counts and conversion errors 379ms
+ ✓ apps/web/src/automations/LegacyMigrationPanel.test.tsx > LegacyMigrationPanel > offers contextual safe actions only to OWNER or ADMIN 938ms
+ ✓ apps/web/src/automations/LegacyMigrationPanel.test.tsx > LegacyMigrationPanel > keeps incompatible flows visible and hides mutation actions from VIEWER 47ms
+ ✓ apps/web/src/platform/GroupCompanyRemoval.test.tsx > recovers the report by operation code even when the group no longer exists 1068ms
+ ✓ apps/web/src/platform/GroupCompanyRemoval.test.tsx > starts with no selection and requires operator-written exact names without prefilled confirmations 233ms
+ ✓ apps/web/src/platform/GroupCompanyRemoval.test.tsx > recovers a persisted partial operation on reload and gives an actionable path for uncertain cleanup 39ms
+ ✓ apps/web/src/platform/GroupCompanyRemoval.test.tsx > blocks a company with remote bot attachment and explains the authorized configuration path 48ms
+ ✓ apps/web/src/platform/GroupCompanyRemoval.test.tsx > discards a definitively rejected stale preview and permits a new preview with blank confirmations 93ms
+ ✓ apps/web/src/platform/GroupCompanyRemoval.test.tsx > reuses the exact idempotent request after a lost response instead of constructing a second selection 162ms
+ ✓ apps/web/src/integrations/ChatwootControlPanel.test.tsx > shows health, requires identity confirmation and manages explicit grants outside an iframe 960ms
+ ✓ apps/web/src/integrations/ChatwootControlPanel.test.tsx > does not offer management or legacy instance access to a delegated viewer 117ms
+ ✓ apps/web/src/integrations/ChatwootControlPanel.test.tsx > discards a late pairing result when a newer health response revokes pairing 158ms
+ ✓ apps/web/src/pages/QrOutboundObservations.test.tsx > exige reconhecimento explícito e envia revisão e tentativas atuais sem reenvio 572ms
+ ✓ apps/web/src/pages/QrOutboundObservations.test.tsx > mostra a pendência ao operador mas reserva o abandono ao administrador 18ms
+ ✓ apps/web/src/pages/QrOutboundObservations.test.tsx > não oferece abandono de uma tentativa ainda despachada 32ms
+ ✓ apps/web/src/pages/QrOutboundObservations.test.tsx > explica observação factual impedida pela exclusão sem declarar entrega nem bloquear drenagem 10ms
+ ✓ apps/web/src/pages/QrOutboundObservations.test.tsx > preserva POST pendente e atualiza após commit quando o histórico é recarregado 230ms
+ ✓ apps/web/src/pages/NewAutomation.idempotency.test.tsx > NewAutomation retry > creates the operator reception as a draft without publishing or binding it 1136ms
+ ✓ apps/web/src/pages/NewAutomation.idempotency.test.tsx > NewAutomation retry > keeps the box context after creating a draft without binding it 342ms
+ ✓ apps/web/src/pages/NewAutomation.idempotency.test.tsx > NewAutomation retry > reuses the draft creation key after an uncertain response 373ms
+ ✓ apps/web/src/pages/ApiWebhooks.test.tsx > ApiWebhooksPage > opens actual public assets without SPA interception or embedded credentials 798ms
+ ✓ apps/web/src/pages/ApiWebhooks.test.tsx > ApiWebhooksPage > explains the two modes and current partner limits without implying automatic host provisioning 294ms
+ ✓ apps/web/src/pages/ApiWebhooks.test.tsx > ApiWebhooksPage > keeps documentation accessible to OPERATOR without key-management controls 108ms
+ ✓ apps/web/src/pages/ApiWebhooks.test.tsx > ApiWebhooksPage > keeps documentation accessible to VIEWER without key-management controls 139ms
+ ✓ apps/web/src/native-flow/Binding.test.tsx > requires a published version before preparing ownership of the box 360ms
+ ✓ apps/web/src/native-flow/Binding.test.tsx > consults an uncertain activation without repeating prepare or bind blindly 114ms
+ ✓ apps/web/src/native-flow/Binding.test.tsx > does not confirm another activated cutover after a lost ACK before-prepare 147ms
+ ✓ apps/web/src/native-flow/Binding.test.tsx > does not confirm another activated cutover after a lost ACK after-bind 184ms
+ ✓ apps/web/src/native-flow/Binding.test.tsx > allows a new preparation after confirmed rollback with the freshly read owner revision 155ms
+ ✓ apps/web/src/embed/AuthorizePage.test.tsx > requires an explicit selection and consent after showing user, account and actions 744ms
+ ✓ apps/web/src/embed/AuthorizePage.test.tsx > keeps the public request through the existing login and organization selection 218ms
+ ✓ apps/web/src/embed/AuthorizePage.test.tsx > does not offer approval when the current organization cannot read the request 40ms
+ ✓ apps/web/src/auth/SessionProvider.test.tsx > SessionProvider > executa um único restore sob StrictMode e publica a sessão restaurada 311ms
+ ✓ apps/web/src/auth/SessionProvider.test.tsx > SessionProvider > mantém selection token somente na memória privada e o consome ao selecionar 845ms
+ ✓ apps/web/src/auth/SessionProvider.test.tsx > SessionProvider > consome o selection token antes do I/O e ignora seleção concorrente 94ms
+ ✓ apps/web/src/auth/SessionProvider.test.tsx > SessionProvider > entra em expired quando o cliente sinaliza segundo 401 29ms
+ ✓ apps/web/src/auth/SessionProvider.test.tsx > SessionProvider > descarta resultado obsoleto de switch e mantém a organização publicada 140ms
+ ✓ apps/web/src/auth/SessionProvider.test.tsx > SessionProvider > limpa a sessão local mesmo quando logout remoto já está inválido 109ms
+ ✓ apps/web/src/auth/SessionProvider.test.tsx > SessionProvider > remove a sessão da árvore React antes de o logout remoto terminar 34ms
+ ✓ apps/web/src/automations/ai-ui.test.tsx > selects credential and approved model by name without UUID/JSON/schema/tools textboxes 739ms
+ ✓ apps/web/src/automations/ai-ui.test.tsx > provides typed extraction rows and category rows without manual JSON 103ms
+ ✓ apps/web/src/automations/ai-ui.test.tsx > rejects catalog scope mismatch and does not retain names from another tenant 110ms
+ ✓ apps/web/src/automations/ai-ui.test.tsx > edits only administrator metadata with explicit estimated prices and monthly allowance 97ms
+ ✓ apps/web/src/automations/ai-ui.test.tsx > builds typed fictitious output for exact current extraction wait 33ms
+ ✓ apps/web/src/automations/ai-ui.test.tsx > read-only AI editor never requests catalogs or enables fields 79ms
+ ✓ apps/web/src/automations/ai-ui.test.tsx > shows observed usage and estimates while uncertain AI never offers a replay button 9ms
+ ✓ apps/web/src/attendance/LocalAttendancePanel.test.tsx > an operator explicitly claims a waiting session with its exact identity and revision 536ms
+ ✓ apps/web/src/attendance/LocalAttendancePanel.test.tsx > an admin creates a team and edits its members with the returned revision 342ms
+ ✓ apps/web/src/attendance/LocalAttendancePanel.test.tsx > a stale claim reports a conflict and does not confirm an assignment 70ms
+ ✓ apps/web/src/attendance/LocalAttendancePanel.test.tsx > aborts an old tenant request and never shows its queue in the new tenant 89ms
+ ✓ apps/web/src/attendance/LocalAttendancePanel.test.tsx > a viewer cannot open administration or mutate a queue 3ms
+ ✓ apps/web/src/channels/ChannelOperationSetup.test.tsx > reads explicitly without a write and guides standalone through the Broker 832ms
+ ✓ apps/web/src/channels/ChannelOperationSetup.test.tsx > keeps a failed external central blocked and directs to existing onboarding 191ms
+ ✓ apps/web/src/channels/ChannelOperationSetup.test.tsx > offers an existing repair action for each connection or central blocker without claiming delivery 143ms
+ ✓ apps/web/src/channels/ChannelOperationSetup.test.tsx > rejects a profile from another tenant or box 51ms
+ ✓ apps/web/src/channels/ChannelOperationSetup.test.tsx > discards delayed data after a tenant revision or channel change 112ms
+ ✓ apps/web/src/channels/ChannelOperationSetup.test.tsx > sanitizes a server error and invalidates old readiness during a recheck 220ms
+ ✓ apps/web/src/pages/NewAutomation.interruption.test.tsx > NewAutomation interrupted import persistence > does not create a draft after route unmount while persistence is pending 905ms
+ ✓ apps/web/src/pages/NewAutomation.interruption.test.tsx > NewAutomation interrupted import persistence > does not create a draft after tenant switch while persistence is pending 317ms
+ ✓ apps/web/src/pages/WhatsAppGroupAutomation.test.tsx > explains the selected group and activates the current published menu with one explicit trigger 1333ms
+ ✓ apps/web/src/pages/WhatsAppGroupAutomation.test.tsx > requires a manual explanation and confirmation before closing an uncertain attempt, never offering resend 72ms
+ ✓ apps/web/src/pages/WhatsAppGroupAutomation.test.tsx > purges the displayed group immediately on a tenant change and ignores a late read 21ms
+ ✓ apps/web/src/integrations/NativeJrcSetup.test.tsx > issues an account-limited key and shows the native setup links without a conversation 939ms
+ ✓ apps/web/src/integrations/NativeJrcSetup.test.tsx > keeps the same request identity after an uncertain response instead of issuing another key silently 177ms
+ ✓ apps/web/src/integrations/NativeJrcSetup.test.tsx > gives each deliberate issuance a distinct bounded name tied to its idempotency intent without altering the previous key 156ms
+ ✓ apps/web/src/integrations/ChatwootOnboarding.test.tsx > recovers persisted operations on opening and reconciles an uncertain inbox without starting another 622ms
+ ✓ apps/web/src/integrations/ChatwootOnboarding.test.tsx > uses the selected existing instance and reuses the creation identity after an uncertain response 148ms
+ ✓ apps/web/src/platform/CompanyDeletion.test.tsx > requires exact company name and reason, then waits for persisted completion 1230ms
+ ✓ apps/web/src/platform/CompanyDeletion.test.tsx > does not report success when cleanup requires attention 71ms
+ ✓ apps/web/src/platform/CompanyDeletion.test.tsx > rejects a malformed preview without breaking the administrator page 136ms
+ ✓ apps/web/src/platform/CompanyDeletion.test.tsx > offers read-only reconciliation and blocks another DELETE while external cleanup is uncertain 129ms
+ ✓ apps/web/src/platform/CompanyWorkspace.test.tsx > labels the new-company flag as enabling automations and explains its effect 1047ms
+ ✓ apps/web/src/platform/CompanyWorkspace.test.tsx > uses the same flag meaning while editing the company plan 166ms
+ ✓ apps/web/src/platform/CompanyWorkspace.test.tsx > labels the audit acknowledgment as an administrative intervention, not a support ticket 104ms
+ ✓ apps/web/src/automations/HttpCredentialPolicyForm.test.tsx > HTTP credential destination configuration > lets the administrator configure allowed origins without reading or rotating a secret 1027ms
+ ✓ apps/web/src/automations/HttpCredentialPolicyForm.test.tsx > HTTP credential destination configuration > keeps read-only policy intact 65ms
+ ✓ apps/web/src/automations/HttpCredentialPolicyForm.test.tsx > HTTP credential destination configuration > rejects private, insecure and path-qualified origins without dispatching policy changes 86ms
+ ✓ apps/web/src/integrations/DeliveryDiagnostics.test.tsx > shows all historical failure totals without loading payloads or replaying jobs 697ms
+ ✓ apps/web/src/integrations/DeliveryDiagnostics.test.tsx > does not keep stale totals after a failed refresh 96ms
+ ✓ apps/web/src/integrations/DeliveryDiagnostics.test.tsx > discards a late response after the company request context changes 76ms
+ ✓ apps/web/src/pages/QrDispatchAttempts.test.tsx > mostra tentativa incerta sem eco e abandona por revisão sem inventar envio 620ms
+ ✓ apps/web/src/pages/QrDispatchAttempts.test.tsx > expõe resultado incerto ao operador sem conceder abandono 51ms
+ ✓ apps/web/src/pages/QrDispatchAttempts.test.tsx > preserva POST pendente e atualiza após commit quando o histórico é recarregado 145ms
+ ✓ apps/web/src/automations/node-editors/InputEditor.test.tsx > simple conversational input editor > edits the capture name without dropping imported metadata or adding unsupported policies 559ms
+ ✓ apps/web/src/automations/node-editors/InputEditor.test.tsx > simple conversational input editor > validates unsafe names using the node contract and preserves the invalid draft 49ms
+ ✓ apps/web/src/automations/node-editors/InputEditor.test.tsx > simple conversational input editor > shows imported unsupported timeout for repair without silently deleting it 35ms
+ ✓ apps/web/src/automations/node-editors/InputEditor.test.tsx > simple conversational input editor > keeps question and repair actions read-only without permission 118ms
+ ✓ apps/web/src/automations/HttpCredentialsPage.test.tsx > HTTP credential creation by name > submits friendly authentication and separate origins without asking for JSON or an ID 637ms
+ ✓ apps/web/src/automations/node-editors/DataReferencePicker.test.tsx > data reference selection > offers message and declared captures without duplicate keys or unsafe references 414ms
+ ✓ apps/web/src/automations/node-editors/DataReferencePicker.test.tsx > data reference selection > preserves an imported custom reference and only replaces it on explicit selection 28ms
+ ✓ apps/web/src/automations/node-editors/DataReferencePicker.test.tsx > data reference selection > offers the runtime default when the menu variable was cleared 23ms
+ ✓ apps/web/src/automations/node-editors/DataReferencePicker.test.tsx > data reference selection > does not invent contact variables which the native runtime does not yet populate 18ms
+ ✓ apps/web/src/pages/ConversationFacts.test.tsx > shows local labels, typed attributes and private notes without a send or delivery claim 676ms
+ ✓ apps/web/src/pages/ConversationFacts.test.tsx > removes an old context immediately when switching Account, box or conversation 8ms
+ ✓ apps/web/src/pages/ConversationFacts.test.tsx > states the private note page limit instead of silently claiming the full history 16ms
+ ✓ apps/web/src/integrations/DashboardAppSetup.test.tsx > generates name and URL only on explicit request, supports manual install and reconciliation 712ms
+ ✓ apps/web/src/integrations/DashboardAppSetup.test.tsx > handles a disabled capability without hiding the independent portal 56ms
+ ✓ apps/web/src/automations/node-editors/InputEditor.timeout.test.tsx > capture deadline editor > lets an editor select a bounded deadline in seconds without exposing internal wait identity 1026ms
+ ✓ apps/web/src/automations/node-editors/InputEditor.timeout.test.tsx > capture deadline editor > shows invalid deadlines while preserving an editable draft 148ms
+ ✓ apps/web/src/automations/node-editors/InputEditor.timeout.test.tsx > capture deadline editor > keeps a deadline read-only without permission 57ms
+ ✓ apps/web/src/automations/ActionSimulationControl.test.tsx > sends only the synthetic outcome for the exact current wait 694ms
+ ✓ apps/web/src/automations/ActionSimulationControl.test.tsx > describes uncertainty as pending reconciliation instead of a next branch 115ms
+ ✓ apps/web/src/automations/ActionSimulationControl.test.tsx > makes resolve explicit and resets a selected outcome when the wait changes 37ms
+ ✓ apps/web/src/automations/ActionSimulationControl.test.tsx > cannot submit while disabled 83ms
+ ✓ apps/web/src/integrations/ConnectionHealthSummary.test.tsx > does not treat a connected session and configured inbox as verified delivery 615ms
+ ✓ apps/web/src/integrations/ConnectionHealthSummary.test.tsx > requires inbound and outbound evidence and displays their timestamps 62ms
+ ✓ apps/web/src/integrations/ConnectionHealthSummary.test.tsx > never promotes stale or incomplete evidence to operational status 27ms
+ ✓ apps/web/src/automations/ImportReview.test.tsx > ImportReview > groups a large incompatible n8n import by source node type while preserving node-level review 603ms
+ ✓ apps/web/src/pages/WhatsAppGroupEventsConfiguration.test.tsx > shows uncertainty as read-only reconciliation and never promises a fresh catalog 431ms
+ ✓ apps/web/src/pages/WhatsAppGroupEventsConfiguration.test.tsx > rejects a configuration response for another company and clears the view on loss of grant 104ms
+ ✓ apps/web/src/pages/WhatsAppGroupEventsConfiguration.test.tsx > does not revive an old tenant observation after its request is purged 23ms
+ ✓ apps/web/src/platform/CommercialPlans.test.tsx > CommercialPlans > shows over-limit resources, unknown usage and sends explicit overrides with current revision 442ms
+ ✓ apps/web/src/platform/CommercialPlans.test.tsx > CommercialPlans > does not offer commercial mutation to support 47ms
+ ✓ apps/web/src/platform/components.test.tsx > does not label exactly 200 fully loaded companies as a truncated result 566ms
+ ✓ apps/web/src/pages/OrganizationSelect.test.tsx > OrganizationSelectPage > identifica cada ação de acesso pela organização correspondente 483ms
+ ✓ apps/web/src/pages/Company.test.tsx > ignores a deferred source-company response after switching company 813ms
+ ✓ apps/web/src/connections/components/ChallengePanel.test.tsx > ChallengePanel > remove o desafio no instante de expiração sem interação do usuário 340ms
+ ✓ apps/web/src/connections/components/ChallengePanel.test.tsx > ChallengePanel > nunca insere pairing code já expirado no DOM 8ms
+ ✓ apps/web/src/embed/session-client.test.ts > drops a late pairing challenge after a newer health response removes pairing permission 95ms
+ ✓ apps/web/src/embed/session-client.test.ts > starts only on user action, binds the proof and never exposes secrets in public state or URLs 12ms
+ ✓ apps/web/src/embed/session-client.test.ts > does not invoke browser fetch with the session client as receiver 2ms
+ ✓ apps/web/src/embed/session-client.test.ts > expires the session and removes the challenge without user interaction 46ms
+ ✓ apps/web/src/embed/session-client.test.ts > clears the challenge on conversation changes and rejects account or inbox outside the grant 8ms
+ ✓ apps/web/src/embed/session-client.test.ts > drops QR and token after the next revoked-grant response and prevents read-only pairing 11ms
+ ✓ apps/web/src/embed/session-client.test.ts > discards a delayed pair response after the context changed 9ms
+ ✓ apps/web/src/embed/session-client.test.ts > refuses malformed context even before any valid context arrived 12ms
+ ✓ apps/web/src/connections/components/ConnectionStatus.test.tsx > ConnectionStatus > anuncia mudanças de status sem depender apenas do ícone ou da cor 324ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > preserves structured automation diagnostics in problem responses 14ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > adds signed CSRF cookie only to exact first-party embed decisions 2ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > usa URL relativa, same-origin, bearer em closure e CSRF somente nas rotas cookie-auth 42ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > recusa URL absoluta antes de chamar fetch 3ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > compartilha um restore para 401 concorrentes e repete cada request uma única vez 31ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não rotaciona o refresh novamente quando um 401 do token anterior chega atrasado 3ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não rotaciona o refresh novamente quando o 401 tardio pertence ao switch 3ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não expira um token mais novo quando o retry do switch recebe 401 atrasado 3ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não restaura novamente após o segundo 401 e sinaliza sessão expirada 2ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não aplica retry automático a /v1/auth/login 1ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não aplica retry automático a /v1/console/auth/restore 1ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não aplica retry automático a /v1/console/auth/logout 1ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > normaliza problem+json sem revelar detalhes e conserva apenas requestId UUID 2ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > aborta e purga o tenant anterior antes do switch e descarta resposta obsoleta 2ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > descarta resposta cujo body termina de ser lido depois da troca de tenant 9ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não repete no novo tenant uma request que recebeu 401 no tenant anterior 13ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > expira e limpa o bearer quando o switch pode ter alterado o cookie mas retorna payload inválido 2ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > expira e limpa o bearer quando o switch retorna erro 5xx potencialmente mutante 6ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > preserva a sessão fonte quando somente o destino do switch é rejeitado 2ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não trata 409 desconhecido como garantia de sessão preservada 2ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > expira a sessão quando o refresh é realmente inválido durante o switch 2ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não mantém bearer restaurado invisivelmente quando mismatch termina em destino rejeitado 9ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não deixa uma request da nova geração aderir ao restore da geração anterior 11ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > serializa trocas de organização e usa a sessão publicada pela troca anterior 4ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > aguarda restore em voo antes do logout e nunca republica uma sessão zumbi 2ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > invalida o bearer imediatamente e conclui logout somente depois de um switch em voo 2ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > recusa restore iniciado durante logout mesmo quando ainda não havia bearer 2ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > remove os dois cookies CSRF quando o logout fica incerto e bloqueia restore após reload 4ms
+ ✓ apps/web/src/api/client.test.ts > createApiClient > não persiste nem propaga access token para storage, URL, DOM, body ou IndexedDB 4ms
+ ✓ apps/web/src/native-flow/entry.test.tsx > isolates editor styling in its host and aborts its Account session on unmount 170ms
+ ✓ apps/web/src/native-flow/entry.test.tsx > rejects a context for another Account before mounting or sending a request 7ms
+ ✓ apps/web/src/native-flow/entry.test.tsx > rejects an expired session instead of restoring a Broker console login 1ms
+ ✓ packages/ui/tests/tokens.test.ts > tokens JRC > expõe as cores de marca aprovadas 131ms
+ ✓ packages/ui/tests/tokens.test.ts > tokens JRC > expõe tipografia, espaçamento, bordas, raios, sombras e estados reutilizáveis 64ms
+ ✓ packages/ui/tests/tokens.test.ts > tokens JRC > publica variáveis CSS equivalentes para consumidores web 2ms
+ ✓ apps/web/src/automations/conversation-api.test.ts > conversation action transport > lists only the channels authorized for this root and checks the response scope 11ms
+ ✓ apps/web/src/automations/conversation-api.test.ts > conversation action transport > rejects a channel catalog for another company or root 3ms
+ ✓ apps/web/src/automations/conversation-api.test.ts > conversation action transport > paginates resources without mixing capabilities or accepting duplicate IDs 6ms
+ ✓ apps/web/src/automations/conversation-api.test.ts > conversation action transport > refuses a response for another channel and inconsistent private media scope 4ms
+ ✓ apps/web/src/automations/conversation-api.test.ts > conversation action transport > stops pagination after cancellation, even if the client returns a page late 1ms
+ ✓ apps/web/src/automations/conversation-api.test.ts > conversation action transport > uploads bounded binary data with only the scoped route and explicit media headers 41ms
+ ✓ apps/web/src/automations/conversation-api.test.ts > conversation action transport > does not send an empty or oversized file and rejects a foreign upload receipt 38ms
+ ✓ apps/web/src/automations/conversation-api.test.ts > conversation action transport > saves a typed local resource and revokes only a media ID in its own scope 4ms
+ ✓ apps/web/src/channels/api.test.ts > canonical channel browser API > uses the canonical lifecycle and automation endpoints 25ms
+ ✓ apps/web/src/connections/use-instance-polling.test.tsx > useInstancePolling > consulta imediatamente, espera a resposta e só agenda novamente após quatro segundos 45ms
+ ✓ apps/web/src/connections/use-instance-polling.test.tsx > useInstancePolling > aborta no purge de tenant e não publica resposta tardia 4ms
+ ✓ apps/web/src/connections/use-instance-polling.test.tsx > useInstancePolling > recupera de erro transitório sem sobrepor requisições 7ms
+ ✓ apps/web/src/connections/use-instance-polling.test.tsx > useInstancePolling > pausa oculta, retoma visível e aborta definitivamente ao desmontar 36ms
+ ✓ apps/web/src/connections/api.test.ts > API de conexões > usa somente rotas públicas JRC e paginação opaca 12ms
+ ✓ apps/web/src/connections/api.test.ts > API de conexões > envia métodos, corpos e Idempotency-Key exatos 7ms
+ ✓ apps/web/src/connections/api.test.ts > API de conexões > percorre todas as páginas de provider accounts sem duplicar contas 1ms
+ ✓ apps/web/src/connections/api.test.ts > API de conexões > recusa cursor repetido em provider accounts em vez de repetir indefinidamente 2ms
+ ✓ apps/web/src/connections/api.test.ts > API de conexões > rejeita resposta fora do contrato com erro seguro 1ms
+ ✓ apps/web/src/native-flow/transport.test.ts > maps paginated action catalogs to the exact Account/session/root and leaves page size to the BFF 8ms
+ ✓ apps/web/src/native-flow/transport.test.ts > cannot retarget a pinned editor or its handoff catalogs to another root 5ms
+ ✓ apps/web/src/native-flow/transport.test.ts > uses only the selected integrations when creating a draft and pins the scope revision when saving 2ms
+ ✓ apps/web/src/native-flow/transport.test.ts > keeps private media bytes out of JSON and carries only the required metadata 2ms
+ ✓ apps/web/src/native-flow/transport.test.ts > lists and revokes only scoped private assets and writes typed resources 1ms
+ ✓ apps/web/src/native-flow/transport.test.ts > rejects foreign origins, path normalization, credential headers, duplicate queries and unsupported global routes 23ms
+ ✓ apps/web/src/native-flow/transport.test.ts > drops a late response when the editor was closed 2ms
+ ✓ apps/web/src/api-keys/api.test.ts > API de chaves > lista com cursor opaco, emite e revoga somente pela API JRC 11ms
+ ✓ apps/web/src/api-keys/api.test.ts > API de chaves > rejeita segredo ou listagem fora do contrato 3ms
+ ✓ apps/web/src/broker/demo-health.test.ts > supplies a valid read-only synthetic health snapshot for the local pilot 5ms
+ ✓ apps/web/src/broker/import.test.ts > Importação do broker > lê BOM, separador brasileiro, aspas e linhas vazias 4ms
+ ✓ apps/web/src/broker/import.test.ts > Importação do broker > recusa duplicados, planilha vazia, colunas desconhecidas e excesso 2ms
+ ✓ apps/web/src/broker/import.test.ts > Importação do broker > interrompe o lote em resultado incerto sem reenviar nem criar o próximo 2ms
+ ✓ apps/web/src/broker/import.test.ts > Importação do broker > cancela antes da próxima criação e registra timeout como incerto 1ms
+ ✓ apps/web/src/broker/import.test.ts > Importação do broker > neutraliza fórmulas em exportação e escapa delimitadores 1ms
+ ✓ apps/web/src/operations/health-model.test.ts > preserves forward-compatible additive fields and unknown components 3ms
+ ✓ apps/web/src/operations/health-model.test.ts > preserves signed server ages for clock-skew diagnosis without accepting negative counts 1ms
+ ✓ apps/web/src/operations/health-model.test.ts > rejects malformed data without asserting it is operational 0ms
+ ✓ apps/web/src/operations/health-model.test.ts > rejects malformed data without asserting it is operational 0ms
+ ✓ apps/web/src/operations/health-model.test.ts > rejects malformed data without asserting it is operational 0ms
+ ✓ apps/web/src/operations/health-model.test.ts > rejects malformed data without asserting it is operational 0ms
+ ✓ apps/web/src/operations/health-model.test.ts > rejects malformed data without asserting it is operational 0ms
+ ✓ apps/web/src/operations/health-model.test.ts > rejects malformed data without asserting it is operational 0ms
+ ✓ apps/web/src/automations/validation.test.ts > automation validation response adapter > preserves diagnostics and does not guess a node from a legacy label 6ms
+ ✓ apps/web/src/automations/validation.test.ts > automation validation response adapter > rejects malformed structured diagnostics rather than silently claiming validity 2ms
+ ✓ apps/web/src/connections/safe-png.test.ts > safeQrPngDataUrl > aceita PNG canônico em BASE64 ou data URL exata 3ms
+ ✓ apps/web/src/connections/safe-png.test.ts > safeQrPngDataUrl > recusa SVG 1ms
+ ✓ apps/web/src/connections/safe-png.test.ts > safeQrPngDataUrl > recusa URL remota 0ms
+ ✓ apps/web/src/connections/safe-png.test.ts > safeQrPngDataUrl > recusa JavaScript 0ms
+ ✓ apps/web/src/connections/safe-png.test.ts > safeQrPngDataUrl > recusa bytes que não são PNG 0ms
+ ✓ apps/web/src/connections/safe-png.test.ts > safeQrPngDataUrl > recusa base64 com espaço 0ms
+ ✓ apps/web/src/connections/safe-png.test.ts > safeQrPngDataUrl > recusa desafio expirado 0ms
+ ✓ apps/web/src/connections/status.test.ts > connectionStatusView > oferece texto e símbolo para todos os estados canônicos 5ms
+ ✓ apps/web/src/connections/status.test.ts > connectionStatusView > acompanha somente estados que ainda podem mudar sem nova intenção 1ms
+ ✓ apps/web/src/embed/context.test.ts > rejects other origins and windows, including opaque origins 3ms
+ ✓ apps/web/src/embed/context.test.ts > keeps only account/inbox/conversation IDs and ignores currentAgent as authority 1ms
+ ✓ apps/web/src/embed/context.test.ts > refuses malformed or oversized context 0ms
+ ✓ apps/web/src/embed/context.test.ts > refuses malformed or oversized context 0ms
+ ✓ apps/web/src/embed/context.test.ts > refuses malformed or oversized context 0ms
+ ✓ apps/web/src/embed/context.test.ts > refuses malformed or oversized context 0ms
+ ✓ apps/web/src/embed/context.test.ts > refuses malformed or oversized context 0ms
+ ✓ apps/web/src/embed/context.test.ts > refuses malformed or oversized context 0ms
+ ✓ apps/web/src/embed/context.test.ts > refuses malformed or oversized context 0ms
+ ✓ apps/web/src/build-security.test.ts > fronteira de variáveis do build web > rejeita VITE_API_KEY porque a console usa somente URLs relativas 3ms
+ ✓ apps/web/src/build-security.test.ts > fronteira de variáveis do build web > rejeita VITE_EVOLUTION_BASE_URL porque a console usa somente URLs relativas 0ms
+ ✓ apps/web/src/build-security.test.ts > fronteira de variáveis do build web > rejeita VITE_JWT_SECRET porque a console usa somente URLs relativas 0ms
+ ✓ apps/web/src/build-security.test.ts > fronteira de variáveis do build web > rejeita VITE_PUBLIC_API_URL porque a console usa somente URLs relativas 0ms
+ ✓ apps/web/src/build-security.test.ts > fronteira de variáveis do build web > aceita somente a configuração server-side do proxy de desenvolvimento 0ms
+ ✓ apps/web/src/api-keys/issued-key.test.ts > toApiKeyMetadata > remove o segredo da representação persistida na lista 4ms
+ ✓ apps/web/src/broker/labels.test.ts > preserva a distinção de contas antigas usando a marca JRC 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/web/src/app/App.test.tsx > Console JRC > opens operational health directly at its console URL without using the API liveness path
+AssertionError: expected "vi.fn()" to be called with arguments: [ '/v1/operations/health' ]
+
+Received:
+
+  1st vi.fn() call:
+
+  [
+    "/v1/operations/health",
++   {
++     "signal": AbortSignal {
++       Symbol(kEvents): undefined,
++       Symbol(events.maxEventTargetListeners): 0,
++       Symbol(events.maxEventTargetListenersWarned): false,
++       Symbol(kHandlers): undefined,
++       Symbol(kAborted): false,
++       Symbol(kReason): undefined,
++       Symbol(kComposite): false,
++     },
++   },
+  ]
+
+
+Number of calls: 1
+
+
+Ignored nodes: comments, script, style
+<html>
+  <head />
+  <body>
+    <div>
+      <div
+        class="jrc-app"
+        style="--jrc-primary: #007392; --jrc-secondary: #2CB4F1; --jrc-highlight: #FDD704; --jrc-heading: #153243; --jrc-surface: #FFFFFF; --jrc-surface-muted: #F4F7F8; --jrc-text: #153243; --jrc-text-muted: #45616D; --jrc-border: #B8C6CB; --jrc-focus: #005FCC; --jrc-danger: #B42318; --jrc-on-primary: #FFFFFF; --jrc-on-highlight: #153243; --jrc-font-family-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; --jrc-font-size-xs: 0.78rem; --jrc-font-size-sm: 0.85rem; --jrc-font-size-body-small: 0.9rem; --jrc-font-size-base: 1rem; --jrc-font-size-lead: 1.4rem; --jrc-font-size-display: 2.3rem; --jrc-font-weight-regular: 400; --jrc-font-weight-semibold: 700; --jrc-font-weight-strong: 750; --jrc-font-weight-bold: 800; --jrc-font-weight-black: 900; --jrc-line-height-tight: 1.15; --jrc-line-height-normal: 1.5; --jrc-letter-spacing-label: 0.09em; --jrc-letter-spacing-code: 0.12em; --jrc-space-xs: 0.25rem; --jrc-space-compact: 0.35rem; --jrc-space-sm: 0.5rem; --jrc-space-control: 0.65rem; --jrc-space-md: 0.75rem; --jrc-space-cozy: 0.8rem; --jrc-space-field: 0.9rem; --jrc-space-lg: 1rem; --jrc-space-card: 1.25rem; --jrc-space-shell: 1.4rem; --jrc-space-xl: 1.5rem; --jrc-space-wide: 2rem; --jrc-space-xxl: 2.5rem; --jrc-radius-sm: 0.35rem; --jrc-radius-md: 0.55rem; --jrc-radius-lg: 0.75rem; --jrc-radius-xl: 1rem; --jrc-radius-pill: 999px; --jrc-border-width: 1px; --jrc-border-subtle: #D8E1E4; --jrc-border-brand: rgb(0 115 146 / 18%); --jrc-border-danger: rgb(180 35 24 / 28%); --jrc-shadow-sm: 0 8px 24px rgb(21 50 67 / 6%); --jrc-shadow-md: 0 10px 24px rgb(21 50 67 / 9%); --jrc-shadow-lg: 0 16px 40px rgb(21 50 67 / 12%); --jrc-disabled-opacity: 0.6; --jrc-primary-hover: #005F79; --jrc-state-success-text: #05603A; --jrc-state-success-surface: #E9F8F0; --jrc-state-pending-text: #075985; --jrc-state-pending-surface: #E8F6FC; --jrc-state-warning-text: #7A4D00; --jrc-state-warning-surface: #FFF6D6; --jrc-state-danger-text: #8D2118; --jrc-state-danger-surface: #FFF1F0; --jrc-state-neutral-text: #334E5A; --jrc-state-neutral-surface: #EDF2F4; --jrc-state-secret-text: #102F3D; --jrc-state-secret-surface: #EEF5F7; --jrc-sidebar-note: #C8D8DE; --jrc-backdrop: rgb(10 28 38 / 65%); --jrc-auth-accent: rgb(44 180 241 / 18%); --jrc-auth-start: #EDF7F9; --jrc-auth-middle: #F8FAFC; --jrc-auth-end: #EEF4F6;"
+      >
+        <div
+          class="console-shell"
+        >
+          <aside
+            class="sidebar "
+            id="console-navigation"
+          >
+            <div
+              class="brand-lockup"
+            >
+              <img
+                alt="JRC PABX"
+                height="75"
+                src="/brand/logo-jrc-2024.png"
+                width="112"
+              />
+              <div>
+                <strong>
+                  JRC Broker
+                </strong>
+                <small>
+                  WHATSAPP WORKSPACE
+                </small>
+              </div>
+            </div>
+            <div
+              aria-label="Páginas da empresa"
+              class="navigation-search"
+              role="search"
+            >
+              <label
+                for="navigation-search"
+              >
+                Buscar páginas e configurações
+              </label>
+              <input
+                id="navigation-search"
+                type="search"
+                value=""
+              />
+            </div>
+            <nav
+              aria-label="Navegação principal"
+            >
+              <div
+                class="navigation-group"
+              >
+                <button
+                  aria-controls="navigation-group-0"
+                  aria-expanded="true"
+                  aria-label="Seção Visão geral"
+                  class="navigation-group-toggle"
+                  type="button"
+                >
+                  Visão geral
+                  <span
+                    aria-hidden="true"
+                  >
+                    −
+                  </span>
+                </button>
+                <div
+                  id="navigation-group-0"
+                >
+                  <a
+                    class=""
+                    data-discover="true"
+                    href="/dashboard"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      fill="none"
+                      height="18"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.7"
+                      viewBox="0 0 24 24"
+                      width="18"
+                    >
+                      <path
+                        d="M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z"
+                      />
+                    </svg>
+                    <span>
+                      Dashboard
+                    </span>
+                  </a>
+                </div>
+              </div>
+              <div
+                class="navigation-group"
+              >
+                <button
+                  aria-controls="navigation-group-1"
+                  aria-expanded="true"
+                  aria-label="Seção Atendimento"
+                  class="navigation-group-toggle"
+                  type="button"
+                >
+                  Atendimento
+                  <span
+            ...
+ ❯ apps/web/src/app/App.test.tsx:58:45
+     56|     expect(await screen.findByRole('heading', { name: 'Saúde operacion…
+     57|     expect(screen.getByRole('link', { name: 'Saúde operacional' })).to…
+     58|     await waitFor(() => expect(api.request).toHaveBeenCalledWith('/v1/…
+       |                                             ^
+     59|     expect(await screen.findByText('Nenhum alerta operacional ativo.')…
+     60|   });
+ ❯ runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:47:12
+ ❯ checkCallback node_modules/@testing-library/dom/dist/wait-for.js:124:77
+ ❯ Timeout.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:118:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 103 passed (104)
+      Tests  1 failed | 748 passed (749)
+   Start at  09:48:21
+   Duration  346.26s (transform 16.12s, setup 82.65s, import 53.33s, tests 234.86s, environment 243.33s)
