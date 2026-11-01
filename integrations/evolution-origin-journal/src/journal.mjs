@@ -45,6 +45,13 @@ export function createOriginJournal({ pool, encryptionKey }) {
     } catch { throw new Error('ORIGIN_PAYLOAD_UNAVAILABLE'); }
   }
   return Object.freeze({
+    async lookupCommittedOwnership(binding, envelope) {
+      const body = canonicalText(binding, envelope), scope = scopeKey(binding);
+      const eventKey = hash(JSON.stringify([body.data.key.id, body.data.key.fromMe, body.data.key.remoteJid]));
+      // Dedicated pool read, outside the append transaction: MVCC cannot see its uncommitted row.
+      const row = (await pool.query('SELECT id,scope_key,event_key,binding_fingerprint,body_hash FROM jrc_evolution_origin.events WHERE scope_key=$1 AND event_key=$2', [scope, eventKey])).rows[0];
+      return row ? Object.freeze({ id: row.id, scopeKey: row.scope_key, eventKey: row.event_key, bindingFingerprint: row.binding_fingerprint, bodyHash: row.body_hash }) : null;
+    },
     async acceptBatch(binding, envelopes) {
       const scope = scopeKey(binding), fingerprint = bindingFingerprint(binding);
       if (!Array.isArray(envelopes) || envelopes.length > 100) throw new Error('ORIGIN_TEXT_INVALID');

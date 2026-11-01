@@ -423,6 +423,7 @@ describe('migrations PostgreSQL', () => {
       {policyname:'nico_takeover_tenant',roles:['jrc_app'],cmd:'ALL'},
       ...Array.from({length:3},()=>({policyname:'central_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'qr_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      {policyname:'qr_origin_tenant',roles:['jrc_app'],cmd:'ALL'},
       ...Array.from({length:3},()=>({policyname:'qr_identity_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'group_catalog_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:4},()=>({policyname:'group_events_tenant',roles:['jrc_app'],cmd:'ALL'})),

@@ -10,6 +10,7 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'POST /v1/webhooks/whatsapp/{id}',
   'POST /v1/media-custody/receipts',
   'GET /v1/media-custody/receipts/{id}',
   'GET /v1/media-custody/receipts/{id}/retention',

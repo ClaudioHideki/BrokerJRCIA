@@ -62,3 +62,19 @@ The 2026-11-01 run (`benchmark-20261101.json`, command/exit record in `benchmark
 ```text
 node --test --test-concurrency=1 labs/cclx-postgres-simulator/receiver.test.mjs labs/cclx-postgres-simulator/benchmark.test.mjs
 ```
+
+## Increment 2026-11-01: optional S3 custody
+
+`openLabReceiver({ labOnly:true, database, mediaState, s3:{endpoint,bucket,accessKeyId,secretAccessKey} })` selects the S3 branch. The endpoint must be loopback and the bucket must be a new `cclx-lab-<UUID>` lab bucket. Unknown transport/config overrides are rejected. No production environment defaults are read. Build the API first (`npm run build`); the lab reuses its compiled private S3 adapter without another SDK/package.
+
+The receiver validates bounded incoming bytes, SHA-256 and MIME signature in its private temporary file, then conditionally uploads to the deterministic organization/event object. The existing adapter checks private-bucket controls. Actual GET bytes must match the length and SHA-256 before a synchronous PostgreSQL receipt COMMIT. Repeated deliveries verify the physical object again and return the existing SQL receipt. A conflicting object is never overwritten. A changed storage mode/destination cannot reuse an earlier receipt. `retention: KEEP` and `sourceEligibleForDeletion: false` remain unconditional.
+
+A successful upload followed by failed SQL commit/crash can leave an object without a receipt. Keep that orphan; retry adopts only verified identical bytes. SQL and S3 are separate systems, without a distributed transaction or automatic orphan deletion. `afterObjectUpload` and `afterReceiptCommit` simulate interrupted acknowledgement paths; the integration suite also uses a real deferred SQL COMMIT rejection and corrupts actual stored object bytes. These are synthetic local failures, not process-kill/crash or power-loss proofs.
+
+Run `node --test --test-concurrency=1 labs/cclx-postgres-simulator/media-s3.test.mjs` with the same explicit test PG URL and a dedicated disposable MinIO. The suite accepts `TEST_CCLX_S3_ENDPOINT`, `TEST_CCLX_S3_ACCESS_KEY_ID`, `TEST_CCLX_S3_SECRET_ACCESS_KEY`, or the existing pinned storage runner's `TEST_STORAGE_*` equivalent variables. Local synthetic defaults target loopback15440 only. Each test creates a fresh bucket; objects/buckets are deliberately retained until their dedicated container is explicitly disposed.
+
+For the cached `jrc-broker-minio-lab:release-20250907` image, explicitly execute `/usr/bin/minio`: the image PATH contains an older `minio`. Verify `/usr/bin/minio --version` and its SHA-256 against `scripts/ci/storage-minio.mjs`. The corruption test catches a backend that silently ignores conditional PUT. Never reuse `campaign-minio` or any shared bucket.
+
+This branch is an unencrypted synthetic byte-custody laboratory. It does not validate codecs, real partner acceptance, real Chatwoot/CCLX, a production worker, key custody, backup/restore, or a WhatsApp session. Those B03 gates remain open.
+
+Concurrent cross-mode coverage additionally gates a filesystem INSERT on a real PG advisory lock while an independent S3 receiver commits first. The losing filesystem caller must reject the winning receipt's incompatible storage mode; the symmetric final SQL-winner check covers this even when both receivers initially saw no receipt. Review regression: semantic RED then 9/9 S3 GREEN (`media-s3-race-*.log`).

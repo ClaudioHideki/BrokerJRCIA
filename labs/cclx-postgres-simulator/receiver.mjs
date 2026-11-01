@@ -51,6 +51,7 @@ export async function openLabReceiver(options={}){
   requireLabOnly(options);
   const directory=await validateMediaState(options.mediaState),url=options.database?.connectionString;
   validateDatabaseUrl(url,true);
+  const s3=options.s3?(await import('./s3-custody.mjs')).createLabS3Custody(options.s3,{labOnly:true}):null;
   const pool=poolFor(url),faults=[...(options.faults??[])],now=options.now??(()=>Date.now());
   try{
     if(faults.some(f=>!['afterInboxInsert','lostAckAfterCommit'].includes(f)))throw Error('INVALID_FAULT');
@@ -103,11 +104,12 @@ export async function openLabReceiver(options={}){
     identity(eventId,organizationId);
     if(Object.keys(input).some(k=>!['eventId','organizationId','expectedHash','mime','maxBytes','chunks','fault'].includes(k))||
       typeof expectedHash!=='string'||!/^[a-f0-9]{64}$/.test(expectedHash)||!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>16*1024*1024||
-      !['image/png','audio/wav','video/mp4','application/pdf'].includes(mime)||(fault!==undefined&&!['afterFileSync','afterReceiptCommit'].includes(fault)))throw Error('INVALID_MEDIA_FIXTURE');
+      !['image/png','audio/wav','video/mp4','application/pdf'].includes(mime)||(fault!==undefined&&!['afterFileSync','afterReceiptCommit',...(s3?['afterObjectUpload','beforeReceiptCommit']:[])].includes(fault)))throw Error('INVALID_MEDIA_FIXTURE');
     if(!await readEvent(eventId,organizationId))throw Error('EVENT_NOT_PERSISTED');
     await validateMediaState(options.mediaState);
     const previous=await readMediaReceipt(eventId,organizationId);
     if(previous&&(previous.hash!==expectedHash||previous.mime!==mime))throw Error('MEDIA_CONTENT_CONFLICT');
+    if(previous&&((previous.storage==='S3')!==Boolean(s3)))throw Error('MEDIA_DESTINATION_CONFLICT');
     const objectName=`media-${hash(`${organizationId}\0${eventId}`)}.bin`,finalPath=join(directory,objectName),temporary=join(directory,`media-${randomUUID()}.part`);
     let file,total=0,signature=Buffer.alloc(0);const digest=createHash('sha256');
     try{
@@ -121,14 +123,21 @@ export async function openLabReceiver(options={}){
       if(digest.digest('hex')!==expectedHash)throw Error('HASH_MISMATCH');
       if(sniffMime(signature)!==mime)throw Error('MIME_REJECTED');
       await file.sync();await file.close();file=undefined;
-      // Hard-link creation never overwrites a concurrent or previous committed object.
-      try{await link(temporary,finalPath);}catch(error){if(error.code!=='EEXIST')throw error;}
-      await verifyFile(finalPath,expectedHash);
-      const directorySync=await syncDirectory(directory);
-      if(fault==='afterFileSync')throw Error('SYNTHETIC_AFTER_FILE_SYNC');
+      let custody;
+      if(s3){
+        custody=await s3.persist({organizationId,eventId,bytes:await readFile(temporary),hash:expectedHash});
+        if(fault==='afterObjectUpload')throw Error('SYNTHETIC_AFTER_OBJECT_UPLOAD');
+        if(previous&&(previous.storage!=='S3'||previous.destinationFingerprint!==custody.destinationFingerprint))throw Error('MEDIA_DESTINATION_CONFLICT');
+      }else{
+        // Hard-link creation never overwrites a concurrent or previous committed object.
+        try{await link(temporary,finalPath);}catch(error){if(error.code!=='EEXIST')throw error;}
+        await verifyFile(finalPath,expectedHash);
+        custody={directorySync:await syncDirectory(directory)};
+        if(fault==='afterFileSync')throw Error('SYNTHETIC_AFTER_FILE_SYNC');
+      }
       if(previous)return previous;
       const receipt={status:'COPY_PERSISTED_UNVALIDATED',ack:'ACK_COPY_PERSISTED_LAB',organizationId,eventId,objectName,bytes:total,mime,hash:expectedHash,
-        committedAt:new Date(now()).toISOString(),sourceEligibleForDeletion:false,validation:'SIGNATURE_ONLY_NO_CODEC_VALIDATION',directorySync};
+        committedAt:new Date(now()).toISOString(),sourceEligibleForDeletion:false,validation:'SIGNATURE_ONLY_NO_CODEC_VALIDATION',...custody};
       const client=await pool.connect();let committedReceipt;
       try{
         await client.query('BEGIN');
@@ -136,6 +145,9 @@ export async function openLabReceiver(options={}){
         const inserted=await client.query('INSERT INTO cclx_lab_media_receipts VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING receipt',[organizationId,eventId,receipt]);
         committedReceipt=inserted.rows[0]?.receipt??(await client.query('SELECT receipt FROM cclx_lab_media_receipts WHERE organization_id=$1 AND event_id=$2',[organizationId,eventId])).rows[0]?.receipt;
         if(!committedReceipt||committedReceipt.hash!==expectedHash||committedReceipt.mime!==mime)throw Error('MEDIA_CONTENT_CONFLICT');
+        if((committedReceipt.storage==='S3')!==Boolean(s3))throw Error('MEDIA_DESTINATION_CONFLICT');
+        if(s3&&(committedReceipt.storage!=='S3'||committedReceipt.destinationFingerprint!==custody.destinationFingerprint))throw Error('MEDIA_DESTINATION_CONFLICT');
+        if(fault==='beforeReceiptCommit')throw Error('SYNTHETIC_BEFORE_RECEIPT_COMMIT');
         await client.query('COMMIT');
       }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
       if(fault==='afterReceiptCommit')throw Error('SYNTHETIC_LOST_MEDIA_ACK');

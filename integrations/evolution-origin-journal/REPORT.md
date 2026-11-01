@@ -1,5 +1,7 @@
 # B02-A local implementation evidence — 2026-11-01
 
+**Historical first-increment report below.** The subsequent authenticated HTTP/finite lab-bootstrap/actual SIGKILL increment is documented in `output/increment-20261101/origin-report.md` under this package and in the parent output directory. Its final combined suite passed 36 tests, including actual Broker HTTP/PG COMMIT before ACK + sender SIGKILL + stable replay. Neither increment installs/enables an Evolution engine; ownership remains UNPROVEN and B02 remains open.
+
 Baseline Broker HEAD at start: `049a410`. Scope: new files in `integrations/evolution-origin-journal/` only. Design recorded in DESIGN.md before implementation. No commit, engine/bootstrap/infra/workflow edit, image publication, production action or actual WhatsApp/HTTP integration traffic was performed.
 
 ## Implemented

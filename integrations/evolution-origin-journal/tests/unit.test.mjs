@@ -64,6 +64,7 @@ test('strict opt-in performs no capture while disabled and fails closed without 
   }
   const hook = createOriginCaptureHook({ env: { JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED: 'true' }, binding });
   await assert.rejects(hook.capture(source()), /ORIGIN_JOURNAL_UNAVAILABLE/);
+  assert.equal(hook.deliveryOwnership, 'UNPROVEN', 'capture alone cannot suppress every original webhook path');
 });
 
 test('awaits the durable capture promise and does not turn a rejected capture into success', async () => {

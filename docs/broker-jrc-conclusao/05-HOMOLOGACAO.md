@@ -1,3 +1,9 @@
+# Atualização de 01/11/2026 — continuação de ea58a897
+
+O estado corrente deste incremento está em [10-INCREMENTO-ORIGEM-CUSTODIA-20261101.md](10-INCREMENTO-ORIGEM-CUSTODIA-20261101.md), [11-VERIFICACAO-E-ENTREGA-20261101.md](11-VERIFICACAO-E-ENTREGA-20261101.md) e `ESTADO-FINAL.json`. Os registros abaixo são históricos: bootstrap/ACK, MinIO, shells e resultados de testes evoluíram. Não usar imagens ou CI anteriores como aprovação do novo diff. Nenhuma produção foi acessada ou alterada nesta continuação.
+
+## Histórico preservado
+
 # Homologação e evidências
 
 Workflow oficial41320633958, SHA b076e05864c168f88eb303177016543c68583ad7: sucesso. Logs confirmam34 testes parceiroQR,3613 unit/HTTP/frontend,6PDF,1526SQL/Redis,5MinIO. São5184 execuções em etapas, não contagem garantida de casos únicos. Build, security:submodule, scanner bundle, npm audit high e assinaturas concluídos.

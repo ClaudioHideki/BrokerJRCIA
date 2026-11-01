@@ -2,7 +2,7 @@
 const tenantExpression = "organization_id=NULLIFcurrent_setting'app.organization_id'::text,true,''::text::uuid";
 export const auditCorrectionsRuntimeSql = `
  NOT EXISTS(SELECT 1 FROM (VALUES ('media_custody_receipts','media_custody_tenant',true),
-   ('partner_delivery_replays','partner_replay_tenant',false)) required(name,policy_name,app_insert)
+   ('partner_delivery_replays','partner_replay_tenant',false),('qr_origin_receipts','qr_origin_tenant',true)) required(name,policy_name,app_insert)
   WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass('public.'||required.name)
    AND c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'
    AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname=required.policy_name
@@ -28,7 +28,10 @@ export const auditCorrectionsRuntimeSql = `
  AND NOT EXISTS(SELECT 1 FROM (VALUES
   ('instances','connection_observed_at','timestamp with time zone',false),('instances','connection_binding_fingerprint','text',false),
   ('partner_event_deliveries','lifetime_attempts','bigint',true),('partner_event_deliveries','replay_count','integer',true),
-  ('media_custody_receipts','request_hash','text',true),('media_custody_receipts','retention_policy','text',true)) required(relation_name,column_name,type_name,not_null)
+  ('media_custody_receipts','request_hash','text',true),('media_custody_receipts','retention_policy','text',true),
+  ('qr_origin_receipts','source_event_id','uuid',true),('qr_origin_receipts','content_hash','text',true),
+  ('qr_origin_receipts','binding_fingerprint','text',true),('qr_origin_receipts','instance_id','uuid',true),
+  ('qr_origin_receipts','accepted_at','timestamp with time zone',true)) required(relation_name,column_name,type_name,not_null)
   WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=pg_catalog.to_regclass('public.'||required.relation_name)
    AND a.attname=required.column_name AND a.atttypid=pg_catalog.to_regtype(required.type_name)
    AND a.attnotnull=required.not_null AND a.attnum>0 AND NOT a.attisdropped))
@@ -36,7 +39,8 @@ export const auditCorrectionsRuntimeSql = `
   ('media_custody_receipts','a_media_custody_authority','public.media_custody_require_authority()',23),
   ('media_custody_receipts','media_custody_lifecycle_admission','public.lifecycle_reject_channel_write()',7),
   ('partner_delivery_replays','partner_delivery_replay_immutable','public.partner_delivery_replay_immutable()',23),
-  ('partner_event_deliveries','partner_delivery_attempt_fence','public.partner_delivery_attempt_fence()',19)) required(relation_name,trigger_name,function_name,trigger_type)
+  ('partner_event_deliveries','partner_delivery_attempt_fence','public.partner_delivery_attempt_fence()',19),
+  ('qr_origin_receipts','lifecycle_origin_receipt_block','public.lifecycle_reject_channel_write()',7)) required(relation_name,trigger_name,function_name,trigger_type)
   WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid=pg_catalog.to_regclass('public.'||required.relation_name)
    AND t.tgname=required.trigger_name AND t.tgtype=required.trigger_type AND t.tgenabled IN ('O','A') AND NOT t.tgisinternal
    AND t.tgqual IS NULL AND t.tgattr::text=''
@@ -57,5 +61,30 @@ export const auditCorrectionsRuntimeSql = `
   AND c.conname='instances_connection_clock_scope' AND c.convalidated)
  AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass('public.messaging_messages')
   AND c.conname='messaging_messages_custody_reference_unique' AND c.contype='u' AND c.convalidated)
+ AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c
+  JOIN pg_catalog.pg_index i ON i.indexrelid=c.conindid AND i.indrelid=c.conrelid
+  JOIN pg_catalog.pg_class index_relation ON index_relation.oid=i.indexrelid
+  WHERE c.conrelid=pg_catalog.to_regclass('public.qr_origin_receipts') AND c.contype='p' AND c.convalidated AND NOT c.condeferrable
+   AND i.indisprimary AND i.indisunique AND i.indisvalid AND i.indisready AND i.indimmediate
+   AND i.indpred IS NULL AND i.indexprs IS NULL AND i.indnkeyatts=3 AND i.indnatts=3
+   AND pg_catalog.pg_get_userbyid(index_relation.relowner)='jrc_migrator'
+   AND (SELECT array_agg(a.attname::text ORDER BY key.ordinality)
+    FROM unnest(i.indkey) WITH ORDINALITY key(attnum,ordinality)
+    JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=key.attnum)
+    =ARRAY['organization_id','channel_id','source_event_id'])
+ AND NOT EXISTS(SELECT 1 FROM (VALUES
+  ('organizations',ARRAY['organization_id'],ARRAY['id']),
+  ('messaging_channels',ARRAY['organization_id','channel_id'],ARRAY['organization_id','id']),
+  ('instances',ARRAY['organization_id','instance_id'],ARRAY['organization_id','id'])) required(relation_name,source_columns,target_columns)
+  WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c
+   WHERE c.conrelid=pg_catalog.to_regclass('public.qr_origin_receipts') AND c.contype='f' AND c.convalidated
+    AND NOT c.condeferrable AND c.confdeltype='c' AND c.confupdtype='a' AND c.confmatchtype='s'
+    AND c.confrelid=pg_catalog.to_regclass('public.'||required.relation_name)
+    AND (SELECT array_agg(a.attname::text ORDER BY key.ordinality)
+     FROM unnest(c.conkey) WITH ORDINALITY key(attnum,ordinality)
+     JOIN pg_catalog.pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=key.attnum)=required.source_columns
+    AND (SELECT array_agg(a.attname::text ORDER BY key.ordinality)
+     FROM unnest(c.confkey) WITH ORDINALITY key(attnum,ordinality)
+     JOIN pg_catalog.pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=key.attnum)=required.target_columns))
  AND (SELECT count(*)=3 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass('public.media_custody_receipts')
   AND c.contype='f' AND c.convalidated AND c.confrelid IN (pg_catalog.to_regclass('public.messaging_messages'),pg_catalog.to_regclass('public.messaging_media'),pg_catalog.to_regclass('public.partner_webhook_endpoints')))`;

@@ -1,4 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import {createHash} from 'node:crypto';
+import {OriginReceiptError,type OriginReceiptInput} from '../../modules/messaging/origin-receipt.js';
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import {
@@ -59,7 +61,7 @@ export async function registerIntegrationRoutes(
       statusCode?: number;
     };
     const status =
-      error instanceof IntegrationError || error instanceof ChatwootDestinationError
+      error instanceof IntegrationError || error instanceof ChatwootDestinationError || error instanceof OriginReceiptError
         ? error.status
         : candidate.validation || error instanceof z.ZodError
           ? 400
@@ -73,7 +75,7 @@ export async function registerIntegrationRoutes(
                 ? (candidate.statusCode ?? candidate.status)!
                 : 503;
     const code =
-      error instanceof IntegrationError || error instanceof ChatwootError || error instanceof ChatwootDestinationError
+      error instanceof IntegrationError || error instanceof ChatwootError || error instanceof ChatwootDestinationError || error instanceof OriginReceiptError
         ? error.code
         : candidate.code === "23505"
           ? "INTEGRATION_ALREADY_BOUND"
@@ -363,21 +365,49 @@ export async function registerIntegrationRoutes(
       return options.qr.activate(org(request), request.params.id);
     },
   );
-  if (options.qr)
-    api.post(
+  if (options.qr) await app.register(async scope=>{
+    // Isolated parser keeps exact bytes for the opt-in receipt hash without changing other APIs.
+    scope.addContentTypeParser('application/json',{parseAs:'buffer',bodyLimit:1_048_576},(_request,body,done)=>done(null,body));
+    scope.withTypeProvider<ZodTypeProvider>().post(
       "/v1/webhooks/whatsapp/:id",
-      { bodyLimit: 1_048_576, schema: { params, querystring: empty } },
+      { bodyLimit: 1_048_576, schema: {
+        description:'Authenticated QR transport ingress. Optional origin-receipt headers require one individual TEXT projection; ACK means durable Broker custody, not WhatsApp delivery. Both headers are required together; SHA256 covers the exact UTF-8 JSON request bytes. Legacy callers retain their accepted response.',
+        params, querystring: empty,
+        headers:z.looseObject({authorization:z.string().optional(),'x-jrc-origin-event-id':z.uuid().optional(),
+          'x-jrc-origin-content-sha256':z.string().regex(/^[a-f0-9]{64}$/u).optional()}),
+        response:{200:z.union([z.strictObject({status:z.enum(['accepted','duplicate']),sourceEventId:z.uuid(),durablyAccepted:z.literal(true)}),
+          z.strictObject({status:z.literal('accepted')})]),400:ProblemDetailsSchema,401:ProblemDetailsSchema,409:ProblemDetailsSchema,
+          413:ProblemDetailsSchema,415:ProblemDetailsSchema,422:ProblemDetailsSchema,503:ProblemDetailsSchema},
+      } },
       async (request, reply) => {
-        await options.qr!.ingest(
+        reply.header('Cache-Control','no-store');
+        if(!Buffer.isBuffer(request.body))throw new OriginReceiptError('ORIGIN_PAYLOAD_INVALID',400);
+        let payload:unknown;
+        try{payload=JSON.parse(request.body.toString('utf8'));}catch{throw new OriginReceiptError('ORIGIN_PAYLOAD_INVALID',400);}
+        const eventId=request.headers['x-jrc-origin-event-id'],digest=request.headers['x-jrc-origin-content-sha256'];
+        let metadata:OriginReceiptInput|undefined;
+        if(eventId!==undefined||digest!==undefined){
+          if(typeof eventId!=='string'||!z.uuid().safeParse(eventId).success||typeof digest!=='string'||!/^[a-f0-9]{64}$/u.test(digest)
+            ||createHash('sha256').update(request.body).digest('hex')!==digest)throw new OriginReceiptError('ORIGIN_RECEIPT_INVALID',400);
+          metadata={sourceEventId:eventId,contentSha256:digest};
+        }
+        const receipt=await options.qr!.ingest(
           request.params.id,
           typeof request.headers.authorization === "string"
             ? request.headers.authorization
             : undefined,
-          request.body,
+          payload,
+          metadata,
         );
+        if(metadata){
+          if(!receipt||receipt.sourceEventId!==metadata.sourceEventId||receipt.durablyAccepted!==true)
+            throw new OriginReceiptError('ORIGIN_RECEIPT_UNAVAILABLE',503);
+          return reply.code(200).send(receipt);
+        }
         return reply.code(200).send({ status: "accepted" });
       },
     );
+  });
   if (options.service)
     await app.register(async (scope) => {
       scope.addContentTypeParser(

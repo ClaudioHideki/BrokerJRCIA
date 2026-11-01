@@ -12,7 +12,7 @@ import {flowDomainRuntimeSql} from './flow-domain-runtime-schema.js';
 import {metaOnboardingRuntimeSql} from './meta-onboarding-runtime-schema.js';
 import {partnerApiRuntimeSql} from './partner-api-runtime-schema.js';
 import {auditCorrectionsRuntimeSql} from './audit-corrections-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0077_partner_delivery_replay';
+export const RUNTIME_SCHEMA_BASELINE = '0078_qr_origin_receipts';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 

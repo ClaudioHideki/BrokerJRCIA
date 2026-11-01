@@ -4,7 +4,7 @@ import { projectTextBatch } from './projection.mjs';
 export function createOriginCaptureHook({ env = {}, journal, binding }) {
   const enabled = env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED === 'true';
   return Object.freeze({
-    deliveryOwnership: 'INTEGRATION_ONLY',
+    deliveryOwnership: 'UNPROVEN',
     async capture(events) {
       if (!enabled) return { captured: 0, enabled: false };
       if (!journal || typeof journal.acceptBatch !== 'function') throw new Error('ORIGIN_JOURNAL_UNAVAILABLE');

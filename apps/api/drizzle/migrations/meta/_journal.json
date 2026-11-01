@@ -540,6 +540,13 @@
       "when": 1794177600000,
       "tag": "0077_partner_delivery_replay",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1794264000000,
+      "tag": "0078_qr_origin_receipts",
+      "breakpoints": true
     }
   ]
 }

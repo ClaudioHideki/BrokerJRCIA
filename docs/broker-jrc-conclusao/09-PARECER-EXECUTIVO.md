@@ -1,3 +1,9 @@
+# Atualização de 01/11/2026 — continuação de ea58a897
+
+O estado corrente deste incremento está em [10-INCREMENTO-ORIGEM-CUSTODIA-20261101.md](10-INCREMENTO-ORIGEM-CUSTODIA-20261101.md), [11-VERIFICACAO-E-ENTREGA-20261101.md](11-VERIFICACAO-E-ENTREGA-20261101.md) e `ESTADO-FINAL.json`. Os registros abaixo são históricos: bootstrap/ACK, MinIO, shells e resultados de testes evoluíram. Não usar imagens ou CI anteriores como aprovação do novo diff. Nenhuma produção foi acessada ou alterada nesta continuação.
+
+## Histórico preservado
+
 # Relatório detalhado — Broker JRC
 
 Data: 01/11/2026. Execução incremental da missão mestre, em desenvolvimento.

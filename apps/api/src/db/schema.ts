@@ -1057,6 +1057,17 @@ export const qrIdentityPendingEvents=pgTable('qr_identity_pending_events',{
 ]);
 
 export const partnerEventOrder=pgSequence('partner_event_order_seq');
+export const qrOriginReceipts=pgTable('qr_origin_receipts',{
+ organizationId:uuid('organization_id').notNull().references(()=>organizations.id,{onDelete:'cascade'}),
+ channelId:uuid('channel_id').notNull(),sourceEventId:uuid('source_event_id').notNull(),instanceId:uuid('instance_id').notNull(),
+ bindingFingerprint:text('binding_fingerprint').notNull(),contentHash:text('content_hash').notNull(),
+ acceptedAt:timestamp('accepted_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+},t=>[primaryKey({columns:[t.organizationId,t.channelId,t.sourceEventId]}),
+ foreignKey({columns:[t.organizationId,t.channelId],foreignColumns:[messagingChannels.organizationId,messagingChannels.id]}).onDelete('cascade'),
+ foreignKey({columns:[t.organizationId,t.instanceId],foreignColumns:[instances.organizationId,instances.id]}).onDelete('cascade'),
+ check('qr_origin_receipts_binding_fingerprint_check',sql`${t.bindingFingerprint} ~ '^[a-f0-9]{64}$'`),
+ check('qr_origin_receipts_content_hash_check',sql`${t.contentHash} ~ '^[a-f0-9]{64}$'`),
+]);
 export const partnerWebhookEndpoints=pgTable('partner_webhook_endpoints',{
  organizationId:uuid('organization_id').notNull().references(()=>organizations.id,{onDelete:'cascade'}),
  id:uuid('id').notNull().defaultRandom(),url:text('url').notNull(),idempotencyKey:text('idempotency_key').notNull(),

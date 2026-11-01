@@ -79,3 +79,40 @@ describe('PlatformShell navigation', () => {
     setItem.mockRestore();
   });
 });
+
+it('keeps company deep routes active and gives staff a content shortcut and breadcrumb', () => {
+  render(<MemoryRouter initialEntries={['/jrc/empresas/company-synthetic']}><PlatformShell session={session()} busy={false} logout={vi.fn()}><h1>Detalhe sintético</h1></PlatformShell></MemoryRouter>);
+  const nav = screen.getByRole('navigation', { name: 'Administração JRC' });
+  expect(within(nav).getByRole('link', { name: 'Empresas' })).toHaveAttribute('aria-current', 'page');
+  expect(within(nav).getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current');
+  const breadcrumb = screen.getByRole('navigation', { name: 'Caminho da plataforma' });
+  expect(within(breadcrumb).getByRole('link', { name: 'Empresas' })).toHaveAttribute('href', '/jrc/empresas');
+  expect(within(breadcrumb).getByText('Detalhes')).toHaveAttribute('aria-current', 'page');
+  fireEvent.click(screen.getByRole('link', { name: 'Ir para o conteúdo da plataforma' }));
+  expect(screen.getByRole('main')).toHaveFocus();
+});
+
+it('contains keyboard focus in the mobile staff drawer and exposes its close control', () => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+  render(shell());
+  const trigger = screen.getByRole('button', { name: 'Abrir navegação' });
+  fireEvent.click(trigger);
+  const close = screen.getByRole('button', { name: 'Fechar menu da plataforma' });
+  const last = screen.getByRole('link', { name: 'Suporte' });
+  last.focus();
+  fireEvent.keyDown(document, { key: 'Tab' });
+  expect(close).toHaveFocus();
+  fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+  expect(last).toHaveFocus();
+  fireEvent.click(close);
+  expect(trigger).toHaveFocus();
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+});
+
+it('keeps the staff role available inside the mobile platform navigation', () => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+  render(shell(session('SUPPORT')));
+  fireEvent.click(screen.getByRole('button', { name: 'Abrir navegação' }));
+  const drawer = screen.getByRole('complementary', { name: 'Navegação da plataforma' });
+  expect(within(drawer).getByText('Papel: Equipe de suporte')).toBeVisible();
+});

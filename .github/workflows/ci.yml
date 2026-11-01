@@ -124,6 +124,8 @@ jobs:
         run: npm run test:storage:ci
       - name: Verify isolated origin journal and PostgreSQL receiver
         run: npm run test:origin-journal && npm run test:cclx-receiver
+      - name: Verify explicit pool inventory and rollout budget
+        run: npm run test:capacity-budget
       - name: Run browser journeys against the real JRC API composition
         run: npm run test:e2e
 

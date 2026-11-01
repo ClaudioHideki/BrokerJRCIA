@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { NavLink } from "react-router";
+import { Link, NavLink, useLocation } from "react-router";
 import { Icon } from "../broker/Icon.js";
 import type { StaffSession } from "../platform/model.js";
-import { platformNavigationFor } from './navigation.js';
+import { platformNavigation, platformNavigationFor } from './navigation.js';
+import { useDrawerKeyboard } from './useDrawerKeyboard.js';
+import './shells.css';
 
 export function PlatformShell({
   session,
@@ -19,6 +21,12 @@ export function PlatformShell({
   const [query, setQuery] = useState('');
   const [groupCollapsed, setGroupCollapsed] = useState(false);
   const [mobile, setMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 760);
+  const drawer = useRef<HTMLElement>(null);
+  const content = useRef<HTMLElement>(null);
+  const location = useLocation();
+  const pathname = location.pathname.replace(/\/$/u, '');
+  const currentPage = [...platformNavigation].reverse().find(entry => pathname === entry.path || (entry.path !== '/jrc' && pathname.startsWith(entry.path + '/')));
+  useDrawerKeyboard(drawer, mobile && menuOpen);
   const trigger = useRef<HTMLButtonElement>(null);
   const firstLink = useRef<HTMLAnchorElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -60,13 +68,17 @@ export function PlatformShell({
   }
   const hidden = mobile && !menuOpen;
   return (
-    <div className="console-shell admin-console">
+    <div className="console-shell admin-console jrc-shell">
+      <a className="shell-skip-link" href="#platform-content" onClick={event => { event.preventDefault(); content.current?.focus(); }}>Ir para o conteúdo da plataforma</a>
       <aside
+        ref={drawer}
+        aria-label="Navegação da plataforma"
         className={`sidebar ${menuOpen ? "sidebar--open" : ""}`}
         id="admin-navigation"
         aria-hidden={hidden || undefined}
         inert={hidden}
       >
+        {mobile && <button type="button" className="shell-drawer-close" aria-label="Fechar menu da plataforma" onClick={closeMenu}>Fechar menu <span aria-hidden="true">×</span></button>}
         <div className="brand-lockup">
           <img
             src="/brand/logo-jrc-2024.png"
@@ -99,7 +111,7 @@ export function PlatformShell({
             <NavLink
               key={section.path}
               to={section.path}
-              end
+              end={section.path === '/jrc'}
               ref={index === 0 && groupExpanded ? firstLink : undefined}
               onClick={closeMenu}
             >
@@ -120,12 +132,15 @@ export function PlatformShell({
           <div>
             <strong>Equipe JRC</strong>
             <small>Contexto: plataforma</small>
+            <small>Papel: {session.user.role === 'SUPER_ADMIN' ? 'Administrador global' : 'Equipe de suporte'}</small>
           </div>
         </div>
       </aside>
       {mobile && menuOpen && (
         <button
-          className="admin-menu-backdrop"
+          type="button"
+          tabIndex={-1}
+          className="shell-menu-backdrop"
           aria-label="Fechar menu lateral"
           onClick={closeMenu}
         />
@@ -166,7 +181,16 @@ export function PlatformShell({
             Sair
           </button>
         </header>
-        <main className="page-content">{children}</main>
+        <main ref={content} id="platform-content" tabIndex={-1} className="page-content">
+          {currentPage && <nav aria-label="Caminho da plataforma" className="page-breadcrumbs">
+            <ol>
+              {currentPage.path !== '/jrc' && <li><Link to="/jrc">Plataforma</Link></li>}
+              <li>{pathname === currentPage.path ? <span aria-current="page">{currentPage.label}</span> : <Link to={currentPage.path}>{currentPage.label}</Link>}</li>
+              {pathname !== currentPage.path && <li><span aria-current="page">Detalhes</span></li>}
+            </ol>
+          </nav>}
+          {children}
+        </main>
       </div>
     </div>
   );

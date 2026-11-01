@@ -113,3 +113,40 @@ it('does not erase the first mobile menu action with a delayed initial tenant re
   expect(screen.getByRole('button', { name: 'Fechar navegação' })).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByRole('searchbox', { name: 'Buscar páginas e configurações' })).toBeVisible();
 });
+
+it('offers a keyboard shortcut to the company content', async () => {
+  render(<App client={fixture()} initialEntries={['/minha-empresa']} />);
+  await screen.findByRole('heading', { name: 'Minha empresa' });
+  fireEvent.click(screen.getByRole('link', { name: 'Ir para o conteúdo da empresa' }));
+  expect(screen.getByRole('main')).toHaveFocus();
+});
+
+it('contains mobile keyboard navigation and closes from inside the company drawer', async () => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+  render(<App client={fixture()} initialEntries={['/minha-empresa']} />);
+  await screen.findByRole('heading', { name: 'Minha empresa' });
+  const trigger = screen.getByRole('button', { name: 'Abrir navegação' });
+  fireEvent.click(trigger);
+  const close = screen.getByRole('button', { name: 'Fechar menu da empresa' });
+  const last = screen.getByRole('link', { name: 'Suporte' });
+  last.focus();
+  fireEvent.keyDown(document, { key: 'Tab' });
+  expect(close).toHaveFocus();
+  fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+  expect(last).toHaveFocus();
+  fireEvent.click(close);
+  expect(trigger).toHaveFocus();
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole('button', { name: 'Fechar fundo da navegação da empresa' }));
+  expect(trigger).toHaveFocus();
+});
+
+it('keeps the current role available inside the company navigation on narrow screens', async () => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+  render(<App client={fixture('VIEWER')} initialEntries={['/minha-empresa']} />);
+  await screen.findByRole('heading', { name: 'Minha empresa' });
+  fireEvent.click(screen.getByRole('button', { name: 'Abrir navegação' }));
+  const drawer = screen.getByRole('complementary', { name: 'Navegação da empresa' });
+  expect(within(drawer).getByText('Papel: Leitor')).toBeVisible();
+});

@@ -118,6 +118,7 @@ function documentationOptions() {
       service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/integrations/chatwoot-control-auth.js').ChatwootControlAuth,
     },
     integrations: {
+      qr:new Proxy({}, {get(){return unavailable;}}) as ReturnType<typeof import('../modules/messaging/qr-service.js').createQrMessagingService>,
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`,
       authenticateApiKey: unavailable,
       resolveCurrentRole: unavailable,
@@ -277,6 +278,7 @@ function normalizeDocument(document: JsonObject): JsonObject {
   const components = (document.components ??= {}) as JsonObject;
   components.securitySchemes = {
     ...((components.securitySchemes ?? {}) as JsonObject),
+    qrWebhookBearer:{type:'http',scheme:'bearer',description:'Opaque per-channel QR webhook token. Not a tenant JWT or partner API key.'},
     flowSessionAuth:{type:'http',scheme:'bearer',description:'Scoped opaque Flow session; tenant derives from jrc_auth.'},
     flowCredentialAuth:{type:'http',scheme:'bearer',description:'Dedicated opaque native credential; not a session, JWT or grant.'},
     flowInstallationGrantAuth:{type:'http',scheme:'bearer',description:'Installation grant authority only; reduction replay is exact bounded receipt only.'},
@@ -449,6 +451,7 @@ function normalizeDocument(document: JsonObject): JsonObject {
           : method === "get"
             ? [{ platformSession: [] }]
             : [{ platformSession: [], platformCsrf: [] }];
+      if(path==='/v1/webhooks/whatsapp/{id}')operation.security=[{qrWebhookBearer:[]}];
       if (path === "/v1/webhooks/meta") {
         operation.security = method === "post" ? [{ metaSignature: [] }] : [];
         operation.description =

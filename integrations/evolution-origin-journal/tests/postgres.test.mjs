@@ -8,6 +8,7 @@ import { createOriginCaptureHook } from '../src/hook.mjs';
 import { projectTextBatch } from '../src/projection.mjs';
 import { binding as template, source } from './fixtures.mjs';
 import { validateTestAdminUrl } from './lab-database.mjs';
+import { createOriginWebhookOwnershipGuard } from '../src/webhook-ownership.mjs';
 
 let admin, pool, journal, ownDatabase, connectionString, createdDatabase = false;
 const key = randomBytes(32);
@@ -58,6 +59,35 @@ test('PG: capture commits one encrypted event and its obligation before returnin
   const claim = await journal.claim(current);
   assert.equal(claim.body.data.message.conversation, 'Synthetic text');
   assert.equal(JSON.stringify(claim.body).includes('must-not-survive'), false);
+});
+
+test('PG: webhook ownership observes only actual COMMIT and rejects changed same-identity content', async () => {
+  const current = binding();
+  let reachedCommit, releaseCommit;
+  const reached = new Promise(resolve => { reachedCommit = resolve; });
+  const gate = new Promise(resolve => { releaseCommit = resolve; });
+  const pausedPool = { async connect() {
+    const client = await pool.connect();
+    return { async query(sql, params) {
+      if (sql === 'COMMIT') { reachedCommit(); await gate; }
+      return client.query(sql, params);
+    }, release: () => client.release() };
+  } };
+  const appending = createOriginJournal({ pool: pausedPool, encryptionKey: key });
+  const envelope = facts(current)[0];
+  const accepted = appending.acceptBatch(current, [envelope]);
+  const endpoint = `https://broker.invalid/v1/webhooks/whatsapp/${current.destinationId}`;
+  const ownership = createOriginWebhookOwnershipGuard({ env, journal, binding: current, endpoint, resolveBinding: async () => current });
+  const input = { instanceName: current.instanceName, event: envelope.event, data: envelope.data, destination: endpoint };
+  try {
+    await reached;
+    // INSERT executed in real PG, actual COMMIT deliberately not yet issued.
+    assert.equal(await journal.lookupCommittedOwnership(current, envelope), null);
+    assert.equal(await ownership.decide(input), 'DELIVER_LEGACY');
+  } finally { releaseCommit(); await accepted; }
+  assert.equal(await ownership.decide(input), 'SUPPRESS_OWNED');
+  const changed = structuredClone(input); changed.data.message.conversation = 'Synthetic conflicting body';
+  await assert.rejects(ownership.decide(changed), /ORIGIN_WEBHOOK_OWNERSHIP_INVALID/);
 });
 
 test('PG: stable identity deduplicates and same-key different-content rolls back the entire batch', async () => {

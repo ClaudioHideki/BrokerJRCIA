@@ -78,8 +78,11 @@ function realPorts(){
    context.child.once('error',()=>{context.startFailure=true;context.exited=true;});context.child.once('exit',()=>{context.exited=true;});},
   ready:waitForMinio,bucket:createPrivateBucket,
   async tests(context){
-   const child=spawn('npm',['run','test:storage'],{cwd:repo,windowsHide:true,stdio:'inherit',env:{...process.env,...context.env}});
-   await new Promise((done,fail)=>{child.once('error',()=>fail(Error('STORAGE_TEST_SUITE_START_FAILED')));child.once('exit',code=>code===0?done():fail(Error('STORAGE_TEST_SUITE_FAILED')));});
+   // Both suites use the verified server. Native custody assertions are not replaced by an S3 mock.
+   for(const suite of ['test:storage','test:cclx-media']){
+    const child=spawn('npm',['run',suite],{cwd:repo,windowsHide:true,stdio:'inherit',env:{...process.env,...context.env}});
+    await new Promise((done,fail)=>{child.once('error',()=>fail(Error('STORAGE_TEST_SUITE_START_FAILED')));child.once('exit',code=>code===0?done():fail(Error('STORAGE_TEST_SUITE_FAILED')));});
+   }
   },cleanup:stopAndClean,
  };
 }

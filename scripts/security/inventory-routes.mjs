@@ -4,6 +4,10 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  'POST /v1/webhooks/whatsapp/{id}': policy(
+    'apps/api/src/http/routes/integrations.ts','CHANNEL_DERIVED_BEARER','BOUND_INSTANCE_AND_CURRENT_FLEET',true,
+    'PROVIDER_ID_DEDUPE_OPTIONAL_ORIGIN_UUID_CANONICAL_HASH_IMMUTABLE_RECEIPT','NO_STORE_RECEIPT_METADATA',
+    'SERVER_RESOLVED_TENANT_CHANNEL_INSTANCE_AUTHORITY_RAW_BODY_HASH_SYNC_COMMIT_RECEIPT_AND_EFFECTS_NO_DELIVERY_CLAIM'),
   'POST /v1/media-custody/receipts': policy(
     'apps/api/src/http/routes/media-custody.ts','CURRENT_ORGANIZATION_API_KEY','MEDIA_ARCHIVE_SCOPE',true,
     'TENANT_IDEMPOTENCY_HASH_MESSAGE_MEDIA_ENDPOINT_REFERENCE','NO_STORE_CUSTODY_METADATA',
