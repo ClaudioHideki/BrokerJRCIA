@@ -25,6 +25,8 @@ function fixture() {
     capabilities: [],
     createdAt: NOW,
     updatedAt: NOW,
+    connectionObservedAt: null,
+    connectionBindingFingerprint: null,
   };
   const operation: ProviderOperationRow = {
     id: OPERATION_ID,

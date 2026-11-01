@@ -1,0 +1,37 @@
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+ ❯ apps/api/tests/unit/instance-service.test.ts (28 tests | 2 failed) 249ms
+     × descarta polling se watermark do webhook mudou no mesmo milissegundo 70ms
+     × descarta polling se binding do webhook mudou no mesmo milissegundo 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/api/tests/unit/instance-service.test.ts > serviço de instâncias > descarta polling se watermark do webhook mudou no mesmo milissegundo
+ FAIL  apps/api/tests/unit/instance-service.test.ts > serviço de instâncias > descarta polling se binding do webhook mudou no mesmo milissegundo
+AssertionError: expected { …(8) } to match object { status: 'CONNECTED' }
+(7 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "status": "CONNECTED",
++   "status": "DISCONNECTED",
+  }
+
+ ❯ apps/api/tests/unit/instance-service.test.ts:833:27
+    831|     });
+    832|     releaseStatus('DISCONNECTED');
+    833|     await expect(stalePoll).resolves.toMatchObject({ status: 'CONNECTE…
+       |                           ^
+    834|     expect(harness.rows.get(INSTANCE_ID)?.status).toBe('CONNECTED');
+    835|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 26 passed (28)
+   Start at  12:41:20
+   Duration  3.71s (transform 1.58s, setup 684ms, import 1.94s, tests 249ms, environment 0ms)

@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
+import { InstanceStatusSchema } from '@jrc/contracts';
 import { useApiClient, useSession } from '../../auth/SessionProvider.js';
+import { connectionStatusView } from '../status.js';
 import './instance-workspace.css';
 
 type Settings = { rejectCall: boolean; msgCall: string; groupsIgnore: boolean; alwaysOnline: boolean; readMessages: boolean; readStatus: boolean; syncFullHistory: boolean };
@@ -31,7 +33,8 @@ function isWorkspace(value: unknown, id: string): value is Workspace {
   const data = value as Workspace;
   const nullableString = (item: unknown) => item === null || typeof item === 'string';
   return typeof data.observedAt === 'string' && typeof data.providerAvailable === 'boolean'
-    && data.instance?.id === id && typeof data.instance.createdAt === 'string' && typeof data.instance.updatedAt === 'string'
+    && data.instance?.id === id && typeof data.instance.name === 'string' && typeof data.instance.status === 'string'
+    && typeof data.instance.createdAt === 'string' && typeof data.instance.updatedAt === 'string'
     && !!data.profile && ['name', 'phone', 'state'].every((key) => nullableString(data.profile[key as keyof Workspace['profile']]))
     && !!data.counts && ['contacts', 'chats', 'messages'].every((key) => { const count = data.counts[key as keyof Workspace['counts']]; return count === null || (Number.isSafeInteger(count) && count >= 0); })
     && (data.settings === null || (!!data.settings && typeof data.settings.msgCall === 'string' && toggles.every(([key]) => typeof data.settings?.[key] === 'boolean')))
@@ -84,12 +87,40 @@ export function InstanceWorkspace({ instanceId, area }: { instanceId: string; ar
     finally { if (current === generation.current) setBusy(false); }
   }
   if (activeArea === null) return null;
+  const recordedStatus = data ? InstanceStatusSchema.safeParse(data.instance.status) : null;
   return <div className="instance-workspace">
     <div className={area === undefined ? 'workspace-navigation' : 'workspace-toolbar'} {...(area === undefined ? { 'aria-label': 'Áreas da conexão' } : {})}>{area === undefined && areas.map(({ id, label }) => <button type="button" key={id} aria-pressed={tab === id} onClick={() => setTab(id)}>{label}</button>)}<button className="workspace-refresh" type="button" disabled={loading || busy} onClick={() => setRevision((value) => value + 1)}>Atualizar painel</button></div>
     {message ? <p className="notice" role="status">{message}</p> : null}
     {loading ? <p aria-busy="true">Carregando painel…</p> : null}
     {activeArea === 'overview' && data ? <>
-      <div className="workspace-profile panel"><span className="workspace-avatar" aria-hidden="true">{(data.profile.name || data.instance.name || 'W').slice(0, 1).toUpperCase()}</span><div><p className="eyebrow">Perfil WhatsApp</p><h2>{data.profile.name || 'Perfil indisponível'}</h2><p>{data.profile.phone || 'Número indisponível'}</p></div><span className="workspace-provider">{data.providerAvailable ? 'Sincronização disponível' : 'Sincronização indisponível'}</span></div>
+      <div className="workspace-evidence-grid">
+        <section className="panel workspace-evidence" aria-label="Sessão WhatsApp">
+          <h2>Sessão WhatsApp</h2>
+          <p className="workspace-evidence-state">Estado registrado: {recordedStatus?.success ? connectionStatusView(recordedStatus.data).label : 'Não reconhecido'}</p>
+          <p>{data.providerAvailable ? 'Consulta ao serviço disponível' : 'Consulta ao serviço indisponível'}</p>
+          <p className="workspace-help">O estado registrado não comprova que a sessão continua ativa nem que as mensagens chegaram ao destino.</p>
+          <dl><div><dt>Registro atualizado em</dt><dd>{date(data.instance.updatedAt)}</dd></div><div><dt>Painel consultado em</dt><dd>{date(data.observedAt)}</dd></div></dl>
+        </section>
+        <section className="panel workspace-evidence" aria-label="Identidade observada">
+          <h2>Identidade observada</h2>
+          <p className="workspace-evidence-state">{data.profile.name || 'Perfil indisponível'}</p>
+          <p>{data.profile.phone || 'Número indisponível'}</p>
+          <p className="workspace-help">O perfil retornado pelo serviço não confirma a aprovação da identidade para a caixa de atendimento. Confira o número antes de ativar o vínculo.</p>
+        </section>
+        <section className="panel workspace-evidence" aria-label="Vínculo Chatwoot">
+          <h2>Vínculo Chatwoot</h2>
+          <p className="workspace-evidence-state">Vínculo não consultado neste painel</p>
+          <p className="workspace-help">Confira a caixa de destino, a aprovação do número e se a integração está ativa em JRC Conversas / Chatwoot.</p>
+          <Link to="/integracoes">Conferir caixa e identidade</Link>
+        </section>
+        <section className="panel workspace-evidence" aria-label="Entrega de mensagens">
+          <h2>Entrega de mensagens</h2>
+          <p className="workspace-evidence-state">Entrega não verificada neste painel</p>
+          <p className="workspace-help">Consulte as evidências de entrada, resposta e callback na integração. Workers e filas têm diagnóstico próprio; sessão conectada não comprova entrega. Resultado UNKNOWN exige conferência antes de repetir um envio.</p>
+          <Link to="/integracoes">Investigar evidências de entrega</Link>
+          <Link to="/operations/health">Consultar workers e filas</Link>
+        </section>
+      </div>
       <div className="workspace-metrics">{([['contacts', 'Contatos'], ['chats', 'Conversas'], ['messages', 'Mensagens']] as const).map(([key, label]) => <section className="panel" key={key} aria-label={`${label} ${key === 'contacts' ? 'sincronizados' : 'sincronizadas'}`}><p>{label}</p><strong>{data.counts[key] === null ? '—' : data.counts[key].toLocaleString('pt-BR')}</strong><small>Registros sincronizados</small></section>)}</div>
       <p className="workspace-help">Os indicadores representam registros sincronizados pela JRC e podem não incluir todo o histórico do celular. “—” indica informação indisponível.</p>
       <dl className="workspace-details panel"><div><dt>Criada em</dt><dd>{date(data.instance.createdAt)}</dd></div><div><dt>Última atualização da conexão</dt><dd>{date(data.instance.updatedAt)}</dd></div><div><dt>Consulta do painel</dt><dd>{date(data.observedAt)}</dd></div></dl>

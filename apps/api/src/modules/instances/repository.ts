@@ -30,6 +30,8 @@ export interface InstanceRow {
   capabilities: string[];
   createdAt: Date;
   updatedAt: Date;
+  connectionObservedAt: Date | null;
+  connectionBindingFingerprint: string | null;
 }
 
 export interface ProviderOperationRow {
@@ -168,19 +170,7 @@ export interface InstanceRepository {
   }): Promise<void>;
 }
 
-interface InstanceDatabaseRow extends QueryResultRow {
-  id: string;
-  organizationId: string;
-  providerAccountId: string;
-  name: string;
-  provider: ProviderKind;
-  upstreamInstanceKey: string;
-  externalReference: string | null;
-  status: InstanceStatus;
-  capabilities: string[];
-  createdAt: Date;
-  updatedAt: Date;
-}
+interface InstanceDatabaseRow extends QueryResultRow, InstanceRow {}
 
 interface OperationDatabaseRow extends QueryResultRow, ProviderOperationRow {}
 interface ProviderAccountDatabaseRow extends QueryResultRow, ProviderAccountRow {}
@@ -190,7 +180,9 @@ const INSTANCE_COLUMNS = `
   i.provider_account_id AS "providerAccountId", i.name, pa.provider,
   i.upstream_instance_key AS "upstreamInstanceKey",
   i.external_reference AS "externalReference", i.status, i.capabilities,
-  i.created_at AS "createdAt", i.updated_at AS "updatedAt"
+  i.created_at AS "createdAt", i.updated_at AS "updatedAt",
+  i.connection_observed_at AS "connectionObservedAt",
+  i.connection_binding_fingerprint AS "connectionBindingFingerprint"
 `;
 
 const OPERATION_COLUMNS = `
@@ -227,7 +219,9 @@ export function createPostgresInstanceRepository(): InstanceRepository {
            $6::provider_kind AS provider,
            upstream_instance_key AS "upstreamInstanceKey",
            external_reference AS "externalReference", status, capabilities,
-           created_at AS "createdAt", updated_at AS "updatedAt"`,
+           created_at AS "createdAt", updated_at AS "updatedAt",
+           connection_observed_at AS "connectionObservedAt",
+           connection_binding_fingerprint AS "connectionBindingFingerprint"`,
         [
           input.id,
           input.organizationId,

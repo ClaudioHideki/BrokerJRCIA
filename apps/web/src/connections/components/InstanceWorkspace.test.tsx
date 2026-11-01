@@ -18,6 +18,34 @@ function setup(options: { role?: string; response?: unknown; request?: ApiClient
   return { request, purges };
 }
 describe('instance workspace', () => {
+  it('keeps session, observed identity, Chatwoot binding and delivery evidence separate', async () => {
+    setup();
+    const session = await screen.findByRole('region', { name: 'Sessão WhatsApp' });
+    expect(session).toHaveTextContent('Conectada');
+    expect(session).toHaveTextContent('Consulta ao serviço disponível');
+    const identity = screen.getByRole('region', { name: 'Identidade observada' });
+    expect(identity).toHaveTextContent('Empresa WhatsApp');
+    expect(identity).toHaveTextContent('não confirma a aprovação');
+    const binding = screen.getByRole('region', { name: 'Vínculo Chatwoot' });
+    expect(binding).toHaveTextContent('Vínculo não consultado neste painel');
+    expect(within(binding).getByRole('link', { name: 'Conferir caixa e identidade' })).toHaveAttribute('href', '/integracoes');
+    const delivery = screen.getByRole('region', { name: 'Entrega de mensagens' });
+    expect(delivery).toHaveTextContent('Entrega não verificada neste painel');
+    expect(within(delivery).getByRole('link', { name: 'Investigar evidências de entrega' })).toHaveAttribute('href', '/integracoes');
+    expect(within(delivery).getByRole('link', { name: 'Consultar workers e filas' })).toHaveAttribute('href', '/operations/health');
+    expect(screen.queryByText('Entrega verificada')).not.toBeInTheDocument();
+  });
+  it('keeps recorded connected state from hiding a failed provider read or missing identity', async () => {
+    setup({ response: { ...workspace, providerAvailable: false, profile: { name: null, phone: null, state: null } } });
+    const session = await screen.findByRole('region', { name: 'Sessão WhatsApp' });
+    expect(session).toHaveTextContent('Conectada');
+    expect(session).toHaveTextContent('Consulta ao serviço indisponível');
+    expect(session).toHaveTextContent('não comprova que a sessão continua ativa');
+    const identity = screen.getByRole('region', { name: 'Identidade observada' });
+    expect(identity).toHaveTextContent('Número indisponível');
+    expect(identity).not.toHaveTextContent('Número confirmado');
+    expect(screen.getByRole('region', { name: 'Entrega de mensagens' })).toHaveTextContent('Entrega não verificada neste painel');
+  });
   it('shows real profile and distinguishes zero from unknown counts', async () => {
     setup();
     expect(await screen.findByText('Empresa WhatsApp')).toBeVisible();

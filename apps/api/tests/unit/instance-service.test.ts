@@ -38,6 +38,8 @@ function instance(overrides: Partial<InstanceRow> = {}): InstanceRow {
     capabilities: [],
     createdAt: NOW,
     updatedAt: NOW,
+    connectionObservedAt: null,
+    connectionBindingFingerprint: null,
     ...overrides,
   };
 }
@@ -807,6 +809,44 @@ describe('serviço de instâncias', () => {
     releaseStatus('CREATED');
     await expect(stalePoll).resolves.toMatchObject({ status: 'AWAITING_ACTION' });
     expect(provider.calls.beginConnection).toHaveLength(1);
+  });
+
+  it.each(['watermark', 'binding'] as const)('descarta polling se %s do webhook mudou no mesmo milissegundo', async (changed) => {
+    const provider = new FakeProviderAdapter({ now: () => NOW });
+    let releaseStatus!: (status: ProviderStatus) => void;
+    let started!: () => void;
+    const upstreamStarted = new Promise<void>((resolve) => { started = resolve; });
+    provider.getStatus = async () => {
+      started();
+      return new Promise<ProviderStatus>((resolve) => { releaseStatus = resolve; });
+    };
+    const harness = createHarness({ provider, persistedStatus: 'CONNECTED' });
+    const before = { ...harness.rows.get(INSTANCE_ID)!, connectionObservedAt: NOW, connectionBindingFingerprint: 'binding-a' };
+    harness.rows.set(INSTANCE_ID, before);
+    const stalePoll = harness.service.getInstanceStatus(context(), INSTANCE_ID);
+    await upstreamStarted;
+    // A newer authenticated open can keep the status and JS Date millisecond unchanged.
+    harness.rows.set(INSTANCE_ID, {
+      ...before,
+      connectionObservedAt: changed === 'watermark' ? new Date(NOW.getTime() + 1000) : NOW,
+      connectionBindingFingerprint: changed === 'binding' ? 'binding-b' : 'binding-a',
+    });
+    releaseStatus('DISCONNECTED');
+    await expect(stalePoll).resolves.toMatchObject({ status: 'CONNECTED' });
+    expect(harness.rows.get(INSTANCE_ID)?.status).toBe('CONNECTED');
+  });
+
+  it('aplica polling com clock de webhook inalterado sem apagar o watermark da origem', async () => {
+    const provider = new FakeProviderAdapter({ now: () => NOW, responses: { getStatus: 'DISCONNECTED' } });
+    const harness = createHarness({ provider, persistedStatus: 'CONNECTED' });
+    const sourceTime = new Date('2035-01-01T00:00:00.000Z');
+    harness.rows.set(INSTANCE_ID, {
+      ...harness.rows.get(INSTANCE_ID)!, connectionObservedAt: sourceTime, connectionBindingFingerprint: 'binding-a',
+    });
+    await expect(harness.service.getInstanceStatus(context(), INSTANCE_ID)).resolves.toMatchObject({ status: 'DISCONNECTED' });
+    expect(harness.rows.get(INSTANCE_ID)).toMatchObject({
+      connectionObservedAt: sourceTime, connectionBindingFingerprint: 'binding-a',
+    });
   });
 
   it('lista e consulta somente registros do tenant e executa status/disconnect fora da transação', async () => {

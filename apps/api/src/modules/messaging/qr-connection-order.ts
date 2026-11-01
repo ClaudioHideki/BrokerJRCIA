@@ -3,6 +3,12 @@ import type { TenantTransaction } from '../../db/tenant-transaction.js';
 type StoredClock = { observedAt: Date | null; fingerprint: string | null };
 type ConnectionFact = { observedAt?: Date | undefined; fingerprint: string };
 
+/** Polls have no source clock: discard a response if a webhook advanced its captured clock domain. */
+export function isSameConnectionClock(previous: StoredClock, current: StoredClock): boolean {
+  return previous.fingerprint === current.fingerprint
+    && previous.observedAt?.getTime() === current.observedAt?.getTime();
+}
+
 /** Call only after authenticating the engine binding. Missing time never supersedes a known clock. */
 export function shouldAcceptConnectionFact(previous: StoredClock, next: ConnectionFact): boolean {
   if (previous.fingerprint !== next.fingerprint) return true;

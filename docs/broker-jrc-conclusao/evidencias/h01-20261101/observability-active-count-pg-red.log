@@ -1,0 +1,63 @@
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+ ❯ apps/api/tests/integration/observability.test.ts (5 tests | 2 failed) 9281ms
+     × excludes disabled binding errors from active degradation and preserves their diagnostic counts 190ms
+     × distinguishes an approved destination from the absence of active READY bindings 47ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/api/tests/integration/observability.test.ts > H01 Chatwoot health scope on isolated PostgreSQL > excludes disabled binding errors from active degradation and preserves their diagnostic counts
+AssertionError: expected { queueDepth: +0, …(16) } to match object { chatwootReady: 1, …(4) }
+(13 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "chatwootActiveBindings": 2,
+    "chatwootDegraded": 0,
+    "chatwootDisabled": 1,
+    "chatwootDisabledDegraded": 1,
+    "chatwootReady": 1,
+  }
+
+ ❯ apps/api/tests/integration/observability.test.ts:36:32
+     34|     await t.binding('READY', {connected:true});
+     35|     await t.binding('DISABLED', {connected:false,accessError:'SYNTHETI…
+     36|     expect(await t.snapshot()).toMatchObject({chatwootReady:1,chatwoot…
+       |                                ^
+     37|   });
+     38|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  apps/api/tests/integration/observability.test.ts > H01 Chatwoot health scope on isolated PostgreSQL > distinguishes an approved destination from the absence of active READY bindings
+AssertionError: expected { queueDepth: +0, …(16) } to match object { chatwootReady: 1, …(3) }
+(14 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "chatwootActiveBindings": 0,
+    "chatwootDegraded": 0,
+    "chatwootReady": 1,
+    "chatwootUnobserved": 0,
+  }
+
+ ❯ apps/api/tests/integration/observability.test.ts:59:32
+     57|     const t = await fixture();
+     58|     await db.database.pool.query("UPDATE chatwoot_connections SET stat…
+     59|     expect(await t.snapshot()).toMatchObject({chatwootReady:1,chatwoot…
+       |                                ^
+     60|   });
+     61|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed (5)
+   Start at  12:49:39
+   Duration  11.31s (transform 539ms, setup 0ms, import 1.67s, tests 9.28s, environment 0ms)

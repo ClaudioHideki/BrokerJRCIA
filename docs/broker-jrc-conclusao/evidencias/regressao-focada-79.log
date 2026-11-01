@@ -1,0 +1,18 @@
+
+> @jrc/whatsapp-broker@0.0.0 test
+> vitest run apps/api/tests/unit/instance-service.test.ts apps/api/tests/unit/reconciliation.test.ts apps/api/tests/unit/evolution-fleet/instance-fleet-uncertainty.test.ts apps/api/tests/unit/qr-connection-order.test.ts apps/api/tests/unit/observability.test.ts apps/web/src/connections/components/InstanceWorkspace.test.tsx apps/web/src/connections/components/ConnectionStatus.test.tsx apps/web/src/connections/components/ChallengePanel.test.tsx apps/web/src/operations/health-model.test.ts apps/web/src/pages/OperationalHealth.test.tsx --maxWorkers=1
+
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+
+ Test Files  10 passed (10)
+      Tests  79 passed (79)
+   Start at  12:52:13
+   Duration  27.52s (transform 7.52s, setup 4.23s, import 10.57s, tests 3.01s, environment 6.58s)
+
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice

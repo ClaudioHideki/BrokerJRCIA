@@ -1,0 +1,25 @@
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+ ❯ apps/api/tests/integration/qr-poll-fence.test.ts (5 tests | 5 skipped) 65657ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/api/tests/integration/qr-poll-fence.test.ts > QR polling fence with PostgreSQL watermark and RLS
+Error: Hook timed out in 60000ms.
+If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".
+ ❯ apps/api/tests/integration/qr-poll-fence.test.ts:51:3
+     49|   }
+     50|
+     51|   beforeAll(async () => {
+       |   ^
+     52|     const admin = requireTestDatabaseAdminUrl();
+     53|     database = await createIsolatedPostgresDatabase(admin);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 skipped (5)
+   Start at  12:48:10
+   Duration  79.55s (transform 9.95s, setup 0ms, import 12.50s, tests 65.66s, environment 0ms)

@@ -34,6 +34,8 @@ export const healthGroups = [
   { id: 'backlog', title: 'Filas e registros acumulados', description: 'Contagens sem recorte de período: podem incluir falhas antigas. Elas não demonstram, isoladamente, uma falha acontecendo agora.' },
 ] as const;
 export function healthGroup(key: string): typeof healthGroups[number]['id'] {
+  if (key.startsWith('CHATWOOT_DISABLED_')) return 'integrations';
+  if (key.startsWith('DISABLED_INTEGRATION_')) return 'backlog';
   if (['EVOLUTION', 'META', 'CHATWOOT', 'QR_IDENTITY_PENDING'].includes(key)) return 'integrations';
   if (['QUEUE', 'OUTBOX_AGE', 'FAILED_EXECUTIONS', 'INTEGRATION_FAILURES', 'INTEGRATION_UNCERTAINTY', 'UNKNOWN_EXECUTIONS'].includes(key)) return 'backlog';
   return 'infrastructure';
@@ -42,6 +44,9 @@ export function healthTitle(key: string, fallback = key): string {
   return ({ EVOLUTION: 'WhatsApp por QR Code', META: 'WhatsApp oficial', CHATWOOT: 'Central de atendimento', SCHEMA: 'Estrutura do banco', QUEUE: 'Itens na fila', OUTBOX_AGE: 'Item mais antigo na outbox', UNKNOWN_EXECUTIONS: 'Execuções com resultado incerto', INTEGRATION_FAILURES: 'Entregas com falha', INTEGRATION_UNCERTAINTY: 'Entregas com resultado incerto', QR_IDENTITY_PENDING: 'Identificação pendente' } as Record<string, string>)[key] ?? fallback;
 }
 export function healthGuidance(key: string, code: string): string {
+  if (key === 'DISABLED_INTEGRATION_UNCERTAINTY') return 'Resultado incerto em vínculo desativado: confira o recibo e o histórico antes de decidir por uma nova tentativa. Reativação não autoriza reenvio automático.';
+  if (key.startsWith('DISABLED_INTEGRATION_')) return 'Registros de vínculos desativados permanecem preservados. A destinação do backlog exige decisão administrativa auditada; não há reativação ou reenvio automático.';
+  if (key.startsWith('CHATWOOT_DISABLED_')) return 'Diagnóstico de vínculos desativados, separado do estado das conexões ativas. Consulte o histórico e as pendências antes de alterar o vínculo.';
   if (key === 'UNKNOWN_EXECUTIONS' || key === 'INTEGRATION_UNCERTAINTY') return 'Resultado incerto não significa que a mensagem não foi enviada. Confira o recibo e o histórico antes de decidir por uma nova tentativa.';
   if (code === 'AUTOMATION_RUNTIME_DISABLED') return 'O processamento de automações está desativado nesta configuração.';
   if (code === 'WORKER_NEVER_OBSERVED') return 'Ainda não há sinal de atividade registrado para este processo.';
@@ -55,6 +60,7 @@ export function healthGuidance(key: string, code: string): string {
   return 'Sinal reportado pela API na última consulta. Expanda os detalhes para consultar o código de diagnóstico.';
 }
 export function healthDestination(key: string): { to: string; label: string } | null {
+  if (key.startsWith('CHATWOOT_DISABLED_') || key.startsWith('DISABLED_INTEGRATION_')) return { to: '/integracoes', label: 'Ver integrações' };
   if (['CHATWOOT', 'INTEGRATION_FAILURES', 'INTEGRATION_UNCERTAINTY', 'QR_IDENTITY_PENDING'].includes(key)) return { to: '/integracoes', label: 'Ver integrações' };
   if (['EVOLUTION', 'META'].includes(key)) return { to: '/channels', label: 'Ver conexões' };
   if (['UNKNOWN_EXECUTIONS', 'FAILED_EXECUTIONS', 'AUTOMATION_WORKER', 'AUTOMATION_IO_WORKER'].includes(key)) return { to: '/automation-executions', label: 'Ver execuções' };
