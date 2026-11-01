@@ -12,7 +12,8 @@ import {ChannelOperationSetup} from '../channels/ChannelOperationSetup.js';
 import {WhatsAppGroups} from './WhatsAppGroups.js';
 import {InstanceWorkspace,type InstanceWorkspaceArea} from '../connections/components/InstanceWorkspace.js';
 import {ChallengePanel} from '../connections/components/ChallengePanel.js';
-type Area='overview'|'settings'|'events'|'attendance'|'flow'|'history';
+import {ChannelDeliveryDiagnostics} from '../channels/ChannelDeliveryDiagnostics.js';
+type Area='overview'|'settings'|'events'|'attendance'|'flow'|'history'|'delivery';
 const failures:Record<string,string>={
  CHANNEL_DISCONNECT_REQUIRED:'Desconecte o WhatsApp e confirme o status antes de arquivar.',CHANNEL_HAS_PENDING_WORK:'Há envios ou operações pendentes. Conclua ou reconcilie antes de arquivar.',
  CHANNEL_UNLINK_REQUIRED:'Desvincule a automação e pause o atendimento antes de arquivar.',CHANNEL_ARCHIVED:'Restaure esta caixa antes de operar.',
@@ -31,7 +32,10 @@ function ChannelDetail(){
  const {id=''}=useParams(),client=useApiClient(),{session,tenantRevision}=useSession();
  const [ownerRevision,setOwnerRevision]=useState(0),[bindingLoaded,setBindingLoaded]=useState(false);const selectionEdited=useRef(false);
  const [channel,setChannel]=useState<ChannelV1|null>(null),[action,setAction]=useState<ConnectionAction|null>(null),[binding,setBinding]=useState<AutomationBindingV1|null>(null);
+ // A physical DISCONNECTED/DEGRADED status does not settle an admitted connect operation.
  const [pairingPending,setPairingPending]=useState(false);
+ const [reconciliationRequired,setReconciliationRequired]=useState(false);
+ const [initialLoading,setInitialLoading]=useState(true),[loadRevision,setLoadRevision]=useState(0),[loadFailure,setLoadFailure]=useState<number|null>(null);
  const [challengeBlocked,setChallengeBlocked]=useState(false);const challengeGeneration=useRef(0);
  const [area,setArea]=useState<Area>('overview'),[flowRequested,setFlowRequested]=useState(false);
  const [automations,setAutomations]=useState<AutomationDefinitionV1[]>([]),[catalogState,setCatalogState]=useState<'IDLE'|'LOADING'|'LOADED'|'ERROR'>('IDLE'),[automationId,setAutomationId]=useState(''),[displayName,setDisplayName]=useState(''),[destination,setDestination]=useState('');
@@ -39,14 +43,19 @@ function ChannelDetail(){
  const [deleted,setDeleted]=useState(false);
  const canManage=Boolean(session&&['OWNER','ADMIN'].includes(session.activeOrganization.role)),canPair=Boolean(session&&session.activeOrganization.role!=='VIEWER'),archived=Boolean(channel?.archivedAt);
  useEffect(()=>{
-  const clearChallenge=()=>{challengeGeneration.current+=1;setAction(null);setPairingPending(false);setChallengeBlocked(true);};
+  const clearChallenge=()=>{challengeGeneration.current+=1;setAction(null);setChallengeBlocked(true);};
   window.addEventListener('pagehide',clearChallenge);
   const unregister=client.registerTenantPurge(clearChallenge);
   return()=>{challengeGeneration.current+=1;unregister();window.removeEventListener('pagehide',clearChallenge);};
  },[client,id]);
- useEffect(()=>{if(!canPair){challengeGeneration.current+=1;setAction(null);setPairingPending(false);}},[canPair]);
+ useEffect(()=>{if(!canPair){challengeGeneration.current+=1;setAction(null);}},[canPair]);
  async function load(includeBinding=flowRequested){const value=await getChannel(client,id);setChannel(value);setDisplayName(value.identity.displayName??'');if(includeBinding){const linked=await getChannelAutomation(client,id);setBinding(linked.binding);setOwnerRevision(linked.ownerRevision);setAutomationId(linked.binding?.automationId??'');setBindingLoaded(true);selectionEdited.current=false;}}
- useEffect(()=>{let live=true;void getChannel(client,id).then(value=>{if(live){setChannel(value);setDisplayName(value.identity.displayName??'');}}).catch(()=>{if(live)setError('Não foi possível carregar a caixa.');});return()=>{live=false;};},[client,id]);
+ useEffect(()=>{let live=true;setInitialLoading(true);setError('');setLoadFailure(null);
+  void getChannel(client,id).then(value=>{if(live){setChannel(value);setDisplayName(value.identity.displayName??'');}}).catch(reason=>{if(live){
+   const status=reason instanceof ApiClientError?reason.status:503;setLoadFailure(status);
+   setError((status===403?'Seu acesso não permite consultar esta caixa. Solicite a revisão do acesso a um administrador.':status===404?'A caixa não foi encontrada nesta empresa. Confira o endereço ou volte à lista.':'Não foi possível carregar a caixa. Tente novamente.')+
+    (reason instanceof ApiClientError&&reason.requestId?` Solicitação: ${reason.requestId}`:''));
+  }}).finally(()=>{if(live)setInitialLoading(false);});return()=>{live=false;};},[client,id,loadRevision]);
  useEffect(()=>{if(!flowRequested)return;let live=true;setCatalogState('LOADING');
  void getChannelAutomation(client,id).then(value=>{if(live){setBinding(value.binding);setOwnerRevision(value.ownerRevision);if(!selectionEdited.current)setAutomationId(value.binding?.automationId??'');setBindingLoaded(true);}}).catch(()=>{if(live)setError('Não foi possível conferir o vínculo atual. Atualize a página antes de vincular uma automação.');});
  void listAutomations(client).then(value=>{if(live){setAutomations(value.filter(item=>item.activeVersion!==null&&item.lifecycleStatus!=='ARCHIVED'));setCatalogState('LOADED');}}).catch(()=>{if(live)setCatalogState('ERROR');});return()=>{live=false;};},[client,id,flowRequested]);
@@ -66,15 +75,15 @@ function ChannelDetail(){
    try{
     const value=await refreshChannelStatus(client,id,controller.signal);
     if(stopped||controller.signal.aborted)return;
-    setChannel(value);setPairingPending(false);
+    setChannel(value);
     if(value.transportStatus!=='PAIRING'){
      setAction(null);stop();
-     if(value.transportStatus==='CONNECTED')setNotice('WhatsApp conectado. Agora confira o vínculo de atendimento e a automação.');
+     if(value.transportStatus==='CONNECTED'){setPairingPending(false);setReconciliationRequired(false);setNotice('WhatsApp conectado. Agora confira o vínculo de atendimento e a automação.');}
     }
    }catch(reason){
     if(!stopped&&!controller.signal.aborted){
      setError('Não foi possível atualizar o pareamento. Use Atualizar status.');
-     if(reason instanceof ApiClientError&&[401,403,404].includes(reason.status)){setAction(null);setPairingPending(false);setChallengeBlocked(true);stop();}
+     if(reason instanceof ApiClientError&&[401,403,404].includes(reason.status)){setAction(null);setChallengeBlocked(true);stop();}
     }
    }finally{inFlight=false;controller=undefined;if(!stopped)schedule();}
   }
@@ -85,8 +94,8 @@ function ChannelDetail(){
   void poll();
   return()=>{stop();unregister();document.removeEventListener('visibilitychange',visibilityChanged);window.removeEventListener('pagehide',stop);};
  },[client,id,polling]);
- async function run(work:()=>Promise<void>,success=''){if(pending.current)return;pending.current=true;setBusy(true);setError('');setNotice('');try{await work();if(success)setNotice(success);}catch(reason){if(reason instanceof ApiClientError&&[401,403,404].includes(reason.status)){challengeGeneration.current+=1;setAction(null);setPairingPending(false);setChallengeBlocked(true);}setError(reason instanceof ApiClientError?(failures[reason.code??'']??reason.message):'Não foi possível concluir. Atualize e tente novamente.');}finally{pending.current=false;setBusy(false);}}
- async function pair(reconnect=false){const generation=challengeGeneration.current;await run(async()=>{setAction(null);const result=await(reconnect?reconnectChannel:pairChannel)(client,id,crypto.randomUUID());if(generation!==challengeGeneration.current)return;const current=await getChannel(client,id);if(generation!==challengeGeneration.current)return;setNow(Date.now());setAction(result.action);setPairingPending(result.pending&&result.action.type==='NONE');setChallengeBlocked(false);setChannel(current);if(result.action.type==='NONE')setNotice(result.channel.transportStatus==='CONNECTED'?'WhatsApp já conectado.':'Solicitação em processamento. Atualize o status; aguarde a conclusão antes de iniciar outro pareamento.');});}
+ async function run(work:()=>Promise<void>,success=''){if(pending.current)return;pending.current=true;setBusy(true);setError('');setNotice('');try{await work();if(success)setNotice(success);}catch(reason){if(reason instanceof ApiClientError&&reason.code==='CONNECT_RECONCILIATION_REQUIRED'){setReconciliationRequired(true);setAction(null);}if(reason instanceof ApiClientError&&[401,403,404].includes(reason.status)){challengeGeneration.current+=1;setAction(null);setChallengeBlocked(true);}setError(reason instanceof ApiClientError?(failures[reason.code??'']??reason.message):'Não foi possível concluir. Atualize e tente novamente.');}finally{pending.current=false;setBusy(false);}}
+ async function pair(reconnect=false){if(pairingPending||reconciliationRequired)return;const generation=challengeGeneration.current;await run(async()=>{setAction(null);const result=await(reconnect?reconnectChannel:pairChannel)(client,id,crypto.randomUUID());if(generation!==challengeGeneration.current)return;setReconciliationRequired(result.reconciliationRequired);setPairingPending(result.pending&&result.action.type==='NONE');const current=await getChannel(client,id);if(generation!==challengeGeneration.current)return;setNow(Date.now());setAction(result.action);setChallengeBlocked(false);setChannel(current);if(result.action.type==='NONE')setNotice(result.channel.transportStatus==='CONNECTED'?'WhatsApp já conectado.':'Solicitação em processamento. Atualize o status; aguarde a conclusão antes de iniciar outro pareamento.');});}
  async function disconnect(){if(!window.confirm('Desconectar este WhatsApp? Será necessário parear novamente. O histórico será preservado.'))return;await run(async()=>{const result=await disconnectChannel(client,id,crypto.randomUUID());setChannel(await getChannel(client,id));setAction(null);setNotice(result.pending?'Desconexão em processamento. Atualize o status.':'WhatsApp desconectado.');});}
  async function rename(event:FormEvent){event.preventDefault();await run(async()=>{setChannel(await patchChannel(client,id,{displayName:displayName.trim()}));},'Nome atualizado.');}
  async function bind(event:FormEvent){event.preventDefault();await run(async()=>{setChannel(await bindChannelDestination(client,id,{name:destination.trim(),replaceExistingWebhook:false}));},'Caixa vinculada. Confira a entrega no sistema de atendimento.');}
@@ -109,6 +118,7 @@ function ChannelDetail(){
   if(channel?.provider==='QR')tabs.push({id:'events',label:'Histórico operacional'});
   tabs.push({id:'attendance',label:'Atendimento'},{id:'flow',label:'Flow'});
   if(channel?.provider==='QR')tabs.push({id:'history',label:'Histórico e grupos'});
+  tabs.push({id:'delivery',label:'Diagnóstico de entregas'});
  }
  const visibleArea=tabs.some(tab=>tab.id===area)?area:'overview';
  const workspaceArea:InstanceWorkspaceArea|null=visibleArea==='overview'?'overview':visibleArea==='settings'?'settings':visibleArea==='events'?'events':null;
@@ -120,7 +130,10 @@ function ChannelDetail(){
   <Link className="back-link" to="/channels">← Caixas de entrada</Link>
   {error&&<p role="alert" aria-label="Erro da caixa" className="notice notice--error">{error}</p>}
   {notice&&<p role="status" className="notice notice--success">{notice}</p>}
-  {!channel?<p>Carregando caixa…</p>:<>
+  {!channel?<>{initialLoading?<p role="status">Carregando caixa…</p>:<div className="state-card">
+   <h1>{loadFailure===403?'Sem acesso a esta caixa':loadFailure===404?'Caixa não encontrada':'Caixa indisponível'}</h1>
+   <button type="button" className="button button--secondary" onClick={()=>setLoadRevision(value=>value+1)}>Tentar carregar caixa novamente</button>
+  </div>}</>:<>
    <p className="eyebrow">{channel.provider==='CENTRAL'?'WhatsApp conectado na central':channel.provider==='QR'?'WhatsApp por QR Code':'WhatsApp oficial Meta'}</p>
    <h1>{channel.identity.displayName??'Caixa WhatsApp'}</h1>
    {archived&&<p className="notice">Cadastro arquivado. O histórico está preservado.</p>}
@@ -141,21 +154,28 @@ function ChannelDetail(){
      </div>
      <p><Link className="button button--secondary" to="/mensagens">Abrir conversas</Link></p>
      {!archived&&<section className="panel" id="channel-connect"><h2>Conexão do WhatsApp</h2>
-      <div className="button-row"><button className="button button--secondary" disabled={busy} onClick={()=>void run(async()=>{const value=await refreshChannelStatus(client,id);setChannel(value);setChallengeBlocked(false);if(value.transportStatus!=='PAIRING'){setAction(null);setPairingPending(false);}},'Status atualizado.')}>Atualizar status</button>
-       {channel.provider==='QR'&&canPair&&<><button className="button button--secondary" disabled={busy} onClick={()=>void pair(true)}>Reconectar</button>
+      <div className="button-row"><button className="button button--secondary" disabled={busy} onClick={()=>void run(async()=>{const value=await refreshChannelStatus(client,id);setChannel(value);setChallengeBlocked(false);if(value.transportStatus==='CONNECTED'){setReconciliationRequired(false);setPairingPending(false);}if(value.transportStatus!=='PAIRING')setAction(null);},'Status atualizado.')}>Atualizar status</button>
+       {channel.provider==='QR'&&canPair&&<><button className="button button--secondary" disabled={busy||pairingPending||reconciliationRequired} onClick={()=>void pair(true)}>Reconectar</button>
         {channel.transportStatus!=='DISCONNECTED'&&<button className="button button--danger" disabled={busy} onClick={()=>void disconnect()}>Desconectar</button>}</>}
       </div>
       {channel.provider==='QR'&&canPair&&channel.transportStatus!=='CONNECTED'&&<>
        <p>No celular, abra WhatsApp → Dispositivos conectados → Conectar dispositivo.</p>
-       <button className="button button--primary" disabled={busy} onClick={()=>void pair()}>Gerar QR Code</button>
+       <button className="button button--primary" disabled={busy||pairingPending||reconciliationRequired} onClick={()=>void pair()}>Gerar QR Code</button>
        {action&&<ChallengePanel action={action} onExpire={()=>{setAction(null);setNotice('QR ou código expirado. Atualize o status antes de solicitar outro.');}}/>}
        {action&&expiresAt&&!expired?<p>Expira em {Math.max(0,Math.ceil((expiresAt-now)/1000))} segundos.</p>:null}
       </>}
+      {channel.provider==='QR'&&(pairingPending||reconciliationRequired||channel.transportStatus==='PAIRING')&&<div className="notice" role="status" aria-label="Pareamento pendente">
+       <strong>{reconciliationRequired?'Resultado do pareamento incerto':'Pareamento em andamento'}</strong>
+       <p>{reconciliationRequired?'O servidor requer reconciliação. Um timeout não prova falha. Confira as operações e solicite ajuda à equipe JRC antes de iniciar outra conexão.':'Aguarde a conclusão e consulte Atualizar status. Não é necessário solicitar outro QR ou reconexão enquanto esta operação está pendente.'}</p>
+       <p>Abra o histórico e use Atualizar painel para consultar as operações recentes. O histórico carregado antes do pareamento pode estar desatualizado.</p>
+       <button type="button" className="button button--secondary" onClick={()=>{selectArea('events');document.getElementById('channel-tab-events')?.focus();}}>Ver operações da conexão</button>{' '}<Link to="/suporte">Solicitar suporte</Link>
+      </div>}
       {channel.provider==='META'&&<p>A conexão oficial depende da autorização dos ativos no cadastro da Meta. {canManage&&<Link to="/channels/meta/connect">Abrir configuração oficial</Link>}</p>}
       {channel.provider==='CENTRAL'&&<p>Confira a conexão do WhatsApp no JRC Conversas ou Chatwoot. {canManage&&<Link to={'/channels/new?provider=central&channel='+channel.id}>Gerenciar o vínculo do bot e a reversão</Link>}</p>}
      </section>}
     </>}
     {channel.provider==='QR'&&!archived&&<InstanceWorkspace instanceId={channel.providerReference.instanceId} area={workspaceArea}/>}
+    {visibleArea==='delivery'&&<ChannelDeliveryDiagnostics/>}
     {visibleArea==='settings'&&<>
      {!archived&&channel.provider==='QR'&&canManage&&<form className="panel form-grid" onSubmit={event=>void rename(event)}>
       <h2>Identificação</h2><label>Nome da caixa<input value={displayName} onChange={event=>setDisplayName(event.target.value)} required maxLength={100}/></label>

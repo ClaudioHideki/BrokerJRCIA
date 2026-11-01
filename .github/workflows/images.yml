@@ -21,6 +21,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     environment: ghcr-release
+    env:
+      # Temporary candidate scope; preserve recovery code and the gate on other branches.
+      RECOVERY_ROUTINES_IN_SCOPE: ${{ github.ref_name != 'codex/broker-jrc-2-redesign-homologacao-20261030' }}
     services:
       postgres:
         image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
@@ -57,7 +60,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends poppler-utils
       - run: npm run build
       - run: npm run test:partner-qr
-      - run: npm test -- --exclude tests/security-audit-artifacts.test.mjs
+      - name: Run tests within the approved release scope
+        run: |
+          if [ "$RECOVERY_ROUTINES_IN_SCOPE" = "true" ]; then
+            npm test -- --exclude tests/security-audit-artifacts.test.mjs
+          else
+            echo 'Backup/dump/restore excluded by the approved candidate scope. Recovery is NOT validated by this run.' >> "$GITHUB_STEP_SUMMARY"
+            npm test -- --exclude tests/security-audit-artifacts.test.mjs --exclude tests/backup.test.mjs --exclude tests/recovery.test.mjs
+          fi
       - name: Verify PDF audit artifacts without competing test workers
         run: npm test -- tests/security-audit-artifacts.test.mjs --maxWorkers=1
       - run: npm run test:web:bundle && npm run security:submodule && npm audit --audit-level=high

@@ -1,21 +1,23 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-01T18:32:51.157Z",
+  "updatedAt": "2026-11-01T21:02:40.945Z",
   "repository": "ClaudioHideki/BrokerJRCIA",
   "branch": "codex/broker-jrc-2-redesign-homologacao-20261030",
-  "baselineCommit": "ea58a897b923fc5889e99ea039b4bd61c385d781",
+  "baselineCommit": "2f1effdfc365592ac9e0f5bbb5bd19b8668ce259",
   "pullRequest": 6,
-  "increment": "20261101-origin-custody-contract-shells",
-  "status": "IMPLEMENTADO_EM_RECORTE_LOCAL_HOMOLOGACAO_INTEGRAL_PENDENTE",
+  "increment": "20261101-origin-composition-media-worker-connection-journey",
+  "status": "CANDIDATA_REVISADA_PUBLICACAO_AUTORIZADA_AGUARDANDO_GATES",
   "commitStatus": "CONSOLIDADO_NO_COMMIT_QUE_CONTEM_ESTE_CHECKPOINT",
   "production": {
-    "accessed": false,
+    "accessed": true,
+    "accessMode": "read-only Dokploy UI and aggregate SQL",
     "deployed": false,
     "migrated": false,
     "credentialsChanged": false,
     "realNumbersConnected": 0,
     "messagesSent": 0,
-    "realUnknownReplayed": 0
+    "realUnknownReplayed": 0,
+    "backupDumpRestoreExecuted": false
   },
   "migration": {
     "added": "0078_qr_origin_receipts.sql",
@@ -39,83 +41,176 @@
     "capacity900": "NAO_VERIFICADO"
   },
   "tests": {
-    "unit": {
-      "files": 467,
-      "passed": 3639,
+    "unitFullRound": {
+      "files": 465,
+      "passed": 3628,
+      "failed": 1,
+      "skipped": 0,
+      "seconds": 945.31,
+      "evidence": "unit.json",
+      "failure": "BotSetupJourney expected6tabs; new diagnostic tab makes7"
+    },
+    "unitAffectedRetest": {
+      "files": 3,
+      "passed": 31,
       "failed": 0,
       "skipped": 0,
-      "evidence": "unit-clean.json"
-    },
-    "integrationFullRound": {
-      "files": 156,
-      "passed": 1531,
-      "failed": 24,
-      "evidence": "integration-full.log",
-      "note": "22 lab-auth failures, two stale schema assertions, plus cleanup-hook timeout retained in log"
-    },
-    "integrationAffectedRetest": {
-      "files": 9,
-      "passed": 293,
-      "failed": 0,
-      "skipped": 0,
-      "evidence": "integration-reviewed.json",
-      "note": "Includes new structural readiness cases; not a clean rerun of the entire suite"
+      "seconds": 19.64,
+      "evidence": "ux-tabs-regression-green.log",
+      "note": "Updated exact tabs and End/Home/focus/lazy assertions; separate from full round"
     },
     "originJournal": {
-      "passed": 43,
+      "passed": 55,
       "failed": 0,
       "skipped": 0,
-      "evidence": "origin-final.log",
-      "scope": "Child Node process SIGKILL and actual Broker HTTP/PG; not engine crash"
+      "seconds": 70.15,
+      "evidence": "origin-final-tests.log",
+      "scope": "PostgreSQL/Broker real and compiled complete engine classes; WhatsApp/auth/enrichment synthetic; process SIGKILL not physical session"
     },
-    "cclxPgMinio": {
-      "passed": 21,
+    "cclxWorkerPgMinio": {
+      "passed": 22,
       "failed": 0,
       "skipped": 0,
-      "evidence": "cclx-minio-ready.log",
-      "note": "Prior attempt 13 pass / 8 fail started before MinIO readiness; retained separately"
+      "evidence": "media-worker-report.md",
+      "scope": "Real partner worker/routes/auth/SQL and private MinIO readback; synthetic provider bytes and loopback transport"
+    },
+    "engineSourceBuild": {
+      "preReview": "PASS full tsc and main CJS/ESM",
+      "afterReview": "NOT_RERUN_LOW_HOST_MEMORY",
+      "postReviewStagingAndClasses": "PASS",
+      "productionOwnership": "UNPROVEN"
     },
     "compiledEntrypoint": {
-      "passed": 2,
+      "passed": 1,
       "failed": 0,
-      "skipped": 0,
-      "evidence": "compiled-infra-final.log"
+      "skipped": 1,
+      "note": "Database-dependent case awaits final CI with isolated PostgreSQL"
     },
-    "lab2RubyConsumer": {
-      "passed": 4,
+    "pdfAudit": {
+      "passed": 6,
       "failed": 0,
-      "scope": "actual response class only; Broker authorization/facade fixtures"
+      "skipped": 0
     },
     "partnerQr": {
       "passed": 34,
-      "failed": 0
+      "failed": 0,
+      "skipped": 0
     },
-    "capacityPreflight": {
+    "capacityBudget": {
       "passed": 11,
-      "failed": 0
-    },
-    "browserE2e": {
-      "passed": 37,
       "failed": 0,
-      "skipped": 5,
-      "planned": 42,
-      "evidence": "e2e-final.log",
-      "scope": "Actual Fastify/PostgreSQL/Redis and browser, synthetic provider; 5 profile-conditioned skips"
+      "skipped": 0
     },
-    "build": "PASS",
-    "typecheck": "PASS",
     "lint": "NO_LINT_SCRIPT",
-    "publicContractGate": "PASS",
-    "webBundleGate": "PASS",
-    "notices": "PASS",
-    "submodule": "PASS",
-    "privateStorageMinio": {
-      "passed": 5,
-      "failed": 0,
-      "skipped": 0,
-      "evidence": "storage-adapter-final.log",
-      "scope": "actual existing durable private media facade + isolated PG/MinIO"
-    }
+    "gates": [
+      {
+        "name": "pdf-audit",
+        "arguments": [
+          "test",
+          "--",
+          "tests/security-audit-artifacts.test.mjs",
+          "--maxWorkers=1",
+          "--reporter=dot"
+        ],
+        "exitCode": 0,
+        "seconds": 70.24
+      },
+      {
+        "name": "typecheck",
+        "arguments": [
+          "run",
+          "typecheck"
+        ],
+        "exitCode": 0,
+        "seconds": 3.6
+      },
+      {
+        "name": "build",
+        "arguments": [
+          "run",
+          "build"
+        ],
+        "exitCode": 0,
+        "seconds": 8.08
+      },
+      {
+        "name": "web-bundle",
+        "arguments": [
+          "run",
+          "test:web:bundle"
+        ],
+        "exitCode": 0,
+        "seconds": 1.26
+      },
+      {
+        "name": "compiled",
+        "arguments": [
+          "exec",
+          "--",
+          "vitest",
+          "run",
+          "--config",
+          "vitest.compiled.config.ts",
+          "--maxWorkers=1"
+        ],
+        "exitCode": 0,
+        "seconds": 7.02
+      },
+      {
+        "name": "partner-qr",
+        "arguments": [
+          "run",
+          "test:partner-qr"
+        ],
+        "exitCode": 0,
+        "seconds": 6.7
+      },
+      {
+        "name": "capacity-budget",
+        "arguments": [
+          "run",
+          "test:capacity-budget"
+        ],
+        "exitCode": 0,
+        "seconds": 1.5
+      },
+      {
+        "name": "public-contracts",
+        "arguments": [
+          "run",
+          "security:contracts"
+        ],
+        "exitCode": 0,
+        "seconds": 2.71
+      },
+      {
+        "name": "notices",
+        "arguments": [
+          "run",
+          "security:notices"
+        ],
+        "exitCode": 0,
+        "seconds": 1.21
+      },
+      {
+        "name": "submodule",
+        "arguments": [
+          "run",
+          "security:submodule"
+        ],
+        "exitCode": 0,
+        "seconds": 4.71
+      },
+      {
+        "name": "openapi",
+        "arguments": [
+          "run",
+          "openapi:generate"
+        ],
+        "exitCode": 0,
+        "seconds": 4.34
+      }
+    ]
   },
   "benchmark": {
     "scope": "synthetic events, not sessions",
@@ -129,15 +224,115 @@
     "evidence": "benchmark-final.json"
   },
   "next": [
-    "Finish pinned-engine provenance and complete bootstrap before enabling the flag; compile and crash/restart actual engine locally",
-    "Integrate producer/worker media path, encrypted custody and restore SQL+objects+keys; retain KEEP",
-    "Provision isolated full LAB2 Rails host at reconciled revision with auth/TLS/DB/Redis/browser and messaging fixtures",
-    "Validate effective-image log canaries, fairness, quotas and measured pools",
-    "Run progressive capacity gates; require explicit authorization and real elapsed time for 50-number 30-day pilot"
+    "Publish reviewed API/web exact SHA after CI and image gates; apply additive0078 without credential rewrites; verify runtime digests/readiness",
+    "Finish effective engine image packaging, safe ownership/provisioning and controlled real session/reconnection gate before enabling origin capture",
+    "Homologate productive media custody/key policy and full isolated LAB2 Rails integration; retain KEEP",
+    "Validate effective-image secret canaries, fairness and measured pool budget; finish remaining admin/company journeys",
+    "Run authorized progressive capacity gates;50-number30-day pilot requires real elapsed time; no claim for400/900"
   ],
-  "currentProductionState": "NOT_VERIFIED",
-  "remoteCiCovers": "baseline ea58 only",
+  "currentProductionState": "READ_ONLY_CONFIRMED_SCHEMA77_PRIOR_IMAGES",
+  "remoteCiCovers": "baseline ea58 only; await current revision CI",
   "imagesForCurrentDiff": "NOT_BUILT_OR_PUBLISHED",
-  "report": "11-VERIFICACAO-E-ENTREGA-20261101.md",
-  "revisionLookup": "git log -1 --format=%H -- docs/broker-jrc-conclusao/ESTADO-FINAL.json"
+  "report": "14-INCREMENTO-RELEASE-20261101.md",
+  "revisionLookup": "git log -1 --format=%H -- docs/broker-jrc-conclusao/ESTADO-FINAL.json",
+  "previousCheckpoint": {
+    "baselineCommit": "ea58a897b923fc5889e99ea039b4bd61c385d781",
+    "tests": {
+      "unit": {
+        "files": 467,
+        "passed": 3639,
+        "failed": 0,
+        "skipped": 0,
+        "evidence": "unit-clean.json"
+      },
+      "integrationFullRound": {
+        "files": 156,
+        "passed": 1531,
+        "failed": 24,
+        "evidence": "integration-full.log",
+        "note": "22 lab-auth failures, two stale schema assertions, plus cleanup-hook timeout retained in log"
+      },
+      "integrationAffectedRetest": {
+        "files": 9,
+        "passed": 293,
+        "failed": 0,
+        "skipped": 0,
+        "evidence": "integration-reviewed.json",
+        "note": "Includes new structural readiness cases; not a clean rerun of the entire suite"
+      },
+      "originJournal": {
+        "passed": 43,
+        "failed": 0,
+        "skipped": 0,
+        "evidence": "origin-final.log",
+        "scope": "Child Node process SIGKILL and actual Broker HTTP/PG; not engine crash"
+      },
+      "cclxPgMinio": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0,
+        "evidence": "cclx-minio-ready.log",
+        "note": "Prior attempt 13 pass / 8 fail started before MinIO readiness; retained separately"
+      },
+      "compiledEntrypoint": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "evidence": "compiled-infra-final.log"
+      },
+      "lab2RubyConsumer": {
+        "passed": 4,
+        "failed": 0,
+        "scope": "actual response class only; Broker authorization/facade fixtures"
+      },
+      "partnerQr": {
+        "passed": 34,
+        "failed": 0
+      },
+      "capacityPreflight": {
+        "passed": 11,
+        "failed": 0
+      },
+      "browserE2e": {
+        "passed": 37,
+        "failed": 0,
+        "skipped": 5,
+        "planned": 42,
+        "evidence": "e2e-final.log",
+        "scope": "Actual Fastify/PostgreSQL/Redis and browser, synthetic provider; 5 profile-conditioned skips"
+      },
+      "build": "PASS",
+      "typecheck": "PASS",
+      "lint": "NO_LINT_SCRIPT",
+      "publicContractGate": "PASS",
+      "webBundleGate": "PASS",
+      "notices": "PASS",
+      "submodule": "PASS",
+      "privateStorageMinio": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0,
+        "evidence": "storage-adapter-final.log",
+        "scope": "actual existing durable private media facade + isolated PG/MinIO"
+      }
+    },
+    "benchmark": {
+      "scope": "synthetic events, not sessions",
+      "uniqueEvents": 750,
+      "requests": 825,
+      "duplicates": 75,
+      "errors": 0,
+      "persistedInbox": 750,
+      "persistedProjections": 750,
+      "capacityGo": false,
+      "evidence": "benchmark-final.json"
+    }
+  },
+  "scope": {
+    "backupDumpRestorePolicies": "EXCLUDED_BY_USER",
+    "recoveryCode": "PRESERVED",
+    "recoveryProof": false,
+    "allowedDeployment": "API/web immutable images after final SHA gates; additive0078; no engine replacement",
+    "mainMerge": false
+  }
 }

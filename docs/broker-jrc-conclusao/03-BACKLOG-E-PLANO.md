@@ -1,3 +1,7 @@
+# Escopo vigente de publicação — 01/11/2026
+
+Leia primeiro [12-ESCOPO-PUBLICACAO-20261101.md](12-ESCOPO-PUBLICACAO-20261101.md). O usuário autorizou a publicação da candidata e atualização da imagem no servidor após validação. Backup, dump, restore e políticas de backup estão excluídos desta rodada; preservar mecanismos existentes. Nenhuma dispensa comprova recuperação ou perda zero. As restrições de publicação e gates de backup nos checkpoints abaixo são históricas e foram substituídas por essa decisão; não autorizam mudanças alheias à versão, merge na main, credenciais, sessões ou mensagens reais.
+
 # Atualização de 01/11/2026 — continuação de ea58a897
 
 O estado corrente deste incremento está em [10-INCREMENTO-ORIGEM-CUSTODIA-20261101.md](10-INCREMENTO-ORIGEM-CUSTODIA-20261101.md), [11-VERIFICACAO-E-ENTREGA-20261101.md](11-VERIFICACAO-E-ENTREGA-20261101.md) e `ESTADO-FINAL.json`. Os registros abaixo são históricos: bootstrap/ACK, MinIO, shells e resultados de testes evoluíram. Não usar imagens ou CI anteriores como aprovação do novo diff. Nenhuma produção foi acessada ou alterada nesta continuação.

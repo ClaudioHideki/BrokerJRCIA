@@ -1,5 +1,9 @@
 # B02-A origin journal: design and implementation plan
 
+## Release increment from 2f1effd: executable staging composition
+
+Implement an opaque committed-batch capability and AsyncLocalStorage provenance around the actual queue registration, preserving notify/append even after prepareMessage erases it. Add full-hash pinned construction/createClient/webhook overlays, with instance attachment before ChannelController returns and awaited database/bootstrap readiness before auth-state access or socket creation. Build complete selected upstream classes into a disposable staging directory; fixture dependencies and no-WhatsApp boundaries must be explicit. Add actual child-process crash coverage of this composition in a coordinated disposable PG window. Full upstream dependency installation/typecheck/image/session compatibility is a separate gate; production ownership stays UNPROVEN and only an explicit laboratory host can execute the staged composition.
+
 Scope approved by the parent execution task on 2026-11-01. This is an isolated JRC-owned laboratory increment, not a completed engine integration or release.
 
 **Goal:** persist allowlisted individual TEXT facts in an engine-owned PostgreSQL schema before a source hook can enqueue volatile work; replay only the integration delivery, with stable IDs, leases and explicit durable receipts.
@@ -39,4 +43,6 @@ Next increment adds exact-byte hashed authenticated HTTP, bounded serial worker 
 
 The next small increment adds a reusable committed-row ownership guard and a full-hash-pinned webhook-controller staging overlay with separate local/global decisions. PostgreSQL visibility before/after actual COMMIT and the actual prepared controller/generic fanout are tested. Bootstrap exposes the guard under the same immutable binding. This is selective durable-fact suppression only: notify/append provenance is absent at that seam and actual construction is uninstalled, so UNPROVEN remains mandatory.
 
-Tests use real PostgreSQL and a synthetic delivery port/transactional receipt receiver, not the real Broker endpoint, WhatsApp or engine binary. Inserting a source hook is not a working bootstrap, and ownership of direct webhook delivery is not proved by this package alone. B02 remains open until those integration and crash gates pass. No claim is made about events WhatsApp never provided or facts not committed durably.
+The original B02-A tests used a synthetic receiver. Subsequent isolated tests exercise actual Broker HTTP/PG and real SIGKILL of a complete compiled pinned-class composition with explicit synthetic WhatsApp/auth/Prisma/chatbot dependencies. Notify/append provenance, actual construction attachment and readiness-before-auth are now executable laboratory seams. Review exposed and corrected both a process-env ownership bypass and a delayed mutable-event snapshot; source type/content now snapshot synchronously before readiness/queue waits, and only the registered host decides ownership for attached instances.
+
+This is not an installed production host or a live WhatsApp engine/session. B02 remains open; UNPROVEN is mandatory until image/runtime compatibility, host provisioning/lifecycle and approved activation are verified. No claim is made about events WhatsApp never provided or facts not committed durably. See the current parent `output/increment-release-20261101/origin-report.md` for final evidence boundaries and the explicit pre-review full-build limitation.

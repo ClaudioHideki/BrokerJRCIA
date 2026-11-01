@@ -59,7 +59,9 @@ export function ChannelsPage() {
     <div className="page-heading"><div><p className="eyebrow">WhatsApp da sua empresa</p><h1 id="channels-title">Caixas de entrada</h1>
       <p>Conecte seu WhatsApp, escolha onde a equipe atende e ative um chatbot JRC.</p></div>
       {canManage ? <Link className="button button--primary" to="/channels/new">+ Conectar WhatsApp</Link> : null}</div>
-    {error ? <div className="notice notice--error" role="alert">{error}</div> : null}
+    {error ? <div className="notice notice--error" role="alert">{error}
+      {!loading && items.length === 0 && <p><button type="button" className="button button--secondary" onClick={()=>void load()}>Tentar carregar caixas novamente</button></p>}
+    </div> : null}
     {loading ? <div className="state-card" aria-busy="true">Carregando canais…</div> : null}
     {!loading && !error && items.length === 0 ? <div className="state-card"><h2>Nenhum canal configurado</h2><p>Crie um canal por QR Code ou conecte uma conta oficial da Meta.</p></div> : null}
     <label><input type="checkbox" checked={showArchived} onChange={event=>setShowArchived(event.target.checked)}/> Mostrar arquivadas</label><div className="channel-cards">

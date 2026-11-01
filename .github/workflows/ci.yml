@@ -38,6 +38,8 @@ jobs:
 
     env:
       CI: "true"
+      # Temporary, explicit scope exception for this candidate only. See docs/broker-jrc-conclusao/12-ESCOPO-PUBLICACAO-20261101.md.
+      RECOVERY_ROUTINES_IN_SCOPE: ${{ (github.head_ref || github.ref_name) != 'codex/broker-jrc-2-redesign-homologacao-20261030' }}
       TEST_DATABASE_URL: postgresql://lab_broker_admin@127.0.0.1:5432/lab_broker_ci
       TEST_DATABASE_ADMIN_URL: postgresql://lab_broker_admin@127.0.0.1:5432/lab_broker_ci
       TEST_REDIS_URL: redis://127.0.0.1:6379
@@ -105,7 +107,13 @@ jobs:
         run: npm run test:compiled
 
       - name: Run unit, contract, and HTTP tests
-        run: npm test -- --exclude tests/security-audit-artifacts.test.mjs
+        run: |
+          if [ "$RECOVERY_ROUTINES_IN_SCOPE" = "true" ]; then
+            npm test -- --exclude tests/security-audit-artifacts.test.mjs
+          else
+            echo 'Backup/dump/restore excluded by the approved candidate scope. Recovery is NOT validated by this run.' >> "$GITHUB_STEP_SUMMARY"
+            npm test -- --exclude tests/security-audit-artifacts.test.mjs --exclude tests/backup.test.mjs --exclude tests/recovery.test.mjs
+          fi
 
       - name: Verify PDF audit artifacts without competing test workers
         run: npm test -- tests/security-audit-artifacts.test.mjs --maxWorkers=1
@@ -141,6 +149,7 @@ jobs:
         run: npm run test:container
 
       - name: Exercise encrypted backup and isolated restore
+        if: ${{ env.RECOVERY_ROUTINES_IN_SCOPE == 'true' }}
         run: npm run test:restore-drill
 
       - name: Audit production dependency severity

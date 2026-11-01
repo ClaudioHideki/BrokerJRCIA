@@ -40,3 +40,25 @@ it('discards a late response after the company request context changes',async()=
  await act(async()=>{finish({data:[{status:'FAILED',code:'OTHER',total:12345,firstSeenAt:'2026-10-15T12:00:00.000Z',lastSeenAt:'2026-10-16T12:00:00.000Z'}]});});
  expect(screen.queryByText('12345')).not.toBeInTheDocument();
 });
+
+it('explains denied diagnostic access without presenting unknown totals as zero',async()=>{
+ const {ApiClientError}=await import('../api/client.js');
+ const request=vi.fn().mockRejectedValue(new ApiClientError('Forbidden',403,'synthetic-trace'));
+ render(<DeliveryDiagnostics request={request}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Diagnóstico de todas as entregas'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('Seu acesso não permite consultar o diagnóstico das entregas.');
+ expect(screen.getByRole('alert')).toHaveTextContent('synthetic-trace');
+ expect(screen.queryByText('Nenhuma entrega com falha ou resultado incerto.')).not.toBeInTheDocument();
+});
+
+it('keeps the query control focusable while loading and prevents duplicate requests',async()=>{
+ let finish!:(value:unknown)=>void;
+ const request=vi.fn(()=>new Promise(resolve=>{finish=resolve;}));
+ render(<DeliveryDiagnostics request={request}/>);
+ const query=screen.getByRole('button',{name:'Diagnóstico de todas as entregas'});query.focus();
+ fireEvent.click(query);
+ expect(query).toHaveAttribute('aria-disabled','true');expect(query).not.toBeDisabled();expect(query).toHaveFocus();
+ fireEvent.click(query);expect(request).toHaveBeenCalledTimes(1);
+ await act(async()=>finish({data:[]}));
+ expect(query).toHaveAttribute('aria-disabled','false');expect(query).toHaveFocus();
+});

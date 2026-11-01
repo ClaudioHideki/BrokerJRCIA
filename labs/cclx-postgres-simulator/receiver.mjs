@@ -49,6 +49,7 @@ async function syncDirectory(directory){
 /** No listener or external transport: injected local lab request only, separate from Broker routes. */
 export async function openLabReceiver(options={}){
   requireLabOnly(options);
+  if(options.partnerFixture)return (await import('./worker-receiver.mjs')).openPartnerWorkerLabReceiver(options);
   const directory=await validateMediaState(options.mediaState),url=options.database?.connectionString;
   validateDatabaseUrl(url,true);
   const s3=options.s3?(await import('./s3-custody.mjs')).createLabS3Custody(options.s3,{labOnly:true}):null;

@@ -24,10 +24,15 @@ async function openFlow(){fireEvent.click(await screen.findByRole('tab',{name:'F
 it('provides keyboard-accessible areas and keeps publication, binding and the real test in order',async()=>{
  const request=mount();await screen.findByRole('heading',{name:'Caixa sintética'});
  const tabs=screen.getByRole('tablist',{name:'Áreas da conexão'});
- expect(within(tabs).getAllByRole('tab').map(tab=>tab.textContent)).toEqual(['Visão geral','Configurações WhatsApp','Histórico operacional','Atendimento','Flow','Histórico e grupos']);
+ expect(within(tabs).getAllByRole('tab').map(tab=>tab.textContent)).toEqual(['Visão geral','Configurações WhatsApp','Histórico operacional','Atendimento','Flow','Histórico e grupos','Diagnóstico de entregas']);
  const overview=within(tabs).getByRole('tab',{name:'Visão geral',selected:true});overview.focus();
  fireEvent.keyDown(overview,{key:'ArrowRight'});expect(within(tabs).getByRole('tab',{name:'Configurações WhatsApp',selected:true})).toHaveFocus();
- fireEvent.keyDown(document.activeElement!,{key:'ArrowRight'});fireEvent.keyDown(document.activeElement!,{key:'ArrowRight'});fireEvent.keyDown(document.activeElement!,{key:'ArrowRight'});
+ fireEvent.keyDown(document.activeElement!,{key:'End'});
+ const diagnostics=within(tabs).getByRole('tab',{name:'Diagnóstico de entregas',selected:true});expect(diagnostics).toHaveFocus();
+ expect(screen.getByRole('tabpanel',{name:'Diagnóstico de entregas'})).toHaveTextContent('Os totais abaixo abrangem toda a empresa');
+ expect((request as ReturnType<typeof vi.fn>).mock.calls.some(call=>call[0].endsWith('/jobs/summary'))).toBe(false);
+ fireEvent.keyDown(diagnostics,{key:'Home'});expect(within(tabs).getByRole('tab',{name:'Visão geral',selected:true})).toHaveFocus();
+ for(let index=0;index<4;index++)fireEvent.keyDown(document.activeElement!,{key:'ArrowRight'});
  expect(within(tabs).getByRole('tab',{name:'Flow',selected:true})).toHaveFocus();
  await screen.findByRole('option',{name:'Fluxo sintético · v2'});
  const publication=screen.getByRole('heading',{name:'Criar ou publicar o fluxo'}),binding=screen.getByRole('heading',{name:'Vincular bot à caixa'}),test=screen.getByRole('heading',{name:'Testar atendimento'});

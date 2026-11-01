@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {IntegrationDeliverySummarySchema} from '@jrc/contracts';
 import type {z} from 'zod';
 import type {IntegrationRequest} from './ChatwootPanel.js';
+import {ApiClientError} from '../api/client.js';
 
 type Summary=z.infer<typeof IntegrationDeliverySummarySchema>;
 const guidance:Record<string,string>={
@@ -23,20 +24,22 @@ export function DeliveryDiagnostics({request}:{request:IntegrationRequest}){
   inFlight.current=true;const current=++generation.current;setBusy(true);setError('');setSummary(null);
   try{const value=IntegrationDeliverySummarySchema.parse(await request('/jobs/summary'));
    if(active.current&&current===generation.current)setSummary(value);
-  }catch{if(active.current&&current===generation.current)setError('Não foi possível consultar o diagnóstico.');}
+  }catch(reason){if(active.current&&current===generation.current)setError(
+   (reason instanceof ApiClientError&&reason.status===403?'Seu acesso não permite consultar o diagnóstico das entregas.':'Não foi possível consultar o diagnóstico.')+
+   (reason instanceof ApiClientError&&reason.requestId?` Solicitação: ${reason.requestId}`:''));}
   finally{if(active.current&&current===generation.current){inFlight.current=false;setBusy(false);}}
  }
  return <section aria-label="Diagnóstico das entregas">
-  <button type="button" className="button button--secondary" disabled={busy} onClick={()=>void load()}>Diagnóstico de todas as entregas</button>
+  <button type="button" className="button button--secondary" aria-disabled={busy} aria-busy={busy} onClick={()=>void load()}>Diagnóstico de todas as entregas</button>
   <p>Totais de falhas e resultados incertos de todo o histórico desta empresa, além das últimas 100 tarefas. Esta consulta não reenvia mensagens.</p>
   {busy&&<p role="status">Consultando entregas…</p>}
   {error&&<p role="alert">{error}</p>}
-  {summary&&(summary.data.length===0?<p>Nenhuma entrega com falha ou resultado incerto.</p>:<table>
+  {summary&&(summary.data.length===0?<p>Nenhuma entrega com falha ou resultado incerto.</p>:<div className="table-scroll" role="region" aria-label="Resumo das entregas" tabIndex={0}><table>
    <thead><tr><th>Situação</th><th>Diagnóstico</th><th>Total</th><th>Próxima ação</th></tr></thead>
    <tbody>{summary.data.map(item=><tr key={`${item.status}:${item.code}`}>
     <td>{item.status==='UNKNOWN'?'Resultado incerto':'Falha'}</td><td><code>{item.code}</code></td><td>{item.total}</td>
     <td>{item.status==='UNKNOWN'||item.code==='CHATWOOT_OUTCOME_UNKNOWN'?'Confira o resultado na central antes de reenviar. Um timeout não prova que a entrega falhou.':guidance[item.code]}</td>
    </tr>)}</tbody>
-  </table>)}
+  </table></div>)}
  </section>;
 }
