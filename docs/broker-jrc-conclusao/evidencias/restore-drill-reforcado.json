@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "scope": "SYNTHETIC_FIXTURE_ONLY",
+  "backupMs": 3023,
+  "restoreMs": 8106,
+  "rpoSeconds": 0,
+  "rpoInterpretation": "No changes after synthetic snapshot; not an operational RPO guarantee",
+  "tenants": 2,
+  "sessions": 1,
+  "runtimeBypassRls": false,
+  "restoredRls": {
+    "alphaVisible": 1,
+    "betaVisible": 1,
+    "unrelatedVisible": 0
+  },
+  "engineSessionFile": true,
+  "sessionBytesMatch": true,
+  "totalMs": 20612
+}

@@ -1,0 +1,19 @@
+{
+  "revision": "049a41023c655f02f50a77907bd9ec3bec989354",
+  "run": "https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/41324109368",
+  "conclusion": "success",
+  "unit": 3623,
+  "webOverlapping": 749,
+  "postgresRedis": 1540,
+  "pdf": 6,
+  "minio": 5,
+  "partnerQR": 34,
+  "compiled": 2,
+  "browser": {
+    "planned": 42,
+    "passed": 37,
+    "skipped": 5,
+    "reason": "profile-specific conditions in apps/web/tests/e2e/console.spec.ts:15,109"
+  },
+  "newLabModulesCovered": false
+}

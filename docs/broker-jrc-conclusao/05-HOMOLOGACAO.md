@@ -15,3 +15,19 @@ Consolidação intermediária do novo código: npm test com10arquivos afetados,7
 Revisão independente P2 corrigida via RED PostgreSQL: vínculo DISABLED com health cadastrado e nunca observado não é falha; erros explícitos ainda contam. Agente confirmou9/9SQL e10/10unit. Consolidação final e typecheck seguem no log próprio. Não somar às seleções anteriores.
 
 Consolidação FINAL após revisão:2arquivosPG,14/14aprovados,24,10s,exit0; tsc-b finalexit0. Logpostgres-final-14.log. Scanner32arquivossemfindings. P2 resolvido e retestado. A suítegeral do novoSHA ainda exigeCI; não reutilizar5184execuções de b076 como aprovaçãodesteincremento.
+
+Ensaio existentebackup.mjs/restore-drill.mjs foi executado no projetoDocker jrc-restore-drill, previamenteconferidovazio. Reforço do teste: consultaRLSreal no bancorestaurado e extração/comparação dosbytessintéticos. REDpermissiondenied demonstrougrantsausentes nafixture; GRANTSELECT somentenafixture incluiu acessolegítimo antes dobackup. GREENrecuperouAlpha1/Beta1/tenantalheio0, doisbancos e arquivosessão combytesiguais, cifragemAES-GCM echecksumsverificados. Backup3023ms/restore8106ms, total20612ms. rpoSeconds0 é somente ausência de mudanças posterioresnafixture; não égarantiaRPOoperacional. Engineécontainerstub, não sessãoWhatsApp. SemS3/DB77nesteharness; ensaioDB77foiseparado. Nenhumvolumecompartilhado/produtivoacessado.
+
+## CI integral do incremento049
+
+Run41324109368 terminou com sucesso em01/11. Testesgerais3623; PDF6; SQL/Redis1540; MinIO5; parceiroQR34; compilados2. Etapafrontend749aprovados é sobreposta à geral. Browser:42previstos,37aprovados,5ignorados por condiçõesdesktop/mobile(console.spec.ts15/109). Não registrar42passes. Build,tipo,contratoOpenAPI,imagem/entrypoint,backup/restore e gatessegurança passaram. Novosmódulosdelaboratório abaixo não existiam nesseSHA, portanto precisam deCIprópria.
+
+## Laboratórios posteriores
+
+Originjournal:25/25aprovados(9unitários+16PostgreSQL), semskips, via npm run test:origin-journal; incluem transações,conflito,lease,fencing,ACKperdido,recriaçãopool,budget/deadlineecontrato fontefixada. Estadoorigin captura textualisolada; faltabootstrap,ownership,ACKBrokerreal ecrashprocesso.
+
+Receptor: npm run test:cclx-receiver aprovou12/12(10receptor+2benchmark), semskips. Commit síncrono eRLS doBroker são provas distintas: esse receptor é laboratório com2tenantsfixos, nãoautorização deAPIprodutiva. Filesystemprivado, nãoS3.
+
+Backup criptográfico/baseline: npm test -- tests/backup.test.mjs tests/repository-baseline.test.mjs --maxWorkers=1,3/3aprovados. ParseYAML2workflows e node--check14arquivosmjs passaram; nãoé lintglobal.
+
+Benchmarkfinito:750eventosúnicos,825requisições,75duplicatas,0erros,750inbox+750projeções. Concorrência4,lotes50/100/200/400eventos. endingBacklognull porque nãoháfilanessereceptor. Hardware/latências/limitesnoJSON. Nãoé benchmarkdesessões,engine,WhatsApp,250milmsgs/diaouSLO.

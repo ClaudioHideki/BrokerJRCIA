@@ -1,0 +1,31 @@
+ Network jrc-restore-drill_default Creating
+ Network jrc-restore-drill_default Created
+ Volume jrc-restore-drill_engine_instances Creating
+ Volume jrc-restore-drill_engine_instances Created
+ Container jrc-restore-drill-postgres-1 Creating
+ Container jrc-restore-drill-evolution-1 Creating
+ Container jrc-restore-drill-postgres-1 Created
+ Container jrc-restore-drill-evolution-1 Created
+ Container jrc-restore-drill-evolution-1 Starting
+ Container jrc-restore-drill-postgres-1 Starting
+ Container jrc-restore-drill-postgres-1 Started
+ Container jrc-restore-drill-evolution-1 Started
+ Container jrc-restore-drill-postgres-1 Waiting
+ Container jrc-restore-drill-evolution-1 Waiting
+ Container jrc-restore-drill-evolution-1 Healthy
+ Container jrc-restore-drill-postgres-1 Healthy
+Encrypted PostgreSQL and runtime configuration backup completed.
+Backup authentication and checksums verified.
+Restore drill PASS (backup 3023 ms, restore 8106 ms)
+ Container jrc-restore-drill-evolution-1 Stopping
+ Container jrc-restore-drill-postgres-1 Stopping
+ Container jrc-restore-drill-evolution-1 Stopped
+ Container jrc-restore-drill-evolution-1 Removing
+ Container jrc-restore-drill-postgres-1 Stopped
+ Container jrc-restore-drill-postgres-1 Removing
+ Container jrc-restore-drill-evolution-1 Removed
+ Container jrc-restore-drill-postgres-1 Removed
+ Network jrc-restore-drill_default Removing
+ Volume jrc-restore-drill_engine_instances Removing
+ Volume jrc-restore-drill_engine_instances Removed
+ Network jrc-restore-drill_default Removed

@@ -77,3 +77,15 @@ A revisão P2 foi corrigida e o reteste consolidado final passou em14casosPostgr
 Nova evidênciaB02: digestEvolution publica proveniênciaOCI/in-toto para cd800f2; comparação de runtime comfa09sem diferenças nos arquivosselecionados. Foram comprovadas janelasvoláteis no código-fonte e proposto journalantesdaPromise, mas não foi implementada captura durável. B02continua pendente.
 
 Relatórios completos H01,B07,UX e B02 e capturas estão em evidencias/. O commitnovo e o resultadoCI devem ser lidos no checkpoint/manifesto do pacote. Alterações desteincremento permanecem candidatas, sem implantação.
+
+## Implementações adicionais de confiabilidade
+
+O journal de origem deixou de ser apenas proposta: há código isolado de captura de texto cifrado, transação, dedupe, leases, recuperação, tentativas e dispatcher com prazo total e recibo explícito. Foram aprovados25 testes. A preparação do hook verifica o hash do código fixado e é exercitada em teste antes da Promise volátil. Contudo, não há bootstrap instalado, supressão comprovada da entrega direta, ACK real do Broker, imagem derivada ou crash de processo homologado. AUD-B02 permanece aberto.
+
+O receptor CCLX ganhou uma implementação PostgreSQL, com persistência atômica antes do ACK, idempotência, conflito de conteúdo, HMAC e mídia em arquivo privado conferido por hash. O fechamento drena operações admitidas e recusa novas. São12 testes do receptor/benchmark aprovados. O filesystem não substitui S3 e o contrato sintético não é uma API produtiva.
+
+Executou-se também um benchmark limitado a750 eventos sintéticos:825 requisições,75 duplicatas,zero erros e750efeitos lógicos persistidos. Os lotes50/100/200/400 não são sessões. Não há GO de capacidade derivado dessa medição.
+
+O CI integral049a410 passou:3.623 testes gerais,1.540 SQL/Redis,5 MinIO e37 jornadas de navegador aprovadas;5jornadas foram ignoradas por perfil. A etapafrontend749se sobrepõe à geral. EstaCI não cobre as adições posteriores de laboratório; será necessária a revisão seguinte.
+
+Os testes automáticos dos novos componentes foram adicionados aos workflows oficiais, impedindo publicação futura sem esses gates. Publicação/implantação/ativação continuam operações distintas. O servidor permanece sem alterações.

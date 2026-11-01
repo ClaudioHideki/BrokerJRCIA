@@ -1,0 +1,6 @@
+Command: node labs/cclx-postgres-simulator/benchmark.mjs --lab-only
+Exit: 0
+Report: benchmark-20261101.json
+Reconciled: True
+Totals: {"uniqueEvents":750,"requests":825,"accepted":750,"duplicates":75,"errors":0}
+Hardware context is embedded in the JSON; no session/capacity/SLO claim.

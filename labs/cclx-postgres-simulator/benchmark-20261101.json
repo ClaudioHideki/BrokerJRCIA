@@ -1,0 +1,137 @@
+{
+  "kind": "CCLX_PG_FINITE_SYNTHETIC_EVENT_BENCHMARK",
+  "countsAre": "SYNTHETIC_EVENTS_NOT_SESSIONS",
+  "startedAt": "2026-11-01T16:19:42.939Z",
+  "command": "node labs/cclx-postgres-simulator/benchmark.mjs --lab-only",
+  "counts": [
+    50,
+    100,
+    200,
+    400
+  ],
+  "concurrency": 4,
+  "duplicatePolicy": "floor(uniqueEvents / 10) per stage; exactly 10% for the default 50/100/200/400 stages",
+  "latencyScope": "ALL_INJECTED_REQUESTS_INCLUDING_DUPLICATES; stages exclude database setup and cleanup",
+  "stages": [
+    {
+      "uniqueEvents": 50,
+      "expectedDuplicates": 5,
+      "requests": 55,
+      "accepted": 50,
+      "duplicates": 5,
+      "errors": 0,
+      "errorDetails": [],
+      "p50Ms": 13.218,
+      "p95Ms": 53.585,
+      "maxMs": 55.945,
+      "totalMs": 239.056,
+      "cumulativeRows": {
+        "inbox": 50,
+        "projections": 50,
+        "mediaReceipts": 0
+      },
+      "reconciled": true
+    },
+    {
+      "uniqueEvents": 100,
+      "expectedDuplicates": 10,
+      "requests": 110,
+      "accepted": 100,
+      "duplicates": 10,
+      "errors": 0,
+      "errorDetails": [],
+      "p50Ms": 10.293,
+      "p95Ms": 36.5,
+      "maxMs": 96.725,
+      "totalMs": 434.597,
+      "cumulativeRows": {
+        "inbox": 150,
+        "projections": 150,
+        "mediaReceipts": 0
+      },
+      "reconciled": true
+    },
+    {
+      "uniqueEvents": 200,
+      "expectedDuplicates": 20,
+      "requests": 220,
+      "accepted": 200,
+      "duplicates": 20,
+      "errors": 0,
+      "errorDetails": [],
+      "p50Ms": 10.858,
+      "p95Ms": 30.397,
+      "maxMs": 70.199,
+      "totalMs": 815.329,
+      "cumulativeRows": {
+        "inbox": 350,
+        "projections": 350,
+        "mediaReceipts": 0
+      },
+      "reconciled": true
+    },
+    {
+      "uniqueEvents": 400,
+      "expectedDuplicates": 40,
+      "requests": 440,
+      "accepted": 400,
+      "duplicates": 40,
+      "errors": 0,
+      "errorDetails": [],
+      "p50Ms": 9.687,
+      "p95Ms": 20.892,
+      "maxMs": 69.671,
+      "totalMs": 1262.592,
+      "cumulativeRows": {
+        "inbox": 750,
+        "projections": 750,
+        "mediaReceipts": 0
+      },
+      "reconciled": true
+    }
+  ],
+  "totals": {
+    "uniqueEvents": 750,
+    "requests": 825,
+    "accepted": 750,
+    "duplicates": 75,
+    "errors": 0
+  },
+  "rows": {
+    "inbox": 750,
+    "projections": 750,
+    "mediaReceipts": 0
+  },
+  "reconciled": true,
+  "endingBacklog": null,
+  "backlogMeaning": "NO_QUEUE_IN_THIS_LAB",
+  "totalMs": 3055.064,
+  "capacityGo": false,
+  "scope": {
+    "injectedReceiver": true,
+    "realPostgres": true,
+    "externalRequests": 0,
+    "engineSessions": 0,
+    "whatsappSessions": 0,
+    "mediaBenchmark": false,
+    "measured250000MessagesPerDay": false,
+    "sloValidated": false
+  },
+  "hardware": {
+    "node": "v24.19.0",
+    "platform": "win32",
+    "architecture": "x64",
+    "cpuModel": "Intel(R) Core(TM) i5-9500T CPU @ 2.20GHz",
+    "logicalCpus": 6,
+    "totalMemoryBytes": 8416899072,
+    "freeMemoryBytesAtStart": 875692032,
+    "freeMemoryBytesAtEnd": 843776000,
+    "postgres": {
+      "version": "16.4",
+      "fsync": "on",
+      "full_page_writes": "on"
+    },
+    "postgresContainerLimits": "NOT_COLLECTED_BY_THIS_HARNESS",
+    "resourceContention": "NOT_CONTROLLED; local functional measurement only"
+  }
+}

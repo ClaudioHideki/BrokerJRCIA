@@ -1,0 +1,58 @@
+ Network jrc-restore-drill_default Creating
+ Network jrc-restore-drill_default Created
+ Volume jrc-restore-drill_engine_instances Creating
+ Volume jrc-restore-drill_engine_instances Created
+ Container jrc-restore-drill-postgres-1 Creating
+ Container jrc-restore-drill-evolution-1 Creating
+ Container jrc-restore-drill-evolution-1 Created
+ Container jrc-restore-drill-postgres-1 Created
+ Container jrc-restore-drill-postgres-1 Starting
+ Container jrc-restore-drill-evolution-1 Starting
+ Container jrc-restore-drill-evolution-1 Started
+ Container jrc-restore-drill-postgres-1 Started
+ Container jrc-restore-drill-evolution-1 Waiting
+ Container jrc-restore-drill-postgres-1 Waiting
+ Container jrc-restore-drill-evolution-1 Healthy
+ Container jrc-restore-drill-postgres-1 Healthy
+Encrypted PostgreSQL and runtime configuration backup completed.
+Backup authentication and checksums verified.
+ Container jrc-restore-drill-postgres-1 Stopping
+ Container jrc-restore-drill-evolution-1 Stopping
+ Container jrc-restore-drill-evolution-1 Stopped
+ Container jrc-restore-drill-evolution-1 Removing
+ Container jrc-restore-drill-postgres-1 Stopped
+ Container jrc-restore-drill-postgres-1 Removing
+ Container jrc-restore-drill-evolution-1 Removed
+ Container jrc-restore-drill-postgres-1 Removed
+ Volume jrc-restore-drill_engine_instances Removing
+ Network jrc-restore-drill_default Removing
+ Volume jrc-restore-drill_engine_instances Removed
+ Network jrc-restore-drill_default Removed
+node:internal/errors:985
+  const err = new Error(message);
+              ^
+
+Error: Command failed: docker compose -p jrc-restore-drill -f C:\Users\DEV02\Documents\ChatGPT\New project\BrokerJRCIA-source-audit\.worktrees\image-release-20260924\infra\operations\restore-drill.compose.yaml exec -T postgres psql -At -v ON_ERROR_STOP=1 -U postgres -d jrc_broker_restored -c SET ROLE jrc_app; SET app.current_organization_id='11111111-1111-4111-8111-111111111111'; SELECT count(*) FROM restore_drill_tenants;
+ERROR:  permission denied for table restore_drill_tenants
+
+    at genericNodeError (node:internal/errors:985:15)
+    at wrappedFn (node:internal/errors:539:14)
+    at checkExecSyncError (node:child_process:942:11)
+    at execFileSync (node:child_process:978:15)
+    at docker (file:///C:/Users/DEV02/Documents/ChatGPT/New%20project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924/scripts/operations/restore-drill.mjs:10:40)
+    at sql (file:///C:/Users/DEV02/Documents/ChatGPT/New%20project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924/scripts/operations/restore-drill.mjs:14:38)
+    at restoredTenantCount (file:///C:/Users/DEV02/Documents/ChatGPT/New%20project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924/scripts/operations/restore-drill.mjs:51:56)
+    at file:///C:/Users/DEV02/Documents/ChatGPT/New%20project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924/scripts/operations/restore-drill.mjs:53:24 {
+  status: 1,
+  signal: null,
+  output: [
+    null,
+    'SET\nSET\n',
+    'ERROR:  permission denied for table restore_drill_tenants\n'
+  ],
+  pid: 20460,
+  stdout: 'SET\nSET\n',
+  stderr: 'ERROR:  permission denied for table restore_drill_tenants\n'
+}
+
+Node.js v24.19.0

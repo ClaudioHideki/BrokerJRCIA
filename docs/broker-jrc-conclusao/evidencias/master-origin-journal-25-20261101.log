@@ -1,0 +1,44 @@
+
+> @jrc/whatsapp-broker@0.0.0 test:origin-journal
+> node --test --test-concurrency=1 integrations/evolution-origin-journal/tests/unit.test.mjs integrations/evolution-origin-journal/tests/postgres.test.mjs
+
+✔ PG: capture commits one encrypted event and its obligation before returning to the caller (300.3765ms)
+✔ PG: stable identity deduplicates and same-key different-content rolls back the entire batch (26.9413ms)
+✔ PG: concurrent workers cannot claim two live deliveries in the same source scope (59.8356ms)
+✔ PG: expired leases are reclaimable and stale claims cannot settle a replacement (46.8014ms)
+✔ PG: lost ACK after receiver commit retries the same event and creates one logical effect (81.6989ms)
+✔ PG: 200 without exact durable receipt remains uncertain and a terminal 4xx is retained blocked (64.4772ms)
+✔ PG: bounded Retry-After persists scheduling and retries stop with a retained terminal record (56.8902ms)
+✔ PG: binding changes prevent delivery and are rechecked after an external outcome (47.4692ms)
+✔ PG: pending obligations survive a fresh connection pool and adapter instance (40.9572ms)
+✔ PG: strict opt-in dispatcher does not claim or call delivery while disabled (11.8619ms)
+✔ PG: source and receipt-defining transactions force synchronous_commit despite an async caller session (63.9376ms)
+✔ PG: crash/reclaim attempts cannot exceed the delivery budget before a new external call (56.076ms)
+✔ PG: total dispatch deadline bounds a never-resolving pre port and retains the event (68.3334ms)
+✔ PG: total dispatch deadline bounds a never-resolving post port and retains the event (66.6755ms)
+✔ PG: total dispatch deadline bounds a never-resolving delivery port and retains the event (75.0341ms)
+✔ PG: a resolver completing after the total deadline cannot start a late external delivery (59.9689ms)
+✔ lab database guard rejects protocol, query/hash overrides, nonlab targets and production before I/O (1.8675ms)
+✔ projects individual notify text and strips unrelated sensitive fields (1.2534ms)
+✔ does not admit groups, media, history, unsupported identities or append imports (0.3461ms)
+✔ rejects malformed supported text before accepting any part of its batch (0.2692ms)
+✔ projects protobuf Long timestamps without persisting the provider object (0.3874ms)
+✔ does not reinterpret edited or protocol-bearing messages as new live text (0.2453ms)
+✔ strict opt-in performs no capture while disabled and fails closed without a journal (0.9451ms)
+✔ awaits the durable capture promise and does not turn a rejected capture into success (0.6644ms)
+(node:16604) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ prepares the pinned real callback and awaits capture before its volatile queue assignment (184.3459ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1874.7999
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice

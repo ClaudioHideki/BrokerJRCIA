@@ -1,0 +1,18 @@
+
+> @jrc/whatsapp-broker@0.0.0 test
+> vitest run tests/backup.test.mjs tests/repository-baseline.test.mjs --maxWorkers=1
+
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+
+ Test Files  2 passed (2)
+      Tests  3 passed (3)
+   Start at  13:22:45
+   Duration  2.67s (transform 158ms, setup 1.59s, import 97ms, tests 127ms, environment 1ms)
+
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice

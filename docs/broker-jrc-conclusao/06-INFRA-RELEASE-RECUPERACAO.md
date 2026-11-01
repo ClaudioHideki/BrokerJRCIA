@@ -11,3 +11,5 @@ Produção observada: API d82eb3c44892 healthy; web2151025cd209 running; PG/Redi
 Gate atual: Dokploy Backups mostra No backups configured. Backup externo/restore completo não verificados. Exceção histórica não substitui a missão nova. Antes de deploy: definirRPO/RTO, destino privado cifrado, guardar DB+objetos+sessão+chaves e ensaiar restore isolado. Imagem antiga sozinha não comprova rollback de schema.
 
 Laboratório PG descartável foi separado dos containers locais já existentes. Não reiniciar nem estressar serviços compartilhados. APIs públicas /ready e / retornaram200 via Nodefetch antes da atualização; falha de TLS do PowerShell é limitação do cliente local, não evidência de queda remota.
+
+CI049a410 aprovado. Novoscomponentes posteriores aindaexigemgatesnovos. Oensaio cifradofoireforçado: consultasRLSapósrestoreecomparação dosbytessintéticos, semgarantia deRPOoperacional. Evidências emrestore-drill-reforcado.json. Nenhumbackuprealfoicriado.

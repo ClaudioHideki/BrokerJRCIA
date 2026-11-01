@@ -38,6 +38,8 @@
     "test:container": "node scripts/test-container-entrypoint.mjs",
     "test:restore-drill": "node scripts/operations/restore-drill.mjs",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:origin-journal": "node --test --test-concurrency=1 integrations/evolution-origin-journal/tests/unit.test.mjs integrations/evolution-origin-journal/tests/postgres.test.mjs",
+    "test:cclx-receiver": "node --test --test-concurrency=1 labs/cclx-postgres-simulator/receiver.test.mjs labs/cclx-postgres-simulator/benchmark.test.mjs",
     "test:e2e": "npm run build:web && playwright test",
     "test:smoke:evolution": "vitest run --config vitest.smoke.config.ts",
     "openapi:generate": "node apps/api/dist/http/openapi.js",
