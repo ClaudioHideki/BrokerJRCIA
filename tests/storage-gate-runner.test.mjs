@@ -34,3 +34,45 @@ it('orders real setup ports before the required storage suite and always cleans 
  await runStorageGate({initialize:async()=>({}),download:async()=>step('download'),version:async()=>step('version'),start:async()=>step('start'),ready:async()=>step('ready'),bucket:async()=>step('bucket'),tests:async()=>step('tests'),cleanup:async()=>step('cleanup')});
  expect(trace).toEqual(['download','version','start','ready','bucket','tests','cleanup']);
 });
+
+it('waits for real cluster readiness instead of accepting the ready endpoint early200',async()=>{
+ const {waitForMinio}=await import('../scripts/ci/storage-minio.mjs');
+ const previous=globalThis.fetch,urls=[];let clusterRequests=0;
+ globalThis.fetch=async url=>{urls.push(String(url));return String(url).endsWith('/cluster')
+  ?new Response(null,{status:++clusterRequests===1?503:200}):new Response(null,{status:200,headers:{'x-minio-server-status':'offline'}});};
+ try{await waitForMinio({env:{TEST_STORAGE_ENDPOINT:'http://127.0.0.1:18001'}});expect(urls).toEqual(['http://127.0.0.1:18001/minio/health/cluster','http://127.0.0.1:18001/minio/health/cluster']);}
+ finally{globalThis.fetch=previous;}
+});
+it('retries only an explicit503 MinIO initialization rejection before creating its same fresh bucket',async()=>{
+ const {createPrivateBucket}=await import('../scripts/ci/storage-minio.mjs');
+ const previous=globalThis.fetch,calls=[];
+ globalThis.fetch=async(url,options)=>{calls.push({url:String(url),options});return calls.length===1
+  ?new Response('<Error><Code>XMinioServerNotInitialized</Code><Message>NEVER_LOG_SYNTHETIC_SECRET</Message></Error>',{status:503}):new Response(null,{status:200});};
+ try{await createPrivateBucket({env:createStorageTestEnvironment('http://127.0.0.1:18001')});expect(calls).toHaveLength(2);expect(calls[1].url).toBe(calls[0].url);expect(calls.every(call=>call.options.redirect==='error')).toBe(true);}
+ finally{globalThis.fetch=previous;}
+});
+
+it.each(['XMinioServerNotInitialized','XMinioIAMNotInitialized','XMinioBucketMetadataNotInitialized'])('bounds retries of503 %s and emits only safe status/code diagnostics',async code=>{
+ const {createPrivateBucket}=await import('../scripts/ci/storage-minio.mjs');
+ const previous=globalThis.fetch,logs=[];let calls=0;
+ globalThis.fetch=async()=>{calls++;return new Response(`<Error><Code>${code}</Code><Message>NEVER_LOG_SYNTHETIC_SECRET</Message><Resource>/private-sensitive-path</Resource></Error>`,{status:503});};
+ try{await expect(createPrivateBucket({env:createStorageTestEnvironment('http://127.0.0.1:18001')},{sleep:async()=>{},diagnostic:line=>logs.push(line)})).rejects.toThrow('STORAGE_TEST_BUCKET_CREATE_FAILED');
+  expect(calls).toBe(8);expect(logs).toHaveLength(8);expect(logs.every(line=>line.includes('status=503')&&line.includes('code='+code))).toBe(true);expect(logs.join('')).not.toContain('NEVER_LOG');expect(logs.join('')).not.toContain('sensitive-path');}
+ finally{globalThis.fetch=previous;}
+});
+it.each([[403,'AccessDenied'],[403,'SignatureDoesNotMatch'],[409,'BucketAlreadyOwnedByYou'],[500,'InternalError'],[503,'SlowDown'],[503,'UnexpectedSecretCode'],[400,'XMinioServerNotInitialized']])('never retries status%s code%s outside exact initialization errors',async(status,code)=>{
+ const {createPrivateBucket}=await import('../scripts/ci/storage-minio.mjs');
+ const previous=globalThis.fetch,logs=[];let calls=0;
+ globalThis.fetch=async()=>{calls++;return new Response(`<Error><Code>${code}</Code><Message>NEVER_LOG_SYNTHETIC_SECRET</Message></Error>`,{status});};
+ try{await expect(createPrivateBucket({env:createStorageTestEnvironment('http://127.0.0.1:18001')},{sleep:async()=>{},diagnostic:line=>logs.push(line)})).rejects.toThrow('STORAGE_TEST_BUCKET_CREATE_FAILED');
+  expect(calls).toBe(1);expect(logs).toHaveLength(1);expect(logs[0]).toContain('status='+status);expect(logs[0]).not.toContain('NEVER_LOG');if(code==='UnexpectedSecretCode')expect(logs[0]).not.toContain(code);}
+ finally{globalThis.fetch=previous;}
+});
+it('does not retry or expose ambiguous network failures or unbounded/malformed error bodies',async()=>{
+ const {createPrivateBucket}=await import('../scripts/ci/storage-minio.mjs');
+ for(const respond of [()=>{throw Error('NEVER_LOG_SYNTHETIC_SECRET');},()=>new Response('<Error><Code>XMinioServerNotInitialized</Code>'+ 'x'.repeat(9000)+'</Error>',{status:503}),()=>new Response('<Error><Message><Code>XMinioServerNotInitialized</Code></Message></Error>',{status:503})]){
+  const previous=globalThis.fetch,logs=[];let calls=0;globalThis.fetch=async()=>{calls++;return respond();};
+  try{await expect(createPrivateBucket({env:createStorageTestEnvironment('http://127.0.0.1:18001')},{sleep:async()=>{},diagnostic:line=>logs.push(line)})).rejects.toThrow('STORAGE_TEST_BUCKET_CREATE_FAILED');expect(calls).toBe(1);expect(logs.join('')).not.toContain('NEVER_LOG');expect(logs).toHaveLength(1);}
+  finally{globalThis.fetch=previous;}
+ }
+});

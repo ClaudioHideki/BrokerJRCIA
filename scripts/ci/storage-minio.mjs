@@ -32,24 +32,52 @@ export async function downloadVerifiedFixture(destination,fetcher=fetch){
  if(total!==MINIO_FIXTURE.size)throw Error('STORAGE_TEST_BINARY_SIZE_MISMATCH');
  if(hash.digest('hex')!==MINIO_FIXTURE.sha256)throw Error('STORAGE_TEST_BINARY_HASH_MISMATCH');await chmod(destination,0o700);
 }
-async function waitForMinio(context){
+export async function waitForMinio(context){
  const deadline=Date.now()+60000;
  while(Date.now()<deadline){
   if(context.exited||context.startFailure)throw Error('STORAGE_TEST_SERVER_START_FAILED');
-  try{const response=await fetch(context.env.TEST_STORAGE_ENDPOINT+'/minio/health/ready',{signal:AbortSignal.timeout(1000)});await response.body?.cancel();if(response.ok)return;}catch{}
+  // Pinned MinIO /ready may return 200 even while its ObjectAPI is nil.
+  // /cluster also checks object, bucket metadata, IAM and write quorum.
+  try{const response=await fetch(context.env.TEST_STORAGE_ENDPOINT+'/minio/health/cluster',{redirect:'error',signal:AbortSignal.timeout(1000)});await response.body?.cancel();if(response.status===200&&!response.headers.get('x-minio-server-status'))return;}catch{}
   await delay(250);
  }
  throw Error('STORAGE_TEST_SERVER_NOT_READY');
 }
-async function createPrivateBucket(context){
- const env=context.env,url=new URL('/'+env.TEST_STORAGE_BUCKET,env.TEST_STORAGE_ENDPOINT),date=new Date().toISOString().replace(/[:-]|\.\d{3}/g,''),day=date.slice(0,8),payloadHash=digest('');
+const initializationCodes=new Set(['XMinioServerNotInitialized','XMinioIAMNotInitialized','XMinioBucketMetadataNotInitialized']);
+const diagnosticCodes=new Set([...initializationCodes,'AccessDenied','SignatureDoesNotMatch','InvalidAccessKeyId','InvalidBucketName',
+ 'BucketAlreadyOwnedByYou','BucketAlreadyExists','RequestTimeTooSkewed','InternalError','SlowDown']);
+async function bucketErrorCode(response){
+ const reader=response.body?.getReader();if(!reader)return 'NO_CODE';
+ let total=0;const chunks=[];
+ try{
+  for(;;){const part=await reader.read();if(part.done)break;total+=part.value.byteLength;if(total>8192)return 'BODY_LIMIT';chunks.push(part.value);}
+  const body=Buffer.concat(chunks).toString('utf8');
+  // MinIO's Error XML puts Code first. Never evaluate XML entities or log other fields.
+  const code=/^\s*(?:<\?xml[^?]*\?>\s*)?<Error>\s*<Code>([A-Za-z0-9]{1,80})<\/Code>[\s\S]*<\/Error>\s*$/u.exec(body)?.[1];
+  if(!code||body.includes('<!')||body.includes('&')||(body.match(/<Code>/gu)??[]).length!==1)return 'NO_CODE';
+  return diagnosticCodes.has(code)?code:'UNRECOGNIZED';
+ }catch{return 'UNREADABLE_RESPONSE';}finally{await reader.cancel().catch(()=>{});}
+}
+export async function createPrivateBucket(context,{sleep=delay,diagnostic=line=>process.stderr.write(line+'\n')}={}){
+ const env=context.env,url=new URL('/'+env.TEST_STORAGE_BUCKET,env.TEST_STORAGE_ENDPOINT),payloadHash=digest('');
+ for(let attempt=1;attempt<=8;attempt++){
+ const date=new Date().toISOString().replace(/[:-]|\.\d{3}/g,''),day=date.slice(0,8);
  const scope=`${day}/${env.TEST_STORAGE_REGION}/s3/aws4_request`,headers=`host:${url.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${date}\n`,signed='host;x-amz-content-sha256;x-amz-date';
  const canonical=['PUT',url.pathname,'',headers,signed,payloadHash].join('\n'),hmac=(key,value)=>createHmac('sha256',key).update(value).digest();
  const key=hmac(hmac(hmac(hmac('AWS4'+env.TEST_STORAGE_SECRET_ACCESS_KEY,day),env.TEST_STORAGE_REGION),'s3'),'aws4_request');
  const signature=createHmac('sha256',key).update(['AWS4-HMAC-SHA256',date,scope,digest(canonical)].join('\n')).digest('hex');
- const response=await fetch(url,{method:'PUT',signal:AbortSignal.timeout(5000),headers:{'x-amz-date':date,'x-amz-content-sha256':payloadHash,
-  authorization:`AWS4-HMAC-SHA256 Credential=${env.TEST_STORAGE_ACCESS_KEY_ID}/${scope}, SignedHeaders=${signed}, Signature=${signature}`}});
- await response.body?.cancel();if(response.status!==200)throw Error('STORAGE_TEST_BUCKET_CREATE_FAILED');
+ let response;
+ try{response=await fetch(url,{method:'PUT',redirect:'error',signal:AbortSignal.timeout(5000),headers:{'x-amz-date':date,'x-amz-content-sha256':payloadHash,
+  authorization:`AWS4-HMAC-SHA256 Credential=${env.TEST_STORAGE_ACCESS_KEY_ID}/${scope}, SignedHeaders=${signed}, Signature=${signature}`}});}
+ catch{diagnostic(`STORAGE_TEST_BUCKET_CREATE attempt=${attempt} status=0 code=TRANSPORT_UNVERIFIED`);throw Error('STORAGE_TEST_BUCKET_CREATE_FAILED');}
+ if(response.status===200){await response.body?.cancel();return;}
+ const code=await bucketErrorCode(response);
+ diagnostic(`STORAGE_TEST_BUCKET_CREATE attempt=${attempt} status=${response.status} code=${code}`);
+ // These exact 503 errors prove initialization rejected the request before creation.
+ // Never retry ambiguous network failures, auth/signature errors, conflicts or generic 5xx.
+ if(response.status!==503||!initializationCodes.has(code)||attempt===8)throw Error('STORAGE_TEST_BUCKET_CREATE_FAILED');
+ await sleep(250);
+ }
  // Fresh bucket: no policy, ACL grant, versioning or object lock is configured.
  // The real adapter independently validates all four before conditional PUT.
 }

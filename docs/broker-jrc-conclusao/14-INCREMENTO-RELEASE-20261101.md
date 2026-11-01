@@ -32,6 +32,14 @@ Typecheck, build Broker, inspeção do bundle, contratos públicos, avisos/licen
 
 ## Compatibilidade e escopo
 
+### Adendo: prontidão do MinIO no CI
+
+A revisão f8faddc passou no CI de push e no workflow de imagens (3629 unitários,1568 integrações), mas a primeira execução da PR falhou antes das suítes MinIO com STORAGE_TEST_BUCKET_CREATE_FAILED. O log histórico não registrava status/código da resposta; não se atribui retrospectivamente uma causa exata sem essa evidência.
+
+Foi comprovada uma lacuna no preparo do laboratório: na versão MinIO pinada, /ready pode retornar200 com X-Minio-Server-Status:offline antes de inicializar ObjectAPI. Um processo real isolado reproduziu /ready200 e PUT503 XMinioServerNotInitialized. O runner agora espera /cluster, rejeita redirects, registra somente status/código de uma lista permitida e limita a oito tentativas os três erros503 explícitos de inicialização. Falhas de rede ambíguas, autenticação/assinatura, conflitos e outros5xx continuam terminais. O parser limita a resposta a8KiB e não imprime corpo, URL, assinatura ou segredo. A regressão focal passou24/24.
+
+Esse ajuste modifica somente o runner e seus testes; não altera APIs, retenção, buckets, credenciais ou storage de produção. A nova candidata precisa repetir os gates remotos e publicar imagens do seu próprio SHA. Não confundir a reprodução controlada com a resposta omitida no log da primeira PR.
+
 Neste diff sobre2f1effd não foram adicionados endpoints públicos nem removidos contratos, dados ou funcionalidades. Não houve alteração de dependências. A imagem candidata também inclui o trabalho local anterior2f1effd, ainda não implantado: consultar os documentos10/11 para seus contratos e gates. A migration0078 já pertence a essa base local e permanece aditiva. O Dockerfile API/web não incorpora o overlay de laboratório na engine; publicar essas imagens não instala o journal na Evolution.
 
 Backup/dump/restore/políticas foram excluídos expressamente deste incremento. O código existente foi preservado e os workflows registram a exceção somente nesta candidata. Não há prova de recuperação ou perda zero decorrente dessa dispensa.
