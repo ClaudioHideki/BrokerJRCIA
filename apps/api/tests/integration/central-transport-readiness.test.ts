@@ -5,7 +5,7 @@ let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();},60000);
 afterAll(async()=>{await db?.dispose();});
 it('requires central persistence as the runtime baseline',async()=>{
- expect(RUNTIME_SCHEMA_BASELINE).toBe('0078_qr_origin_receipts');
+ expect(RUNTIME_SCHEMA_BASELINE).toBe('0079_partner_persistence_receipts');
  expect(await probeRequiredRuntimeSchema(sql=>db.database.pool.query(sql))).toBe(true);
 });
 it.each([

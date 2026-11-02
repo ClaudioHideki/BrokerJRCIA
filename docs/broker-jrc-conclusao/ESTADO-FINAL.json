@@ -1,37 +1,38 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-11-02T14:22:53.243131+00:00",
+  "updatedAt": "2026-11-02T16:42:32.858318+00:00",
   "repository": "ClaudioHideki/BrokerJRCIA",
   "branch": "codex/broker-jrc-2-redesign-homologacao-20261030",
   "baselineCommit": "f79d4a6dea1d94c5c0f87c76e5dcbd8607513e11",
-  "commitStatus": "BROKER_LOCAL_COMMIT_CONTAINING_THIS_CHECKPOINT; no push; exact SHA in external delivery record",
-  "status": "COMMON_CONTRACT_INCREMENT_LOCAL; GLOBAL_HOMOLOGATION_PARTIAL",
-  "historicalCheckpoint": "Previous ESTADO-FINAL.json preserved in Git at 977ab0e; old release authorization does not authorize this increment",
+  "commitStatus": "Candidate includes b7a6e19; schema gate correction and release-scope controls awaiting new SHA CI",
+  "status": "IMPLEMENTATION_INCREMENT; EXACT_SHA_CI_REQUIRED; GLOBAL_HOMOLOGATION_PARTIAL",
+  "historicalCheckpoint": "Previous local-only metadata is historical; publication/merge/deployment authorized by current 20261102 request after technical gates",
   "pullRequest": {
     "number": 6,
     "draft": true,
-    "headShaAtLastRead": "977ab0eed78ac3ad1aac75f38e6bba723eb86db2",
+    "headShaAtLastRead": "b7a6e19c4f9a18a7a3c3141fc6bfefc492f3d923",
     "base": "codex/broker-audit-fixes-20261029",
     "baseSha": "d1b66a56fe6d4f9202969784301abdf61490db45",
-    "descriptionUpdate": "Metadata-only reconciliation requested; final response in external evidence package; no push or retarget"
+    "descriptionUpdate": "Reconcile stacked ancestry against main after current CI; no merge yet"
   },
   "lab2": {
     "repository": "ClaudioHideki/jrc-conversas-lab2",
-    "branch": "codex/release-grupojrc-20261022",
+    "branch": "codex/release-integrada-specs-20261102",
     "baseline": "abc1f7c57f55a7d9871101cd5b70c8b93becc7ca",
-    "commit": "89d87ccb5e41480e9cd7e99647b3b00c0ce24729",
+    "commit": "57efc6e14208ee67e72eb778f4b09d4c905da127",
     "pushed": false,
-    "preexistingWorkflowEdit": "preserved unstaged",
+    "preexistingWorkflowEdit": "preserved in ab8f672b",
     "requestSpecsAdded": 6,
     "railsExecuted": true,
     "realRubyClassesSyntheticPorts": {
       "passed": 20,
       "failed": 0
-    }
+    },
+    "commitStatus": "pending implementation overlay not committed"
   },
   "production": {
-    "currentStateVerified": false,
-    "accessBlock": "No production access attempted during this increment; previous browser access failure is historical",
+    "currentStateVerified": "PARTIAL_READ_ONLY",
+    "accessBlock": null,
     "deployed": false,
     "migrated": false,
     "credentialsChanged": false,
@@ -39,7 +40,9 @@
     "messagesSent": 0,
     "realUnknownReplayed": 0,
     "backupDumpRestoreExecuted": false,
-    "engineOwnership": "UNPROVEN"
+    "engineOwnership": "UNPROVEN",
+    "apiImageObserved": "ghcr.io/claudiohideki/brokerjrcia-api@sha256:e2bba6518304ee5f792c6ee69177ddb2548a07023b7133c60f4b43390f94d8fb",
+    "lab2ShaObserved": "50f7f07d802829dd44a67547fabad3aa77f3d196"
   },
   "migration": {
     "added": "0079_partner_persistence_receipts.sql",
@@ -447,5 +450,17 @@
     "recoveryScope": "NO_BACKUP_DATA_DUMP_RESTORE",
     "operationalHomologation": "NOT_CLAIMED",
     "document": "19-DOCUMENTOS-20261102.md"
-  }
+  },
+  "currentCi": {
+    "runId": 41478793811,
+    "sha": "b7a6e19c4f9a18a7a3c3141fc6bfefc492f3d923",
+    "conclusion": "failure",
+    "unitPass": 3702,
+    "pdfPass": 6,
+    "webPass": 777,
+    "integrationPass": 1580,
+    "integrationFail": 2,
+    "cause": "two stale schema baseline literals; corrected locally,30/30 retest; new CI required"
+  },
+  "backupScope": "EXCLUDED; manual include_recovery defaults false on every branch; existing scripts preserved"
 }

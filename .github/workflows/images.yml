@@ -6,6 +6,10 @@ on:
         description: 'Publish this reviewed revision to GHCR'
         type: boolean
         default: false
+      include_recovery:
+        description: 'Run backup and restore verification only with separate authorization'
+        type: boolean
+        default: false
       component:
         description: 'Image component to build and optionally publish'
         type: choice
@@ -22,8 +26,8 @@ jobs:
     timeout-minutes: 40
     environment: ghcr-release
     env:
-      # Temporary candidate scope; preserve recovery code and the gate on other branches.
-      RECOVERY_ROUTINES_IN_SCOPE: ${{ github.ref_name != 'codex/broker-jrc-2-redesign-homologacao-20261030' }}
+      # Preserve excluded routines without triggering them indirectly during a release.
+      RECOVERY_ROUTINES_IN_SCOPE: ${{ inputs.include_recovery == true }}
     services:
       postgres:
         image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c

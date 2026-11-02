@@ -1,10 +1,14 @@
-# Incremento dos trÍs documentos ó 02/11/2026
+# Checkpoint atual ‚Äî 02/11/2026, publica√ß√£o integrada
 
-Leia `19-DOCUMENTOS-20261102.md`. O usu·rio autorizou publicaÁ„o das candidatas e atualizaÁ„o de imagens apÛs gates. A consolidaÁ„o LAB2 inclui os histÛricos local89d87ccb, e4a6a007 e a vers„o produtiva50f7f07d; n„o voltar ‡ base antiga nem copiar runtime especÌfico de outro cliente. Preservar source/branches e n„o executar merge na main. Fontes histÛricas ainda n„o foram fornecidas para todos os domÌnios: n„o declarar migraÁ„o completa.
+Ler docs/release-integrada-jrc/00-ESCOPO-E-GATES.md antes de instru√ß√µes hist√≥ricas abaixo. O pedido vigente autoriza merge/publica√ß√£o/Dokploy ap√≥s gates; backup/dump/restore seguem fora do escopo. PR6 recebeu b7a6e19 e CI41478793811 falhou em dois literais antigos0078 (1580integra√ß√£o passes). Reproduzidos RED28/2 e corrigidos GREEN30/30; exigir CI do novo SHA, n√£o reutilizar a aprova√ß√£o parcial. Workflows passam a exigir opt-in manual para rotinas exclu√≠das, inclusive ap√≥s merge na main. Sem altera√ß√£o produtiva nesta etapa. N√£o ativar engine experimental nem replay UNKNOWN.
 
-Broker: Flow limitado opt-in, seguranÁa do mÛdulo QR, typecheck/build e testes descritos em19. LAB2: cards/di·logo, distribuiÁ„o por conex„o/auditoria, reconciliaÁ„o somente leitura e correÁıes do callback dur·vel. Gerar o editor compartilhado do commit Broker antes de publicar LAB2. N„o ativar o overlay Evolution, conectar n˙meros, enviar mensagens, limpar histÛrico ou fazer replay UNKNOWN. Backup/dump de dados/restore continuam excluÌdos.
+# Incremento dos tr√™s documentos ‚Äî 02/11/2026
 
-Os checkpoints abaixo s„o histÛricos; o relatÛrio final da execuÁ„o registra os SHAs, CI, digests e eventual implantaÁ„o efetiva. N„o inferir deploy deste texto.
+Leia `19-DOCUMENTOS-20261102.md`. O usu√°rio autorizou publica√ß√£o das candidatas e atualiza√ß√£o de imagens ap√≥s gates. A consolida√ß√£o LAB2 inclui os hist√≥ricos local89d87ccb, e4a6a007 e a vers√£o produtiva50f7f07d; n√£o voltar √† base antiga nem copiar runtime espec√≠fico de outro cliente. Preservar source/branches e n√£o executar merge na main. Fontes hist√≥ricas ainda n√£o foram fornecidas para todos os dom√≠nios: n√£o declarar migra√ß√£o completa.
+
+Broker: Flow limitado opt-in, seguran√ßa do m√≥dulo QR, typecheck/build e testes descritos em19. LAB2: cards/di√°logo, distribui√ß√£o por conex√£o/auditoria, reconcilia√ß√£o somente leitura e corre√ß√µes do callback dur√°vel. Gerar o editor compartilhado do commit Broker antes de publicar LAB2. N√£o ativar o overlay Evolution, conectar n√∫meros, enviar mensagens, limpar hist√≥rico ou fazer replay UNKNOWN. Backup/dump de dados/restore continuam exclu√≠dos.
+
+Os checkpoints abaixo s√£o hist√≥ricos; o relat√≥rio final da execu√ß√£o registra os SHAs, CI, digests e eventual implanta√ß√£o efetiva. N√£o inferir deploy deste texto.
 
 # Escopo comum vigente ‚Äî Chatwoot / CCLX / JRC Conversas, 02/11/2026
 

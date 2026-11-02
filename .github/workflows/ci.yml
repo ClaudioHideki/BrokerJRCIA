@@ -3,6 +3,12 @@ name: JRC Broker CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      include_recovery:
+        description: 'Run backup and restore verification only with separate authorization'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -38,8 +44,9 @@ jobs:
 
     env:
       CI: "true"
-      # Temporary, explicit scope exception for this candidate only. See docs/broker-jrc-conclusao/12-ESCOPO-PUBLICACAO-20261101.md.
-      RECOVERY_ROUTINES_IN_SCOPE: ${{ (github.head_ref || github.ref_name) != 'codex/broker-jrc-2-redesign-homologacao-20261030' }}
+      # Release scope excludes backup/dump/restore on every branch, including post-merge CI.
+      # Existing recovery verification remains available by an explicitly authorized manual run.
+      RECOVERY_ROUTINES_IN_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.include_recovery == true }}
       TEST_DATABASE_URL: postgresql://lab_broker_admin@127.0.0.1:5432/lab_broker_ci
       TEST_DATABASE_ADMIN_URL: postgresql://lab_broker_admin@127.0.0.1:5432/lab_broker_ci
       TEST_REDIS_URL: redis://127.0.0.1:6379
