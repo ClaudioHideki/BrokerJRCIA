@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash,randomUUID } from 'node:crypto';
+import {setImmediate} from 'node:timers/promises';
 import { bindingFingerprint } from '../src/journal.mjs';
 import { withOriginEngineLabHost,awaitOriginEngineReady } from '../src/engine-host.mjs';
 import { preparePinnedEngineSources } from '../src/engine-overlay.mjs';
@@ -16,6 +17,7 @@ test('whole compiled pinned construction/queue/normalization/webhook composition
  await lab({labOnly:true,env:{JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED:'true'},prepareInstance:async()=>options(binding,endpoint)},async()=>{
   const engine=fixture.create(binding);
   await Promise.all([engine.emit(events('notify')),engine.emit(events('append'))]);
+  await fixture.drainFanouts();
   assert.equal(engine.legacyPasses,2);assert.equal(fixture.calls.filter(call=>call.kind==='legacy-http').length,1);
   for(const kind of ['websocket','rabbitmq','nats','sqs','pusher','kafka'])assert.equal(fixture.calls.filter(call=>call.kind===kind).length,2);
   assert.equal((await awaitOriginEngineReady(engine.instance)).deliveryOwnership,'UNPROVEN');
@@ -44,7 +46,7 @@ test('source arrival order survives a slow first COMMIT before a following appen
  await lab({labOnly:true,env:{JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED:'true'},prepareInstance:async()=>config},async()=>{
   const engine=fixture.create(binding),first=engine.emit(events('notify'));await capturing;const second=engine.emit(events('append'));
   await new Promise(resolve=>setTimeout(resolve,20));
-  try{assert.equal(engine.legacyPasses,0);}finally{release();await Promise.all([first,second]);}
+  try{assert.equal(engine.legacyPasses,0);}finally{release();await Promise.all([first,second]);await fixture.drainFanouts();}
  });
 });
 test('registered composition owns notify when process flag is absent or changes after attachment',async()=>{
@@ -56,6 +58,7 @@ test('registered composition owns notify when process flag is absent or changes 
    const engine=fixture.create(binding);
    if(changeAfterAttach)process.env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED='false';
    await engine.emit(events('notify'));
+   await fixture.drainFanouts();
    observed.push(fixture.calls.filter(call=>call.kind==='legacy-http').length);
    assert.equal(fixture.errors.length,0);
   });
@@ -71,9 +74,28 @@ test('actual callback snapshots source type and projected text synchronously bef
   await withOriginEngineLabHost({labOnly:true,env:{JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED:'true'},prepareInstance:async()=>{await readiness;return config;}},async()=>{
    const engine=fixture.create(binding),incoming=events('notify'),pending=engine.emit(incoming);
    if(mutateText)incoming['messages.upsert'].messages[0].message.conversation='Synthetic late mutation';else incoming['messages.upsert'].type='append';
-   ready();await pending;
+   ready();await pending;await fixture.drainFanouts();
    assert.equal(fixture.calls.filter(call=>call.kind==='legacy-http').length,0);
    assert.equal(fixture.errors.length,mutateText?1:0);
   });
  }assert.deepEqual(captures,[['Synthetic text'],['Synthetic text']]);}finally{if(previous===undefined)delete process.env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED;else process.env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED=previous;}
+});
+
+test('teardown retains ownership for actual fire-and-forget fanout blocked before the webhook',async()=>{
+ const previous=process.env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED;delete process.env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED;
+ let release,entered;const blocked=new Promise(resolve=>{release=resolve;}),inSink=new Promise(resolve=>{entered=resolve;});
+ const binding={...template,destinationId:randomUUID()},endpoint=`https://broker.invalid/v1/webhooks/whatsapp/${binding.destinationId}`;
+ const fixture=await compileEngineFixture({endpoint,onSink:async kind=>{if(kind==='websocket'){entered();await blocked;}}});
+ let ended=false,queueEnded=false;
+ try{
+  assert.match(fixture.originals['src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts'],/\n\s+this\.sendDataWebhook\(Events\.MESSAGES_UPSERT, messageRaw\);/u);
+  const running=withOriginEngineLabHost({labOnly:true,env:{JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED:'true'},prepareInstance:async()=>options(binding,endpoint)},async()=>{
+   const engine=fixture.create(binding);await engine.emit(events('notify'));queueEnded=true;
+  }).then(()=>{ended=true;});
+  await inSink;await setImmediate();const retiredBeforeFanout=ended;
+  release();await fixture.drainFanouts();await running;
+  assert.deepEqual({queueEnded,retiredBeforeFanout,legacyHttp:fixture.calls.filter(call=>call.kind==='legacy-http').length},{queueEnded:true,retiredBeforeFanout:false,legacyHttp:0});
+  for(const kind of ['websocket','rabbitmq','nats','sqs','pusher','kafka'])assert.equal(fixture.calls.filter(call=>call.kind===kind).length,1);
+  assert.equal(fixture.errors.length,0);
+ }finally{release();if(previous===undefined)delete process.env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED;else process.env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED=previous;}
 });

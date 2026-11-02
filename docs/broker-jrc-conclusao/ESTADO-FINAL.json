@@ -1,11 +1,11 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-11-02T02:07:58.467Z",
+  "updatedAt": "2026-11-02T13:29:53.297248+00:00",
   "repository": "ClaudioHideki/BrokerJRCIA",
   "branch": "codex/broker-jrc-2-redesign-homologacao-20261030",
-  "baselineCommit": "977ab0eed78ac3ad1aac75f38e6bba723eb86db2",
-  "commitStatus": "LOCAL_COMMIT_CONTAINING_THIS_CHECKPOINT; exact SHA in external ENTREGA.json",
-  "status": "INCREMENTOS_LOCAIS_REVISADOS_NAO_PUBLICADOS; PRODUTO_PARCIAL",
+  "baselineCommit": "63f3282b7082c8097e0d8800c6a7e8c2b3783f3b",
+  "commitStatus": "BROKER_LOCAL_COMMIT_CONTAINING_THIS_CHECKPOINT; no push; exact SHA in external delivery record",
+  "status": "INCREMENTO_DURABILIDADE_LOCAL_TESTADO; HOMOLOGACAO_GLOBAL_PARCIAL",
   "historicalCheckpoint": "Previous ESTADO-FINAL.json preserved in Git at 977ab0e; old release authorization does not authorize this increment",
   "pullRequest": {
     "number": 6,
@@ -19,11 +19,11 @@
     "repository": "ClaudioHideki/jrc-conversas-lab2",
     "branch": "codex/release-grupojrc-20261022",
     "baseline": "abc1f7c57f55a7d9871101cd5b70c8b93becc7ca",
-    "commit": "16f59d786a53c338f82a7285139c4af59edf68d8",
+    "commit": "01fd99c6e4c47a2e1a82ad3c2e73c52dd243c29d",
     "pushed": false,
     "preexistingWorkflowEdit": "preserved unstaged",
     "requestSpecsAdded": 6,
-    "railsExecuted": false,
+    "railsExecuted": true,
     "realRubyClassesSyntheticPorts": {
       "passed": 20,
       "failed": 0
@@ -31,7 +31,7 @@
   },
   "production": {
     "currentStateVerified": false,
-    "accessBlock": "browser.user is unavailable",
+    "accessBlock": "No production access attempted during this increment; previous browser access failure is historical",
     "deployed": false,
     "migrated": false,
     "credentialsChanged": false,
@@ -44,7 +44,9 @@
   "migration": {
     "added": "0079_partner_persistence_receipts.sql",
     "appliedOnlyTo": "exclusive local synthetic databases",
-    "rollback": "0078 API is incompatible with exact 0079 readiness/grants. Keep receipt ledger; use a 0079-compatible binary; no down migration."
+    "rollback": "0078 API is incompatible with exact 0079 readiness/grants. Keep receipt ledger; use a 0079-compatible binary; no down migration.",
+    "lab2Added": "20261102090000_create_jrc_broker_webhook_obligations.rb",
+    "lab2Rollback": "Preserve pending ledger; do not roll back to a worker that ignores obligations. Schema.rb historical baseline kept; consolidate before release."
   },
   "increments": {
     "ack": "VALIDADO_NO_RECORTE_LOCAL",
@@ -64,7 +66,31 @@
     "LAB2": "PARCIAL",
     "redesignAllModules": "PARCIAL"
   },
-  "tests": {
+  "coverage": {
+    "httpOperations": 356,
+    "publicProfileOperations": 37,
+    "screenJourneyRecords": 128,
+    "screenSourceFiles": 82,
+    "registeredRoutes": 43,
+    "requirements": 50,
+    "nature": "Static inventory plus explicitly scoped runtime evidence; not full homologation"
+  },
+  "notExecuted": [
+    "backup/dump/restore/policies (excluded)",
+    "full historical security artifact generation",
+    "complete PostgreSQL suite",
+    "Rails/RSpec stack and RuboCop",
+    "final full engine/image build",
+    "production diagnostics",
+    "real sessions/media/Meta",
+    "new CI/image publication/deploy",
+    "50-number 30-day pilot",
+    "100/200/400/900 session benchmark"
+  ],
+  "nextStep": "Final pinned Evolution image/bootstrap/ownership; real Sidekiq/TLS and media LAB2 pipeline; fix Rails legacy helper; full suites and candidate CI; no production activation",
+  "evidenceReport": "TESTES-E-EVIDENCIAS.md",
+  "technicalReport": "PARECER-FINAL.md",
+  "priorIncrementTests": {
     "unitFullRound": {
       "files": 465,
       "filesPassed": 462,
@@ -296,28 +322,48 @@
     "lint": "NO_BROKER_LINT_SCRIPT; diff-check is not lint",
     "overlapWarning": "Do not sum overlapping runs or rewrite failed broad round as green"
   },
-  "coverage": {
-    "httpOperations": 356,
-    "publicProfileOperations": 37,
-    "screenJourneyRecords": 128,
-    "screenSourceFiles": 82,
-    "registeredRoutes": 43,
-    "requirements": 50,
-    "nature": "Static inventory plus explicitly scoped runtime evidence; not full homologation"
-  },
-  "notExecuted": [
-    "backup/dump/restore/policies (excluded)",
-    "full historical security artifact generation",
-    "complete PostgreSQL suite",
-    "Rails/RSpec stack and RuboCop",
-    "final full engine/image build",
-    "production diagnostics",
-    "real sessions/media/Meta",
-    "new CI/image publication/deploy",
-    "50-number 30-day pilot",
-    "100/200/400/900 session benchmark"
-  ],
-  "nextStep": "LAB2 durable obligation between message COMMIT and webhook enqueue, with real isolated Rails/Sidekiq and Broker-down regression; progress next real product journey in parallel",
-  "evidenceReport": "TESTES-E-EVIDENCIAS.md",
-  "technicalReport": "PARECER-FINAL.md"
+  "tests": {
+    "railsAffected": {
+      "passed": 66,
+      "failed": 0,
+      "seconds": 34.83,
+      "bootSeconds": 11.02,
+      "scope": "Full Rails7.1.5.2 and PG; ActiveJob test adapter; synthetic HTTP port"
+    },
+    "railsLegacyBaseline": {
+      "examples": 20,
+      "failed": 2,
+      "reason": "tagged_logger missing; reproduced with baseline Trigger16f59d78"
+    },
+    "rubyLint": {
+      "files": 4,
+      "offenses": 0
+    },
+    "railsCrash": {
+      "signal": "SIGKILL",
+      "producerExit": 137,
+      "recovered": true,
+      "attempts": 2,
+      "distinctDeliveryIds": 1,
+      "transport": "synthetic lost ACK"
+    },
+    "engineRegression": {
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    "originCrashPg": {
+      "passed": 2,
+      "failed": 0,
+      "seconds": 52.867
+    },
+    "upstreamBaseline": {
+      "passed": 1,
+      "failed": 0,
+      "setupFirstFailed": "git absent from PATH; corrected only process PATH"
+    },
+    "fullEngineImage": "NOT_BUILT",
+    "newCI": "NOT_EXECUTED",
+    "fullRailsSuite": "NOT_EXECUTED; legacy failures remain"
+  }
 }

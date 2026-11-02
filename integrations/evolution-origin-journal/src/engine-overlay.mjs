@@ -46,6 +46,14 @@ export function preparePinnedEngineSources(input) {
   const target = returns[0].argument;
   factory = factory.slice(0,target.start) + `attachOriginEngineInstance(instanceData, ${factory.slice(target.start,target.end)})` + factory.slice(target.end);
   sources[factoryPath] = `import { attachOriginEngineInstance } from '@jrc-origin/engine-host.mjs';\n${factory}`;
+  const basePath = 'src/api/services/channel.service.ts';
+  let base = sources[basePath];
+  const fanouts = nodes(ast(base), n => n.type === 'AwaitExpression' && n.argument?.type === 'CallExpression'
+    && n.argument.callee?.object?.name === 'eventManager' && n.argument.callee?.property?.name === 'emit');
+  if (fanouts.length !== 1) throw new Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
+  const fanout = fanouts[0];
+  base = base.slice(0,fanout.start) + `await trackOriginEngineFanout(this, () => ${base.slice(fanout.argument.start,fanout.argument.end)})` + base.slice(fanout.end);
+  sources[basePath] = `import { trackOriginEngineFanout } from '@jrc-origin/engine-host.mjs';\n${base}`;
   const webhookPath = 'src/api/integrations/event/webhook/webhook.controller.ts';
   let webhook = preparePinnedWebhookOwnership(sources[webhookPath]);
   const old = "const guard = (this as unknown as { jrcOriginWebhookGuard?: {\n          decide(input: unknown): Promise<string>;\n        } }).jrcOriginWebhookGuard;";

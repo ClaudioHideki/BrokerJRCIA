@@ -75,9 +75,48 @@ Only CRLF→LF normalization is permitted; other source changes fail closed. It 
 
 `withOriginEngineLabHost` is an explicit laboratory API. It attaches readiness before actual ChannelController returns, checks database settings/schema and instance binding, then gates actual createClient before auth-state access. Capture/registration is serialized per instance to preserve arrival order over slow COMMITs. The production ownership installer does not exist; enabled construction without a registered lab host rejects and ownership stays UNPROVEN.
 
+On host exit, new instance/capture/readiness admission closes first. A new
+`createClient` readiness call cannot continue into auth access while closing.
+Already-admitted capture uses its private readiness path so it can finish its
+durable obligation during drain. Ownership remains attached
+while admitted capture, the pinned upstream `eventProcessingQueue` and registered
+fanouts settle. The callback registers its queue without returning the promise;
+the upsert handler also calls `sendDataWebhook` without awaiting it. The reviewed
+base-channel seam therefore registers the actual `eventManager.emit` promise
+against the attached instance before any earlier sink can delay its webhook.
+Queue settlement alone does not prove fanout settlement. Captured async context
+allows already-admitted work to register its fanout during drain; unrelated new
+fanout is rejected while closing. Unattached providers retain legacy behavior.
+Only then does the host stop its worker and retire the instance. A weak tombstone
+rejects later callbacks/readiness/re-attachment of that retired object even when
+the process opt-in is absent. A fresh instance can reuse the released name in a
+new explicit host. A rejected queue settles cleanup; it is not converted into a
+successful capture. An indefinitely pending database/legacy operation can still
+hold graceful shutdown: the host's existing caller timeout/cancellation obligation
+remains, and this drain is not a hard shutdown deadline.
+
+The lifecycle regression is self-contained and needs neither PostgreSQL nor a
+full engine build:
+
+```sh
+node --max-old-space-size=128 --test --test-concurrency=1 integrations/evolution-origin-journal/tests/engine-host-lifecycle.test.mjs
+```
+
 `node build/stage-engine.mjs` creates a disposable ignored source tree with hashes, complete191-file upstream src, reviewed overlays, runtime allowlist, schema, lockfile and legal notices. Production main.ts is the build entry; the complete source is still typechecked. The parent release report distinguishes the successful pre-review full source build from the final compiled-class regression following the flag bypass fix. Do not use this stage as an approved production image.
 
-New tests `provenance.test.mjs`, `engine.test.mjs`, `staging.test.mjs` and `engine-crash.test.mjs` are native node:test and require root esbuild, not Docker. The crash fixture uses complete compiled upstream classes with explicit synthetic auth/WhatsApp/Prisma/chatbot dependencies and a substituted legacy adapter, plus actual Broker HTTP/PG. It proves those boundaries, not a real WhatsApp/session or final engine-image runtime.
+New tests `provenance.test.mjs`, `engine.test.mjs`, `staging.test.mjs` and `engine-crash.test.mjs` are native node:test and require root esbuild, not Docker. The crash fixture uses complete compiled upstream classes with explicit synthetic auth/WhatsApp/Prisma/chatbot dependencies and a substituted legacy adapter, plus actual Broker HTTP/PG. Its substituted upsert handler preserves the real fire-and-forget call to `sendDataWebhook`; test observers wait explicitly with `drainFanouts`, without adding an await inside the engine handler. The lifecycle regression blocks an actual earlier EventManager sink, observes queue settlement and then releases the real webhook path. These tests prove those boundaries, not a real WhatsApp/session or final engine-image runtime.
+
+There is no reviewed derivative engine Dockerfile or production bootstrap in this
+package. The staging tree is a source/typecheck input, not a complete image build
+context: it does not copy Prisma schemas/client-generation scripts, public/manager
+assets or the upstream Docker startup helpers. The unchanged upstream Dockerfile
+does not install this host, and its startup performs database deployment. A future
+image recipe must explicitly materialize the required pinned inputs, generate its
+own Prisma client, build the final source/runtime, preserve legal/provenance files,
+and exercise the final entrypoint with the journal disabled by default. The source
+database, binding/key authority, worker lifecycle, ownership and supported-event
+coverage need separate laboratory proof before any activation. See the scoped
+2026-11-02 checkpoint in `docs/broker-jrc-conclusao/15-ENGINE-HOST-20261102.md`.
 
 ## Attribution
 

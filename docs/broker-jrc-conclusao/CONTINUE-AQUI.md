@@ -1,4 +1,12 @@
-# Continuação vigente sobre 977ab0e — 01/11/2026
+# Continuação atual — 02/11/2026, sobre Broker63f3282b / LAB2 16f59d78
+
+Leia primeiro `16-LAB2-DURABLE-20261102.md` e `15-ENGINE-HOST-20261102.md`. Novo código local da obrigação durável está no LAB2 correto, incluindo migration20261102090000;66 exemplos Rails reais passaram, lint dos quatro arquivos novos passou e SIGKILL após COMMIT foi recuperado por outro processo. Transporte/receptor do probe são sintéticos; Sidekiq real não foi homologado. Duas falhas de helper legado foram confirmadas também no baseline e permanecem abertas.
+
+Engine: corrigidos encerramento antecipado e fanout não aguardado da fonte pinada;31 testes em memória/classes pinadas aprovados, com revisão independente. Reteste PG/crash do novo fanout aprovado:2/2,52,867s, com SIGKILL real e fonte pinada; não representa imagem integral ou sessão física. Imagem final, bootstrap produtivo, ownership, mídia LAB2 integral, CI do novo SHA, redesign integral e capacidade permanecem pendentes. O submódulo upstream segue pinado e limpo. Nenhum push/deploy/env/migration produtiva/número/envio/replay/backup/dump/restore neste incremento. Alteração anterior do workflow LAB2 preservada.
+
+Os registros abaixo são históricos e não substituem o checkpoint deste incremento. LAB2 foi consolidado localmente em01fd99c6e4c47a2e1a82ad3c2e73c52dd243c29d; Broker está no commit que contém este checkpoint. Nenhum deles foi enviado à PR remota. Não usar CI/imagens977ab0e como aprovação de63f3282 ou do diff atual.
+
+## Histórico — continuação sobre 977ab0e — 01/11/2026
 
 Leia primeiro `PLANO-INCREMENTOS.md`. A publicação API/web de977ab0e e migration0078 já ocorreu e está registrada no pacote externo `output/Broker_JRC_Publicacao_2026-11-01_977ab0e/ESTADO-FINAL-PUBLICACAO.json`. Não repetir esse deploy. As autorizações e gates de publicação descritos nas seções históricas abaixo não promovem automaticamente o novo diff.
 

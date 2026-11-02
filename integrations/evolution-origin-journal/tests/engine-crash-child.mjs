@@ -18,6 +18,7 @@ process.once('message',async config=>{
    if(config.mode!=='replay'){
     const events={'messages.upsert':source(config.providerId)['messages.upsert']};
     await engine.emit(events);
+    await fixture.drainFanouts();
     process.send({phase:'SOURCE_PROCESSED',legacyPasses:engine.legacyPasses,legacyHttp:fixture.calls.filter(call=>call.kind==='legacy-http').length,errors:fixture.errors.length});
    }
    await composition.start();await composition.stop();

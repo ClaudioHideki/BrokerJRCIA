@@ -9,6 +9,7 @@ test('full source staging copies pinned overlays, runtime and legal provenance w
   assert.deepEqual(config.compilerOptions.paths['@jrc-origin/*'],['./jrc-origin/*']);
   const factory=await readFile(stage.directory+'/src/api/integrations/channel/channel.controller.ts','utf8');
   assert.match(factory,/attachOriginEngineInstance\(instanceData, new BaileysStartupService/u);
+  assert.match(await readFile(stage.directory+'/src/api/services/channel.service.ts','utf8'),/await trackOriginEngineFanout\(this, \(\) => eventManager\.emit\(/u);
   assert.equal(stage.manifest.deliveryOwnership,'UNPROVEN');assert.equal(stage.manifest.patches.length,7);assert.ok(stage.manifest.sourceFileCount>100);
   assert.ok(await readFile(stage.directory+'/jrc-origin/engine-host.mjs','utf8'));
   await assert.rejects(access(stage.directory+'/src/schema/origin-journal.sql'));

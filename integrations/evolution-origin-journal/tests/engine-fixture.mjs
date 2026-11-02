@@ -6,12 +6,12 @@ import vm from 'node:vm';
 import * as host from '../src/engine-host.mjs';
 import { ENGINE_SOURCE_HASHES, preparePinnedEngineSources } from '../src/engine-overlay.mjs';
 const requireNative = createRequire(import.meta.url);
-export async function compileEngineFixture({ endpoint, globalEndpoint, onLegacyHttp = async () => {} } = {}) {
+export async function compileEngineFixture({ endpoint, globalEndpoint, onLegacyHttp = async () => {}, onSink = async () => {} } = {}) {
   const originals = {};
   for (const path of Object.keys(ENGINE_SOURCE_HASHES)) originals[path] = await readFile(new URL(`../../../upstream/evolution-api/${path}`,import.meta.url),'utf8');
   const prepared = preparePinnedEngineSources(originals), codes = {};
   for (const [path,source] of Object.entries(prepared.sources)) codes[path] = (await transform(source,{loader:'ts',format:'cjs',target:'node24',sourcefile:path,tsconfigRaw:{compilerOptions:{useDefineForClassFields:false,experimentalDecorators:true}}})).code;
-  const calls = [], errors = [], server = {}, monitor = { waInstances: {} };
+  const calls = [], errors = [], server = {}, monitor = { waInstances: {} }, pendingFanouts = new Set();
   const config = { get(name) {
     if (name === 'LOG') return { BAILEYS: 'silent', LEVEL: [] };
     if (name === 'WEBHOOK') return { GLOBAL: { ENABLED: Boolean(globalEndpoint), URL: globalEndpoint }, EVENTS: { MESSAGES_UPSERT: true }, RETRY: { MAX_ATTEMPTS: 1 } };
@@ -44,7 +44,7 @@ export async function compileEngineFixture({ endpoint, globalEndpoint, onLegacyH
     if (name === 'baileys') return { getContentType:message=>Object.keys(message??{})[0],getDevice:()=> 'synthetic',default:()=>{throw Error('WHATSAPP_NETWORK_FORBIDDEN');} };
     if (name === 'axios') return { create: options => ({ post:async(_path,body)=>{ calls.push({kind:'legacy-http',destination:options.baseURL}); await onLegacyHttp(options.baseURL,body); } }) };
     const sink = /\/event\/(websocket|rabbitmq|nats|sqs|pusher|kafka)\//u.exec(name);
-    if (sink) { const kind=sink[1], key=kind==='rabbitmq'?'Rabbitmq':kind==='websocket'?'Websocket':kind==='sqs'?'Sqs':kind[0].toUpperCase()+kind.slice(1); return { [`${key}Controller`]:class { async emit(){calls.push({kind});} } }; }
+    if (sink) { const kind=sink[1], key=kind==='rabbitmq'?'Rabbitmq':kind==='websocket'?'Websocket':kind==='sqs'?'Sqs':kind[0].toUpperCase()+kind.slice(1); return { [`${key}Controller`]:class { async emit(data){calls.push({kind});await onSink(kind,data);} } }; }
     if (['child_process','crypto','os','path','stream','http'].includes(name)) return requireNative(name);
     // All remaining imports are fixture-only unused dependencies. Any accidental invocation throws.
     return {};
@@ -66,10 +66,13 @@ export async function compileEngineFixture({ endpoint, globalEndpoint, onLegacyH
     let callback, legacyPasses=0;
     instance.client={ev:{process:fn=>{callback=fn;}}}; instance.findSettings=async()=>({});
     instance.messageHandle['messages.upsert']=async payload=>{
-      for(const message of payload.messages){legacyPasses++;await instance.sendDataWebhook(types.Events.MESSAGES_UPSERT,instance.prepareMessage(message));}
+      // Match the pinned source: sendDataWebhook is fire-and-forget here.
+      for(const message of payload.messages){legacyPasses++;const pending=instance.sendDataWebhook(types.Events.MESSAGES_UPSERT,instance.prepareMessage(message));pendingFanouts.add(pending);pending.then(()=>pendingFanouts.delete(pending),()=>pendingFanouts.delete(pending));}
     };
     instance.eventHandler();
     return { instance, async emit(events){await callback(events);await instance.eventProcessingQueue;}, get legacyPasses(){return legacyPasses;} };
   }
-  return { create,calls,errors,originals,prepared,codes,manager };
+  // Observer only: tests may wait explicitly; the source handler never awaits it.
+  async function drainFanouts(){while(pendingFanouts.size)await Promise.all([...pendingFanouts]);}
+  return { create,calls,errors,originals,prepared,codes,manager,drainFanouts };
 }
