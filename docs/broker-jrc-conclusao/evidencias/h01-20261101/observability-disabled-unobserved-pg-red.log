@@ -1,0 +1,37 @@
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+ ❯ apps/api/tests/integration/observability.test.ts (9 tests | 1 failed) 11064ms
+     × classifies disabled binding health from evidence: 'default unobserved row' 70ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/api/tests/integration/observability.test.ts > H01 Chatwoot health scope on isolated PostgreSQL > classifies disabled binding health from evidence: 'default unobserved row'
+AssertionError: expected { queueDepth: +0, …(17) } to match object { chatwootDisabled: 1, …(2) }
+(15 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "chatwootDegraded": 0,
+    "chatwootDisabled": 1,
+-   "chatwootDisabledDegraded": 0,
++   "chatwootDisabledDegraded": 1,
+  }
+
+ ❯ apps/api/tests/integration/observability.test.ts:51:32
+     49|     await db.database.pool.query(`UPDATE chatwoot_connection_health SE…
+     50|       WHERE integration_id=$1`,[disabled,input.identityError,input.acc…
+     51|     expect(await t.snapshot()).toMatchObject({chatwootDisabled:1,chatw…
+       |                                ^
+     52|   });
+     53|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 passed (9)
+   Start at  12:56:06
+   Duration  13.57s (transform 660ms, setup 0ms, import 2.01s, tests 11.06s, environment 0ms)

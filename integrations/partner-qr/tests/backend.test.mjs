@@ -28,6 +28,29 @@ async function harness(options={}){
  return {host,calls,authorize,resolveCredentials};
 }
 const post=(body={},extra={})=>({method:'POST',headers:{'content-type':'application/json','x-csrf-token':'host-csrf','idempotency-key':'host-operation-1',...extra},body:JSON.stringify(body)});
+
+it('does not expose a response after the host session is revoked in flight',async()=>{
+ let revoked=false;
+ const h=await harness({authorize:async()=>revoked?null:{...grant},respond:()=>{revoked=true;return instance;}});
+ const result=await fetch(h.host+'/jrc-qr/instances/'+ID+'/status');
+ expect(result.status).toBe(403);expect(await result.text()).not.toContain(instance.name);
+});
+
+it('does not expose a response after switching host tenant in flight',async()=>{
+ let switched=false;
+ const h=await harness({authorize:async()=>({...grant,tenantRef:switched?'other-host-account':grant.tenantRef}),respond:()=>{switched=true;return instance;}});
+ expect((await fetch(h.host+'/jrc-qr/instances/'+ID+'/status')).status).toBe(403);
+});
+
+it('does not mutate after permission is revoked during the instance preflight',async()=>{
+ let revoked=false;
+ const h=await harness({authorize:async()=>revoked?null:{...grant,csrfVerified:true},respond:req=>{
+  if(req.method==='GET'){revoked=true;return instance;}
+  return {instance,operationId:null,pending:false,replayed:false,reconciliationRequired:false,action:{type:'NONE',reason:'NO_USER_ACTION_REQUIRED'}};
+ }});
+ expect((await fetch(h.host+'/jrc-qr/instances/'+ID+'/pair',post())).status).toBe(403);
+ expect(h.calls.filter(c=>c.method==='POST')).toHaveLength(0);
+});
 it('requires host authentication and server credential resolvers and rejects unsafe fixed origins',()=>{
  expect(()=>createPartnerQrHandler({brokerOrigin:'https://broker.example.test'})).toThrow();
  for(const brokerOrigin of ['http://broker.example.test','https://127.0.0.1','https://broker.example.test/path','https://user:pass@broker.example.test','https://broker.example.test?url=x']){

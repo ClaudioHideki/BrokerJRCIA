@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { issueAccessToken } from '@jrc/security';
 import type { ChannelFacade } from '../../src/modules/channels/facade.js';
 import { buildApp } from '../../src/app.js';
+import { IntegrationError } from '../../src/modules/integrations/integration-error.js';
 
 const secret = 'channels-test-secret-with-at-least-32-bytes';
 const org = '4f2491a2-6853-4ac2-a7ef-c997813a9182';
@@ -18,6 +19,28 @@ const channel = { schemaVersion: 1 as const, id, organizationId: org, provider: 
 describe('canonical channel routes', () => {
   const apps: Array<ReturnType<typeof buildApp>> = [];
   afterEach(async () => Promise.all(apps.splice(0).map(app => app.close())));
+  it('forwards the authenticated administrator when binding a channel destination', async () => {
+    const bindDestination = vi.fn().mockResolvedValue(channel);
+    const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ verifyPasswordOrDummy: async () => false }),
+      channels: { jwtSecret: secret, authenticateApiKey: async () => null, resolveCurrentRole: async () => 'OWNER', service: { bindDestination } as unknown as ChannelFacade } });
+    apps.push(app);
+    const authorization = `Bearer ${await issueAccessToken({ userId: user, organizationId: org, role: 'OWNER' }, secret)}`;
+    const result = await app.inject({ method: 'PUT', url: `/v1/channels/${id}/destination`, headers: { authorization }, payload: { name: 'Support' } });
+    expect(result.statusCode).toBe(200);
+    expect(bindDestination).toHaveBeenCalledWith(org, id, expect.objectContaining({ name: 'Support' }), user,
+      { kind: 'JWT', organizationId: org, actorId: user, role: 'OWNER', authVersion: 0 });
+  });
+
+  it('reports revoked initial pairing authority as forbidden through the channel route', async () => {
+    const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ verifyPasswordOrDummy: async () => false }),
+      channels: { jwtSecret: secret, authenticateApiKey: async () => null, resolveCurrentRole: async () => 'OWNER',
+        service: { pair: vi.fn().mockRejectedValue(new IntegrationError('CHATWOOT_CONTROL_FORBIDDEN', 403)) } as unknown as ChannelFacade } });
+    apps.push(app);
+    const authorization = `Bearer ${await issueAccessToken({ userId: user, organizationId: org, role: 'OWNER' }, secret)}`;
+    const result = await app.inject({ method: 'POST', url: `/v1/channels/${id}/pair`, headers: { authorization, 'idempotency-key': 'pair-channel' }, payload: {} });
+    expect(result.statusCode).toBe(403);
+    expect(result.json()).toMatchObject({ code: 'CHATWOOT_CONTROL_FORBIDDEN', status: 403 });
+  });
   it('scopes central cutover actions to current administrators and expected operation revision',async()=>{
     let role:'OWNER'|'OPERATOR'='OWNER';const operation={id,channelId:null,integrationId:account,inboxId:9,status:'PENDING',step:'DETACH',revision:1,reconciliationRequired:false};
     const central={get:vi.fn(async()=>operation),advance:vi.fn(async()=>operation),preview:vi.fn(async()=>({expectedCredentialVersion:1,expectedDestinationRevision:1,expectedBotId:17,expectedRemoteFingerprint:'a'.repeat(64)})),listInboxes:vi.fn(async()=>({data:[]}))};

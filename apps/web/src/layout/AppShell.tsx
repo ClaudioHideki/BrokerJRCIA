@@ -1,25 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet } from 'react-router';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useSession } from '../auth/SessionProvider.js';
 import { Icon } from '../broker/Icon.js';
-
-const navigation = [
-  ['/dashboard', 'Dashboard', 'dashboard'],
-  ['/channels', 'Caixas de entrada', 'connections'],
-  ['/provisionamento', 'Provisionamento', 'upload'],
-  ['/mensagens', 'Conversas', 'messages'],
-  ['/automations', 'Automações', 'brain'],
-  ['/credentials', 'Credenciais', 'key'],
-  ['/uso-custos', 'Uso e custos', 'costs'],
-  ['/relatorios', 'Relatórios', 'reports'],
-  ['/operations/health', 'Saúde operacional', 'health'],
-  ['/suporte', 'Suporte', 'messages'],
-  ['/brain', 'JRC Brain', 'brain'],
-  ['/chaves-api', 'Chaves de API', 'key'],
-  ['/integracoes', 'JRC Conversas', 'messages'],
-  ['/minha-empresa', 'Configurações', 'settings'],
-] as const;
+import { tenantNavigationFor, tenantPageFor } from './navigation.js';
+import { useDrawerKeyboard } from './useDrawerKeyboard.js';
+import './shells.css';
 
 const roleLabels = {
   OWNER: 'Proprietário',
@@ -31,12 +17,25 @@ const roleLabels = {
 export function AppShell() {
   const { session, switchOrganization, switchPending, logout, notice } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
+  const location = useLocation();
+  const drawer = useRef<HTMLElement>(null);
+  const content = useRef<HTMLElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const firstNavigationLink = useRef<HTMLAnchorElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const restoreMenuFocus = useRef(false);
+  const previousOrganization = useRef(session?.activeOrganization.id);
   const [mobile, setMobile] = useState(
     () => typeof window !== 'undefined' && window.innerWidth <= 760,
   );
+  useDrawerKeyboard(drawer, mobile && menuOpen);
+
+  function closeMenu() {
+    restoreMenuFocus.current = mobile && menuOpen;
+    setMenuOpen(false);
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -63,8 +62,16 @@ export function AppShell() {
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [menuOpen]);
 
+  useLayoutEffect(() => {
+    if (previousOrganization.current === session?.activeOrganization.id) return;
+    previousOrganization.current = session?.activeOrganization.id;
+    setQuery('');
+    setCollapsedSections(new Set());
+    setMenuOpen(false);
+  }, [session?.activeOrganization.id]);
+
   useEffect(() => {
-    if (mobile && menuOpen) firstNavigationLink.current?.focus();
+    if (mobile && menuOpen) (firstNavigationLink.current ?? searchInput.current)?.focus();
   }, [menuOpen, mobile]);
 
   useEffect(() => {
@@ -75,15 +82,23 @@ export function AppShell() {
 
   if (!session) return null;
   const navigationHidden = mobile && !menuOpen;
+  const navigation = tenantNavigationFor(session.activeOrganization.role, query);
+  const groups = [...new Set(navigation.map(entry => entry.section))];
+  const firstVisible = navigation.find(entry => query.trim() || !collapsedSections.has(entry.section));
+  const currentPage = tenantPageFor(location.pathname, session.activeOrganization.role);
 
   return (
-    <div className="console-shell">
+    <div className="console-shell jrc-shell">
+      <a className="shell-skip-link" href="#company-content" onClick={event => { event.preventDefault(); content.current?.focus(); }}>Ir para o conteúdo da empresa</a>
       <aside
+        ref={drawer}
+        aria-label="Navegação da empresa"
         className={`sidebar ${menuOpen ? 'sidebar--open' : ''}`}
         id="console-navigation"
         aria-hidden={navigationHidden || undefined}
         inert={navigationHidden}
       >
+        {mobile && <button type="button" className="shell-drawer-close" aria-label="Fechar menu da empresa" onClick={closeMenu}>Fechar menu <span aria-hidden="true">×</span></button>}
         <div className="brand-lockup">
           <img src="/brand/logo-jrc-2024.png" alt="JRC PABX" width="112" height="75" />
           <div>
@@ -91,32 +106,44 @@ export function AppShell() {
             <small>WHATSAPP WORKSPACE</small>
           </div>
         </div>
+        <div className="navigation-search" role="search" aria-label="Páginas da empresa">
+          <label htmlFor="navigation-search">Buscar páginas e configurações</label>
+          <input ref={searchInput} id="navigation-search" type="search" value={query} onChange={event=>setQuery(event.target.value)} />
+          {query && <button type="button" aria-label="Limpar busca de páginas" onClick={()=>{setQuery('');searchInput.current?.focus();}}>Limpar</button>}
+        </div>
         <nav aria-label="Navegação principal">
-          {navigation.map(([path, label, icon], index) => (
-            <NavLink
-              key={path}
-              ref={index === 0 ? firstNavigationLink : undefined}
-              to={path}
-              onClick={() => {
-                restoreMenuFocus.current = mobile && menuOpen;
-                setMenuOpen(false);
-              }}
-            >
-              <Icon name={icon} />
-              <span>{label}</span>
-              {path === '/brain' ? <small className="nav-beta">BETA</small> : null}
-            </NavLink>
-          ))}
+          {groups.map((section, groupIndex) => {
+            const expanded = Boolean(query.trim()) || !collapsedSections.has(section);
+            const groupId = `navigation-group-${groupIndex}`;
+            return <div className="navigation-group" key={section}>
+              <button type="button" className="navigation-group-toggle" aria-label={`Seção ${section}`} aria-expanded={expanded} aria-controls={groupId}
+                disabled={Boolean(query.trim())}
+                onClick={()=>setCollapsedSections(current=>{
+                  const next=new Set(current); if(next.has(section))next.delete(section);else next.add(section); return next;
+                })}>{section}<span aria-hidden="true">{expanded?'−':'+'}</span></button>
+              <div id={groupId} hidden={!expanded}>
+                {navigation.filter(entry=>entry.section===section).map(entry => <NavLink key={entry.id}
+                  ref={entry===firstVisible?firstNavigationLink:undefined}
+                  to={entry.path} onClick={()=>{restoreMenuFocus.current=mobile&&menuOpen;setMenuOpen(false);}}>
+                  <Icon name={entry.icon}/><span>{entry.label}</span>
+                  {entry.id==='brain'?<small className="nav-beta">BETA</small>:null}
+                </NavLink>)}
+              </div>
+            </div>;
+          })}
+          {!navigation.length && <p role="status" className="navigation-empty">Nenhuma página encontrada. Limpe a busca para ver os destinos disponíveis.</p>}
         </nav>
         <div className="sidebar-note">
           <span className="sidebar-avatar">J</span>
           <div>
             <strong>{session.activeOrganization.name}</strong>
-            <small>Console operacional JRC</small>
+            <small>Contexto: empresa</small>
+            <small>Papel: {roleLabels[session.activeOrganization.role]}</small>
           </div>
         </div>
       </aside>
 
+      {mobile && menuOpen && <button type="button" tabIndex={-1} className="shell-menu-backdrop" aria-label="Fechar fundo da navegação da empresa" onClick={closeMenu} />}
       <div className="console-content">
         <header className="topbar">
           <button
@@ -170,7 +197,15 @@ export function AppShell() {
             {notice.requestId ? <small> Solicitação: {notice.requestId}</small> : null}
           </div>
         ) : null}
-        <main className="page-content">
+        <main ref={content} id="company-content" tabIndex={-1} className="page-content">
+          {currentPage && <nav aria-label="Caminho da página" className="page-breadcrumbs">
+            <ol><li><Link to="/dashboard">Início</Link></li>
+              {currentPage.section!==currentPage.label && <li><span>{currentPage.section}</span></li>}
+              <li>{location.pathname.replace(/\/$/u,'')===currentPage.path
+                ? <span aria-current="page">{currentPage.label}</span>
+                : <><Link to={currentPage.path}>{currentPage.label}</Link><span aria-current="page"> / Detalhes</span></>}</li>
+            </ol>
+          </nav>}
           <Outlet key={session.activeOrganization.id} />
         </main>
       </div>

@@ -28,6 +28,26 @@ const input = {
 const copy = () => structuredClone(input);
 const subject = () => import(moduleUrl.href);
 
+it('includes partner/history/source/platform pools and temporary rollout replicas without raising any limit', async () => {
+  const { buildCapacityReport } = await subject();
+  const fixture = copy();
+  fixture.pools.maxConnections = 70; fixture.pools.reservedConnections = 10;
+  fixture.pools.components[0].rolloutReplicas = 2;
+  fixture.pools.components.push({ name: 'PARTNER_EVENTS', replicas: 1, maxPerReplica: 2 },
+    { name: 'HISTORY_IMPORT', replicas: 1, maxPerReplica: 2 }, { name: 'HISTORY_SOURCE', replicas: 1, maxPerReplica: 2 });
+  const before = structuredClone(fixture);
+  expect(buildCapacityReport(fixture).sqlBudget).toMatchObject({ configuredConnections: 48, rolloutConnections: 20,
+    worstCaseConnections: 68, availableConnections: 60, headroomConnections: -8, withinConfiguredBudget: false });
+  expect(fixture).toEqual(before);
+  expect(buildCapacityReport(fixture).capacityValidated).toBe(false);
+});
+
+it.each([-1, 1.5, 10001, '1'])('rejects invalid temporary rollout replica count %s', async rolloutReplicas => {
+  const { buildCapacityReport } = await subject();
+  const fixture = copy(); fixture.pools.components[0].rolloutReplicas = rolloutReplicas;
+  expect(() => buildCapacityReport(fixture)).toThrow('CAPACITY_INVALID_INPUT');
+});
+
 it('estimates total supplied conversations without multiplying the volume by every organization', async () => {
   const { estimateWorkload } = await subject();
   const result = estimateWorkload(input);

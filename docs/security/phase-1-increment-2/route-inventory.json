@@ -3620,11 +3620,21 @@
     "idempotency": "IDEMPOTENCY_KEY_NO_UNCERTAIN_WRITE_REPLAY",
     "requestSchemas": [
       "body:application/json",
+      "header:X-JRC-External-Actor",
       "header:idempotency-key",
       "path:integrationId"
     ],
     "responseSchemas": [
-      "200:application/json"
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",
@@ -3645,11 +3655,21 @@
     "idempotency": "IDEMPOTENCY_KEY_AND_OBSERVATION_REVISION",
     "requestSchemas": [
       "body:application/json",
+      "header:X-JRC-External-Actor",
       "header:idempotency-key",
       "path:integrationId"
     ],
     "responseSchemas": [
-      "200:application/json"
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",
@@ -3670,12 +3690,22 @@
     "idempotency": "IDEMPOTENCY_KEY",
     "requestSchemas": [
       "body:application/json",
+      "header:X-JRC-External-Actor",
       "header:idempotency-key",
       "path:integrationId"
     ],
     "responseSchemas": [
       "200:application/json",
-      "202:application/json"
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",
@@ -3696,12 +3726,22 @@
     "idempotency": "IDEMPOTENCY_KEY_AND_SHARED_PAIR_WINDOW",
     "requestSchemas": [
       "body:application/json",
+      "header:X-JRC-External-Actor",
       "header:idempotency-key",
       "path:integrationId"
     ],
     "responseSchemas": [
       "200:application/json",
-      "202:application/json"
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",
@@ -3726,7 +3766,15 @@
     ],
     "responseSchemas": [
       "200:application/json",
-      "409:application/problem+json"
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",
@@ -3749,7 +3797,16 @@
       "path:integrationId"
     ],
     "responseSchemas": [
-      "200:application/json"
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",
@@ -3770,7 +3827,16 @@
     "idempotency": "NOT_APPLICABLE",
     "requestSchemas": [],
     "responseSchemas": [
-      "200:application/json"
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",
@@ -3791,7 +3857,16 @@
     "idempotency": "NOT_APPLICABLE",
     "requestSchemas": [],
     "responseSchemas": [
-      "200:application/json"
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",
@@ -3812,10 +3887,20 @@
     "idempotency": "PERSISTENT_IDEMPOTENCY_KEY_CANONICAL_HASH",
     "requestSchemas": [
       "body:application/json",
+      "header:X-JRC-External-Actor",
       "header:idempotency-key"
     ],
     "responseSchemas": [
-      "202:application/json"
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",
@@ -3838,7 +3923,16 @@
       "path:operationId"
     ],
     "responseSchemas": [
-      "200:application/json"
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",
@@ -3859,11 +3953,21 @@
     "idempotency": "IDEMPOTENCY_KEY_CANONICAL_HASH",
     "requestSchemas": [
       "body:application/json",
+      "header:X-JRC-External-Actor",
       "header:idempotency-key",
       "path:operationId"
     ],
     "responseSchemas": [
-      "202:application/json"
+      "202:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",
@@ -3884,7 +3988,16 @@
     "idempotency": "NOT_APPLICABLE",
     "requestSchemas": [],
     "responseSchemas": [
-      "200:application/json"
+      "200:application/json",
+      "400:application/problem+json",
+      "401:application/problem+json",
+      "403:application/problem+json",
+      "404:application/problem+json",
+      "409:application/problem+json",
+      "413:application/problem+json",
+      "415:application/problem+json",
+      "502:application/problem+json",
+      "503:application/problem+json"
     ],
     "cacheHeaders": [
       "Cache-Control",

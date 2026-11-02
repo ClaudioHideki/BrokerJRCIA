@@ -40,9 +40,13 @@ import {
 import type { Role } from "../plugins/authorization.js";
 import { SendTextRequestSchema, type SendTextRequest } from "@jrc/contracts";
 import { PartnerTextRequestSchema, type PartnerTextRequest } from '@jrc/contracts';
-import { MediaError, safeMediaName, type BinaryMedia } from "@jrc/providers";
+import { PartnerMediaMetadataSchema, PartnerMediaRequestSchema, type PartnerMediaMetadata, type PartnerMediaRequest } from '@jrc/contracts';
+import { MediaError, safeMediaName, SUPPORTED_UPLOAD_MIME_TYPES, type BinaryMedia } from "@jrc/providers";
 
 export interface MessagingService {
+  uploadPartnerMedia?(organizationId: string, channelId: string, input: BinaryMedia & {idempotencyKey:string}, apiKeyId: string): Promise<PartnerMediaMetadata>;
+  getPartnerMedia?(organizationId: string, channelId: string, mediaId: string, apiKeyId: string): Promise<PartnerMediaMetadata>;
+  sendPartnerMedia?(organizationId: string, channelId: string, input: PartnerMediaRequest, idempotencyKey: string, apiKeyId: string): Promise<MessageView & {conversationId:string}>;
   sendPartnerText?(organizationId: string, channelId: string, input: PartnerTextRequest,
     idempotencyKey: string, apiKeyId: string): Promise<MessageView & {conversationId:string}>;
   listQrOutboundObservations?(organizationId:string,conversationId:string):Promise<{data:QrOutboundObservationView[]}>;
@@ -143,6 +147,13 @@ async function partnerSenderPermission(request: FastifyRequest, reply: FastifyRe
   if (context?.kind === 'API_KEY' && context.scopes.includes('messaging:send')) return;
   return reply.code(403).type(PROBLEM_CONTENT_TYPE).send({type:'about:blank',title:'Forbidden',status:403,code:'FORBIDDEN',requestId:request.id});
 }
+function partnerMediaPermission(scopes: readonly string[]) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const context = request.authentication;
+    if (context?.kind === 'API_KEY' && scopes.every(scope => context.scopes.includes(scope))) return;
+    return reply.code(403).type(PROBLEM_CONTENT_TYPE).send({ type: 'about:blank', title: 'Forbidden', status: 403, code: 'FORBIDDEN', requestId: request.id });
+  };
+}
 async function automationAdministrator(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -176,7 +187,7 @@ export async function registerMessagingRoutes(
     if(error instanceof AttendanceError)return reply.code(error.statusCode).type('application/problem+json').send({type:'about:blank',title:error.code,status:error.statusCode,code:error.code,requestId:request.id});
     if (error instanceof MediaError) {
       const status =
-        error.code === "MEDIA_NOT_FOUND" ? 404 : error.retrySafe ? 409 : 422;
+        error.code === "MEDIA_NOT_FOUND" ? 404 : error.code === 'MEDIA_SIZE_LIMIT' ? 413 : error.code === 'MEDIA_UPLOAD_IDEMPOTENCY_CONFLICT' || error.retrySafe ? 409 : 422;
       return reply
         .code(status)
         .type(PROBLEM_CONTENT_TYPE)
@@ -200,19 +211,21 @@ export async function registerMessagingRoutes(
       validation?: unknown;
       code?: unknown;
     };
-    const status = candidate.validation
+    const status = candidate.validation || error instanceof z.ZodError
       ? 400
       : typeof candidate.statusCode === "number" &&
           candidate.statusCode >= 400 &&
           candidate.statusCode < 500
         ? candidate.statusCode
-        : [404, 409, 422, 503].includes(candidate.status ?? 0)
+        : [400, 403, 404, 409, 413, 415, 422, 503].includes(candidate.status ?? 0)
           ? candidate.status!
           : 500;
     const safeCode = typeof candidate.code === "string" && [
       "META_CHANNEL_REQUIRED", "META_TEMPLATE_REJECTED", "META_TEMPLATE_SUBMISSION_UNKNOWN",
       "META_TEMPLATE_NAME_CONFLICT", "IDEMPOTENCY_CONFLICT",
       "PARTNER_CREDENTIAL_REVOKED", "BROKER_CHANNEL_REQUIRED", "PARTNER_QR_CHANNEL_REQUIRED",
+      "PARTNER_MEDIA_NOT_READY", "PARTNER_MEDIA_UPLOAD_INVALID", "PARTNER_MEDIA_UPLOAD_CONFLICT",
+      "MEDIA_NOT_READY",
     ].includes(candidate.code) ? candidate.code : undefined;
     const code = safeCode ?? (status === 400
         ? "INVALID_REQUEST"
@@ -272,6 +285,53 @@ export async function registerMessagingRoutes(
     currentMembership,
     automationAdministrator,
   ];
+  const uploadAuthority = [authenticateRequest(options), partnerMediaPermission(['media:upload'])];
+  const mediaSender = [authenticateRequest(options), partnerMediaPermission(['messaging:send', 'media:send'])];
+  const mediaParams = z.strictObject({ id: z.uuid(), mediaId: z.uuid() });
+  const binaryHeaders = z.object({
+    'content-type': z.literal('application/octet-stream'), 'x-jrc-media-mime': z.enum(SUPPORTED_UPLOAD_MIME_TYPES),
+    'x-jrc-media-kind': z.enum(['image', 'audio', 'video', 'document']), 'x-jrc-media-name': z.string().min(1).max(765), 'idempotency-key': z.uuid(),
+  });
+  const mediaProblems = Object.fromEntries([400, 401, 403, 404, 409, 413, 415, 422, 429, 500, 503].map(status => [status, ProblemDetailsSchema]));
+  if (!app.hasContentTypeParser('application/octet-stream')) app.addContentTypeParser('application/octet-stream',
+    { parseAs: 'buffer', bodyLimit: 16 * 1024 * 1024 }, (_request, body, done) => done(null, body));
+  api.post('/v1/messaging/channels/:id/media', {
+    onRequest: [...uploadAuthority, async request => {
+      if (request.headers['content-type'] !== 'application/octet-stream') throw Object.assign(new Error('Unsupported media type'), { statusCode: 415 });
+    }], preHandler: uploadAuthority, bodyLimit: 16 * 1024 * 1024,
+    schema: { params: idParams, querystring: emptyQuery, response: { 201: PartnerMediaMetadataSchema, ...mediaProblems } },
+  }, async (request, reply) => {
+    const h = binaryHeaders.parse(request.headers);
+    if (!Buffer.isBuffer(request.body) || !request.body.length) throw Object.assign(new Error('Invalid upload'), { statusCode: 400 });
+    let fileName: string;
+    try { fileName = decodeURIComponent(h['x-jrc-media-name']); } catch { throw Object.assign(new Error('Invalid filename'), { statusCode: 400 }); }
+    const identity = request.authentication!;
+    if (identity.kind !== 'API_KEY') throw Object.assign(new Error('Forbidden'), { statusCode: 403 });
+    if (!options.service.uploadPartnerMedia) throw Object.assign(new Error('Unavailable'), { status: 503 });
+    const uploaded = PartnerMediaMetadataSchema.parse(await options.service.uploadPartnerMedia(identity.organizationId, request.params.id,
+      { bytes: new Uint8Array(request.body), mimeType: h['x-jrc-media-mime'], kind: h['x-jrc-media-kind'], fileName, idempotencyKey: h['idempotency-key'] }, identity.apiKeyId));
+    for (const guard of uploadAuthority) { await guard(request, reply); if (reply.sent) return reply; }
+    return reply.code(201).header('Location', `/v1/messaging/channels/${request.params.id}/media/${uploaded.id}`).send(uploaded);
+  });
+  api.get('/v1/messaging/channels/:id/media/:mediaId', {
+    preHandler: uploadAuthority, schema: { params: mediaParams, querystring: emptyQuery, response: { 200: PartnerMediaMetadataSchema, ...mediaProblems } },
+  }, async (request, reply) => {
+    const identity = request.authentication!;
+    if (identity.kind !== 'API_KEY') throw Object.assign(new Error('Forbidden'), { statusCode: 403 });
+    if (!options.service.getPartnerMedia) throw Object.assign(new Error('Unavailable'), { status: 503 });
+    const metadata = await options.service.getPartnerMedia(identity.organizationId, request.params.id, request.params.mediaId, identity.apiKeyId);
+    for (const guard of uploadAuthority) { await guard(request, reply); if (reply.sent) return reply; }
+    return reply.send(metadata);
+  });
+  api.post('/v1/messaging/channels/:id/partner-media', {
+    preHandler: mediaSender, schema: { params: idParams, querystring: emptyQuery, headers: IdempotencyHeadersSchema,
+      body: PartnerMediaRequestSchema, response: { 202: MessageViewSchema.extend({ conversationId: z.uuid() }), ...mediaProblems } },
+  }, async (request, reply) => {
+    const identity = request.authentication!;
+    if (identity.kind !== 'API_KEY') throw Object.assign(new Error('Forbidden'), { statusCode: 403 });
+    if (!options.service.sendPartnerMedia) throw Object.assign(new Error('Unavailable'), { status: 503 });
+    return reply.code(202).send(await options.service.sendPartnerMedia(identity.organizationId, request.params.id, request.body, request.headers['idempotency-key'], identity.apiKeyId));
+  });
   api.post('/v1/messaging/channels/:id/partner-text', {
     preHandler: [authenticateRequest(options), partnerSenderPermission],
     schema: { params: idParams, querystring: emptyQuery, headers: IdempotencyHeadersSchema,

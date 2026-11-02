@@ -4,6 +4,7 @@ import type { ChannelV1 } from '@jrc/contracts';
 import { ApiClientError } from '../api/client.js';
 import { useApiClient, useSession } from '../auth/SessionProvider.js';
 import { listChannels } from '../channels/api.js';
+import { ChannelDeletion } from '../channels/ChannelDeletion.js';
 
 const labels = { QR: 'WhatsApp por QR Code', META: 'WhatsApp oficial Meta',CENTRAL:'WhatsApp conectado na central' } as const;
 const statusLabel: Record<string, string> = {
@@ -53,11 +54,14 @@ export function ChannelsPage() {
     } finally { if (current===generation.current) setLoadingMore(false); }
   }
   const canManage = session?.activeOrganization.role !== 'VIEWER';
+  const canDelete = Boolean(session && ['OWNER', 'ADMIN'].includes(session.activeOrganization.role));
   return <section aria-labelledby="channels-title">
     <div className="page-heading"><div><p className="eyebrow">WhatsApp da sua empresa</p><h1 id="channels-title">Caixas de entrada</h1>
       <p>Conecte seu WhatsApp, escolha onde a equipe atende e ative um chatbot JRC.</p></div>
       {canManage ? <Link className="button button--primary" to="/channels/new">+ Conectar WhatsApp</Link> : null}</div>
-    {error ? <div className="notice notice--error" role="alert">{error}</div> : null}
+    {error ? <div className="notice notice--error" role="alert">{error}
+      {!loading && items.length === 0 && <p><button type="button" className="button button--secondary" onClick={()=>void load()}>Tentar carregar caixas novamente</button></p>}
+    </div> : null}
     {loading ? <div className="state-card" aria-busy="true">Carregando canais…</div> : null}
     {!loading && !error && items.length === 0 ? <div className="state-card"><h2>Nenhum canal configurado</h2><p>Crie um canal por QR Code ou conecte uma conta oficial da Meta.</p></div> : null}
     <label><input type="checkbox" checked={showArchived} onChange={event=>setShowArchived(event.target.checked)}/> Mostrar arquivadas</label><div className="channel-cards">
@@ -71,6 +75,9 @@ export function ChannelsPage() {
           <div className="metric"><small>Central de atendimento</small><strong>{item.destination?.name??'Sem caixa vinculada'}</strong><span>{destinationStatusLabel(item.humanStatus)}</span></div>
         </div>
         <details><summary>Detalhes técnicos</summary><p>Serviço WhatsApp: {statusLabel[item.providerStatus]} · Atualizado em {new Date(item.updatedAt).toLocaleString('pt-BR')}</p></details>
+        {canDelete && item.provider !== 'CENTRAL' && <ChannelDeletion path={`/v1/channels/${item.id}`}
+          scopeKey={`${session?.activeOrganization.id}:${tenantRevision}`} onCompleted={() => void load()}
+          request={(path, method = 'GET', body) => client.request(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })} />}
       </article>)}
     </div>
     {nextCursor&&!loading?<button className="button button--secondary" type="button" disabled={loadingMore} onClick={()=>void loadMore()}>

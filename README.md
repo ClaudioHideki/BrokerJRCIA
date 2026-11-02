@@ -1,6 +1,27 @@
 # JRC WhatsApp Broker
 
-## Candidato atual: jornadas do Broker e integração com JRC Conversas
+## Candidata em desenvolvimento — experiência e integrações, 29/10/2026
+
+A branch `codex/broker-experience-20261029` inicia o programa com navegação por contexto/papel,
+busca de páginas, central de configurações e acesso ao guia API/webhooks. As URLs existentes,
+o portal público e os guards de backend são preservados. O alvo JRC confirmado é
+[`ClaudioHideki/jrc-conversas-lab2`](https://github.com/ClaudioHideki/jrc-conversas-lab2).
+
+Consulte o [plano por entregas](docs/superpowers/plans/2026-10-29-broker-experience.md),
+o [registro de progresso e verificações](docs/validation/2026-10-29-broker-experience-progress.md)
+e os [dois modos de integração](docs/api/integration-modes.md).
+O segundo incremento corrige acompanhamento de pareamento, retenção do QR,
+seleção de inbox e substituição/revalidação de agentes; consulte as
+[evidências de lifecycle](docs/validation/2026-10-29-lifecycle-evidence.md).
+O terceiro incremento acrescenta upload privado, consulta de estado e envio de
+anexos individuais QR por API, com novos escopos explícitos, migration aditiva
+0074 e documentação pública de 37 operações. Upload e envio são intenções
+separadas; HTTP 202 confirma admissão na fila. O manual técnico tem oito páginas.
+A publicação das imagens API/web foi autorizada e depende dos gates da revisão
+exata. Esta candidata não representa a conclusão dos módulos pendentes, deploy
+produtivo ou homologação real com providers/CCLX.
+
+## Histórico: jornadas do Broker e integração com JRC Conversas
 
 O candidato de 23/09/2026 consolida as caixas Meta/QR, ações seguras de ciclo de
 vida e o runtime de Automações da JRC. A base conciliada é `f8e81df`. A integração

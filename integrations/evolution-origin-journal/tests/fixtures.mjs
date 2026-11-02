@@ -1,0 +1,2 @@
+export const binding = { instanceId: 'synthetic-instance', instanceName: 'Synthetic instance', generation: 1, destinationId: 'synthetic-destination', revision: 1 };
+export const source = (id = 'provider-message-a') => ({ 'messages.upsert': { type: 'notify', messages: [{ key: { id, fromMe: false, remoteJid: `${'1'.repeat(11)}@s.whatsapp.net` }, messageTimestamp: 1700000000, message: { conversation: 'Synthetic text', contextInfo: { secret: 'must-not-survive' } } }] }, 'creds.update': { privateKey: 'must-not-survive' }, 'qrcode.updated': { qr: 'must-not-survive' } });

@@ -1,0 +1,44 @@
+✔ ACK follows durable inbox and one projection; replay after restart is duplicate (293.903ms)
+✔ parallel duplicates create exactly one inbox and projection (178.1487ms)
+✔ rejects tampered raw body without persistence (100.046ms)
+✔ rejects old signed timestamp without persistence (81.0086ms)
+✔ rejects future signed timestamp without persistence (87.4161ms)
+✔ rejects tenant divergence without persistence (77.0832ms)
+✔ rejects event header/body mismatch without persistence (92.7952ms)
+✔ rejects non fixture payload without persistence (55.1014ms)
+✔ rejects array cursor coerced to digits without persistence (84.846ms)
+✔ rejects numeric cursor coerced to digits without persistence (86.748ms)
+✔ rejects RFC timestamp with comment without persistence (56.4138ms)
+✔ rejects array occurredAt coerced to date without persistence (52.8361ms)
+✔ rejects numeric occurredAt coerced to date without persistence (52.4022ms)
+✔ rejects nonexistent ISO calendar date without persistence (69.968ms)
+✔ rejects ISO timestamp carrying trailing content without persistence (130.3878ms)
+✔ rejects body limit without persistence (63.885ms)
+✔ same tenant/eventId with different signed content is explicit conflict (87.9048ms)
+✔ http500 does not ACK or persist and retry succeeds (67.5721ms)
+✔ timeoutBeforeCommit does not ACK or persist and retry succeeds (237.5185ms)
+✔ rollbackBeforeCommit does not ACK or persist and retry succeeds (65.8852ms)
+✔ lost ACK after commit survives restart without double projection (128.39ms)
+✔ abrupt process death after committed lost ACK preserves WAL inbox on new process (696.8939ms)
+✔ fixture guards refuse public binding, production, arbitrary database and missing lab flag (12.2699ms)
+✔ CLI and safe runner refuse ambiguous or production invocation (645.2865ms)
+✔ synthetic image/png: interrupted/limits/hash/MIME preserve source (0.8233ms)
+✔ synthetic audio/wav: interrupted/limits/hash/MIME preserve source (0.3231ms)
+✔ synthetic video/mp4: interrupted/limits/hash/MIME preserve source (0.2558ms)
+✔ synthetic application/pdf: interrupted/limits/hash/MIME preserve source (0.2515ms)
+✔ 250k namespace, BIGINT cursor and two tenants preserve independent inbox effects (284.7052ms)
+✔ file sync and receipt commit survive restart; duplicate media has one receipt (155.059ms)
+✔ interruption, bad hash and absent inbox cannot issue a media receipt (87.0936ms)
+✔ file sync failure point yields no receipt; retry adopts verified bytes (162.299ms)
+✔ lost media receipt after commit is recovered idempotently after restart (155.748ms)
+✔ plan adds progressive 50/100/200/400 gates and keeps 900 preparation only (223.1614ms)
+✔ smoke persists real bytes, survives ACK loss/restart and keeps all counts reconciled (699.2553ms)
+✔ scenario refuses production, external target, missing lab flag and unknown options (937.6651ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3804.8834

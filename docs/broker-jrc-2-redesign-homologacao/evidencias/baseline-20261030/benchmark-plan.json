@@ -1,0 +1,44 @@
+{
+  "kind": "BENCHMARK_PREPARATION_ONLY",
+  "capacityValidated": false,
+  "logicalMessagesPerDay": 250000,
+  "averagePerSecond24h": 2.8935185185185186,
+  "averagePerSecond8h": 8.680555555555555,
+  "peakMultipliersProposed": [
+    5,
+    10
+  ],
+  "peakDurationSecondsProposed": 300,
+  "recoveryBetweenPeaksSecondsProposed": 900,
+  "gates": [
+    {
+      "sessions": 50,
+      "state": "SKIP_LOAD",
+      "uniformMessagesPerSessionDay": 5000
+    },
+    {
+      "sessions": 100,
+      "state": "SKIP_LOAD",
+      "uniformMessagesPerSessionDay": 2500
+    },
+    {
+      "sessions": 200,
+      "state": "SKIP_LOAD",
+      "uniformMessagesPerSessionDay": 1250
+    },
+    {
+      "sessions": 400,
+      "state": "SKIP_LOAD",
+      "uniformMessagesPerSessionDay": 625
+    },
+    {
+      "sessions": 900,
+      "state": "PREPARATION_ONLY",
+      "uniformMessagesPerSessionDay": 277.77777777777777
+    }
+  ],
+  "warmupMinutesProposed": 15,
+  "steadyMinutesProposed": 60,
+  "repetitionsProposed": 3,
+  "prerequisite": "Isolated PG/storage, real contract adapter, resource inventory and accepted SLOs before load"
+}

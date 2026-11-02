@@ -1,0 +1,101 @@
+# API de anexos — evidência da candidata de 29/10/2026
+
+Branch: `codex/broker-experience-20261029`; base do incremento: `ed51ae6767e2e4b43293b10d09acfaed85d0f569`.
+Escopo: upload privado, metadados e envio individual QR por referência.
+API/web serão publicadas pelo mesmo SHA somente após os gates. Não houve deploy,
+migration produtiva, credencial nova ou envio real nesta etapa.
+
+## Contrato implementado
+
+| Operação | Autoridade | Resultado |
+| --- | --- | --- |
+| POST `/v1/messaging/channels/{id}/media` | `media:upload`, API key atual | 201, ref privada e estado; não envia |
+| GET `/v1/messaging/channels/{id}/media/{mediaId}` | `media:upload`, API key atual | 200, metadados sanitizados; não faz PUT |
+| POST `/v1/messaging/channels/{id}/partner-media` | `messaging:send` e `media:send` | 202, admissão na outbox; entrega por recibos |
+
+Corpo binário validado, 1 byte a 16 MiB, imagem até 5 MiB; legenda até 1.024
+caracteres. Referência READY no mesmo tenant/canal BAILEYS/BROKER_TRANSPORT aberto.
+Idempotência separada por intenção, sem repetir PUT/envio incerto. Chaves antigas
+não recebem escopos por padrão. A rotação preserva referências do tenant, sem
+dispensar autoridade atual. Migration aditiva `0074_partner_media`, sem mudar
+migrations históricas ou adicionar tabela de tenant.
+
+## Verificação local e revisão
+
+- TDD: contratos, escopos, upload/metadata/send, recuperação após revogação,
+  idempotência, channel archive, navegação e sincronização de catálogos tiveram
+  falhas demonstradas antes de suas correções.
+- Primeira suíte geral: 451 arquivos passaram / 2 falharam; 3.516 testes passaram /
+  2 falharam. Inventário OpenAPI e barreira de catálogo foram corrigidos.
+- Regressão final congelada: `npm test -- --maxWorkers=4`, **454 arquivos /
+  3.525 testes passaram**, exit 0, 308,46 s. Git/OpenSSL no PATH process-local;
+  nenhum skip ou retry foi acrescentado para aprovar a execução.
+- OpenAPI/portal/PDF: 22 testes passaram após ajustar inventário. PDF de oito
+  páginas / 37 operações, exemplos validados contra schemas, renderização revisada.
+- Build de produção passou; scanner de bundle: 32 arquivos, nenhum finding.
+- Contratos públicos e notices passaram. O gate de submodule exige Git nativo no
+  PATH process-local em Windows; o wrapper cmd apresentou EPERM, sem mudança de produto.
+- Três P2 da revisão independente foram corrigidos e reavaliados: PUT recuperado
+  após revogação, HTTP409 e expiração durante lock wait. Rechecks não adquirem
+  locks fora de ordem; SQL também revalida o relógio após obter o lock da chave.
+  Revisão final sem P1/P2 pendente neste incremento, condicionada aos gates da CI.
+- Newman 6.2.3 real contra API loopback sintética: seis guards geraram zero HTTP;
+  três pastas separadas executaram 201/200/202, três assertions, zero falhas.
+  Exatamente um upload, uma leitura e uma admissão sintética; nenhum provider send.
+  Portal servido pelo build confirmou perfil 29/10, três pastas de anexos com
+  flags false e PDF application/pdf de 22.252 bytes. Não é prova de produção.
+
+## Gates de publicação
+
+A primeira CI da candidata `9d1d7f6`, run `40955652997`, passou build, migrations
+vazias, compiled, 3.525 testes unitários/contratos/HTTP/PDF e 729 testes web.
+Na integração real passaram 1.505 testes, incluindo store de parceiro (24),
+envio (11) e fence de autoridade (13). Quatro assertions de readiness ainda
+esperavam a baseline 0073, enquanto o runtime corretamente retornou 0074;
+foram atualizadas sem alterar os guards. A CI inteira continua reprovada nessa
+revisão; MinIO/E2E/container/restore não foram executados após a falha. A nova
+revisão deve repetir os gates completos.
+
+Após corrigir essas quatro expectativas, a suíte local completa foi repetida:
+454 arquivos / 3.525 testes passaram, exit 0, 316,80 s. O diff de código desta
+correção contém somente as quatro strings esperadas; guards, probes de corrupção,
+produto, migrations e workflow foram preservados.
+
+A CI seguinte, `6a00583` / run `40958981635`, passou os **1.509 testes de
+PostgreSQL/Redis** e os **5 testes do MinIO real**. E2E teve 33 aprovados, quatro
+falhas e cinco combinações de viewport intencionalmente não aplicáveis: os
+seletores do editor de Flow confundiam seu botão de visão geral com a seção de
+navegação, e dois cenários buscavam o nome/ordem de tabulação anteriores.
+Corrigidos os seletores nos três arquivos E2E, mantendo cliques, foco e asserts
+da jornada, sem alterar produto, timeout, retries ou skips.
+
+Chromium local com `AppShell` e `FlowCanvas` reais e sessão sintética confirmou
+o seletor exclusivo do canvas, o link atual `/channels` e a sequência mobile
+Dashboard → seção Atendimento → Conexões e caixas. Isso não substitui E2E
+autenticado: container, restore e checks posteriores não rodaram nesse CI falho.
+Uma inspeção complementar confirmou que o trigger 0074 bloqueia expiração antes
+do envio no último validateClaim; o possível bypass levantado foi descartado
+com prova de zero efeitos, sem patch adicional no runtime.
+
+Após os ajustes E2E, a suíte local completa passou novamente: **454 arquivos /
+3.525 testes**, exit 0, 298,92 s. O diff desta rodada contém somente testes e
+documentação; a aprovação das jornadas autenticadas continua condicionada ao CI
+da nova revisão.
+
+Full suite local, build/typecheck, diff check e revisão independente final
+passaram. Ainda exigida CI bem-sucedida do SHA exato. A CI usa PostgreSQL,
+Redis, MinIO fixado, browser journeys, container entrypoint, restore isolado e
+checks de segurança. Docker local indisponível não foi substituído por produção.
+
+Após aprovação, o workflow `images.yml` com `publish=true`, `component=all` cria
+tags de SHA completo, SBOM/provenance e assinatura GitHub OIDC. Conferir artifact
+`image-release.json` e digests independentes no GHCR antes de anunciar publicação.
+Usar API/web da mesma revisão; workers usam a imagem API. Deploy/migration no
+servidor são outra etapa e não foram executados por esta candidata.
+
+## Limites e roteiro externo
+
+Não houve mensagem, upload ou chamada a provedor real. Testes sintéticos de
+contrato/Postman não certificam entrega, reprodução de mídia, CCLX instalado ou
+sessões produtivas. Homologar essas fronteiras com ativos e ambiente próprios.
+Meta, grupos, voz e publicação pública de Flow permanecem fora deste recorte.

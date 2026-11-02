@@ -83,6 +83,13 @@ describe('rotas HTTP de API keys', () => {
     await Promise.all(apps.splice(0).map(async (app) => app.close()));
   });
 
+  it.each(['media:upload', 'media:send', 'media:archive'])('does not delegate %s through a management key without that explicit scope', async scope => {
+    const harness = createHarness(); apps.push(harness.app);
+    const response = await harness.app.inject({ method: 'POST', url: '/v1/api-keys',
+      headers: { 'x-jrc-api-key': RAW_API_KEY }, payload: { name: 'restricted media', scopes: [scope] } });
+    expect(response.statusCode).toBe(403); expect(harness.calls).toEqual([]);
+  });
+
   it('declara no contrato OpenAPI todas as respostas implementadas', async () => {
     const harness = createHarness();
     apps.push(harness.app);

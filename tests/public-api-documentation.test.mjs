@@ -4,6 +4,40 @@ import { buildPublicDocument, buildReadOnlyPostman } from '../scripts/docs/publi
 
 const source = JSON.parse(await readFile(new URL('../docs/api/openapi.json', import.meta.url), 'utf8'));
 describe('public partner contract', () => {
+  it('explains negotiated ACK modes and exposes their unchanged canonical schemas',()=>{
+    const contract=buildPublicDocument(source,'events');
+    const create=contract.paths['/v1/partner-webhooks'].post;
+    expect(contract.info.description).toContain('204 sem corpo');
+    expect(create.description).toContain('HTTP por padrão');
+    expect(create.description).toContain('PERSISTENCE_RECEIPT_V1');
+    expect(create.description).toContain('URL normalizada e modo');
+    expect(create.requestBody).toEqual(source.paths['/v1/partner-webhooks'].post.requestBody);
+    const deliveries=contract.paths['/v1/partner-webhook-deliveries'].get;
+    expect(deliveries.description).toContain('persistenceReceipt');
+    expect(deliveries.description).toContain('não comprova processamento');
+  });
+  it('publishes separate private upload, metadata and canonical media-send contracts with explicit key scopes', () => {
+    const contract = buildPublicDocument(source, 'messaging'), prefix = '/v1/messaging/channels/{id}';
+    const upload = contract.paths[prefix + '/media']?.post;
+    expect(upload).toBeDefined();
+    expect(upload.security).toEqual([{ jrcApiKeyAuth: [] }]);
+    expect(upload.requestBody.content['application/octet-stream'].schema).toMatchObject({ type: 'string', format: 'binary', maxLength: 16 * 1024 * 1024 });
+    expect(upload.responses['201']).toBeDefined(); expect(upload.description).toContain('media:upload');
+    const get = contract.paths[prefix + '/media/{mediaId}']?.get;
+    expect(get.security).toEqual([{ jrcApiKeyAuth: [] }]); expect(get.description).toContain('não envia');
+    const send = contract.paths[prefix + '/partner-media']?.post;
+    expect(send.security).toEqual([{ jrcApiKeyAuth: [] }]); expect(send.description).toContain('messaging:send + media:send');
+    expect(send.description).toContain('UNKNOWN');
+    expect(contract.info.description).not.toContain('não envio de mídia');
+  });
+  it('distinguishes authorized new enrollment from legacy approval and pair-only reconnection', () => {
+    const contract = buildPublicDocument(source, 'chatwoot'), base = '/v1/integrations/chatwoot/control/connections/{integrationId}';
+    expect(contract.info.description).toContain('GET não aprova identidade');
+    expect(contract.paths[base + '/pair'].post.description).toContain('primeira identidade exige também chatwoot:manage');
+    expect(contract.paths[base + '/status'].get.description).toContain('GET nunca aprova identidade');
+    expect(contract.paths[base + '/confirm-identity'].post.description).toContain('legado');
+    expect(contract.paths['/v1/integrations/chatwoot/control/onboarding'].get.description).toContain('Lista até 50 operações persistidas');
+  });
   it('documents the manage scope actually required to discover Chatwoot control resources', () => {
     const operation = buildPublicDocument(source, 'chatwoot').paths['/v1/integrations/chatwoot/control/resources'].get;
     expect(operation.description).toContain('Escopo da chave: chatwoot:manage.');

@@ -38,6 +38,8 @@ function instance(overrides: Partial<InstanceRow> = {}): InstanceRow {
     capabilities: [],
     createdAt: NOW,
     updatedAt: NOW,
+    connectionObservedAt: null,
+    connectionBindingFingerprint: null,
     ...overrides,
   };
 }

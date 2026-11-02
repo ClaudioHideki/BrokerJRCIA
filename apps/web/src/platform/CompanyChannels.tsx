@@ -106,19 +106,19 @@ export function CompanyChannels({ request, admin, disabled }: {
 
   return <section className="panel">
     <h2>Caixas de entrada da empresa</h2>
-    <p>Consulta e alterações vinculadas ao motivo de suporte informado. O histórico e as caixas remotas são preservados.</p>
+    <p>Consulta e alterações vinculadas ao motivo de suporte informado. A exclusão definitiva remove os dados exclusivos no Broker; as caixas e conversas remotas são preservadas.</p>
     <button className="button button--ghost" disabled={loading || loadingMore || busy || disabled} onClick={() => void refresh()}>Atualizar caixas</button>
     {error && <p role="alert">{error}</p>}
     {loading ? <p role="status">Carregando caixas…</p> : items.length ? <div className="admin-table-scroll"><table>
       <thead><tr><th>Caixa</th><th>WhatsApp</th><th>Atendimento</th><th>Cadastro</th>{admin && <th>Ações</th>}</tr></thead>
       <tbody>{items.map(item => <tr key={item.id}>
-        <td>{item.identity.displayName}<small>{item.provider === 'QR' ? 'WhatsApp QR Code' : 'WhatsApp oficial Meta'}</small></td>
+        <td>{item.identity.displayName}<small>{item.provider === 'QR' ? 'WhatsApp QR Code' : item.provider === 'CENTRAL' ? 'WhatsApp conectado na central' : 'WhatsApp oficial Meta'}</small></td>
         <td>{statusLabel[item.transportStatus]}</td>
         <td>{item.destination?.name ?? 'Sem vínculo'}<small>{item.humanStatus ? destinationStatusLabel(item.humanStatus) : 'Entrega a verificar'}</small></td>
         <td>{item.archivedAt ? 'Arquivado' : 'Ativo'}</td>
         {admin && <td>{item.provider === 'QR'
           ? <button className="button button--secondary" disabled={busy || disabled} onClick={() => void archive(item)}>{item.archivedAt ? 'Restaurar cadastro' : 'Arquivar cadastro'}</button>
-          : <span>Revogar autorização no portal</span>}<ChannelDeletion request={request} path={`/${item.id}`} disabled={busy || disabled} onCompleted={()=>void refresh()}/></td>}
+          : item.provider === 'CENTRAL' ? <span>Gerenciar vínculo no portal da empresa</span> : <span>Revogar autorização no portal</span>}{item.provider !== 'CENTRAL' && <ChannelDeletion request={request} path={`/${item.id}`} disabled={busy || disabled} onCompleted={()=>void refresh()}/>}</td>}
       </tr>)}</tbody>
     </table></div> : error ? null : <p>Nenhuma caixa cadastrada.</p>}
     {nextCursor && !loading && <button className="button button--secondary" disabled={loadingMore || busy || disabled} onClick={() => void loadMore()}>{loadingMore ? 'Carregando mais caixas…' : 'Carregar mais caixas'}</button>}

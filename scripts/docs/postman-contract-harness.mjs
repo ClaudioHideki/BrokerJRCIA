@@ -6,11 +6,11 @@ import {buildPocPostman} from './postman-poc.mjs';
 const id='11111111-1111-4111-8111-111111111111',org='22222222-2222-4222-8222-222222222222';
 const key='synthetic-local-postman-key',now='2026-10-22T17:00:00.000Z';
 const auth={jwtSecret:'synthetic-contract-jwt-secret-over-32-characters',authenticateApiKey:async raw=>raw===key?{apiKeyId:id,organizationId:org,scopes:['instances:read','instances:write','messaging:read','messaging:send','webhooks:manage']}:null};
-let state='CREATED',endpointStatus='ACTIVE';
+let state='CREATED',endpointStatus='ACTIVE',endpointAckMode='HTTP';
 const instance=()=>({id,organizationId:org,providerAccountId:id,name:'POC API JRC',provider:'BAILEYS',status:state,createdAt:now,updatedAt:now});
 const page=data=>({data,pageInfo:{hasNextPage:false,nextCursor:null}});
 const mutation=()=>({instance:instance(),operationId:null,replayed:false,pending:false,reconciliationRequired:false});
-const endpoint=()=>({id,url:'https://receiver.example/hooks/jrc',status:endpointStatus,createdAt:now,revokedAt:endpointStatus==='REVOKED'?now:null});
+const endpoint=()=>({id,url:'https://receiver.example/hooks/jrc',ackMode:endpointAckMode,status:endpointStatus,createdAt:now,revokedAt:endpointStatus==='REVOKED'?now:null});
 const channel={id,instanceId:id,provider:'BAILEYS',ownerRevision:0,botPublicId:null};
 const conversation={id,channelId:id,contactId:id,mode:'HUMAN'};
 let messages=[];
@@ -19,7 +19,7 @@ const app=buildApp({nodeEnv:'test',passwordVerifierInitializer:async()=>({async 
  instances:{...auth,service:{createInstance:async()=>mutation(),listInstances:async()=>page([instance()]),getInstance:async()=>instance(),getInstanceStatus:async()=>instance(),connectInstance:async()=>{state='CONNECTED';return{...mutation(),action:{type:'NONE',reason:'ALREADY_CONNECTED'}};},disconnectInstance:async()=>{state='DISCONNECTED';return mutation();}}},
  integrations:{...auth,resolveCurrentRole:async()=> 'OWNER',qr:{activate:async()=>channel}},
  messaging:{...auth,resolveCurrentRole:async()=> 'OWNER',service:{readMedia:async()=>({bytes:new Uint8Array([1,2,3]),mimeType:'image/png',kind:'image',fileName:'synthetic.png'}),listChannels:async()=>({data:[channel]}),listConversations:async()=>({data:[conversation]}),getConversation:async()=>conversation,listMessages:async()=>({data:messages}),sendPartnerText:async(_org,_channel,input)=>{const message={id,conversationId:id,direction:'OUTGOING',state:'ACCEPTED',text:input.text};messages.push(message);return message;}}},
- partnerWebhooks:{...auth,service:{create:async()=>({endpoint:endpoint(),signingSecret:'synthetic-only-independent-signing-secret',replayed:false}),list:async()=>({data:[endpoint()]}),revoke:async()=>{endpointStatus='REVOKED';return endpoint();},events:async()=>({schemaVersion:1,retentionDays:30,earliestCursor:null,lastPrunedCursor:'0',nextCursor:'0',data:[]}),deliveries:async()=>({data:[]})}}
+ partnerWebhooks:{...auth,service:{create:async(_org,input)=>{endpointAckMode=input.ackMode??'HTTP';return {endpoint:endpoint(),signingSecret:'synthetic-only-independent-signing-secret',replayed:false};},list:async()=>({data:[endpoint()]}),revoke:async()=>{endpointStatus='REVOKED';return endpoint();},events:async()=>({schemaVersion:1,retentionDays:30,earliestCursor:null,lastPrunedCursor:'0',nextCursor:'0',data:[]}),deliveries:async()=>({data:[]})}}
 });
 await app.listen({port:0,host:'127.0.0.1'});
 const origin='http://127.0.0.1:'+app.server.address().port;

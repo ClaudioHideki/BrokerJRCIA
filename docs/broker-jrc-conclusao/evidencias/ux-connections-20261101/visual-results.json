@@ -1,0 +1,114 @@
+[
+  {
+    "surface": "legacy",
+    "role": "OWNER",
+    "viewport": {
+      "width": 1440,
+      "height": 1100
+    },
+    "screenshot": "legacy-owner-1440.png",
+    "synthetic": true,
+    "scopedAxeViolations": [],
+    "cardOverflow": false,
+    "pageErrors": [],
+    "keyboard": "binding link → delivery link"
+  },
+  {
+    "surface": "channel",
+    "role": "OWNER",
+    "viewport": {
+      "width": 1440,
+      "height": 1100
+    },
+    "screenshot": "channel-owner-1440.png",
+    "synthetic": true,
+    "scopedAxeViolations": [],
+    "cardOverflow": false,
+    "pageErrors": [],
+    "keyboard": "binding link → delivery link"
+  },
+  {
+    "surface": "legacy",
+    "role": "OWNER",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "screenshot": "legacy-owner-390.png",
+    "synthetic": true,
+    "scopedAxeViolations": [],
+    "cardOverflow": false,
+    "pageErrors": [],
+    "keyboard": "binding link → delivery link"
+  },
+  {
+    "surface": "channel",
+    "role": "OWNER",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "screenshot": "channel-owner-390.png",
+    "synthetic": true,
+    "scopedAxeViolations": [],
+    "cardOverflow": false,
+    "pageErrors": [],
+    "keyboard": "binding link → delivery link"
+  },
+  {
+    "surface": "legacy",
+    "role": "VIEWER",
+    "viewport": {
+      "width": 1440,
+      "height": 1100
+    },
+    "screenshot": "legacy-viewer-1440.png",
+    "synthetic": true,
+    "scopedAxeViolations": [],
+    "cardOverflow": false,
+    "pageErrors": [],
+    "keyboard": "binding link → delivery link"
+  },
+  {
+    "surface": "channel",
+    "role": "VIEWER",
+    "viewport": {
+      "width": 1440,
+      "height": 1100
+    },
+    "screenshot": "channel-viewer-1440.png",
+    "synthetic": true,
+    "scopedAxeViolations": [],
+    "cardOverflow": false,
+    "pageErrors": [],
+    "keyboard": "binding link → delivery link"
+  },
+  {
+    "surface": "legacy",
+    "role": "VIEWER",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "screenshot": "legacy-viewer-390.png",
+    "synthetic": true,
+    "scopedAxeViolations": [],
+    "cardOverflow": false,
+    "pageErrors": [],
+    "keyboard": "binding link → delivery link"
+  },
+  {
+    "surface": "channel",
+    "role": "VIEWER",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "screenshot": "channel-viewer-390.png",
+    "synthetic": true,
+    "scopedAxeViolations": [],
+    "cardOverflow": false,
+    "pageErrors": [],
+    "keyboard": "binding link → delivery link"
+  }
+]

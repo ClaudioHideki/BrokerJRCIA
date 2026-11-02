@@ -126,9 +126,27 @@ Nenhuma transação de banco deve ficar aberta enquanto um backend chama o outro
   retry automático do provider em uma consulta de progresso. O contrato futuro
   precisa de leitura somente do desafio com geração/revisão da sessão e uma
   ação explícita de reconciliação cercada por lease e idempotência no Broker.
-- Primeira identidade e substituição exigem administrador. Agente precisa de grant
-  específico e identidade anterior aprovada. Troca observada bloqueia o envio e
-  preserva a fila até confirmação explícita. Revogação vale na próxima chamada.
+- Vínculo QR BAILEYS novo, criado por administrador autenticado ou chave vinculada
+  com `chatwoot:manage`, recebe intenção finita para matrícula da primeira identidade.
+  Criação já conectada pode concluí-la imediatamente; instância desconectada exige
+  POST `pair` com `chatwoot:pair` **e** `chatwoot:manage`. A janela é de até dois
+  minutos, limitada à validade do desafio e ao prazo de criação de 24 horas.
+  Replays não renovam o prazo. Antes de consumir, o Broker revalida autoridade,
+  origem/Account/revisões, instância, primeira identidade observada e inbox API com
+  callback/segredo correto. GET nunca aprova identidade. O worker só consome uma
+  intenção administrativa já armada.
+- Legado sem intenção, intenção expirada ou número diferente exigem confirmação
+  explícita da `observedRevision` atual por administrador. A identidade aprovada
+  nunca é substituída automaticamente. Agente precisa de grant específico e
+  identidade anterior aprovada para reconectar. Revogação, logout ou alteração do
+  contexto impedem a matrícula; nova ação administrativa pode rearmar enquanto
+  elegível. Troca observada bloqueia envio e preserva a fila até decisão explícita.
+- A matrícula requer a migração aditiva `0073_chatwoot_initial_identity`; não há
+  backfill de identidades legadas nem chave por caixa. Controle habilitado e saúde
+  disponíveis são pré-condições do caminho novo. Uma falha/resposta perdida de
+  CREATE é conciliada pelo fluxo existente; GET não vira autorização. Após a
+  conciliação, um POST administrativo pode retomar dentro do prazo, sem repetir
+  criação cegamente. Meta permanece no próprio onboarding.
 - READY indica configuração. CONNECTED indica sessão. OPERATIONAL exige identidade,
   callback assinado na revisão/credencial atual e sucessos de entrada/saída recentes
   posteriores à aprovação da identidade. Sem essas provas: UNVERIFIED.

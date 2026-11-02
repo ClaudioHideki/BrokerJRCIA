@@ -13,7 +13,7 @@ test('builds, saves and simulates a menu with a captured response using only the
   const inspector=page.locator('.flows-inspector');
   const palette=page.locator('.flows-palette');
   const selectNode=async(label:string)=>{
-    await page.getByRole('button',{name:'Visão geral'}).click();
+    await page.getByRole('region',{name:'Canvas do flow',exact:true}).getByRole('button',{name:'Visão geral',exact:true}).click();
     await page.getByRole('button',{name:'Configurar '+label,exact:true}).click();
   };
   await palette.getByRole('button',{name:/^Menu textual/}).click();
@@ -85,7 +85,7 @@ test('150-block draft remains intact while navigating the editor and editing one
   const initial=await canvas.getAttribute('style');
   await page.getByRole('button',{name:'Aumentar zoom'}).click();
   await expect(canvas).not.toHaveAttribute('style',initial!);
-  await page.getByRole('button',{name:'Visão geral'}).click();
+  await page.getByRole('region',{name:'Canvas do flow',exact:true}).getByRole('button',{name:'Visão geral',exact:true}).click();
   await page.getByRole('button',{name:'Localizar início'}).click();
   await expect(page.getByRole('button',{name:'Configurar Mensagem recebida'}).locator('..')).toHaveClass(/flow-node--selected/);
   await expect(page.getByRole('button',{name:'Salvar',exact:true})).toBeDisabled();
@@ -137,7 +137,7 @@ test('150-block draft remains intact while navigating the editor and editing one
     .toEqual(graph.nodes.map(node=>({id:node.id,position:node.position})));
   await page.reload();
   await expect(page.getByText('150 blocos · 149 conexões')).toBeVisible();
-  await page.getByRole('button',{name:'Visão geral'}).click();
+  await page.getByRole('region',{name:'Canvas do flow',exact:true}).getByRole('button',{name:'Visão geral',exact:true}).click();
   await page.getByRole('button',{name:'Configurar Boas-vindas'}).click();
   await expect(message).toHaveValue('Mensagem sintética revisada');
   await test.info().attach('automation-editor-150-blocks',{body:await page.screenshot({path:`test-results/automation-editor-${isMobile?'mobile':'desktop'}.png`}),contentType:'image/png'});

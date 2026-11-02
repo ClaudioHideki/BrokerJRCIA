@@ -20,6 +20,11 @@ const profiles: Array<[DatabasePoolProfile, number, number]> = [
 ];
 
 describe('database pool budgets', () => {
+  it('accounts for history import with its existing maximum and finite acquisition timeout', () => {
+    expect(loadDatabasePoolBudget({}, 'HISTORY_IMPORT_WORKER')).toEqual({ max: 2, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 });
+    expect(loadDatabasePoolBudget({ HISTORY_IMPORT_WORKER_DB_POOL_MAX: '8' }, 'HISTORY_IMPORT_WORKER').max).toBe(8);
+    expect(() => loadDatabasePoolBudget({ HISTORY_IMPORT_WORKER_DB_POOL_MAX: '9' }, 'HISTORY_IMPORT_WORKER')).toThrow('HISTORY_IMPORT_WORKER_DB_POOL_MAX');
+  });
   it.each(profiles)('preserves the installed %s defaults explicitly', (profile, max, connectionTimeoutMillis) => {
     expect(loadDatabasePoolBudget({}, profile)).toEqual({ max, connectionTimeoutMillis, idleTimeoutMillis: 10000 });
   });

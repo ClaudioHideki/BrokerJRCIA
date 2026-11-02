@@ -1,0 +1,8 @@
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  12:50:38
+   Duration  42.11s (transform 1.25s, setup 0ms, import 3.65s, tests 37.61s, environment 0ms)

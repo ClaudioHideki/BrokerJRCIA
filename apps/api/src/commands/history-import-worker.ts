@@ -1,6 +1,7 @@
 import {pathToFileURL} from 'node:url';
 import {setTimeout} from 'node:timers/promises';
 import {Pool} from 'pg';
+import {loadDatabasePoolBudget} from '../db/pool-budget.js';
 import {z} from 'zod';
 import {withOrganizationTransaction} from '../db/tenant-transaction.js';
 import {scanOperationalOrganizations} from './automation-worker.js';
@@ -14,8 +15,7 @@ export async function runHistoryImportWorker(environment:NodeJS.ProcessEnv=proce
  const databaseUrl=z.string().url().parse(environment.DATABASE_URL);
  if(new URL(databaseUrl).username!=='jrc_app')throw new Error('HISTORY_WORKER_REQUIRES_APP_ROLE');
  const interval=z.coerce.number().int().min(1000).max(60000).default(5000).parse(environment.HISTORY_IMPORT_WORKER_INTERVAL_MS);
- const max=z.coerce.number().int().min(1).max(8).default(2).parse(environment.HISTORY_IMPORT_WORKER_DB_POOL_MAX);
- const pool=new Pool({connectionString:databaseUrl,max,connectionTimeoutMillis:5000,idleTimeoutMillis:10000,statement_timeout:30000});
+ const pool=new Pool({connectionString:databaseUrl,...loadDatabasePoolBudget(environment,'HISTORY_IMPORT_WORKER'),statement_timeout:30000});
  const abort=new AbortController(),stop=()=>abort.abort();
  const transact=<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pool,org,work);
  let runtime:ReturnType<typeof createHistorySourceRuntime>|undefined;

@@ -91,7 +91,7 @@ A camada de grupo ainda precisa ser materializada como relacionamento explícito
 
 Os módulos **WhatsApp JRC** e **Automações JRC** devem aparecer dentro de cada conta habilitada do JRC Conversas:
 
-1. **Configurações → Caixas de entrada → Adicionar caixa → WhatsApp JRC:** criar ou adotar uma caixa da conta ativa, gerar/renovar QR, acompanhar estado assíncrono, confirmar identidade, reconectar, desconectar e arquivar o vínculo.
+1. **Configurações → Caixas de entrada → Adicionar caixa → WhatsApp JRC:** criar ou adotar uma caixa da conta ativa, gerar/renovar QR, acompanhar estado assíncrono, confirmar identidade quando exigida, reconectar, desconectar e arquivar o vínculo.
 2. **Detalhe da caixa:** mostrar canal, número/identidade, status do transporte, agentes autorizados, automação vinculada e ações permitidas. A lista de caixas sempre vem da conta ativa.
 3. **Automações JRC:** criar, importar JSON, editar, validar, testar e publicar flows do tenant; depois vincular uma versão publicada a uma caixa da mesma conta.
 4. **Conversa:** transferir ao humano e retomar a automação com estado coordenado. Uma caixa possui apenas um motor de automação ativo.
@@ -185,6 +185,13 @@ A tabela usa `B = /v1/integrations/chatwoot`.
 Mutações de controle exigem Idempotency-Key. Pair/disconnect têm corpo `{}`; confirmar identidade usa `{observedRevision}`; agentes usa `{agentIds}`. Consultar OpenAPI para schemas completos.
 
 Onboarding recebe `name`, `source`, `agentIds`, `replaceExistingWebhook` e `inboxId` opcional. Para novo cadastro, source é `{kind:"NEW",instanceName,providerAccountId}`; para reutilizar, `{kind:"EXISTING",instanceId}`. IDs devem vir de recursos autorizados. Etapas: INSTANCE → ACTIVATE_CHANNEL → LINK_INBOX → ASSIGN_AGENTS → VERIFY → DONE. UNKNOWN requer reconciliação. Este controle cobre QR; Meta continua pelo Embedded Signup do Broker.
+
+Na revisão candidata de 23/10/2026, somente o vínculo BAILEYS novo criado com
+intenção administrativa autenticada pode matricular automaticamente a primeira
+identidade. GET não aprova; legado, prazo expirado ou troca de número conservam a
+confirmação explícita. Chave pair isolada só reconecta identidade já aprovada.
+Consultar condições e prazos no [runbook atual](../operations/chatwoot-external.md).
+Essa matrícula não ativa Flow nem certifica callback, entrega ou instalação CCLX.
 
 Emissão: usuário OWNER/ADMIN no portal, `POST B/control-credentials` com Idempotency-Key, nome, scopes e expiresAt opcional/nulo. Scopes: chatwoot:read, chatwoot:manage, chatwoot:pair, chatwoot:disconnect. Chave vinculada à organização/conta/revisão. A emissão mostra o segredo uma vez. Permissões de usuários do Broker e agentes da central são conceitos distintos.
 

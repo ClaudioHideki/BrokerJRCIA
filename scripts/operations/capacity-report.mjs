@@ -3,7 +3,8 @@ import { pathToFileURL } from 'node:url';
 
 const MAX_INPUT_BYTES = 65536;
 const MAX_SAFE = Number.MAX_SAFE_INTEGER;
-const COMPONENTS = new Set(['API', 'AUTH', 'MESSAGING', 'AUTOMATION', 'AUTOMATION_IO', 'SCHEDULER', 'LIFECYCLE', 'MIGRATOR', 'EVOLUTION']);
+const COMPONENTS = new Set(['API', 'AUTH', 'PLATFORM', 'MESSAGING', 'MESSAGING_AUTH', 'AUTOMATION', 'AUTOMATION_IO',
+  'SCHEDULER', 'LIFECYCLE', 'PARTNER_EVENTS', 'HISTORY_IMPORT', 'HISTORY_SOURCE', 'MIGRATOR', 'EVOLUTION']);
 const RESOURCE_FIELDS = ['cpuCores', 'ramBytes', 'diskBytes'];
 const WORKLOAD_FIELDS = ['organizations', 'connections', 'monthlyConversations', 'messagesPerConversation', 'daysPerMonth', 'peakMultiplier', 'mediaFraction', 'meanMediaBytes', 'retentionDays'];
 const STATIC_ERRORS = new Set(['CAPACITY_INVALID_INPUT', 'CAPACITY_ESTIMATE_OVERFLOW', 'CAPACITY_USAGE', 'CAPACITY_INPUT_UNREADABLE', 'CAPACITY_INPUT_TOO_LARGE']);
@@ -53,11 +54,12 @@ function validate(input) {
     if (!Array.isArray(p.components) || p.components.length < 1 || p.components.length > COMPONENTS.size) fail();
     const seen = new Set();
     for (const component of p.components) {
-      strictObject(component, ['name', 'replicas', 'maxPerReplica']);
+      strictObject(component, ['name', 'replicas', 'maxPerReplica', 'rolloutReplicas'], ['name', 'replicas', 'maxPerReplica']);
       if (!COMPONENTS.has(component.name) || seen.has(component.name)) fail();
       seen.add(component.name);
       number(component.replicas, 1, 10000, true);
       number(component.maxPerReplica, 1, 1000000, true);
+      if (Object.hasOwn(component, 'rolloutReplicas')) number(component.rolloutReplicas, 0, 10000, true);
     }
   }
 }
@@ -105,13 +107,17 @@ export function buildCapacityReport(input) {
   if (Object.hasOwn(input, 'pools')) {
     const p = input.pools;
     const configuredConnections = p.components.reduce((total, component) => safe(total + safe(component.replicas * component.maxPerReplica)), 0);
+    const hasRollout = p.components.some(component => Object.hasOwn(component, 'rolloutReplicas'));
+    const rolloutConnections = p.components.reduce((total, component) => safe(total + safe((component.rolloutReplicas ?? 0) * component.maxPerReplica)), 0);
+    const worstCaseConnections = safe(configuredConnections + rolloutConnections);
     const availableConnections = p.maxConnections - p.reservedConnections;
-    const headroomConnections = availableConnections - configuredConnections;
+    const headroomConnections = availableConnections - worstCaseConnections;
     sqlBudget = { configuredConnections, availableConnections, headroomConnections,
+      ...(hasRollout ? { rolloutConnections, worstCaseConnections } : {}),
       withinConfiguredBudget: headroomConnections >= 0, source: 'OPERATOR_INPUT', kind: 'DERIVED_PLANNING' };
     observed.pools = {
       ...observations(p, ['maxConnections', 'reservedConnections']),
-      components: p.components.map(component => ({ name: component.name, ...observations(component, ['replicas', 'maxPerReplica']) })),
+      components: p.components.map(component => ({ name: component.name, ...observations(component, ['replicas', 'maxPerReplica', 'rolloutReplicas']) })),
     };
   }
   return {

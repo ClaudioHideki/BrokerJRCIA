@@ -1,4 +1,6 @@
 import {lockAttendanceChannel} from '../attendance/repository.js';
+import {admitOriginReceipt,assertOriginFactPersisted,type OriginReceiptInput} from './origin-receipt.js';
+import {persistConnectionFact} from './qr-connection-order.js';
 import {persistQrContactEvent} from './qr-contact-persistence.js';
 import type {EvolutionFleetRuntime,EngineSnapshot} from '../evolution-fleet/runtime.js';
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
@@ -169,6 +171,7 @@ export function createQrMessagingService(options: QrServiceOptions) {
       channelId: string,
       authorization: string | undefined,
       payload: unknown,
+      originReceipt?: OriginReceiptInput,
     ) {
       const binding = await options.resolveChannel(channelId);
       if (!binding) throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
@@ -188,7 +191,14 @@ export function createQrMessagingService(options: QrServiceOptions) {
         !timingSafeEqual(expected, received)
       )
         throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
-      await options.transact(binding.organizationId, async (tx) => {
+      const receiptStatus = await options.transact(binding.organizationId, async (tx) => {
+        const envelope=payload&&typeof payload==='object'?payload as Record<string,unknown>:{};
+        // Fleet authority asserts take an instance SHARE lock too. Serialize connection facts first,
+        // after channel-token authentication but before any helper can acquire that shared lock.
+        if (String(envelope.event).toLowerCase().replace(/_/gu,'.') === 'connection.update') {
+          await tx.query(`SELECT id FROM instances WHERE organization_id=$1 AND id=$2 FOR UPDATE`,
+            [binding.organizationId, binding.instanceId]);
+        }
         await authority?.assert(tx);
         if(authority?.snapshot)await options.fleet!.assert(authority.snapshot,tx);
         const channel = await repository.findChannel(
@@ -204,10 +214,30 @@ export function createQrMessagingService(options: QrServiceOptions) {
         ).rows[0];
         if (!channel || !row || channel.instanceId !== binding.instanceId)
           throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
-        const envelope=payload&&typeof payload==='object'?payload as Record<string,unknown>:{};
         const historical=String(envelope.event).toLowerCase().replace(/_/gu,'.')==='messages.set';
         let events=historical?normalizeQrHistoryEvent(payload,row.upstream_instance_key):normalizeQrEvent(payload,row.upstream_instance_key);
         if(authority?.reconciliationOnly&&events.some(event=>!['status','group-status'].includes(event.kind)))throw error('EVOLUTION_ENGINE_DISABLED',409);
+        // Receipt and message/projection effects are committed together. A duplicate does not rerun bots or observers.
+        if(originReceipt){
+          // Match lifecycle's instance-before-channel order before the receipt trigger takes SHARE.
+          // Outgoing effects need NO KEY UPDATE; acquiring it here avoids a concurrent lock upgrade.
+          await lockAttendanceChannel(tx,binding.organizationId,channelId);
+          const receipt=await admitOriginReceipt(tx,{organizationId:binding.organizationId,channelId,instanceId:binding.instanceId,
+            bindingFingerprint:bindingFingerprint(authority?.snapshot)},originReceipt,payload);
+          if(receipt==='duplicate')return receipt;
+        }
+        // A stale connection must never reach identity, group or attendance observers.
+        // Take the instance lock before lockAttendanceChannel takes its instance SHARE.
+        const orderedEvents: typeof events = [];
+        for (const event of events) {
+          if (event.kind === 'connection' && !await persistConnectionFact(tx, {
+            organizationId: binding.organizationId, instanceId: binding.instanceId,
+            fingerprint: bindingFingerprint(authority?.snapshot), state: event.state,
+            ...(event.observedAt ? { observedAt: event.observedAt } : {}),
+          })) continue;
+          orderedEvents.push(event);
+        }
+        events = orderedEvents;
         const ownerPhone=qrPhone(envelope.sender);
         // Acquire the exclusive lock before any per-message read lock in a mixed batch.
         // Otherwise two incoming/outgoing batches could both try to upgrade a SHARE lock.
@@ -239,10 +269,6 @@ export function createQrMessagingService(options: QrServiceOptions) {
           if (event.kind === "connection") {
             await options.groups?.observeConnection(tx,binding.organizationId,channelId,{connected:event.state==='CONNECTED',phone:event.identity??null});
             await options.identity?.observe(tx, binding.organizationId, channelId, { connected: event.state === 'CONNECTED', phone: event.identity ?? null });
-            await tx.query(
-              "UPDATE instances SET status=$3,updated_at=now() WHERE organization_id=$1 AND id=$2 AND status NOT IN ('PROVISIONING','PROVISIONING_FAILED')",
-              [binding.organizationId, binding.instanceId, event.state],
-            );
             continue;
           }
           if (event.kind === "status") {
@@ -256,8 +282,11 @@ export function createQrMessagingService(options: QrServiceOptions) {
           }
           if(event.kind==='identity-pending')throw error('QR_IDENTITY_UNEXPECTED');
           await persistQrContactEvent(tx,channel,event);
+          if(originReceipt)await assertOriginFactPersisted(tx,{organizationId:binding.organizationId,channelId},event);
         }
+        return 'accepted' as const;
       });
+      if(originReceipt)return{status:receiptStatus,sourceEventId:originReceipt.sourceEventId,durablyAccepted:true as const};
     },
   };
 }

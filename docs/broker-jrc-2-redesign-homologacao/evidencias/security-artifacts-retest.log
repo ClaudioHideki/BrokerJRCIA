@@ -1,0 +1,12 @@
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+warning: in the working copy of 'apps/api/src/app.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/security/phase-1-increment-2/relatorio-auditoria-seguranca.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/app.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/api/openapi.json', LF will be replaced by CRLF the next time Git touches it
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  09:56:59
+   Duration  96.85s (transform 461ms, setup 981ms, import 711ms, tests 94.40s, environment 0ms)

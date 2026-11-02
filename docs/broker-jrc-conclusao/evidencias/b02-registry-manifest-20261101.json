@@ -1,0 +1,176 @@
+{
+  "checkedAt": "2026-11-01T15:56:14.978Z",
+  "source": "Docker Hub public Registry API; no engine or deployment accessed",
+  "repository": "evoapicloud/evolution-api",
+  "requestedDigest": "sha256:1bd8afc4a6cf48822e6cf02469aeae7bd35a12a6b616eacd1291926307f4d339",
+  "resolvedDigest": "sha256:1bd8afc4a6cf48822e6cf02469aeae7bd35a12a6b616eacd1291926307f4d339",
+  "computedIndexDigest": "sha256:1bd8afc4a6cf48822e6cf02469aeae7bd35a12a6b616eacd1291926307f4d339",
+  "integrity": "Every fetched manifest/config/attestation blob SHA256 verified against its content address; no signature issuer verification and no binary rebuild",
+  "mediaType": "application/vnd.oci.image.index.v1+json",
+  "images": [
+    {
+      "manifestDigest": "sha256:456b4104b0ddffbb092d6b3c0560a4ae86fc3e014e885b882aca4b1b371dfc81",
+      "platform": {
+        "architecture": "amd64",
+        "os": "linux"
+      },
+      "configDigest": "sha256:385a3c4bedf42c66b46b43d06aae8712620144a84aa3b2c831b30c68435ab27c",
+      "created": "2025-12-05T14:31:05.098364491Z",
+      "labels": {
+        "org.opencontainers.image.created": "2025-12-05T14:29:36.565Z",
+        "org.opencontainers.image.description": "Evolution API is an open-source WhatsApp integration API",
+        "org.opencontainers.image.licenses": "NOASSERTION",
+        "org.opencontainers.image.revision": "cd800f2976e1e5b682fbf86a01ee4d85ae61f370",
+        "org.opencontainers.image.source": "https://github.com/EvolutionAPI/evolution-api",
+        "org.opencontainers.image.title": "evolution-api",
+        "org.opencontainers.image.url": "https://github.com/EvolutionAPI/evolution-api",
+        "org.opencontainers.image.version": "v2.3.7"
+      }
+    },
+    {
+      "manifestDigest": "sha256:0e5d84f45b390e1d659500c9a98bfa2a53be28a341fbc0864966b77485f2a0c5",
+      "platform": {
+        "architecture": "arm64",
+        "os": "linux"
+      },
+      "configDigest": "sha256:5cf854f2eb3af149ed87841c2c882d8eecff68d278aa87e765e88f7541a36409",
+      "created": "2025-12-05T14:36:53.317996276Z",
+      "labels": {
+        "org.opencontainers.image.created": "2025-12-05T14:29:36.565Z",
+        "org.opencontainers.image.description": "Evolution API is an open-source WhatsApp integration API",
+        "org.opencontainers.image.licenses": "NOASSERTION",
+        "org.opencontainers.image.revision": "cd800f2976e1e5b682fbf86a01ee4d85ae61f370",
+        "org.opencontainers.image.source": "https://github.com/EvolutionAPI/evolution-api",
+        "org.opencontainers.image.title": "evolution-api",
+        "org.opencontainers.image.url": "https://github.com/EvolutionAPI/evolution-api",
+        "org.opencontainers.image.version": "v2.3.7"
+      }
+    },
+    {
+      "manifestDigest": "sha256:2871365c6e2bf554b26309412d06ec866693e196a15e9f70b96e267765a28ddb",
+      "platform": {
+        "architecture": "unknown",
+        "os": "unknown"
+      },
+      "configDigest": "sha256:9358d7f37bd508c8f64806631fc19242983e605db33146aef038ee0fbacd51fa",
+      "labels": {}
+    },
+    {
+      "manifestDigest": "sha256:937e53cfd799181da50c29489b3651e5b36c3e110feb946808706b9a74c762e2",
+      "platform": {
+        "architecture": "unknown",
+        "os": "unknown"
+      },
+      "configDigest": "sha256:b03dbc99a3b85d4b9d2936831df87e25e16f44fad1188e643df9292cbbdc5fed",
+      "labels": {}
+    }
+  ],
+  "attestations": [
+    {
+      "manifestDigest": "sha256:2871365c6e2bf554b26309412d06ec866693e196a15e9f70b96e267765a28ddb",
+      "layerDigest": "sha256:f0c647a2cf339c8ec36868dc3e6f1adb1246d28e4e37ab9b9c839b35794b5c96",
+      "type": "https://in-toto.io/Statement/v0.1",
+      "predicateType": "https://slsa.dev/provenance/v0.2",
+      "subject": [
+        {
+          "name": "pkg:docker/evoapicloud/evolution-api@v2.3.7?platform=linux%2Famd64",
+          "digest": {
+            "sha256": "456b4104b0ddffbb092d6b3c0560a4ae86fc3e014e885b882aca4b1b371dfc81"
+          }
+        },
+        {
+          "name": "pkg:docker/evoapicloud/evolution-api@latest?platform=linux%2Famd64",
+          "digest": {
+            "sha256": "456b4104b0ddffbb092d6b3c0560a4ae86fc3e014e885b882aca4b1b371dfc81"
+          }
+        }
+      ],
+      "predicateKeys": [
+        "builder",
+        "buildType",
+        "materials",
+        "invocation",
+        "buildConfig",
+        "metadata"
+      ],
+      "configSource": {
+        "uri": "https://github.com/EvolutionAPI/evolution-api.git#cd800f2976e1e5b682fbf86a01ee4d85ae61f370",
+        "digest": {
+          "sha1": "cd800f2976e1e5b682fbf86a01ee4d85ae61f370"
+        },
+        "entryPoint": "Dockerfile"
+      },
+      "materials": [
+        {
+          "uri": "pkg:docker/node@24-alpine?platform=linux%2Famd64",
+          "digest": {
+            "sha256": "682368d8253e0c3364b803956085c456a612d738bd635926d73fa24db3ce53d7"
+          }
+        },
+        {
+          "uri": "https://github.com/EvolutionAPI/evolution-api.git#cd800f2976e1e5b682fbf86a01ee4d85ae61f370",
+          "digest": {
+            "sha1": "cd800f2976e1e5b682fbf86a01ee4d85ae61f370"
+          }
+        }
+      ],
+      "buildType": "https://mobyproject.org/buildkit@v1",
+      "builder": {
+        "id": "https://github.com/EvolutionAPI/evolution-api/actions/runs/19966038150/attempts/1"
+      }
+    },
+    {
+      "manifestDigest": "sha256:937e53cfd799181da50c29489b3651e5b36c3e110feb946808706b9a74c762e2",
+      "layerDigest": "sha256:25ce75d6a1b56eb04807b17fbd2efd5ae45efd6071f3e9ec74dca27743589733",
+      "type": "https://in-toto.io/Statement/v0.1",
+      "predicateType": "https://slsa.dev/provenance/v0.2",
+      "subject": [
+        {
+          "name": "pkg:docker/evoapicloud/evolution-api@v2.3.7?platform=linux%2Farm64",
+          "digest": {
+            "sha256": "0e5d84f45b390e1d659500c9a98bfa2a53be28a341fbc0864966b77485f2a0c5"
+          }
+        },
+        {
+          "name": "pkg:docker/evoapicloud/evolution-api@latest?platform=linux%2Farm64",
+          "digest": {
+            "sha256": "0e5d84f45b390e1d659500c9a98bfa2a53be28a341fbc0864966b77485f2a0c5"
+          }
+        }
+      ],
+      "predicateKeys": [
+        "builder",
+        "buildType",
+        "materials",
+        "invocation",
+        "buildConfig",
+        "metadata"
+      ],
+      "configSource": {
+        "uri": "https://github.com/EvolutionAPI/evolution-api.git#cd800f2976e1e5b682fbf86a01ee4d85ae61f370",
+        "digest": {
+          "sha1": "cd800f2976e1e5b682fbf86a01ee4d85ae61f370"
+        },
+        "entryPoint": "Dockerfile"
+      },
+      "materials": [
+        {
+          "uri": "pkg:docker/node@24-alpine?platform=linux%2Farm64",
+          "digest": {
+            "sha256": "682368d8253e0c3364b803956085c456a612d738bd635926d73fa24db3ce53d7"
+          }
+        },
+        {
+          "uri": "https://github.com/EvolutionAPI/evolution-api.git#cd800f2976e1e5b682fbf86a01ee4d85ae61f370",
+          "digest": {
+            "sha1": "cd800f2976e1e5b682fbf86a01ee4d85ae61f370"
+          }
+        }
+      ],
+      "buildType": "https://mobyproject.org/buildkit@v1",
+      "builder": {
+        "id": "https://github.com/EvolutionAPI/evolution-api/actions/runs/19966038150/attempts/1"
+      }
+    }
+  ]
+}

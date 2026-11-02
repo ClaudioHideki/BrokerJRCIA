@@ -1,0 +1,49 @@
+.jrc-shell .shell-skip-link {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 60;
+  padding: 0.75rem 1rem;
+  color: var(--jrc-heading);
+  background: var(--jrc-surface);
+  border: 2px solid var(--jrc-focus);
+  border-radius: var(--jrc-radius-md);
+  transform: translateY(-160%);
+}
+.jrc-shell .shell-skip-link:focus { transform: translateY(0); }
+.jrc-shell .shell-drawer-close {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+  font: inherit;
+  color: var(--jrc-heading);
+  background: var(--jrc-surface);
+  border: 1px solid var(--jrc-border);
+  border-radius: var(--jrc-radius-md);
+  cursor: pointer;
+}
+.jrc-shell .shell-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  border: 0;
+  background: var(--jrc-backdrop);
+}
+.jrc-shell .shell-drawer-close:focus-visible,
+.jrc-shell .page-content:focus-visible { outline: 2px solid var(--jrc-focus); outline-offset: -2px; }
+.jrc-shell .sidebar-note strong,
+.jrc-shell .admin-topbar-context,
+.jrc-shell .identity-summary { overflow-wrap: anywhere; min-width: 0; }
+@media (max-width: 760px) {
+  .console-shell.jrc-shell .sidebar { width: min(18rem, 86vw); height: 100dvh; }
+  .jrc-shell .sidebar nav a { min-height: 44px; }
+  .jrc-shell .navigation-group-toggle { min-height: 44px; }
+  .jrc-shell .menu-button { min-width: 44px; min-height: 44px; }
+}

@@ -1,0 +1,77 @@
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+ ❯ apps/api/tests/unit/observability.test.ts (9 tests | 3 failed) 26ms
+     × marks active Chatwoot health UNKNOWN when a READY binding has not been observed 16ms
+     × exposes disabled binding diagnostics and retained backlog separately from active Chatwoot health 2ms
+     × does not report unavailable disabled binding metrics as a healthy zero 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/api/tests/unit/observability.test.ts > operational observability > marks active Chatwoot health UNKNOWN when a READY binding has not been observed
+AssertionError: expected { key: 'CHATWOOT', …(6) } to match object { state: 'UNKNOWN', …(2) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "code": "CHATWOOT_BINDING_NOT_OBSERVED",
++   "code": "CHATWOOT_DESTINATION_READY",
+    "metric": 1,
+-   "state": "UNKNOWN",
++   "state": "UP",
+  }
+
+ ❯ apps/api/tests/unit/observability.test.ts:8:63
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  apps/api/tests/unit/observability.test.ts > operational observability > exposes disabled binding diagnostics and retained backlog separately from active Chatwoot health
+AssertionError: expected { key: 'CHATWOOT', …(6) } to match object { state: 'UP', metric: 1, …(3) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "metric": 1,
+-   "scope": "READY_BINDINGS",
+    "state": "UP",
+-   "timeWindow": "CURRENT_STATE",
+    "unit": "destinations",
+  }
+
+ ❯ apps/api/tests/unit/observability.test.ts:13:63
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  apps/api/tests/unit/observability.test.ts > operational observability > does not report unavailable disabled binding metrics as a healthy zero
+AssertionError: expected undefined to match object { state: 'UNKNOWN', …(1) }
+
+- Expected:
+{
+  "code": "DISABLED_BINDING_METRIC_UNAVAILABLE",
+  "state": "UNKNOWN",
+}
+
++ Received:
+undefined
+
+ ❯ apps/api/tests/unit/observability.test.ts:26:19
+     24|   const health=await createObservabilityService({repository,transact:a…
+     25|   const backlog=health.components.find(item=>item.key==='DISABLED_INTE…
+     26|   expect(backlog).toMatchObject({state:'UNKNOWN',code:'DISABLED_BINDIN…
+       |                   ^
+     27|   expect(backlog).not.toHaveProperty('metric');
+     28|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 6 passed (9)
+   Start at  12:44:44
+   Duration  1.13s (transform 120ms, setup 572ms, import 78ms, tests 26ms, environment 0ms)

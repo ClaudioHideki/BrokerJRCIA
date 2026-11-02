@@ -2,27 +2,58 @@
 
 O consumidor recebe a origem HTTPS do Broker e uma chave exclusiva da organização.
 Não é necessário fornecer URL, Account ID ou token do Chatwoot para emitir a chave,
-criar uma instância QR, ativar seu canal, consultar ou enfileirar texto individual.
+criar uma instância QR, ativar seu canal, consultar ou enfileirar texto e anexos individuais.
 O tenant é inferido da chave. Nunca envie `organizationId` para escolher outra empresa.
 
 ## Escopo desta entrega
 
 * Conexão: listar, criar, parear, consultar e desconectar instâncias.
-* Mensageria do parceiro: ativar canal QR, ler canais/conversas/mensagens e enviar texto individual.
+* Mensageria do parceiro: ativar canal QR, ler canais/conversas/mensagens, carregar anexos privados e enviar texto ou mídia individual por referência.
 * Recebimento: eventos persistidos de mensagem/estado/conexão; polling e webhook HTTPS assinado.
 * Portal público: `/documentation/`, contratos OpenAPI filtrados e consultas Postman sem credenciais.
 * Chaves: escopos explícitos, prazo de validade, revogação e revalidação antes do despacho de mensagens.
 
-Este perfil de envio permite baixar anexos privados com `messaging:read`, mas **não inclui envio de mídia, grupos, templates Meta ou gestão de Flows**.
-Essas funções têm caminhos existentes com outros contratos/permissões e não foram
+O download privado exige `messaging:read`. Upload e consulta de metadados exigem
+`media:upload`; envio por referência exige `messaging:send` e `media:send` juntos.
+Chaves antigas não recebem os novos escopos automaticamente. O perfil genérico
+**não inclui grupos, templates Meta ou gestão de Flows**. Essas funções têm
+caminhos existentes com outros contratos/permissões e não foram
 convertidas em acesso genérico nesta entrega. A integração direta Chatwoot continua
 opcional e usa sua própria credencial vinculada à Account remota.
+
+## Vínculo direto e primeira identidade QR
+
+O controle usa a origem HTTPS aprovada, Account e revisão vinculadas à chave de
+controle; consultar `/control/context` e `/control/resources`. A mesma credencial
+da empresa atende seus vínculos autorizados, sem emissão por caixa. Isso é
+separado de criar uma instância com a chave genérica e de sincronizar o catálogo
+local do host. Flow mantém sua credencial e contrato próprios.
+
+Somente um vínculo BAILEYS **novo**, criado com intenção autenticada de
+administrador/`chatwoot:manage`, é elegível à matrícula automática da primeira
+identidade. A criação pode concluir a matrícula se a instância já estiver
+conectada. Para QR novo, o POST administrativo de `pair` arma uma janela de até
+dois minutos, limitada pelo desafio e pelo prazo de criação de 24 horas. Replays
+idempotentes não ampliam o prazo. Contexto, autoridade, primeira observação válida,
+revisão, inbox API, callback e segredo são conferidos novamente antes da matrícula.
+
+GET nunca aprova identidade. Vínculos legados, prazo expirado e troca de número
+mantêm confirmação administrativa da `observedRevision` atual. Revogação, logout
+ou mudança de contexto/identidade bloqueiam a intenção. Um novo POST administrativo
+pode rearmar somente enquanto ainda elegível; identidade aprovada nunca é trocada
+automaticamente. Meta segue seu onboarding próprio.
+
+`SUCCEEDED` do onboarding e `READY` do vínculo representam configuração;
+`CONNECTED` é sessão. Consultar saúde e `campaign-transport.ready/reason` antes de
+considerar capacidade de campanha. Matrícula não ativa bot, não certifica callback
+recebido/entrega nem instala/homologa o CCLX. Consulte o [runbook de controle](../operations/chatwoot-external.md).
 
 ## Provisão pela JRC
 
 1. Criar/selecionar a organização contratada no console do Broker.
 2. Em Chaves de API, emitir chave com `instances:read`, `instances:write`,
-   `messaging:read`, `messaging:send` e `webhooks:manage`. Para POC, usar validade de 15 dias.
+   `messaging:read`, `messaging:send` e `webhooks:manage`. Se a integração usar anexos,
+   selecionar também `media:upload` e `media:send`. Para POC, usar validade de 15 dias.
 3. Entregar por canal privado a origem e a chave. Não colocar a chave em URL,
    repositório, pacote de documentação, print ou frontend público do CCLX.
 4. O backend do CCLX guarda a chave e atende seu próprio frontend com a sessão e
@@ -44,7 +75,12 @@ Consulte schemas e exemplos reais no Swagger; IDs abaixo são os retornados pela
 4. `POST /v1/messaging/instances/{id}/partner-activate` com `{}` e chave idempotente.
    Exige `instances:write` **e** `messaging:send`. Guardar `response.id` como `channelId`; a resposta do canal é um objeto plano.
 5. `POST /v1/partner-webhooks` com `{ "url": "https://seu-backend.example/hooks/jrc" }`
-   e uma chave idempotente. Guardar o `signingSecret` no backend consumidor.
+   e uma chave idempotente. Sem `ackMode`, o modo é `HTTP`: qualquer 2xx, inclusive
+   204 sem corpo, confirma apenas transporte. Para exigir recibo de persistência,
+   acrescentar `"ackMode":"PERSISTENCE_RECEIPT_V1"` somente após implementar o
+   [contrato do recibo](partner-webhooks.md#negotiated-ack-semantics-migration-0079).
+   Guardar o `signingSecret` no backend consumidor. URL normalizada e modo fazem
+   parte da intenção idempotente; mesma chave com outro modo ou URL retorna 409.
 6. Enviar uma mensagem de um número de homologação ao número conectado; conferir
    `message.received` no webhook e/ou `GET /v1/partner-events?after=0&limit=50`.
 7. Responder com `POST /v1/messaging/channels/{id}/partner-text`, corpo
@@ -58,9 +94,40 @@ O envio do operador assume a conversa em modo humano antes de enfileirar. O Brok
 revalida a chave no despacho: expirada, revogada, apagada ou sem escopo bloqueia o
 envio pendente. A ativação do canal não publica nem ativa bots automaticamente.
 
+### Upload e envio de anexos
+
+1. `POST /v1/messaging/channels/{id}/media`: corpo binário `application/octet-stream`,
+   `Idempotency-Key` UUID e headers `X-JRC-Media-Mime`, `X-JRC-Media-Kind` e
+   `X-JRC-Media-Name` (nome codificado com `encodeURIComponent`). O arquivo deve ter
+   assinatura compatível com MIME/tipo; limite geral de 16 MiB, imagens até 5 MiB.
+2. Guardar `id`, `status` e o header `Location` da resposta 201. **Upload não envia
+   mensagem.** Se o estado for `STORING`, consultar
+   `GET /v1/messaging/channels/{id}/media/{mediaId}` até `READY` ou `FAILED`.
+   Resultado incerto deve ser reconciliado; não repetir com uma nova chave para
+   forçar outro PUT.
+3. Somente com `READY`, chamar `POST /v1/messaging/channels/{id}/partner-media` com
+   outra `Idempotency-Key` e `{ "conversationId": "UUID", "mediaId": "UUID", "caption": "Legenda" }`
+   ou `phoneNumber` E164 em lugar de `conversationId`, nunca ambos. Legenda opcional
+   de até 1.024 caracteres; nome, tipo e MIME vêm do arquivo validado.
+4. Acompanhar a mensagem retornada por consultas/eventos. 202 significa fila;
+   estados e recibos posteriores comprovam o avanço. Mesma intenção usa a mesma
+   chave; conteúdo/metadados divergentes retornam 409.
+
+O arquivo só pode ser usado no mesmo tenant/canal QR aberto. Uma chave atual com
+escopos suficientes pode usar a referência após rotação da chave que fez o upload;
+isso não amplia acesso entre canais ou empresas. Os exemplos executáveis estão
+na coleção `postman-media.json`, com upload e envio desabilitados por padrão.
+
 Receba webhooks como documentado em [partner-webhooks.md](partner-webhooks.md):
-HMAC com corpo bruto, janela de timestamp, deduplicação durável por `eventId` e
-resposta 2xx somente depois de persistir. Há tentativas e possível entrega fora de
+HMAC com corpo bruto, janela de timestamp e deduplicação durável por `eventId`.
+O receptor deve persistir antes de responder. Em `PERSISTENCE_RECEIPT_V1`, retornar
+2xx com os oito campos estritos do recibo, correlacionados à organização/evento
+do envelope e aos headers de endpoint/delivery; HTTP 204 não satisfaz esse modo.
+`GET /v1/partner-webhook-deliveries` informa `ackMode` e `persistenceReceipt`
+anulável. Essa evidência não significa processamento, entrega WhatsApp ou custódia
+de mídia. A coleção POC usa `webhook_ack_mode=HTTP` e permite optar pelo modo de
+recibo antes de criar o receptor; preserve o modo durante retries da mesma intenção.
+Há tentativas e possível entrega fora de
 ordem. Polling tem retenção de 30 dias; cursor expirado retorna 409 com metadados de
 recuperação. Revogar chave de API não revoga o endpoint: revogue ambos no encerramento.
 
@@ -112,12 +179,14 @@ base antiga de desenvolvimento e seu perfil adicional só inicia o worker de eve
    Nunca compartilhar essa chave com o CCLX. API e worker devem receber o mesmo valor.
 3. Aplicar migrações pelo serviço `migrate` do perfil `maintenance`, com banco ativo.
    As novas migrações são `0070_partner_events`, `0071_partner_messaging_authority`
-   e `0072_chatwoot_campaign_intents`.
+   `0072_chatwoot_campaign_intents`, `0073_chatwoot_initial_identity` e
+   `0074_partner_media`. A última preserva uploads legados e reforça o controle
+   de autoridade de mídia inclusive em workers anteriores.
 4. Habilitar `COMPOSE_PROFILES=partner-api` (preservando outros perfis já configurados)
    e fazer o Deploy normal com Run Command vazio. O novo `partner-events-worker`
    precisa de saída HTTPS; o Compose o liga às redes backend e egress.
 5. Conferir `operational-status.js`: READY, baseline
-   `0072_chatwoot_campaign_intents`, schema compatible. Isso é evidência estrutural,
+   `0074_partner_media`, schema compatible. Isso é evidência estrutural,
    não comprova entrega ao WhatsApp ou ao consumidor externo.
 6. Abrir `/documentation/` sem login, confirmar contratos e Authorize. O portal
    deixa escrita bloqueada até seleção explícita na aba; nenhuma requisição de

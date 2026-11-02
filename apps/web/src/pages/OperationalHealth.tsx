@@ -1,20 +1,54 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { Link } from 'react-router';
+import { jrcCssVariables, jrcDarkCssVariables } from '@jrc/ui';
 import { useApiClient } from '../auth/SessionProvider.js';
-import { PageHeading } from '../broker/components.js';
+import { healthDestination, healthGroups, healthGroup, healthGuidance, healthLabels, healthTitle } from '../operations/health-model.js';
+import { useOperationalHealth } from '../operations/useOperationalHealth.js';
+import '../operations/health.css';
 
-type State='UP'|'DEGRADED'|'DOWN'|'UNKNOWN';
-interface Component {key:string;label:string;state:State;code:string;observedAt:string|null;metric?:number;unit?:string}
-interface Health {observedAt:string;overall:State;components:Component[];alerts:Array<{code:string;component:string;state:State}>}
-const componentLabel=(key:string,fallback=key)=>key==='EVOLUTION'?'WhatsApp por QR Code':key==='META'?'WhatsApp oficial':fallback;
-const unit:Record<string,string>={seconds:'segundos',channels:'caixas',destinations:'destinos',items:'itens',executions:'execuções'};
-const label:Record<State,string>={UP:'Operacional',DEGRADED:'Degradado',DOWN:'Indisponível',UNKNOWN:'Não observado'};
-export function OperationalHealthPage(){const client=useApiClient(),[data,setData]=useState<Health|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
- const load=useCallback(async()=>{setLoading(true);setError('');try{setData(await client.request<Health>('/v1/operations/health'));}catch{setError('Não foi possível consultar a saúde operacional.');}finally{setLoading(false);}},[client]);
- useEffect(()=>{void load();const timer=setInterval(()=>void load(),30_000);return()=>clearInterval(timer);},[load]);
- return <section><PageHeading title="Saúde operacional" description="Estado atual de cada camada da plataforma."><button className="button button--secondary" onClick={()=>void load()} disabled={loading}>Atualizar</button></PageHeading>
-  {error?<p role="alert" className="flows-alert flows-alert--error">{error}</p>:null}
-  {data?<><div className={`health-overall health-state--${data.overall.toLowerCase()}`}><strong>{label[data.overall]}</strong><span>Observado em {new Date(data.observedAt).toLocaleString('pt-BR')}</span></div>
-   <div className="health-component-grid">{data.components.map(item=><article key={item.key}><header><h2>{componentLabel(item.key,item.label)}</h2><span className={`health-state health-state--${item.state.toLowerCase()}`}>{label[item.state]}</span></header>{item.metric!==undefined?<strong>{item.metric} <small>{unit[item.unit??'']??item.unit}</small></strong>:null}<span>{item.code.replaceAll('EVOLUTION','WHATSAPP_QR')}</span>{item.observedAt?<p>{new Date(item.observedAt).toLocaleString('pt-BR')}</p>:<p>Sem heartbeat registrado</p>}</article>)}</div>
-   <section className="panel"><div className="panel-heading"><h2>Alertas ativos</h2><span className="subtle-tag">{data.alerts.length}</span></div>{data.alerts.length?<table className="broker-table"><thead><tr><th>Componente</th><th>Estado</th><th>Código</th><th>Ação</th></tr></thead><tbody>{data.alerts.map(item=><tr key={`${item.component}:${item.code}`}><td>{componentLabel(item.component)}</td><td>{label[item.state]}</td><td><code>{item.code.replaceAll('EVOLUTION','WHATSAPP_QR')}</code></td><td>{item.component==='UNKNOWN_EXECUTIONS'?<Link to="/automation-executions">Reconciliar →</Link>:'Verificar configuração e logs por correlação'}</td></tr>)}</tbody></table>:<p>Nenhum alerta operacional ativo.</p>}</section></>:loading?<p>Consultando componentes…</p>:null}
- </section>}
+const units: Record<string, string> = { seconds: 'segundos', channels: 'caixas', destinations: 'destinos', items: 'itens', executions: 'execuções' };
+const formatDate = (value: string) => new Date(value).toLocaleString('pt-BR');
+
+export function OperationalHealthPage() {
+  const client = useApiClient();
+  const { data, loading, failed, refresh } = useOperationalHealth(client);
+  const [dark, setDark] = useState(false);
+  return <section className="ops-health" aria-label="Saúde operacional" data-theme={dark ? 'dark' : 'light'} style={{ ...jrcCssVariables, ...(dark ? jrcDarkCssVariables : {}) } as CSSProperties}>
+    <header className="ops-heading">
+      <div><p className="ops-eyebrow">OPERAÇÃO / DIAGNÓSTICO</p><h1>Saúde operacional</h1><p>Entenda os sinais da plataforma e o que precisa de atenção.</p></div>
+      <div className="ops-actions"><button type="button" aria-pressed={dark} onClick={() => setDark(!dark)}>Tema escuro nesta área</button><button type="button" disabled={loading} onClick={refresh}>{loading ? 'Consultando…' : 'Atualizar'}</button></div>
+    </header>
+    <p className="ops-caption">Empresa ativa no menu superior · atualização a cada 30 segundos · somente consulta</p>
+    {failed ? <p role="alert" className="ops-notice ops-state--down">{data ? 'Dados desatualizados: não foi possível atualizar. Abaixo está a última consulta bem-sucedida; ela não confirma o estado atual.' : 'Não foi possível consultar a saúde operacional. Tente atualizar novamente.'}</p> : null}
+    <div role="status" className="ops-caption">{loading ? data ? 'Atualizando a consulta…' : 'Consultando componentes…' : data ? 'Consulta concluída.' : ''}</div>
+    {data ? <>
+      <div className={`ops-summary ops-state--${failed ? 'unknown' : data.overall.toLowerCase()}`}>
+        <div><span className="ops-eyebrow">{failed ? 'ÚLTIMO RETRATO DISPONÍVEL' : 'RESUMO REPORTADO PELA API'}</span><h2>{failed ? 'Verificação desatualizada' : healthLabels[data.overall]}</h2><p>O resumo inclui pendências acumuladas e componentes ainda não verificados.</p></div>
+        <div><strong>{data.alerts.length} alertas reportados</strong><p>Observado em <time dateTime={data.observedAt}>{formatDate(data.observedAt)}</time></p></div>
+      </div>
+      {!data.components.length ? <p className="ops-notice">Nenhum componente informado pela API nesta consulta.</p> : healthGroups.map(group => {
+        const components = data.components.filter(item => healthGroup(item.key) === group.id);
+        return components.length ? <section key={group.id} aria-labelledby={`ops-${group.id}`} className="ops-group">
+          <h2 id={`ops-${group.id}`}>{group.title}</h2><p className="ops-description">{group.description}</p>
+          <div className="ops-grid">{components.map(item => {
+            const destination = healthDestination(item.key);
+            return <article key={item.key} className="ops-card">
+              <header><h3>{healthTitle(item.key, item.label)}</h3><span className={`ops-badge ops-state--${item.state.toLowerCase()}`}>{healthLabels[item.state]}</span></header>
+              {item.metric !== undefined ? <p className="ops-metric">{item.metric.toLocaleString('pt-BR')} <span>{units[item.unit ?? ''] ?? item.unit ?? 'registros'}</span></p> : null}
+              {item.unit === 'seconds' && item.metric !== undefined && item.metric < 0 ? <p>Horário do registro à frente da consulta. Verifique a sincronização dos relógios.</p> : null}
+              <p>{healthGuidance(item.key, item.code)}</p>
+              {destination ? <Link to={destination.to}>{destination.label}<span className="ops-sr-only">: {healthTitle(item.key, item.label)}</span> →</Link> : null}
+              <details><summary>Detalhes técnicos</summary><code>{item.code}</code><p>{item.observedAt ? `Observação: ${formatDate(item.observedAt)}` : 'Sem horário de observação informado.'}</p></details>
+            </article>;
+          })}</div>
+        </section> : null;
+      })}
+      <section className="ops-group" aria-labelledby="ops-alerts"><h2 id="ops-alerts">Alertas reportados</h2>
+        {data.alerts.length ? <ul className="ops-alert-list">{data.alerts.map((item, index) => {
+          const destination = healthDestination(item.component);
+          return <li key={`${item.component}:${item.code}:${index}`}><div><strong>{healthTitle(item.component, data.components.find(component => component.key === item.component)?.label)}</strong><span className={`ops-badge ops-state--${item.state.toLowerCase()}`}>{healthLabels[item.state]}</span><p>{healthGuidance(item.component, item.code)}</p><code>{item.code}</code></div>{destination ? <Link to={destination.to}>{destination.label} →</Link> : <span>Conferir processo e logs por correlação.</span>}</li>;
+        })}</ul> : <p>Nenhum alerta reportado nesta consulta.</p>}
+      </section>
+    </> : null}
+  </section>;
+}

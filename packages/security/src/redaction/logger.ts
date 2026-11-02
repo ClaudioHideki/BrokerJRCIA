@@ -16,6 +16,17 @@ const SENSITIVE_KEYS = new Set([
   'challenge',
   'cookie',
   'credential',
+  'content',
+  'data',
+  'message',
+  'text',
+  'sender',
+  'remotejid',
+  'participantjid',
+  'wuid',
+  'mediabase64',
+  'base64',
+  'xjrcsignature',
   'evolutionapikey',
   'jwt',
   'jwtsecret',
@@ -61,13 +72,11 @@ function errorForLog(error: unknown): Record<string, unknown> {
     statusCode?: unknown;
   };
   return {
-    type: typeof candidate.name === 'string'
-      ? candidate.name
-      : typeof candidate.type === 'string'
-        ? candidate.type
-        : 'Error',
-    ...(typeof candidate.code === 'string' ? { code: candidate.code } : {}),
-    ...(typeof candidate.statusCode === 'number' ? { statusCode: candidate.statusCode } : {}),
+    type: ['Error', 'TypeError', 'RangeError', 'SyntaxError', 'URIError', 'EvalError', 'AggregateError']
+      .find(name => name === candidate.name || name === candidate.type) ?? 'Error',
+    ...(typeof candidate.code === 'string' && /^[A-Z][A-Z0-9_]{0,95}$/u.test(candidate.code) ? { code: candidate.code } : {}),
+    ...(typeof candidate.statusCode === 'number' && Number.isInteger(candidate.statusCode)
+      && candidate.statusCode >= 100 && candidate.statusCode <= 599 ? { statusCode: candidate.statusCode } : {}),
   };
 }
 
@@ -127,10 +136,6 @@ function sanitizeForLog(value: unknown, seen: WeakSet<object>): unknown {
     return errorForLog(value);
   }
 
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeForLog(item, seen));
-  }
-
   if (value === null || typeof value !== 'object') {
     return value;
   }
@@ -139,6 +144,12 @@ function sanitizeForLog(value: unknown, seen: WeakSet<object>): unknown {
     return '[Circular]';
   }
   seen.add(value);
+
+  if (Array.isArray(value)) {
+    const sanitized = value.map((item) => sanitizeForLog(item, seen));
+    seen.delete(value);
+    return sanitized;
+  }
 
   const sanitized = Object.fromEntries(Object.entries(value).map(([key, entry]) => {
     const normalizedKey = normalizeKey(key);

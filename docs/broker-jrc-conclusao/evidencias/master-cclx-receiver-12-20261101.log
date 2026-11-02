@@ -1,0 +1,29 @@
+
+> @jrc/whatsapp-broker@0.0.0 test:cclx-receiver
+> node --test --test-concurrency=1 labs/cclx-postgres-simulator/receiver.test.mjs labs/cclx-postgres-simulator/benchmark.test.mjs
+
+✔ finite event benchmark refuses missing lab flag, excess count, excess concurrency and external options (2.7649ms)
+✔ three real PostgreSQL events reconcile response totals with persisted inbox and projections (362.8399ms)
+✔ requires an explicit test database, production refusal, loopback and disposable test name (1.9459ms)
+✔ HMAC authenticates raw bytes, event ID and timestamp before any durable acceptance (379.7557ms)
+✔ opening a receiver refuses missing lab permission and mismatched database/filesystem markers (358.2341ms)
+✔ inbox and projection roll back together; ACK follows durable commit visible from a separate connection (474.6771ms)
+✔ durable acceptance and media receipts override an asynchronous database commit default (374.9237ms)
+✔ concurrent duplicate requests have one logical effect; changed payload conflicts and tenant identity is separate (444.5529ms)
+✔ commit with lost ACK survives pool close/reopen and retry never creates a second projection (497.1423ms)
+✔ close immediately refuses new requests and drains a request admitted before closing (278.0521ms)
+✔ media cannot receipt absent inbox, interrupted download, excess bytes, MIME mismatch or wrong hash (315.4549ms)
+✔ file sync before receipt crash is recovered by adopting verified bytes; receipt ACK loss survives reopen (516.1032ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4638.4231
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice

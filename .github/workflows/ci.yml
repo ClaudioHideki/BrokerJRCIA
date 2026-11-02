@@ -3,6 +3,12 @@ name: JRC Broker CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      include_recovery:
+        description: 'Run backup and restore verification only with separate authorization'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,13 +22,13 @@ jobs:
       postgres:
         image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
         env:
-          POSTGRES_DB: postgres
-          POSTGRES_USER: postgres
+          POSTGRES_DB: lab_broker_ci
+          POSTGRES_USER: lab_broker_admin
           POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-cmd "pg_isready -U lab_broker_admin -d lab_broker_ci"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 20
@@ -38,8 +44,11 @@ jobs:
 
     env:
       CI: "true"
-      TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
-      TEST_DATABASE_ADMIN_URL: postgresql://postgres@127.0.0.1:5432/postgres
+      # Release scope excludes backup/dump/restore on every branch, including post-merge CI.
+      # Existing recovery verification remains available by an explicitly authorized manual run.
+      RECOVERY_ROUTINES_IN_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.include_recovery == true }}
+      TEST_DATABASE_URL: postgresql://lab_broker_admin@127.0.0.1:5432/lab_broker_ci
+      TEST_DATABASE_ADMIN_URL: postgresql://lab_broker_admin@127.0.0.1:5432/lab_broker_ci
       TEST_REDIS_URL: redis://127.0.0.1:6379
       SOURCE_DATE_EPOCH: "1788652800"
       AUDIT_FINGERPRINT_SECRET: ${{ secrets.AUDIT_FINGERPRINT_SECRET }}
@@ -105,7 +114,13 @@ jobs:
         run: npm run test:compiled
 
       - name: Run unit, contract, and HTTP tests
-        run: npm test -- --exclude tests/security-audit-artifacts.test.mjs
+        run: |
+          if [ "$RECOVERY_ROUTINES_IN_SCOPE" = "true" ]; then
+            npm test -- --exclude tests/security-audit-artifacts.test.mjs
+          else
+            echo 'Backup/dump/restore excluded by the approved candidate scope. Recovery is NOT validated by this run.' >> "$GITHUB_STEP_SUMMARY"
+            npm test -- --exclude tests/security-audit-artifacts.test.mjs --exclude tests/backup.test.mjs --exclude tests/recovery.test.mjs
+          fi
 
       - name: Verify PDF audit artifacts without competing test workers
         run: npm test -- tests/security-audit-artifacts.test.mjs --maxWorkers=1
@@ -114,10 +129,18 @@ jobs:
         run: npm run test:web
 
       - name: Run PostgreSQL and Redis integration tests
-        run: npm run test:integration
+        # Job-local service, no persistent volumes or production credentials.
+        env:
+          TEST_MEDIA_CUSTODY_EXCLUSIVE_CLUSTER: "1"
+          TEST_PARTNER_REPLAY_EXCLUSIVE_CLUSTER: "1"
+        run: npm run test:integration -- --maxWorkers=1
 
       - name: Verify private storage against the pinned real MinIO server
         run: npm run test:storage:ci
+      - name: Verify isolated origin journal and PostgreSQL receiver
+        run: npm run test:origin-journal && npm run test:cclx-receiver
+      - name: Verify explicit pool inventory and rollout budget
+        run: npm run test:capacity-budget
       - name: Run browser journeys against the real JRC API composition
         run: npm run test:e2e
 
@@ -133,6 +156,7 @@ jobs:
         run: npm run test:container
 
       - name: Exercise encrypted backup and isolated restore
+        if: ${{ env.RECOVERY_ROUTINES_IN_SCOPE == 'true' }}
         run: npm run test:restore-drill
 
       - name: Audit production dependency severity

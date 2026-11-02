@@ -1,0 +1,46 @@
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+{"level":30,"time":1793361791580,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"a08ab310-5b3d-4ccb-bdd7-2c2fff150fb9","req":{"id":"a08ab310-5b3d-4ccb-bdd7-2c2fff150fb9","method":"POST","url":"/v1/media-custody/receipts","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":30,"time":1793361791698,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"6cd19eb7-bef7-4470-bf57-62921bf06953","req":{"id":"6cd19eb7-bef7-4470-bf57-62921bf06953","method":"POST","url":"/v1/media-custody/receipts","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":30,"time":1793361791640,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"a08ab310-5b3d-4ccb-bdd7-2c2fff150fb9","res":{"statusCode":201},"correlationId":"a08ab310-5b3d-4ccb-bdd7-2c2fff150fb9","organizationId":"00000000-0000-4000-8000-000000000001","msg":"request completed"}
+{"level":30,"time":1793361791650,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"d4a27545-79b2-48bf-afdf-5f2b32e6092f","req":{"id":"d4a27545-79b2-48bf-afdf-5f2b32e6092f","method":"GET","url":"/v1/media-custody/receipts/00000000-0000-4000-8000-000000000001","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":30,"time":1793361791652,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"d4a27545-79b2-48bf-afdf-5f2b32e6092f","res":{"statusCode":200},"correlationId":"d4a27545-79b2-48bf-afdf-5f2b32e6092f","organizationId":"00000000-0000-4000-8000-000000000001","msg":"request completed"}
+{"level":30,"time":1793361791653,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"d2f6ca3a-03c1-41e0-b7c3-dcaa56880bea","req":{"id":"d2f6ca3a-03c1-41e0-b7c3-dcaa56880bea","method":"GET","url":"/v1/media-custody/receipts/00000000-0000-4000-8000-000000000001/retention","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":30,"time":1793361791655,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"d2f6ca3a-03c1-41e0-b7c3-dcaa56880bea","res":{"statusCode":200},"correlationId":"d2f6ca3a-03c1-41e0-b7c3-dcaa56880bea","organizationId":"00000000-0000-4000-8000-000000000001","msg":"request completed"}
+{"level":30,"time":1793361791785,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"6cd19eb7-bef7-4470-bf57-62921bf06953","res":{"statusCode":403},"correlationId":"6cd19eb7-bef7-4470-bf57-62921bf06953","organizationId":"00000000-0000-4000-8000-000000000001","msg":"request completed"}
+{"level":30,"time":1793361791850,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"c2236895-e214-468d-9a59-44c6cacb8d3e","req":{"id":"c2236895-e214-468d-9a59-44c6cacb8d3e","method":"POST","url":"/v1/media-custody/receipts","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":30,"time":1793361791860,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"c2236895-e214-468d-9a59-44c6cacb8d3e","res":{"statusCode":403},"correlationId":"c2236895-e214-468d-9a59-44c6cacb8d3e","organizationId":"00000000-0000-4000-8000-000000000001","msg":"request completed"}
+{"level":30,"time":1793361791869,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"4f5b6f08-104e-4b13-866f-be90e01dc212","req":{"id":"4f5b6f08-104e-4b13-866f-be90e01dc212","method":"POST","url":"/v1/media-custody/receipts","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":30,"time":1793361791915,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"4f5b6f08-104e-4b13-866f-be90e01dc212","res":{"statusCode":403},"correlationId":"4f5b6f08-104e-4b13-866f-be90e01dc212","organizationId":"00000000-0000-4000-8000-000000000001","msg":"request completed"}
+{"level":30,"time":1793361791995,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"a459aab0-cb17-4b79-b6a7-4c3185050359","req":{"id":"a459aab0-cb17-4b79-b6a7-4c3185050359","method":"POST","url":"/v1/media-custody/receipts","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":30,"time":1793361792013,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"a459aab0-cb17-4b79-b6a7-4c3185050359","res":{"statusCode":403},"correlationId":"a459aab0-cb17-4b79-b6a7-4c3185050359","organizationId":"00000000-0000-4000-8000-000000000001","msg":"request completed"}
+{"level":30,"time":1793361792015,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"c126aa62-79ba-4a65-9917-aaedbea2c0f7","req":{"id":"c126aa62-79ba-4a65-9917-aaedbea2c0f7","method":"POST","url":"/v1/media-custody/receipts","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":50,"time":1793361792022,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"c126aa62-79ba-4a65-9917-aaedbea2c0f7","err":{"type":"Error","code":"FST_ERR_VALIDATION","statusCode":400},"res":{"statusCode":200},"correlationId":"c126aa62-79ba-4a65-9917-aaedbea2c0f7","msg":"request failed"}
+{"level":30,"time":1793361792024,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"c126aa62-79ba-4a65-9917-aaedbea2c0f7","res":{"statusCode":400},"correlationId":"c126aa62-79ba-4a65-9917-aaedbea2c0f7","msg":"request completed"}
+{"level":30,"time":1793361792026,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"9bc8fc17-5f50-400a-9b37-ac5a55b9ec97","req":{"id":"9bc8fc17-5f50-400a-9b37-ac5a55b9ec97","method":"POST","url":"/v1/media-custody/receipts","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":50,"time":1793361792031,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"9bc8fc17-5f50-400a-9b37-ac5a55b9ec97","err":{"type":"Error","code":"FST_ERR_VALIDATION","statusCode":400},"res":{"statusCode":200},"correlationId":"9bc8fc17-5f50-400a-9b37-ac5a55b9ec97","msg":"request failed"}
+{"level":30,"time":1793361792031,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"9bc8fc17-5f50-400a-9b37-ac5a55b9ec97","res":{"statusCode":400},"correlationId":"9bc8fc17-5f50-400a-9b37-ac5a55b9ec97","msg":"request completed"}
+{"level":30,"time":1793361792034,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"091dc521-365e-4746-8528-185a3bf90750","req":{"id":"091dc521-365e-4746-8528-185a3bf90750","method":"POST","url":"/v1/media-custody/receipts","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":50,"time":1793361792036,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"091dc521-365e-4746-8528-185a3bf90750","err":{"type":"Error","code":"FST_ERR_VALIDATION","statusCode":400},"res":{"statusCode":200},"correlationId":"091dc521-365e-4746-8528-185a3bf90750","msg":"request failed"}
+{"level":30,"time":1793361792037,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"091dc521-365e-4746-8528-185a3bf90750","res":{"statusCode":400},"correlationId":"091dc521-365e-4746-8528-185a3bf90750","msg":"request completed"}
+{"level":30,"time":1793361792037,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"bba06381-7a37-425e-96df-5f9a7d978ff9","req":{"id":"bba06381-7a37-425e-96df-5f9a7d978ff9","method":"POST","url":"/v1/media-custody/receipts","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":50,"time":1793361792047,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"bba06381-7a37-425e-96df-5f9a7d978ff9","err":{"type":"Error","code":"FST_ERR_VALIDATION","statusCode":400},"res":{"statusCode":200},"correlationId":"bba06381-7a37-425e-96df-5f9a7d978ff9","msg":"request failed"}
+{"level":30,"time":1793361792047,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"bba06381-7a37-425e-96df-5f9a7d978ff9","res":{"statusCode":400},"correlationId":"bba06381-7a37-425e-96df-5f9a7d978ff9","msg":"request completed"}
+{"level":30,"time":1793361792048,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"3d6462d9-7a5c-470c-a44a-e6c1af6aedb0","req":{"id":"3d6462d9-7a5c-470c-a44a-e6c1af6aedb0","method":"POST","url":"/v1/media-custody/receipts","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":50,"time":1793361792049,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"3d6462d9-7a5c-470c-a44a-e6c1af6aedb0","err":{"type":"Error","code":"FST_ERR_VALIDATION","statusCode":400},"res":{"statusCode":200},"correlationId":"3d6462d9-7a5c-470c-a44a-e6c1af6aedb0","msg":"request failed"}
+{"level":30,"time":1793361792049,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"3d6462d9-7a5c-470c-a44a-e6c1af6aedb0","res":{"statusCode":400},"correlationId":"3d6462d9-7a5c-470c-a44a-e6c1af6aedb0","msg":"request completed"}
+{"level":30,"time":1793361792056,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"0404252c-bca2-4330-8e62-3f3e8e2366f1","req":{"id":"0404252c-bca2-4330-8e62-3f3e8e2366f1","method":"POST","url":"/v1/media-custody/receipts","remoteAddress":"127.0.0.1"},"msg":"request received"}
+{"level":50,"time":1793361792057,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"0404252c-bca2-4330-8e62-3f3e8e2366f1","err":{"type":"Error","code":"FST_ERR_VALIDATION","statusCode":400},"res":{"statusCode":200},"correlationId":"0404252c-bca2-4330-8e62-3f3e8e2366f1","msg":"request failed"}
+{"level":30,"time":1793361792057,"pid":10428,"hostname":"DESKTOP-H7OTE1G","reqId":"0404252c-bca2-4330-8e62-3f3e8e2366f1","res":{"statusCode":400},"correlationId":"0404252c-bca2-4330-8e62-3f3e8e2366f1","msg":"request completed"}
+
+ Test Files  14 passed (14)
+      Tests  173 passed (173)
+   Start at  09:02:18
+   Duration  65.68s (transform 61.63s, setup 11.34s, import 80.30s, tests 22.07s, environment 4.57s)
+
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice

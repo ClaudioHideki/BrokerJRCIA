@@ -173,3 +173,13 @@ export const jrcCssVariables = {
 } as const satisfies Record<`--jrc-${string}`, string>;
 
 export type JrcCssVariables = typeof jrcCssVariables;
+
+// Opt-in dark surfaces: consumers apply these inside a scoped container.
+export const jrcDarkCssVariables = {
+  '--jrc-heading': '#E4F0F5', '--jrc-text': '#E4F0F5', '--jrc-text-muted': '#B7CBD5',
+  '--jrc-surface': '#152D3A', '--jrc-surface-muted': '#0D202B', '--jrc-border': '#496572', '--jrc-focus': '#72D5FF',
+  '--jrc-state-success-text': '#A2F0C4', '--jrc-state-success-surface': '#123C30',
+  '--jrc-state-warning-text': '#FFE09A', '--jrc-state-warning-surface': '#46391C',
+  '--jrc-state-danger-text': '#FFC0B8', '--jrc-state-danger-surface': '#482A2A',
+  '--jrc-state-neutral-text': '#D5E3EC', '--jrc-state-neutral-surface': '#263E4D',
+} as const satisfies Partial<Record<keyof JrcCssVariables, string>>;

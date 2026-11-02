@@ -8,6 +8,29 @@ export interface CampaignIntent {
  remote_contact_id?:string; recipient_phone?:string; recipient_source_id?:string;
 }
 const object=(v:unknown):Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
+const positiveId=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>0;
+/** Same-inbox links can coexist. Only the canonical conversation GET selects its route. */
+export function canonicalCampaignRecipient(rawConversation:unknown,rawContact:unknown,
+ scope:{accountId:number;inboxId:number;conversationId:number},errorCode='CAMPAIGN_RECIPIENT_NOT_PROVEN'){
+ const conversation=object(rawConversation),contact=object(rawContact),sender=object(object(conversation.meta).sender);
+ const phone=sender.phone_number,contactId=sender.id;
+ if(conversation.id!==scope.conversationId||conversation.account_id!==scope.accountId||conversation.inbox_id!==scope.inboxId||
+  !positiveId(contactId)||typeof phone!=='string'||!/^\+[1-9]\d{7,14}$/.test(phone)||contact.id!==contactId||contact.phone_number!==phone)
+  throw new IntegrationError(errorCode,409);
+ let links=(Array.isArray(contact.contact_inboxes)?contact.contact_inboxes:[]).map(object).filter(link=>object(link.inbox).id===scope.inboxId);
+ // Explicit null/malformed evidence cannot silently become the legacy fallback.
+ if(conversation.contact_inbox!==undefined){
+  const route=object(conversation.contact_inbox);
+  if(!positiveId(route.id)||route.contact_id!==contactId||route.inbox_id!==scope.inboxId||
+   typeof route.source_id!=='string'||!route.source_id.length||route.source_id.length>255)
+   throw new IntegrationError(errorCode,409);
+  links=links.filter(link=>link.source_id===route.source_id);
+ }
+ const sourceId=links[0]?.source_id;
+ if(links.length!==1||typeof sourceId!=='string'||!sourceId.length||sourceId.length>255)
+  throw new IntegrationError(errorCode,409);
+ return {contactId,phone,sourceId};
+}
 /** Canonical API reads, never callback metadata alone, establish the message being authorized. */
 export function verifyCanonicalCampaignMessage(intent:CampaignIntent,raw:unknown,scope:{conversationId:number;messageId:number;inboxId:number},requireIntentReference=true){
  const m=object(raw),sender=object(m.sender),attrs=object(m.additional_attributes);

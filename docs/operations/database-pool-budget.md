@@ -15,6 +15,8 @@ Cada perfil aceita três variáveis: `<PERFIL>_DB_POOL_MAX`, `<PERFIL>_DB_POOL_C
 | AUTOMATION_IO_WORKER | IO de automações, role jrc_app | 4 | 5000 | 10000 |
 | SCHEDULER_WORKER | Scheduler, role jrc_app | 2 | 5000 | 10000 |
 | LIFECYCLE_WORKER | Lifecycle worker, role jrc_lifecycle | 2 | 5000 | 10000 |
+| PARTNER_EVENTS_WORKER | Entregas de webhook, role jrc_app | 2 | 5000 | 10000 |
+| HISTORY_IMPORT_WORKER | Importação histórica, role jrc_app | 2 | 5000 | 10000 |
 
 Os defaults explícitos preservam o runtime anterior: app/auth herdavam max 10, timeout de conexão desativado e idle 10000 do `pg-pool` instalado; os demais já configuravam max/timeout de conexão. Todos herdavam idle 10000. O pool do lifecycle na API já é o pool platform; não existe um segundo pool para somar nesse processo.
 
@@ -44,11 +46,19 @@ Broker pools = R_API × (API_APP + API_AUTH)
              + R_IO × AUTOMATION_IO_WORKER
              + R_SCHEDULER × SCHEDULER_WORKER
              + R_LIFECYCLE × LIFECYCLE_WORKER
+             + R_PARTNER × PARTNER_EVENTS_WORKER
+             + R_HISTORY × HISTORY_IMPORT_WORKER
 ```
 
 `R_API_PLATFORM` e `R_MESSAGING_CONTROL` contam apenas réplicas com o componente ativo. Use os valores configurados em cada grupo; réplicas com configurações diferentes exigem somas separadas. Somar apenas um DATABASE_URL ou dividir o orçamento por tenant não cobre os pools de autenticação/plataforma.
 
 O operador deve inventariar `max_connections`, conexões reservadas pelo PostgreSQL, limites por role, réplicas/rollout, migrações/comandos efêmeros, backups, monitoramento, outros serviços e margem de recuperação. Evolution ou outros bancos no mesmo servidor PostgreSQL também consomem esse orçamento. O total potencial de pools mais essas conexões/reservas deve caber no orçamento definido pelo operador. Nenhum teto global, reserva numérica ou capacidade de empresas/canais foi inferido neste corte.
+
+No incremento B13, o helper passa a incluir history import, mantendo seus defaults e teto anterior de 8 conexões. O runtime continua aceitando as mesmas variáveis de max; seus timeouts passam pelo mesmo validador. Fontes históricas externas têm pools próprios e também precisam ser somadas. Nenhuma quota ou max foi aumentado.
+
+O planejador offline `scripts/operations/capacity-report.mjs` aceita `PARTNER_EVENTS`, `HISTORY_IMPORT`, `HISTORY_SOURCE`, `PLATFORM` e `MESSAGING_AUTH`. Cada componente pode declarar `rolloutReplicas` adicionais (0..10000); nesse caso, o relatório soma as conexões transitórias antes de calcular a folga. Não passar DSNs, nomes livres, credenciais ou ENV ao arquivo de entrada. A lista continua declarada pelo operador, não é descoberta automática de todos os processos.
+
+Quotas de conexão/saídas/pendentes do tenant não são pools SQL nem benchmark. Os defaults comerciais permanecem intactos. API_APP/API_AUTH conservam por compatibilidade o timeout de aquisição zero; a decisão de adotar deadline finito deve considerar o SLO e ser configurada explicitamente no futuro, sem mudança silenciosa neste incremento.
 
 Comandos de bootstrap, criação de tenant/canal/admin, migração e operational-status permanecem com suas opções atuais e devem entrar no inventário se executados. Telemetria de espera/uso de pool, carga, distribuição e implantação permanecem em C1/C0 e posteriores.
 

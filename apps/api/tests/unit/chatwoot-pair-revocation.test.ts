@@ -42,6 +42,7 @@ it('does not release or cache a provider QR when its Chatwoot connection is disa
     auth: { revalidate: vi.fn(), delegate: vi.fn().mockReturnValue({ organizationId }) },
     instances: { connectInstance },
     health: { refresh: vi.fn(), enroll: vi.fn() },
+    chatwoot: { initialIdentity: undefined },
     pairActions,
   } as unknown as ChatwootControlOptions);
 

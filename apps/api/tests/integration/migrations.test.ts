@@ -423,6 +423,7 @@ describe('migrations PostgreSQL', () => {
       {policyname:'nico_takeover_tenant',roles:['jrc_app'],cmd:'ALL'},
       ...Array.from({length:3},()=>({policyname:'central_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'qr_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      {policyname:'qr_origin_tenant',roles:['jrc_app'],cmd:'ALL'},
       ...Array.from({length:3},()=>({policyname:'qr_identity_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'group_catalog_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:4},()=>({policyname:'group_events_tenant',roles:['jrc_app'],cmd:'ALL'})),
@@ -518,6 +519,7 @@ describe('migrations PostgreSQL', () => {
       { policyname: 'memberships_auth_read', roles: ['jrc_auth'], cmd: 'SELECT' },
       { policyname: 'memberships_migrator_integrity', roles: ['jrc_migrator'], cmd: 'ALL' },
       { policyname: 'memberships_tenant_isolation', roles: ['jrc_app'], cmd: 'ALL' },
+      { policyname: 'media_custody_tenant', roles: ['jrc_app'], cmd: 'ALL' },
       { policyname: 'messaging_bot_jobs_tenant_isolation', roles: ['jrc_app'], cmd: 'ALL' },
       { policyname: 'messaging_channels_tenant_isolation', roles: ['jrc_app'], cmd: 'ALL' },
       { policyname: 'messaging_contacts_tenant_isolation', roles: ['jrc_app'], cmd: 'ALL' },
@@ -529,6 +531,7 @@ describe('migrations PostgreSQL', () => {
       { policyname: 'organizations_auth_read', roles: ['jrc_auth'], cmd: 'SELECT' },
       { policyname: 'organizations_migrator_integrity', roles: ['jrc_migrator'], cmd: 'ALL' },
       { policyname: 'organizations_tenant_isolation', roles: ['jrc_app'], cmd: 'ALL' },
+      { policyname: 'partner_replay_tenant', roles: ['jrc_app'], cmd: 'ALL' },
       {
         policyname: 'provider_accounts_migrator_onboarding_insert',
         roles: ['jrc_migrator'],

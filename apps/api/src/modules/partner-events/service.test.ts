@@ -3,6 +3,17 @@ import { createPartnerEventService } from './service.js';
 import { createIntegrationSecrets } from '../integrations/secrets.js';
 const org='00000000-0000-4000-8000-000000000001';
 describe('partner event service',()=>{
+ it('persists the negotiated ACK mode and defaults omitted mode to HTTP',async()=>{
+  const stored:unknown[][]=[];const query=vi.fn(async(sql:string,params:unknown[]=[])=>({rows:sql.includes('tenant_is_active')?[{active:true}]:sql.includes('count(*)')?[{count:0}]:sql.includes('INSERT INTO')?(stored.push(params),[{id:params[1],url:params[2],ackMode:params[5],status:'ACTIVE',createdAt:new Date(),revokedAt:null}]):[]}));
+  const service=createPartnerEventService({transact:async(_org,work)=>work({query} as never),secrets:createIntegrationSecrets(Buffer.alloc(32,8).toString('base64'))});
+  expect((await service.create(org,{url:'https://partner.example/hook'},'legacy')).endpoint).toMatchObject({ackMode:'HTTP'});
+  expect((await service.create(org,{url:'https://partner.example/hook',ackMode:'PERSISTENCE_RECEIPT_V1'} as never,'receipt')).endpoint).toMatchObject({ackMode:'PERSISTENCE_RECEIPT_V1'});
+ });
+ it('rejects idempotent endpoint creation with a different ACK contract',async()=>{
+  const row={url:'https://partner.example/hook',ackMode:'HTTP',status:'ACTIVE'};const query=vi.fn(async(sql:string)=>({rows:sql.includes('tenant_is_active')?[{active:true}]:sql.includes('idempotency_key')?[row]:[]}));
+  const service=createPartnerEventService({transact:async(_org,work)=>work({query} as never),secrets:createIntegrationSecrets(Buffer.alloc(32,8).toString('base64'))});
+  await expect(service.create(org,{url:row.url,ackMode:'PERSISTENCE_RECEIPT_V1'} as never,'same-key')).rejects.toThrow('WEBHOOK_IDEMPOTENCY_CONFLICT');
+ });
  it('creates a distinct signing secret, encrypts it and returns it only at creation',async()=>{
   let stored:unknown[]=[];
   const query=vi.fn(async(sql:string,params:unknown[])=>{

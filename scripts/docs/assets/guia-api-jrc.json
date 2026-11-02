@@ -1,7 +1,10 @@
 {
-  "canonicalSha256": "7cdc229f7c0148043731b232309f4337a437309245572e351cf143b085fa1e2a",
-  "guideSha256": "ea97b864516a38aed70606c9721954e5bdb9830b9f721c19d58de75eb2f29e25",
-  "pdfSha256": "307f12fe35a5031d7edb4df843fa578f747ff5d3fe9689929b415dc80ad06cae",
-  "operationCount": 34,
-  "edition": "2026-10-22"
+  "canonicalSha256": "3207547b61ff60644f363e5b2a0ab4a24c6fc5a1ce366d5cd8dd25bbf7b63f31",
+  "guideSha256": "728be8df2df6f60b0f21fd497ae3b29b7e7c81da7e0b46e027b6de8b171b3c02",
+  "profilesSha256": "fe308d9acc0b227f70b37b50f01a53e6272db9e4cc4d46483c16bbf1e71d1b82",
+  "exporterSha256": "6b71cf00b50a2521d8b6063c982e88f4965f7eabf0e697fb591f856be9f5aa87",
+  "pdfGeneratorSha256": "eb5bbb3c272e85660046777d72ccfc52d5dac8e1b677a20d1dbdf132113fef56",
+  "pdfSha256": "4afe42529334c81103b54eba32e3eecd3c0f966bc563ce7efa3710c80cc824b0",
+  "operationCount": 37,
+  "edition": "2026-11-01"
 }

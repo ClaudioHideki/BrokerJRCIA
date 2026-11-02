@@ -1,0 +1,466 @@
+{
+  "schemaVersion": 2,
+  "updatedAt": "2026-11-02T16:42:32.858318+00:00",
+  "repository": "ClaudioHideki/BrokerJRCIA",
+  "branch": "codex/broker-jrc-2-redesign-homologacao-20261030",
+  "baselineCommit": "f79d4a6dea1d94c5c0f87c76e5dcbd8607513e11",
+  "commitStatus": "Candidate includes b7a6e19; schema gate correction and release-scope controls awaiting new SHA CI",
+  "status": "IMPLEMENTATION_INCREMENT; EXACT_SHA_CI_REQUIRED; GLOBAL_HOMOLOGATION_PARTIAL",
+  "historicalCheckpoint": "Previous local-only metadata is historical; publication/merge/deployment authorized by current 20261102 request after technical gates",
+  "pullRequest": {
+    "number": 6,
+    "draft": true,
+    "headShaAtLastRead": "b7a6e19c4f9a18a7a3c3141fc6bfefc492f3d923",
+    "base": "codex/broker-audit-fixes-20261029",
+    "baseSha": "d1b66a56fe6d4f9202969784301abdf61490db45",
+    "descriptionUpdate": "Reconcile stacked ancestry against main after current CI; no merge yet"
+  },
+  "lab2": {
+    "repository": "ClaudioHideki/jrc-conversas-lab2",
+    "branch": "codex/release-integrada-specs-20261102",
+    "baseline": "abc1f7c57f55a7d9871101cd5b70c8b93becc7ca",
+    "commit": "57efc6e14208ee67e72eb778f4b09d4c905da127",
+    "pushed": false,
+    "preexistingWorkflowEdit": "preserved in ab8f672b",
+    "requestSpecsAdded": 6,
+    "railsExecuted": true,
+    "realRubyClassesSyntheticPorts": {
+      "passed": 20,
+      "failed": 0
+    },
+    "commitStatus": "pending implementation overlay not committed"
+  },
+  "production": {
+    "currentStateVerified": "PARTIAL_READ_ONLY",
+    "accessBlock": null,
+    "deployed": false,
+    "migrated": false,
+    "credentialsChanged": false,
+    "realNumbersConnected": 0,
+    "messagesSent": 0,
+    "realUnknownReplayed": 0,
+    "backupDumpRestoreExecuted": false,
+    "engineOwnership": "UNPROVEN",
+    "apiImageObserved": "ghcr.io/claudiohideki/brokerjrcia-api@sha256:e2bba6518304ee5f792c6ee69177ddb2548a07023b7133c60f4b43390f94d8fb",
+    "lab2ShaObserved": "50f7f07d802829dd44a67547fabad3aa77f3d196"
+  },
+  "migration": {
+    "added": "0079_partner_persistence_receipts.sql",
+    "appliedOnlyTo": "exclusive local synthetic databases",
+    "rollback": "0078 API is incompatible with exact 0079 readiness/grants. Keep receipt ledger; use a 0079-compatible binary; no down migration.",
+    "lab2Added": "20261102090000_create_jrc_broker_webhook_obligations.rb",
+    "lab2Rollback": "Preserve pending ledger; do not roll back to a worker that ignores obligations. Schema.rb historical baseline kept; consolidate before release."
+  },
+  "increments": {
+    "ack": "VALIDADO_NO_RECORTE_LOCAL",
+    "mediaReceiver": "VALIDADO_NO_RECORTE_LOCAL",
+    "lab2Binding": "VALIDADO_CLASSES_REAIS_PORTAS_SINTETICAS",
+    "diagnostics": "VALIDADO_COMPONENTES",
+    "mobileJourneys": "VALIDADO_E2E_LOCAL_PROVIDER_SINTETICO"
+  },
+  "items": {
+    "B02": "PARCIAL",
+    "B03": "PARCIAL",
+    "B05": "PARCIAL",
+    "B07": "PARCIAL",
+    "B12": "PARCIAL",
+    "B13": "PARCIAL",
+    "B14": "PARCIAL",
+    "LAB2": "PARCIAL",
+    "redesignAllModules": "PARCIAL"
+  },
+  "coverage": {
+    "httpOperations": 356,
+    "publicProfileOperations": 37,
+    "screenJourneyRecords": 128,
+    "screenSourceFiles": 82,
+    "registeredRoutes": 43,
+    "requirements": 50,
+    "nature": "Static inventory plus explicitly scoped runtime evidence; not full homologation"
+  },
+  "notExecuted": [
+    "backup/dump/restore/policies (excluded)",
+    "full historical security artifact generation",
+    "complete PostgreSQL suite",
+    "Rails/RSpec stack and RuboCop",
+    "final full engine/image build",
+    "production diagnostics",
+    "real sessions/media/Meta",
+    "new CI/image publication/deploy",
+    "50-number 30-day pilot",
+    "100/200/400/900 session benchmark"
+  ],
+  "nextStep": "Two independent isolated Chatwoot consumers, including identified stock consumer without LAB2; real TLS/bidirectional/media; verify CCLX fork and authorized extension; complete image/ownership and candidate CI gates.",
+  "evidenceReport": "TESTES-E-EVIDENCIAS.md",
+  "technicalReport": "PARECER-FINAL.md",
+  "priorIncrementTests": {
+    "unitFullRound": {
+      "files": 465,
+      "filesPassed": 462,
+      "filesFailed": 3,
+      "passed": 3667,
+      "failed": 2,
+      "skipped": 4,
+      "seconds": 913.11,
+      "exitCode": 1,
+      "evidence": "unit-final.log",
+      "issues": "two old schema expectations; OpenSSL ENOENT"
+    },
+    "unitFailedFilesRetest": {
+      "files": 3,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 6.48,
+      "exitCode": 0,
+      "evidence": "unit-retest.log"
+    },
+    "ackFocal": {
+      "files": 6,
+      "passed": 56,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "postgresReceiptsReadiness": {
+      "files": 2,
+      "passed": 53,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "postgresRegressionFirst": {
+      "filesPassed": 4,
+      "passed": 23,
+      "failedSuites": 1,
+      "skipped": 8,
+      "exitCode": 1,
+      "issue": "missing exclusive-cluster flag in runner"
+    },
+    "postgresReplayRetest": {
+      "passed": 8,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "workerPgMinio": {
+      "passed": 2,
+      "failed": 0,
+      "seconds": 21.535,
+      "exitCode": 0,
+      "syntheticMedia": true
+    },
+    "originCrash": {
+      "passed": 2,
+      "failed": 0,
+      "seconds": 48.288,
+      "exitCode": 0,
+      "physicalWhatsApp": false,
+      "fullEngineRebuilt": false
+    },
+    "productComponents": {
+      "passed": 13,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "e2e": {
+      "passed": 41,
+      "failed": 0,
+      "skipped": 1,
+      "minutes": 3.1,
+      "exitCode": 0,
+      "retries": 0,
+      "skip": "mobile-only shell test in desktop project",
+      "provider": "BrowserE2eFakeProvider"
+    },
+    "e2eArtifactRetest": {
+      "passed": 2,
+      "failed": 0,
+      "seconds": 23.1,
+      "exitCode": 0,
+      "scope": "only screenshot prefix masking changed after full E2E"
+    },
+    "newman": {
+      "generatedAt": "2026-11-02T01:58:45.092Z",
+      "newman": "6.2.3",
+      "poc": [
+        {
+          "mode": "HTTP",
+          "environment": "loopback real Fastify / synthetic services and provider",
+          "requests": {
+            "total": 19,
+            "pending": 0,
+            "failed": 0
+          },
+          "assertions": {
+            "total": 49,
+            "pending": 0,
+            "failed": 0
+          },
+          "failures": [],
+          "durationMs": 4772
+        },
+        {
+          "mode": "PERSISTENCE_RECEIPT_V1",
+          "environment": "loopback real Fastify / synthetic services and provider",
+          "requests": {
+            "total": 19,
+            "pending": 0,
+            "failed": 0
+          },
+          "assertions": {
+            "total": 49,
+            "pending": 0,
+            "failed": 0
+          },
+          "failures": [],
+          "durationMs": 4428
+        }
+      ],
+      "media": {
+        "mode": "LOCAL_HTTP_CONTRACTS_SYNTHETIC_SERVICES",
+        "newman": "6.2.3",
+        "guards": [
+          {
+            "name": "upload-disabled-by-default",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          },
+          {
+            "name": "send-disabled-by-default",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          },
+          {
+            "name": "missing-local-file",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          },
+          {
+            "name": "invalid-idempotency-key",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          },
+          {
+            "name": "invalid-origin-path",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          },
+          {
+            "name": "invalid-caption-json",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          }
+        ],
+        "folders": [
+          {
+            "folder": "Upload privado - opt-in allow_media_upload",
+            "requests": 1,
+            "assertions": 1,
+            "failures": [],
+            "statuses": [
+              201
+            ]
+          },
+          {
+            "folder": "Consultar estado do anexo",
+            "requests": 1,
+            "assertions": 1,
+            "failures": [],
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "folder": "Enviar anexo com legenda - opt-in allow_media_send",
+            "requests": 1,
+            "assertions": 1,
+            "failures": [],
+            "statuses": [
+              202
+            ]
+          }
+        ],
+        "httpRequests": [
+          {
+            "method": "POST",
+            "path": "/v1/messaging/channels/34ecb7e5-b3e7-43a3-b9af-23cabcad3efd/media",
+            "status": 201
+          },
+          {
+            "method": "GET",
+            "path": "/v1/messaging/channels/34ecb7e5-b3e7-43a3-b9af-23cabcad3efd/media/10fdefcf-9b1d-461b-b1b4-a160b2960377",
+            "status": 200
+          },
+          {
+            "method": "POST",
+            "path": "/v1/messaging/channels/34ecb7e5-b3e7-43a3-b9af-23cabcad3efd/partner-media",
+            "status": 202
+          }
+        ],
+        "uploads": 1,
+        "reads": 1,
+        "admissions": 1,
+        "providerSends": 0,
+        "fixtureRemoved": true
+      },
+      "realMessages": 0,
+      "productionAccess": false
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "seconds": 4.35
+    },
+    "buildWeb": {
+      "exitCode": 0
+    },
+    "bundle": {
+      "files": 32,
+      "findings": 0
+    },
+    "publicContracts": "PASS",
+    "lint": "NO_BROKER_LINT_SCRIPT; diff-check is not lint",
+    "overlapWarning": "Do not sum overlapping runs or rewrite failed broad round as green"
+  },
+  "priorIncrementTests_Durable": {
+    "railsAffected": {
+      "passed": 66,
+      "failed": 0,
+      "seconds": 34.83,
+      "bootSeconds": 11.02,
+      "scope": "Full Rails7.1.5.2 and PG; ActiveJob test adapter; synthetic HTTP port"
+    },
+    "railsLegacyBaseline": {
+      "examples": 20,
+      "failed": 2,
+      "reason": "tagged_logger missing; reproduced with baseline Trigger16f59d78"
+    },
+    "rubyLint": {
+      "files": 4,
+      "offenses": 0
+    },
+    "railsCrash": {
+      "signal": "SIGKILL",
+      "producerExit": 137,
+      "recovered": true,
+      "attempts": 2,
+      "distinctDeliveryIds": 1,
+      "transport": "synthetic lost ACK"
+    },
+    "engineRegression": {
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    "originCrashPg": {
+      "passed": 2,
+      "failed": 0,
+      "seconds": 52.867
+    },
+    "upstreamBaseline": {
+      "passed": 1,
+      "failed": 0,
+      "setupFirstFailed": "git absent from PATH; corrected only process PATH"
+    },
+    "fullEngineImage": "NOT_BUILT",
+    "newCI": "NOT_EXECUTED",
+    "fullRailsSuite": "NOT_EXECUTED; legacy failures remain"
+  },
+  "tests": {
+    "partnerQr": {
+      "passed": 37,
+      "failed": 0,
+      "files": 2,
+      "seconds": 11.3,
+      "red": {
+        "failed": 3,
+        "passed": 21
+      }
+    },
+    "realSidekiq": {
+      "version": "7.3.1",
+      "rails": "7.1.5.2",
+      "redis": true,
+      "postgres": true,
+      "workerExitAfterCommit": 137,
+      "deliveredObligations": 2,
+      "persistedReceipts": 2,
+      "accounts": 2,
+      "attempts": [
+        2,
+        1
+      ],
+      "transport": "synthetic port with actual PG receipts",
+      "independentChatwootInstallations": false,
+      "controlledLeaseExpiry": true,
+      "initialObserverFailure": "query cache; no re-send; uncached observation passed"
+    },
+    "versionedProbe": {
+      "syntax": "PASS",
+      "guardedBoot": "PASS",
+      "rejectBeforeBoot": "PASS",
+      "generalCronKeys": 0
+    },
+    "fullSuites": "NOT_EXECUTED_THIS_INCREMENT",
+    "candidateCI": "NOT_EXECUTED",
+    "review": "independent read-only; no new P1/P2"
+  },
+  "commonContract": {
+    "document": "17-CONTRATO-COMUM-CHATWOOT-20261102.md",
+    "eventsMatrix": "MATRIZ-EVENTOS-COMUNS.csv",
+    "consumerCodeDependency": "CCLX does not require full LAB2",
+    "cclxVersion": "NOT_VERIFIED",
+    "nativeCclxModule": "NOT_IMPLEMENTED_NO_ACCESS_OR_INSTALLATION_AUTHORIZATION",
+    "externalQr": "existing host-authenticated component hardened; not turnkey messaging or Meta adapter",
+    "legacyFlow": "user report only; no legacy disabled"
+  },
+  "documentIncrement20261102": {
+    "baseBroker": "f79d4a6dea1d94c5c0f87c76e5dcbd8607513e11",
+    "lab2IntegrationHead": "57efc6e14208ee67e72eb778f4b09d4c905da127",
+    "preservedLab2Heads": [
+      "89d87ccb5e41480e9cd7e99647b3b00c0ce24729",
+      "e4a6a007193988af3f314a902ec68531fd25a14a",
+      "50f7f07d802829dd44a67547fabad3aa77f3d196"
+    ],
+    "tests": {
+      "flowRelated": 128,
+      "flowPostgres": 9,
+      "qrBff": 37,
+      "lab2Integrity": 73,
+      "lab2BrokerRegression": 210,
+      "brokerBroadFirstRun": {
+        "passed": 3703,
+        "failed": 1,
+        "skipped": 4,
+        "setupError": "OPENSSL_UNAVAILABLE_IN_SANDBOX"
+      },
+      "environmentRetest": {
+        "passed": 10,
+        "failed": 0
+      }
+    },
+    "build": "PASS",
+    "typecheck": "PASS",
+    "openapiDiff": "NONE",
+    "newPublication": "PENDING_FINAL_CANDIDATE_CI",
+    "deployment": "NOT_APPLIED_THIS_INCREMENT",
+    "recoveryScope": "NO_BACKUP_DATA_DUMP_RESTORE",
+    "operationalHomologation": "NOT_CLAIMED",
+    "document": "19-DOCUMENTOS-20261102.md"
+  },
+  "currentCi": {
+    "runId": 41478793811,
+    "sha": "b7a6e19c4f9a18a7a3c3141fc6bfefc492f3d923",
+    "conclusion": "failure",
+    "unitPass": 3702,
+    "pdfPass": 6,
+    "webPass": 777,
+    "integrationPass": 1580,
+    "integrationFail": 2,
+    "cause": "two stale schema baseline literals; corrected locally,30/30 retest; new CI required"
+  },
+  "backupScope": "EXCLUDED; manual include_recovery defaults false on every branch; existing scripts preserved"
+}

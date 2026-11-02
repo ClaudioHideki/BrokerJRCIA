@@ -30,6 +30,8 @@ import { PlatformPage } from '../pages/Platform.js';
 import { SupportPage } from '../pages/Support.js';
 import { MetaConnectPage } from '../pages/MetaConnect.js';
 import { CompanyPage } from '../pages/Company.js';
+import { SettingsPage } from '../pages/Settings.js';
+import { ApiWebhooksPage } from '../pages/ApiWebhooks.js';
 import { DashboardPage } from '../pages/Dashboard.js';
 import { ProvidersPage } from '../pages/Providers.js';
 import { ChannelsPage } from '../pages/Channels.js';
@@ -102,6 +104,8 @@ function AppRoutes() {
         <Route path="/flows" element={<FlowsCompatibilityRoute />} />
         <Route path="/whatsapp-oficial" element={<Navigate replace to="/channels/meta/connect" />} />
         <Route path="/minha-empresa" element={<CompanyPage />} />
+        <Route path="/configuracoes" element={<SettingsPage />} />
+        <Route path="/api-webhooks" element={<ApiWebhooksPage />} />
       </Route>
       <Route path="*" element={<HomeRedirect />} />
     </Routes>

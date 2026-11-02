@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-01",
+  "revision": "b076e05864c168f88eb303177016543c68583ad7",
+  "composeRevision": "be1e9441146d3ce8f9bc29b2f1b2fd135daf4371",
+  "workflow": "https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/41320633958",
+  "conclusion": "success",
+  "api": "ghcr.io/claudiohideki/brokerjrcia-api@sha256:2a12022bc5b990682e4a1ee8e885d8588327377a6e03385de4183a5c7d6560a2",
+  "web": "ghcr.io/claudiohideki/brokerjrcia-web@sha256:2fb521fcfb0874e2bc6bb7dce8b1d66b607a42f23fd81f8f2ac2b7da3ba86605",
+  "published": true,
+  "deployed": false,
+  "gate": "backup-and-full-recovery-unverified",
+  "ciExecutions": {
+    "partnerQR": 34,
+    "unitHTTPFrontend": 3613,
+    "pdf": 6,
+    "postgresRedis": 1526,
+    "minio": 5
+  },
+  "note": "Executions overlap; changes after b076 are not covered by this CI"
+}

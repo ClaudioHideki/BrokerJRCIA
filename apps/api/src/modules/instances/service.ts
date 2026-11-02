@@ -1,5 +1,6 @@
 import { requireActiveOrganization } from '../tenancy/operational-limits.js';
 import { randomUUID } from 'node:crypto';
+import { isSameConnectionClock } from '../messaging/qr-connection-order.js';
 
 import type { Instance, InstanceStatus, Page, ProviderKind } from '@jrc/contracts';
 import {
@@ -197,7 +198,11 @@ function replayConnectionAction(status: InstanceStatus): ConnectionAction {
 
 function isSameInstanceSnapshot(current: InstanceRow, observed: InstanceRow): boolean {
   return current.status === observed.status
-    && current.updatedAt.getTime() === observed.updatedAt.getTime();
+    && current.updatedAt.getTime() === observed.updatedAt.getTime()
+    && isSameConnectionClock(
+      { observedAt: observed.connectionObservedAt, fingerprint: observed.connectionBindingFingerprint },
+      { observedAt: current.connectionObservedAt, fingerprint: current.connectionBindingFingerprint },
+    );
 }
 
 function encodeCursor(row: InstanceRow): string {

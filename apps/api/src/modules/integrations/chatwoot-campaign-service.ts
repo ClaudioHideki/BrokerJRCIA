@@ -6,7 +6,7 @@ import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import { chatwootEnvironment } from './chatwoot-service.js';
 import { readChatwootAccount } from './chatwoot-context.js';
 import { IntegrationError } from './integration-error.js';
-import { verifyCanonicalCampaignMessage, type CampaignIntent } from './chatwoot-campaign-authority.js';
+import { canonicalCampaignRecipient, verifyCanonicalCampaignMessage, type CampaignIntent } from './chatwoot-campaign-authority.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
 
 export const CampaignIntentInputSchema=z.strictObject({conversationId:z.number().int().positive(),messageId:z.number().int().positive(),
@@ -68,9 +68,7 @@ export function createChatwootCampaignService(options:ChatwootControlOptions){
    if(remote.id!==input.conversationId||remote.account_id!==p.accountId||remote.inbox_id!==Number(before.row.inbox_id)||!/^\+[1-9]\d{7,14}$/.test(remote.meta.sender.phone_number??''))
     throw new IntegrationError('CAMPAIGN_RECIPIENT_NOT_PROVEN',409);
    const contact=await env.client(account).contact(p.accountId,remote.meta.sender.id);
-   const sources=contact.contact_inboxes.filter(i=>i.inbox.id===remote.inbox_id);
-   if(contact.id!==remote.meta.sender.id||contact.phone_number!==remote.meta.sender.phone_number||sources.length!==1||!sources[0]!.source_id)
-    throw new IntegrationError('CAMPAIGN_RECIPIENT_NOT_PROVEN',409);
+   const recipient=canonicalCampaignRecipient(remote,contact,{accountId:p.accountId,inboxId:Number(before.row.inbox_id),conversationId:input.conversationId});
    const intent={id:randomUUID(),actor_id:actorId,campaign_id:input.campaignId,remote_conversation_id:String(input.conversationId),remote_message_id:String(input.messageId),kind:input.kind,text:input.text};
    const attachmentProof=verifyCanonicalCampaignMessage(intent,canonical,{conversationId:input.conversationId,messageId:input.messageId,inboxId:Number(before.row.inbox_id)},false);
    const hash=createHash('sha256').update(JSON.stringify({apiKeyId,actorId,input})).digest('hex');
@@ -87,10 +85,10 @@ export function createChatwootCampaignService(options:ChatwootControlOptions){
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23)
      ON CONFLICT(organization_id,integration_id,idempotency_key) DO NOTHING RETURNING *`,
      [p.organizationId,intent.id,id,current.row.channel_id,apiKeyId,actorId,p.accountId,v.inboxId,input.destinationRevision,current.row.credential_version,input.identityRevision,input.ownerRevision,
-      input.conversationId,input.messageId,input.campaignId,input.kind,input.text,key,hash,JSON.stringify(attachmentProof.attachmentIds),remote.meta.sender.id,contact.phone_number,sources[0]!.source_id]);
+      input.conversationId,input.messageId,input.campaignId,input.kind,input.text,key,hash,JSON.stringify(attachmentProof.attachmentIds),recipient.contactId,recipient.phone,recipient.sourceId]);
     const row=result.rows[0]??(await t.query<CampaignIntent & {expires_at:Date;request_hash:string}>(`SELECT * FROM chatwoot_campaign_intents WHERE organization_id=$1 AND integration_id=$2 AND idempotency_key=$3`,[p.organizationId,id,key])).rows[0];
     if(!row||row.request_hash!==hash)throw new IntegrationError('IDEMPOTENCY_CONFLICT',409);
-    if(Number(row.remote_contact_id)!==contact.id||row.recipient_phone!==contact.phone_number||row.recipient_source_id!==sources[0]!.source_id)throw new IntegrationError('CAMPAIGN_RECIPIENT_CHANGED',409);
+    if(Number(row.remote_contact_id)!==recipient.contactId||row.recipient_phone!==recipient.phone||row.recipient_source_id!==recipient.sourceId)throw new IntegrationError('CAMPAIGN_RECIPIENT_CHANGED',409);
     verifyCanonicalCampaignMessage(row,canonical,{conversationId:input.conversationId,messageId:input.messageId,inboxId:Number(current.row.inbox_id)},false);
     if(row.expires_at.getTime()<=Date.now())throw new IntegrationError('CAMPAIGN_INTENT_EXPIRED',409);
     return {protocol:'chatwoot-campaigns/v1' as const,intentId:row.id,state:'RESERVED' as const,expiresAt:row.expires_at.toISOString(),replayed:!result.rowCount};

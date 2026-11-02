@@ -30,6 +30,7 @@ describe('canonical channels UI', () => {
       throw new Error(`Unexpected ${path}`);
     }) as ApiClient['request'];
     render(<App client={client(request)} initialEntries={[`/channels/${id}`]}/>);
+    fireEvent.click(await screen.findByRole('tab',{name:'Histórico e grupos'}));
     expect(await screen.findByRole('heading',{name:'Grupos do WhatsApp'})).toBeVisible();
     await waitFor(()=>expect(request).toHaveBeenCalledWith(`/v1/channels/${messagingChannelId}/whatsapp-groups?limit=50`,expect.objectContaining({signal:expect.any(AbortSignal)})));
     expect(request).not.toHaveBeenCalledWith(`/v1/channels/${id}/whatsapp-groups?limit=50`,expect.anything());
@@ -47,6 +48,7 @@ describe('canonical channels UI', () => {
       throw new Error(`Unexpected ${path}`);
     }) as ApiClient['request'];
     render(<App client={client(request)} initialEntries={[`/channels/${id}`]}/>);
+    fireEvent.click(await screen.findByRole('tab',{name:'Flow'}));
     await screen.findByRole('option',{name:'Triagem · v1'});
     fireEvent.change(screen.getByLabelText('Automação publicada'),{target:{value:automationId}});
     const button = screen.getByRole('button',{name:'Vincular automação'});
@@ -161,7 +163,9 @@ describe('canonical channels UI', () => {
     expect(screen.getByRole('button', { name: 'Atualizar status' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Reconectar' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Desconectar' })).toBeVisible();
+    fireEvent.click(screen.getByRole('tab', { name: 'Configurações WhatsApp' }));
     expect(screen.getByRole('button', { name: 'Salvar nome' })).toBeVisible();
+    fireEvent.click(screen.getByRole('tab', { name: 'Flow' }));
     expect(await screen.findByRole('option', { name: 'Triagem inteligente · v2' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Vincular automação' })).toBeDisabled();
   });
@@ -198,7 +202,8 @@ it('never renders an expired QR challenge and provides a new request action',asy
 });
 
 it('renders a BASE64 pairing challenge as an image data URL',async()=>{
+ const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z3aQAAAAASUVORK5CYII=';
  const channel={schemaVersion:1,id,organizationId:org,provider:'QR',identity:{displayName:'Parear',maskedAddress:null},providerReference:{providerAccountId:account,instanceId:id},transportStatus:'DISCONNECTED',providerStatus:'READY',automationStatus:'UNBOUND',humanStatus:'UNBOUND',revision:1,createdAt:timestamp,updatedAt:timestamp};
- const request=vi.fn(async(path:string)=>{if(path.endsWith('/pair'))return {provider:'QR',channel,operationId:null,replayed:false,pending:false,reconciliationRequired:false,action:{type:'QR_CODE',encoding:'BASE64',value:'aGVsbG8=',expiresAt:new Date(Date.now()+60000).toISOString()}};if(path.endsWith('/automation'))return {binding:null};if(path==='/v1/automations')return {data:[]};return channel;}) as ApiClient['request'];
- render(<App client={client(request)} initialEntries={['/channels/'+id]}/>);fireEvent.click(await screen.findByRole('button',{name:'Gerar QR Code'}));expect(await screen.findByRole('img',{name:'QR Code para conectar o WhatsApp'})).toHaveAttribute('src','data:image/png;base64,aGVsbG8=');
+ const request=vi.fn(async(path:string)=>{if(path.endsWith('/pair'))return {provider:'QR',channel,operationId:null,replayed:false,pending:false,reconciliationRequired:false,action:{type:'QR_CODE',encoding:'BASE64',value:png,expiresAt:new Date(Date.now()+60000).toISOString()}};if(path.endsWith('/automation'))return {binding:null};if(path==='/v1/automations')return {data:[]};return channel;}) as ApiClient['request'];
+ render(<App client={client(request)} initialEntries={['/channels/'+id]}/>);fireEvent.click(await screen.findByRole('button',{name:'Gerar QR Code'}));expect(await screen.findByRole('img',{name:'QR Code para conectar o WhatsApp'})).toHaveAttribute('src','data:image/png;base64,'+png);
 });

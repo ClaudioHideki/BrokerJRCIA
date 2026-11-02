@@ -1,6 +1,7 @@
 import type { ApiClient } from '../api/client.js';
 import { ApiClientError } from '../api/client.js';
 import type { BrokerOverview, Instance } from '@jrc/contracts';
+import type { HealthComponent, HealthSnapshot } from '../operations/health-model.js';
 // Imported only behind import.meta.env.DEV. No session or bypass is bundled in production.
 const org = '11111111-1111-4111-8111-111111111111',
   account = '22222222-2222-4222-8222-222222222222',
@@ -95,6 +96,24 @@ export function demoOverview(days = 30): BrokerOverview {
     billing: null,
   };
 }
+function demoHealth(): HealthSnapshot {
+  const observedAt = new Date().toISOString();
+  const components: HealthComponent[] = [
+    ...['API', 'DATABASE', 'SCHEMA', 'REDIS', 'MESSAGING_WORKER', 'AUTOMATION_WORKER', 'AUTOMATION_IO_WORKER', 'SCHEDULER'].map(key => ({ key, label: ({ DATABASE: 'PostgreSQL', SCHEMA: 'Estrutura do banco', MESSAGING_WORKER: 'Processamento de mensagens', AUTOMATION_WORKER: 'Automações', AUTOMATION_IO_WORKER: 'Integrações de automação', SCHEDULER: 'Agendamento' } as Record<string, string>)[key] ?? key, state: 'UP' as const, code: 'DEMO_HEALTHY', observedAt })),
+    { key: 'EVOLUTION', label: 'QR Code', state: 'UP', code: 'EVOLUTION_CHANNEL_READY', observedAt, metric: 8, unit: 'channels' },
+    { key: 'META', label: 'Meta', state: 'UNKNOWN', code: 'META_NOT_OBSERVED', observedAt, metric: 0, unit: 'channels' },
+    { key: 'CHATWOOT', label: 'Central', state: 'DEGRADED', code: 'CHATWOOT_DESTINATION_DEGRADED', observedAt, metric: 1, unit: 'destinations' },
+    { key: 'QUEUE', label: 'Fila', state: 'UP', code: 'QUEUE_DEPTH_NORMAL', observedAt, metric: 20, unit: 'items' },
+    { key: 'OUTBOX_AGE', label: 'Idade da outbox', state: 'UP', code: 'OUTBOX_FRESH', observedAt, metric: 32, unit: 'seconds' },
+    { key: 'FAILED_EXECUTIONS', label: 'Execuções com falha', state: 'UP', code: 'NO_FAILED_EXECUTIONS', observedAt, metric: 0, unit: 'executions' },
+    { key: 'INTEGRATION_FAILURES', label: 'Falhas', state: 'DEGRADED', code: 'INTEGRATION_JOBS_FAILED', observedAt, metric: 12, unit: 'items' },
+    { key: 'INTEGRATION_UNCERTAINTY', label: 'Incertas', state: 'DEGRADED', code: 'INTEGRATION_OUTCOME_UNKNOWN', observedAt, metric: 2, unit: 'items' },
+    { key: 'QR_IDENTITY_PENDING', label: 'Identificação', state: 'UP', code: 'NO_QR_IDENTITY_PENDING', observedAt, metric: 0, unit: 'items' },
+    { key: 'UNKNOWN_EXECUTIONS', label: 'Execuções incertas', state: 'UP', code: 'NO_UNKNOWN_EXECUTIONS', observedAt, metric: 0, unit: 'executions' },
+  ];
+  return { observedAt, overall: 'DEGRADED', components, alerts: components.filter(item => item.state !== 'UP').map(item => ({ component: item.key, code: item.code, state: item.state })) };
+}
+
 export function createDemoClient(): ApiClient {
   const activeOrganization = {
     id: org,
@@ -127,6 +146,7 @@ export function createDemoClient(): ApiClient {
         );
       if (url.pathname === '/v1/organization/overview')
         value = demoOverview(Number(url.searchParams.get('days') ?? 30));
+      else if (url.pathname === '/v1/operations/health') value = demoHealth();
       else if (url.pathname === '/v1/organization/operations')
         value = {
           status: 'ACTIVE',

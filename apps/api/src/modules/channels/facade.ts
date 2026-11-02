@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { AUTOMATION_ORIGIN, type AutomationBindingV1, type BindChannelAutomationV1,
   type BindChannelDestinationV1, type ChannelV1, type CreateChannelV1, type Instance,
@@ -7,6 +7,8 @@ import type { OrganizationTransaction } from '../../db/tenant-transaction.js';
 import type { InstanceActorContext, InstanceService } from '../instances/service.js';
 import type { createMetaOnboardingService } from '../meta-onboarding/service.js';
 import type { ChatwootService } from '../integrations/chatwoot-service.js';
+import type { ChatwootControlService } from '../integrations/chatwoot-control-service.js';
+import type { AuthenticationContext } from '../../http/plugins/authorization.js';
 import {lockOwnershipMutations,readOwnerRevision,transitionChannelOwner} from '../attendance/transition.js';
 import { readAutomationAccess } from '../automations/availability.js';
 import {createChannelOperationProfile} from './operation-profile.js';
@@ -126,7 +128,8 @@ export interface ChannelFacadeOptions {
   instances: InstanceService;
   meta: Pick<ReturnType<typeof createMetaOnboardingService>, 'start'>;
   activateQr?(org:string,instanceId:string):Promise<{id:string}>;
-  chatwoot?: Pick<ChatwootService, 'connect'> | undefined;
+  chatwoot?: (Pick<ChatwootService, 'connect'> & Partial<Pick<ChatwootService, 'initialIdentity'>>) | undefined;
+  chatwootControl?: Pick<ChatwootControlService, 'pair'> | undefined;
   transact<T>(organizationId: string, operation: OrganizationTransaction<T>): Promise<T>;
 }
 
@@ -208,6 +211,18 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
     provider: 'QR' as const, channel: fromInstance(result.instance), operationId: result.operationId,
     replayed: result.replayed, pending: result.pending, reconciliationRequired: result.reconciliationRequired,
   });
+  async function initialPair(context: InstanceActorContext, instanceId: string, key: string) {
+    const enrollment = options.chatwoot?.initialIdentity;
+    const integrationId = await enrollment?.pending(context.organizationId, instanceId);
+    if (!enrollment || !integrationId) return undefined;
+    if (context.credentialKind !== 'JWT') throw new ChannelFacadeError('CHATWOOT_CONTROL_FORBIDDEN', 403);
+    if (!options.chatwootControl) throw new ChannelFacadeError('CHATWOOT_NOT_CONFIGURED', 503);
+    // The live authorization resolver checks membership; the context does not carry a trusted role.
+    const principal = await enrollment.authorize({ kind: 'JWT', organizationId: context.organizationId, actorId: context.actorId, role: 'VIEWER' });
+    // The channel API accepts opaque keys up to 255 characters; the control API has a narrower format.
+    const controlKey = createHash('sha256').update(`channel-pair:${key}`).digest('hex');
+    return options.chatwootControl.pair(principal, integrationId, controlKey);
+  }
   return {
     central:options.central,
     operationProfile:createChannelOperationProfile(options).get,
@@ -276,21 +291,28 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
     async pair(context: InstanceActorContext, id: string, idempotencyKey: string) {
       const channel = await get(context.organizationId, id);
       if (channel.provider !== 'QR') throw new ChannelFacadeError('CHANNEL_PAIR_UNSUPPORTED', 409);
-      const result = await options.instances.connectInstance(context, { instanceId: channel.providerReference.instanceId, idempotencyKey });
+      const result = await initialPair(context, channel.providerReference.instanceId, idempotencyKey) ??
+        await options.instances.connectInstance(context, { instanceId: channel.providerReference.instanceId, idempotencyKey });
       return { provider: 'QR' as const, channel: fromInstance(result.instance), operationId: result.operationId,
         replayed: result.replayed, pending: result.pending, reconciliationRequired: result.reconciliationRequired, action: result.action };
     },
     async reconnect(context: InstanceActorContext, id: string, idempotencyKey: string) {
       const channel = await get(context.organizationId, id);
       if (channel.provider !== 'QR') throw new ChannelFacadeError('CHANNEL_RECONNECT_UNSUPPORTED', 409);
-      const result = await options.instances.connectInstance(context, { instanceId: channel.providerReference.instanceId, idempotencyKey });
+      const result = await initialPair(context, channel.providerReference.instanceId, idempotencyKey) ??
+        await options.instances.connectInstance(context, { instanceId: channel.providerReference.instanceId, idempotencyKey });
       return { ...mutation(result), action: result.action };
     },
     async disconnect(context: InstanceActorContext, id: string, idempotencyKey: string) {
       const channel = await get(context.organizationId, id);
       if (channel.provider !== 'QR') throw new ChannelFacadeError('CHANNEL_DISCONNECT_UNSUPPORTED', 409);
-      return mutation(await options.instances.disconnectInstance(context,
-        { instanceId: channel.providerReference.instanceId, idempotencyKey }));
+      const enrollment = options.chatwoot?.initialIdentity;
+      const integrationId = await enrollment?.pending(context.organizationId, channel.providerReference.instanceId);
+      const result = await options.instances.disconnectInstance(context,
+        { instanceId: channel.providerReference.instanceId, idempotencyKey });
+      if (enrollment && integrationId) await options.transact(context.organizationId,
+        t => enrollment.cancelPair(t, context.organizationId, integrationId));
+      return mutation(result);
     },
     async getAutomation(org: string, id: string) {
       const channel = await get(org, id);
@@ -328,7 +350,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
         const result=await transitionChannelOwner(tx,org,{...input,channelId,botPublicId:input.automationId,botOriginReference:AUTOMATION_ORIGIN});
         return {binding:bindingView(result.binding!),ownerRevision:result.ownerRevision};
       });
-    },    async bindDestination(org: string, id: string, input: BindChannelDestinationV1, actorId?: string) {
+    },    async bindDestination(org: string, id: string, input: BindChannelDestinationV1, actorId?: string, authentication?: AuthenticationContext) {
       if (!options.chatwoot) throw new ChannelFacadeError('CHATWOOT_NOT_CONFIGURED', 503);
       const channel = await get(org, id);
       if(channel.provider==='CENTRAL')throw new ChannelFacadeError('CENTRAL_DESTINATION_CUTOVER_REQUIRED',409);
@@ -341,7 +363,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
         source = { channelId };
       }
       await options.chatwoot.connect(org, { ...source, name: input.name, ...(input.inboxId ? { inboxId: input.inboxId } : {}),
-        replaceExistingWebhook: input.replaceExistingWebhook }, actorId);
+        replaceExistingWebhook: input.replaceExistingWebhook }, actorId, authentication);
       return get(org, id);
     },
   };

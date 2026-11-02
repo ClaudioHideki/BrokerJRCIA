@@ -323,6 +323,8 @@ export const instances = pgTable(
     name: text("name").notNull(),
     upstreamInstanceKey: text("upstream_instance_key").notNull(),
     externalReference: text("external_reference"),
+    connectionObservedAt: timestamp("connection_observed_at", { withTimezone: true }),
+    connectionBindingFingerprint: text("connection_binding_fingerprint"),
     status: instanceStatus("status").notNull().default("PROVISIONING"),
     capabilities: jsonb("capabilities")
       .$type<string[]>()
@@ -333,6 +335,8 @@ export const instances = pgTable(
   },
   (table) => [
     unique("instances_org_id_unique").on(table.organizationId, table.id),
+    check('instances_connection_binding_fingerprint_check',sql`${table.connectionBindingFingerprint} IS NULL OR ${table.connectionBindingFingerprint} ~ '^[a-f0-9]{64}$'`),
+    check('instances_connection_clock_scope',sql`${table.connectionObservedAt} IS NULL OR ${table.connectionBindingFingerprint} IS NOT NULL`),
     unique("instances_org_name_unique").on(table.organizationId, table.name),
     unique("instances_upstream_instance_key_unique").on(
       table.upstreamInstanceKey,
@@ -703,6 +707,7 @@ export const messagingMessages = pgTable(
       table.channelId,
       table.id,
     ),
+    unique('messaging_messages_custody_reference_unique').on(table.organizationId, table.channelId, table.id, table.mediaId),
     unique("messaging_messages_org_conversation_id_unique").on(
       table.organizationId,
       table.conversationId,
@@ -1052,14 +1057,27 @@ export const qrIdentityPendingEvents=pgTable('qr_identity_pending_events',{
 ]);
 
 export const partnerEventOrder=pgSequence('partner_event_order_seq');
+export const qrOriginReceipts=pgTable('qr_origin_receipts',{
+ organizationId:uuid('organization_id').notNull().references(()=>organizations.id,{onDelete:'cascade'}),
+ channelId:uuid('channel_id').notNull(),sourceEventId:uuid('source_event_id').notNull(),instanceId:uuid('instance_id').notNull(),
+ bindingFingerprint:text('binding_fingerprint').notNull(),contentHash:text('content_hash').notNull(),
+ acceptedAt:timestamp('accepted_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+},t=>[primaryKey({columns:[t.organizationId,t.channelId,t.sourceEventId]}),
+ foreignKey({columns:[t.organizationId,t.channelId],foreignColumns:[messagingChannels.organizationId,messagingChannels.id]}).onDelete('cascade'),
+ foreignKey({columns:[t.organizationId,t.instanceId],foreignColumns:[instances.organizationId,instances.id]}).onDelete('cascade'),
+ check('qr_origin_receipts_binding_fingerprint_check',sql`${t.bindingFingerprint} ~ '^[a-f0-9]{64}$'`),
+ check('qr_origin_receipts_content_hash_check',sql`${t.contentHash} ~ '^[a-f0-9]{64}$'`),
+]);
 export const partnerWebhookEndpoints=pgTable('partner_webhook_endpoints',{
  organizationId:uuid('organization_id').notNull().references(()=>organizations.id,{onDelete:'cascade'}),
  id:uuid('id').notNull().defaultRandom(),url:text('url').notNull(),idempotencyKey:text('idempotency_key').notNull(),
  status:text('status').notNull().default('ACTIVE'),encryptedSecret:text('encrypted_secret'),
+ ackMode:text('ack_mode').notNull().default('HTTP'),
  createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),revokedAt:timestamp('revoked_at',{withTimezone:true}),
 },t=>[primaryKey({columns:[t.organizationId,t.id]}),unique().on(t.organizationId,t.idempotencyKey),
  check('partner_webhook_url_length',sql`length(${t.url})<=2048`),check('partner_webhook_idempotency_length',sql`length(${t.idempotencyKey}) BETWEEN 8 AND 128`),
  check('partner_webhook_status',sql`${t.status} IN ('ACTIVE','REVOKED')`),
+ check('partner_webhook_ack_mode',sql`${t.ackMode} IN ('HTTP','PERSISTENCE_RECEIPT_V1')`),
  check('partner_webhook_secret_state',sql`(${t.status}='ACTIVE' AND ${t.encryptedSecret} IS NOT NULL AND ${t.revokedAt} IS NULL) OR (${t.status}='REVOKED' AND ${t.encryptedSecret} IS NULL AND ${t.revokedAt} IS NOT NULL)`),
 ]);
 export const partnerEvents=pgTable('partner_events',{
@@ -1076,8 +1094,15 @@ export const partnerEvents=pgTable('partner_events',{
 export const partnerEventDeliveries=pgTable('partner_event_deliveries',{
  organizationId:uuid('organization_id').notNull(),id:uuid('id').notNull().defaultRandom(),endpointId:uuid('endpoint_id').notNull(),eventId:uuid('event_id').notNull(),
  status:text('status').notNull().default('PENDING'),attempts:integer('attempts').notNull().default(0),availableAt:timestamp('available_at',{withTimezone:true}).notNull().defaultNow(),
+ lifetimeAttempts:bigint('lifetime_attempts',{mode:'bigint'}).notNull().default(0n),replayCount:integer('replay_count').notNull().default(0),
+ receiptId:uuid('receipt_id'),receiptPersistedAt:timestamp('receipt_persisted_at',{withTimezone:true}),receiptAcceptedAt:timestamp('receipt_accepted_at',{withTimezone:true}),
  lastErrorCode:text('last_error_code'),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),leaseToken:uuid('lease_token'),leaseExpiresAt:timestamp('lease_expires_at',{withTimezone:true}),
 },t=>[primaryKey({columns:[t.organizationId,t.id]}),unique().on(t.organizationId,t.endpointId,t.eventId),
+ unique('partner_delivery_replay_identity').on(t.organizationId,t.id,t.endpointId,t.eventId),
+ uniqueIndex('partner_delivery_receipt_identity').on(t.organizationId,t.endpointId,t.receiptId).where(sql`${t.receiptId} IS NOT NULL`),
+ check('partner_delivery_receipt_complete',sql`(${t.receiptId} IS NULL AND ${t.receiptPersistedAt} IS NULL AND ${t.receiptAcceptedAt} IS NULL) OR (${t.receiptId} IS NOT NULL AND ${t.receiptPersistedAt} IS NOT NULL AND ${t.receiptAcceptedAt} IS NOT NULL AND ${t.status}='DELIVERED')`),
+ check('partner_event_deliveries_lifetime_attempts_check',sql`${t.lifetimeAttempts}>=0`),
+ check('partner_event_deliveries_replay_count_check',sql`${t.replayCount}>=0`),
  foreignKey({columns:[t.organizationId,t.endpointId],foreignColumns:[partnerWebhookEndpoints.organizationId,partnerWebhookEndpoints.id]}).onDelete('cascade'),
  foreignKey({columns:[t.organizationId,t.eventId],foreignColumns:[partnerEvents.organizationId,partnerEvents.id]}).onDelete('cascade'),
  check('partner_delivery_status',sql`${t.status} IN ('PENDING','RUNNING','DELIVERED','FAILED','CANCELLED')`),check('partner_delivery_attempts',sql`${t.attempts} BETWEEN 0 AND 10`),
@@ -1088,6 +1113,44 @@ export const partnerEventCursorState=pgTable('partner_event_cursor_state',{
  organizationId:uuid('organization_id').primaryKey().references(()=>organizations.id,{onDelete:'cascade'}),
  lastPrunedCursor:bigint('last_pruned_cursor',{mode:'bigint'}).notNull().default(0n),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[check('partner_cursor_pruned_nonnegative',sql`${t.lastPrunedCursor}>=0`)]);
+
+export const partnerDeliveryReplays=pgTable('partner_delivery_replays',{
+ organizationId:uuid('organization_id').notNull().references(()=>organizations.id,{onDelete:'cascade'}),
+ id:uuid('id').notNull().defaultRandom(),schemaVersion:integer('schema_version').notNull().default(1),
+ authorizingApiKeyId:uuid('authorizing_api_key_id').notNull(),idempotencyKey:uuid('idempotency_key').notNull(),
+ requestHash:text('request_hash').notNull(),deliveryId:uuid('delivery_id').notNull(),endpointId:uuid('endpoint_id').notNull(),
+ eventId:uuid('event_id').notNull(),priorAttempts:integer('prior_attempts').notNull(),priorErrorCode:text('prior_error_code'),
+ replayNumber:integer('replay_number').notNull(),acceptedAt:timestamp('accepted_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+},t=>[primaryKey({columns:[t.organizationId,t.id]}),unique().on(t.organizationId,t.authorizingApiKeyId,t.idempotencyKey),
+ unique().on(t.organizationId,t.deliveryId,t.replayNumber),
+ foreignKey({columns:[t.organizationId,t.deliveryId,t.endpointId,t.eventId],foreignColumns:[partnerEventDeliveries.organizationId,partnerEventDeliveries.id,partnerEventDeliveries.endpointId,partnerEventDeliveries.eventId]}).onDelete('cascade'),
+ foreignKey({columns:[t.organizationId,t.endpointId],foreignColumns:[partnerWebhookEndpoints.organizationId,partnerWebhookEndpoints.id]}).onDelete('cascade'),
+ foreignKey({columns:[t.organizationId,t.eventId],foreignColumns:[partnerEvents.organizationId,partnerEvents.id]}).onDelete('cascade'),
+ check('partner_delivery_replays_version',sql`${t.schemaVersion}=1`),check('partner_delivery_replays_hash',sql`${t.requestHash} ~ '^[a-f0-9]{64}$'`),
+ check('partner_delivery_replays_prior',sql`${t.priorAttempts} BETWEEN 0 AND 10`),check('partner_delivery_replays_number',sql`${t.replayNumber}>0`),
+]);
+
+export const mediaCustodyReceipts=pgTable('media_custody_receipts',{
+ organizationId:uuid('organization_id').notNull().references(()=>organizations.id,{onDelete:'restrict'}),
+ id:uuid('id').notNull().defaultRandom(),schemaVersion:integer('schema_version').notNull().default(1),
+ channelId:uuid('channel_id').notNull(),messageId:uuid('message_id').notNull(),mediaId:uuid('media_id').notNull(),
+ endpointId:uuid('endpoint_id').notNull(),destinationVersion:integer('destination_version').notNull(),
+ clientReceiptId:uuid('client_receipt_id').notNull(),authorizingApiKeyId:uuid('authorizing_api_key_id').notNull(),
+ idempotencyKey:uuid('idempotency_key').notNull(),requestHash:text('request_hash').notNull(),
+ byteSize:integer('byte_size').notNull(),sha256:text('sha256').notNull(),storageObjectId:text('storage_object_id').notNull(),
+ attestation:text('attestation').notNull(),retentionPolicy:text('retention_policy').notNull().default('KEEP'),
+ acceptedAt:timestamp('accepted_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+},t=>[primaryKey({columns:[t.organizationId,t.id]}),unique().on(t.organizationId,t.idempotencyKey),
+ unique().on(t.organizationId,t.endpointId,t.clientReceiptId),unique().on(t.organizationId,t.endpointId,t.messageId,t.mediaId),
+ foreignKey({columns:[t.organizationId,t.channelId,t.messageId,t.mediaId],foreignColumns:[messagingMessages.organizationId,messagingMessages.channelId,messagingMessages.id,messagingMessages.mediaId]}).onDelete('restrict'),
+ foreignKey({columns:[t.organizationId,t.channelId,t.mediaId],foreignColumns:[messagingMedia.organizationId,messagingMedia.channelId,messagingMedia.id]}).onDelete('restrict'),
+ foreignKey({columns:[t.organizationId,t.endpointId],foreignColumns:[partnerWebhookEndpoints.organizationId,partnerWebhookEndpoints.id]}).onDelete('restrict'),
+ check('media_custody_schema_version',sql`${t.schemaVersion}=1`),check('media_custody_destination_version',sql`${t.destinationVersion}=1`),
+ check('media_custody_hashes',sql`${t.requestHash} ~ '^[a-f0-9]{64}$' AND ${t.sha256} ~ '^[a-f0-9]{64}$'`),
+ check('media_custody_size',sql`${t.byteSize} BETWEEN 1 AND 16777216`),
+ check('media_custody_receipts_storage_object_id_check',sql`length(${t.storageObjectId}) BETWEEN 1 AND 255 AND ${t.storageObjectId} ~ '^[A-Za-z0-9_./:-]+$' AND position('://' IN ${t.storageObjectId})=0`),
+ check('media_custody_keep',sql`${t.retentionPolicy}='KEEP' AND ${t.attestation}='DURABLY_STORED'`),
+]);
 
 export * from "./platform-schema.js";
 export * from "./tenancy-schema.js";

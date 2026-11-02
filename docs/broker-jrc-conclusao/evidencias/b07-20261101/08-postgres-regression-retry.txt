@@ -1,0 +1,79 @@
+
+ RUN  v4.1.11 C:/Users/DEV02/Documents/ChatGPT/New project/BrokerJRCIA-source-audit/.worktrees/image-release-20260924
+
+ ❯ apps/api/tests/integration/qr-poll-fence.test.ts (5 tests | 4 failed) 9061ms
+     × rejects a stale poll after concurrent authenticated binding change 21ms
+     × accepts a poll whose captured source clock is unchanged 8ms
+     × mutation control reproduces the stale overwrite when only the clock fence is bypassed 8ms
+     × keeps direct app authority and tenant isolation on the persisted clock 19ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/api/tests/integration/qr-poll-fence.test.ts > QR polling fence with PostgreSQL watermark and RLS > rejects a stale poll after concurrent authenticated binding change
+error: duplicate key value violates unique constraint "instances_org_name_unique"
+ ❯ node_modules/pg/lib/client.js:694:17
+ ❯ apps/api/tests/integration/qr-poll-fence.test.ts:68:19
+     66|   async function insertInstance() {
+     67|     return withOrganizationTransaction(pool, tenant.organizationId, as…
+     68|       const id = (await tx.query<{ id: string }>(`INSERT INTO instances
+       |                   ^
+     69|         (organization_id,provider_account_id,name,upstream_instance_ke…
+     70|         VALUES($1,$2,'Synthetic QR poll',$3,'CONNECTED',$4,$5,$6) RETU…
+ ❯ Module.withOrganizationTransaction apps/api/src/db/tenant-transaction.ts:43:20
+ ❯ race apps/api/tests/integration/qr-poll-fence.test.ts:77:16
+ ❯ apps/api/tests/integration/qr-poll-fence.test.ts:136:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  apps/api/tests/integration/qr-poll-fence.test.ts > QR polling fence with PostgreSQL watermark and RLS > accepts a poll whose captured source clock is unchanged
+error: duplicate key value violates unique constraint "instances_org_name_unique"
+ ❯ node_modules/pg/lib/client.js:694:17
+ ❯ apps/api/tests/integration/qr-poll-fence.test.ts:68:19
+     66|   async function insertInstance() {
+     67|     return withOrganizationTransaction(pool, tenant.organizationId, as…
+     68|       const id = (await tx.query<{ id: string }>(`INSERT INTO instances
+       |                   ^
+     69|         (organization_id,provider_account_id,name,upstream_instance_ke…
+     70|         VALUES($1,$2,'Synthetic QR poll',$3,'CONNECTED',$4,$5,$6) RETU…
+ ❯ Module.withOrganizationTransaction apps/api/src/db/tenant-transaction.ts:43:20
+ ❯ race apps/api/tests/integration/qr-poll-fence.test.ts:77:16
+ ❯ apps/api/tests/integration/qr-poll-fence.test.ts:140:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  apps/api/tests/integration/qr-poll-fence.test.ts > QR polling fence with PostgreSQL watermark and RLS > mutation control reproduces the stale overwrite when only the clock fence is bypassed
+error: duplicate key value violates unique constraint "instances_org_name_unique"
+ ❯ node_modules/pg/lib/client.js:694:17
+ ❯ apps/api/tests/integration/qr-poll-fence.test.ts:68:19
+     66|   async function insertInstance() {
+     67|     return withOrganizationTransaction(pool, tenant.organizationId, as…
+     68|       const id = (await tx.query<{ id: string }>(`INSERT INTO instances
+       |                   ^
+     69|         (organization_id,provider_account_id,name,upstream_instance_ke…
+     70|         VALUES($1,$2,'Synthetic QR poll',$3,'CONNECTED',$4,$5,$6) RETU…
+ ❯ Module.withOrganizationTransaction apps/api/src/db/tenant-transaction.ts:43:20
+ ❯ race apps/api/tests/integration/qr-poll-fence.test.ts:77:16
+ ❯ apps/api/tests/integration/qr-poll-fence.test.ts:146:14
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  apps/api/tests/integration/qr-poll-fence.test.ts > QR polling fence with PostgreSQL watermark and RLS > keeps direct app authority and tenant isolation on the persisted clock
+error: duplicate key value violates unique constraint "instances_org_name_unique"
+ ❯ node_modules/pg/lib/client.js:694:17
+ ❯ apps/api/tests/integration/qr-poll-fence.test.ts:68:19
+     66|   async function insertInstance() {
+     67|     return withOrganizationTransaction(pool, tenant.organizationId, as…
+     68|       const id = (await tx.query<{ id: string }>(`INSERT INTO instances
+       |                   ^
+     69|         (organization_id,provider_account_id,name,upstream_instance_ke…
+     70|         VALUES($1,$2,'Synthetic QR poll',$3,'CONNECTED',$4,$5,$6) RETU…
+ ❯ Module.withOrganizationTransaction apps/api/src/db/tenant-transaction.ts:43:20
+ ❯ apps/api/tests/integration/qr-poll-fence.test.ts:157:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 1 passed (5)
+   Start at  12:49:43
+   Duration  12.55s (transform 1.69s, setup 0ms, import 3.11s, tests 9.06s, environment 0ms)

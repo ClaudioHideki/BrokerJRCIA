@@ -89,7 +89,7 @@ export function ChatwootOnboarding({ request }: { request: IntegrationRequest })
         {['UNKNOWN', 'FAILED'].includes(item.state) && item.lastError !== 'ONBOARDING_CANCELLED' &&
           <button className="button button--secondary" disabled={busy || loading} onClick={() => void recover(item)}>
             {item.state === 'UNKNOWN' ? 'Conferir e retomar' : 'Retomar configuração'}</button>}
-        {item.state === 'SUCCEEDED' && <p>Use Atualizar integração no topo desta página e abra o controle de conexões, leia o QR Code e confirme o número. A entrega só será comprovada após o teste de mensagem e resposta.</p>}
+        {item.state === 'SUCCEEDED' && <p>Use Atualizar integração no topo desta página e abra o controle de conexões para ler o QR Code. A identidade inicial será verificada automaticamente; trocas de número exigem confirmação administrativa. A entrega só será comprovada após o teste de mensagem e resposta.</p>}
       </article>)}
       {resources && !unfinished.length && <form className="integration-form" onSubmit={event => void start(event)}>
         <fieldset disabled={busy || loading || uncertain}><legend>Nova caixa de destino</legend>

@@ -45,8 +45,8 @@ export async function pairChannel(client: ApiClient, id: string, idempotencyKey:
     method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: '{}',
   }));
 }
-export async function refreshChannelStatus(client: ApiClient, id: string) {
-  return parse(ChannelV1Schema, await client.request<unknown>(`/v1/channels/${encodeURIComponent(id)}/status`));
+export async function refreshChannelStatus(client: ApiClient, id: string, signal?: AbortSignal) {
+  return parse(ChannelV1Schema, await client.request<unknown>(`/v1/channels/${encodeURIComponent(id)}/status`, signal ? { signal } : undefined));
 }
 export async function patchChannel(client: ApiClient, id: string, input: PatchChannelV1) {
   return parse(ChannelV1Schema, await client.request<unknown>(`/v1/channels/${encodeURIComponent(id)}`, {

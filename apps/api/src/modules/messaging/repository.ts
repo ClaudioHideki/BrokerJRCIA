@@ -1329,7 +1329,15 @@ export function createPostgresMessagingRepository(): MessagingRepository {
                      AND partner_key.id=message.authorizing_api_key_id
                      AND partner_key.revoked_at IS NULL
                      AND (partner_key.expires_at IS NULL OR partner_key.expires_at>now())
-                     AND partner_key.scopes @> ARRAY['messaging:send']::text[]
+                     AND partner_key.scopes @> (CASE WHEN message.content->>'type'='MEDIA'
+                       THEN ARRAY['messaging:send','media:send']::text[] ELSE ARRAY['messaging:send']::text[] END)
+                     AND (message.content->>'type'<>'MEDIA' OR (
+                       channel.provider='BAILEYS' AND channel.transport='BROKER_TRANSPORT'
+                       AND EXISTS(SELECT 1 FROM instances partner_instance
+                         WHERE partner_instance.organization_id=channel.organization_id
+                           AND partner_instance.id=channel.instance_id AND partner_instance.archived_at IS NULL)
+                       AND media_private_channel_open(message.organization_id,message.channel_id)
+                     ))
                 )) AS "partnerAuthorityAllowed",
                 (message.campaign_intent_id IS NULL OR campaign_intent_authorized(message.organization_id,message.campaign_intent_id,true)) AS "campaignAuthorityAllowed",
                 conversation.mode,

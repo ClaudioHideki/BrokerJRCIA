@@ -101,7 +101,7 @@ export function createOnboardingService(options: OnboardingOptions) {
         if (row.reconcile_only) throw uncertain();
         await validate();
         try { await options.chatwoot.connect(org, { channelId: row.channel_id!, name: input.name, requireIdentity: true,
-          ...(input.inboxId ? { inboxId: input.inboxId } : {}), replaceExistingWebhook: input.replaceExistingWebhook }, principal.authentication.actorId ?? undefined); }
+          ...(input.inboxId ? { inboxId: input.inboxId } : {}), replaceExistingWebhook: input.replaceExistingWebhook }, principal.authentication.actorId ?? undefined, principal); }
         finally { await connection(row); await remember(row); }
       } else if (c.status !== 'READY') {
         await validate();
@@ -118,7 +118,8 @@ export function createOnboardingService(options: OnboardingOptions) {
         if (!input.agentIds.every(id => assigned.has(id))) {
           if (row.reconcile_only) throw uncertain();
           await validate();
-          await options.chatwoot.addAgents(org, row.integration_id!, [...new Set([...assigned, ...input.agentIds])], principal.authentication.actorId ?? undefined);
+          await options.chatwoot.addAgents(org, row.integration_id!, [...new Set([...assigned, ...input.agentIds])],
+            principal.authentication.actorId ?? undefined, t => validateLease(t, row));
         }
       }
     } else if (row.stage === 'VERIFY') {

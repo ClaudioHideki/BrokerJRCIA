@@ -5,6 +5,7 @@ type Props = {
   node: FlowNode;
   edges: FlowGraph['edges'];
   editable: boolean;
+  allowAttemptLimit?: boolean;
   onChange: (data: FlowNode['data'], edges: FlowGraph['edges']) => void;
 };
 const record = (value: unknown): Record<string, unknown> =>
@@ -13,7 +14,7 @@ const text = (value: unknown) => typeof value === 'string' || typeof value === '
 const validNumber = (value: string) => /^[1-9][0-9]?$/.test(value);
 
 /** Choice values are port identities. Moving a row must not renumber its branch. */
-export function MenuEditor({ node, edges, editable, onChange }: Props) {
+export function MenuEditor({ node, edges, editable, onChange, allowAttemptLimit = true }: Props) {
   const helpId = useId();
   const container = useRef<HTMLFieldSetElement>(null);
   const restoreNumberFocus = useRef<{ nodeId: string; value: string } | null>(null);
@@ -26,6 +27,16 @@ export function MenuEditor({ node, edges, editable, onChange }: Props) {
   }, [node.id, node.data.options, editable]);
   const options: unknown[] = Array.isArray(node.data.options) ? node.data.options : [];
   const values = options.map(option => text(record(option).value).trim());
+  const bounded = node.data.menuConfigVersion !== undefined;
+  const limitInvalid = node.data.menuConfigVersion !== 1 || !Number.isInteger(node.data.maxAttempts) || Number(node.data.maxAttempts) < 1 || Number(node.data.maxAttempts) > 100;
+  function toggleLimit(enabled: boolean) {
+    if (!editable || !allowAttemptLimit) return;
+    if (enabled) onChange({ ...node.data, menuConfigVersion: 1, maxAttempts: 3 }, edges);
+    else {
+      const data = { ...node.data }; delete data.menuConfigVersion; delete data.maxAttempts;
+      onChange(data, edges.filter(edge => edge.source !== node.id || edge.port !== 'exhausted'));
+    }
+  }
   const invalid = options.some((raw, index) => !validNumber(values[index]!) ||
     values.filter(value => value === values[index]).length > 1 ||
     !text(record(raw).label).trim() || text(record(raw).label).trim().length > 120);
@@ -64,6 +75,16 @@ export function MenuEditor({ node, edges, editable, onChange }: Props) {
   return <fieldset ref={container} className="automation-menu-editor" disabled={!editable} aria-describedby={helpId}>
     <legend>Opções do menu</legend>
     <p id={helpId}>Adicione de 2 a 10 opções. Ao mover uma opção, seu número e destino são mantidos. Remover uma opção também remove sua conexão, preservando o bloco de destino.</p>
+    {allowAttemptLimit && <>
+      <label><input type="checkbox" checked={bounded} onChange={event => toggleLimit(event.target.checked)}/>Limitar respostas inválidas</label>
+      {bounded && <>
+        <label>Tentativas de resposta inválida<input type="number" min={1} max={100} step={1} required
+          value={text(node.data.maxAttempts)} aria-invalid={limitInvalid}
+          onChange={event => { if (editable) onChange({ ...node.data, menuConfigVersion: 1, maxAttempts: event.target.value === '' ? '' : Number(event.target.value) }, edges); }}/></label>
+        <p>Ao atingir o limite, o fluxo segue por Sem tentativas. Conecte essa saída a um bloco de destino.</p>
+        {limitInvalid && <p role="alert">Configure uma versão suportada e um número inteiro de 1 a 100 tentativas.</p>}
+      </>}
+    </>}
     {invalid && <p role="alert">Há opções importadas que precisam de correção. Use números únicos de 1 a 99 e preencha os textos.</p>}
     {options.map((raw, index) => {
       const option = record(raw), value = values[index]!, label = text(option.label);

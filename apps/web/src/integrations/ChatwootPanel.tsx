@@ -158,8 +158,15 @@ export function ChatwootPanel({
   const [source, setSource] = useState(""),
     [selectedInbox, setSelectedInbox] = useState(""),
     [reason, setReason] = useState("Correção verificada pelo administrador");
+  const [inboxSelectionUnavailable, setInboxSelectionUnavailable] = useState(false);
   const [search, setSearch] = useState("");
   const blocked = busy || disabled;
+  useEffect(() => {
+    if (selectedInbox && !inboxes.some((inbox) => String(inbox.id) === selectedInbox)) {
+      setSelectedInbox('');
+      setInboxSelectionUnavailable(true);
+    }
+  }, [inboxes, selectedInbox]);
   async function load() {
     const current = ++generation.current,
       send = api.current;
@@ -246,6 +253,7 @@ export function ChatwootPanel({
     perform(form);
   }
   const selected = inboxes.find((i) => String(i.id) === selectedInbox);
+  const destinationUnavailable = inboxSelectionUnavailable || Boolean(selectedInbox && !selected);
   const accountReady = data?.account?.status === "READY";
   const queue = jobs.filter(
     (job) =>
@@ -600,7 +608,7 @@ export function ChatwootPanel({
                   e.preventDefault();
                   const form = new FormData(e.currentTarget),
                     chosen = sources.find((s) => s.id === source);
-                  if (!chosen) return;
+                  if (!chosen || destinationUnavailable) return;
                   void action(
                     "/connections",
                     "POST",
@@ -640,9 +648,10 @@ export function ChatwootPanel({
                 <label>
                   Destino
                   <select
-                    value={selectedInbox}
-                    onChange={(e) => setSelectedInbox(e.target.value)}
+                    value={destinationUnavailable ? 'UNAVAILABLE' : selectedInbox}
+                    onChange={(e) => { setSelectedInbox(e.target.value); setInboxSelectionUnavailable(false); }}
                   >
+                    {destinationUnavailable && <option value="UNAVAILABLE" disabled>Selecione novamente um destino</option>}
                     <option value="">Criar nova caixa API</option>
                     {inboxes.map((i) => (
                       <option key={i.id} value={i.id}>
@@ -651,6 +660,7 @@ export function ChatwootPanel({
                     ))}
                   </select>
                 </label>
+                {destinationUnavailable && <p className="notice" role="status">A caixa selecionada não está mais disponível. Escolha outra caixa ou selecione explicitamente criar uma nova antes de continuar.</p>}
                 <label>
                   Nome da caixa
                   <input
@@ -666,7 +676,7 @@ export function ChatwootPanel({
                     o webhook atual desta caixa pelo broker JRC.
                   </label>
                 )}
-                <button className="button" disabled={blocked || !source}>
+                <button className="button" disabled={blocked || !source || destinationUnavailable}>
                   Conectar caixa
                 </button>
               </form>
