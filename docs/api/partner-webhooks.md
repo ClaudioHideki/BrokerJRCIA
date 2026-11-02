@@ -14,19 +14,19 @@ All routes require a current OWNER/ADMIN JWT or a current API key with the expli
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| POST | `/v1/partner-webhooks` | Register `{ "url": "https://receiver.example/hooks/broker" }` |
+| POST | `/v1/partner-webhooks` | Register URL and optional `ackMode` (`HTTP` default; receipt mode opt-in) |
 | GET | `/v1/partner-webhooks` | List endpoint metadata, without secrets |
 | DELETE | `/v1/partner-webhooks/:id` | Revoke endpoint, erase signing secret and cancel queued deliveries |
 | GET | `/v1/partner-events?after=0&limit=50` | Read durable retained events by decimal cursor |
-| GET | `/v1/partner-webhook-deliveries?limit=50` | Inspect recent delivery states and bounded failure codes |
+| GET | `/v1/partner-webhook-deliveries?limit=50` | Inspect delivery states, ACK mode, nullable receipt evidence and bounded failure codes |
 
 Registration requires `Idempotency-Key` (1–255 characters). The same key and
-normalized URL replay the same endpoint and signing secret, with `replayed: true`.
+normalized URL and ACK mode replay the same endpoint and signing secret, with `replayed: true`.
 The key is stored as SHA-256; the signing secret remains encrypted in PostgreSQL.
-Reusing the key with another URL returns `409 WEBHOOK_IDEMPOTENCY_CONFLICT`.
+Reusing the key with another URL or ACK mode returns `409 WEBHOOK_IDEMPOTENCY_CONFLICT`.
 Replaying a revoked endpoint returns `409 WEBHOOK_REVOKED`. Use a fresh key when
 registering its replacement. An organization may have up to five active endpoints.
-The URL is immutable: register a replacement and revoke the prior endpoint.
+The URL and ACK mode are immutable: register a replacement and revoke the prior endpoint.
 
 The create response is `{ endpoint, signingSecret, replayed }`. Store the
 independent signing secret securely. It is distinct from the Broker API key and
@@ -74,6 +74,9 @@ history cannot appear as a fresh actionable webhook. `connection.status` carries
 Headers:
 
 * `X-JRC-Event-Id`: immutable event UUID.
+* `X-JRC-Delivery-Id`: immutable UUID of this endpoint's delivery obligation.
+* `X-JRC-Endpoint-Id`: registered endpoint UUID.
+* `X-JRC-Ack-Mode`: `HTTP` or `PERSISTENCE_RECEIPT_V1`.
 * `X-JRC-Timestamp`: current attempt time, decimal Unix seconds.
 * `X-JRC-Signature`: `sha256=` followed by the lowercase HMAC-SHA256 hex digest of
   `timestamp + "." + eventId + "." + exactRawBody`, using the endpoint signing secret.
@@ -104,12 +107,75 @@ expired worker is recovered with the same event ID. Revocation cancels queued or
 claimed work; an HTTP request already dispatched can still arrive, and its stale
 completion cannot resurrect the cancelled delivery.
 
-Any 2xx response acknowledges a delivery. Network errors, 5xx, 408, 425 and 429
+### Negotiated ACK semantics (migration 0079)
+
+URL-only registration remains compatible and defaults to `ackMode: "HTTP"`.
+HTTP mode accepts any 2xx, including 204 with no body. Its `DELIVERED` means
+transport acceptance only. It does not prove receiver processing, WhatsApp
+delivery or custody. A body containing HTML has no receipt meaning in this mode.
+
+Opt in at creation with:
+
+```json
+{"url":"https://receiver.example/hooks/broker","ackMode":"PERSISTENCE_RECEIPT_V1"}
+```
+
+This mode requires a 2xx with `Content-Type: application/json` and exactly the
+following eight fields. IDs must match the authenticated request envelope and
+delivery/endpoint headers. `receiptId` is the receiver's stable UUID for its
+persisted inbox record, and `persistedAt` is its UTC ISO timestamp.
+
+```json
+{
+  "schemaVersion": 1,
+  "contract": "PERSISTENCE_RECEIPT_V1",
+  "eventId": "00000000-0000-4000-8000-000000000001",
+  "deliveryId": "00000000-0000-4000-8000-000000000007",
+  "organizationId": "00000000-0000-4000-8000-000000000002",
+  "endpointId": "00000000-0000-4000-8000-000000000008",
+  "receiptId": "00000000-0000-4000-8000-000000000009",
+  "persistedAt": "2026-11-01T00:00:00.000Z"
+}
+```
+
+The receiver must commit the inbox and its deduplication identity before replying.
+An identical retry returns the same receipt without repeating application effects;
+divergent content under the same scoped identity must conflict. This is a receiver
+obligation: JSON validation alone cannot prove its database commit or storage
+durability. The Broker accepts only correlated evidence, not custody or processing.
+The signature format and signed event envelope are unchanged; verify the signature
+and event scope before using the additional delivery headers.
+
+204, absent/oversized/stalled bodies, HTML, malformed JSON, unknown fields,
+invalid UUID/timestamp or foreign IDs cannot satisfy this receipt mode. Missing or
+invalid evidence in a received response yields `PERSISTENCE_RECEIPT_INVALID` and
+bounded retries; transport failures (including limits enforced before a response
+is returned) remain `DELIVERY_UNAVAILABLE`. Read
+time shares the request's 10-second deadline and is capped at 64 KiB, including
+injected transports. Never return credentials, payload content or raw exceptions
+in receipt fields. The Broker stores only the validated UUID and timestamps;
+event/delivery/endpoint/organization correlation is inherited from its delivery row.
+An endpoint cannot reuse a receipt UUID for a different delivery.
+
+The lease-fenced settlement writes status and evidence atomically. Expired/replaced
+leases and late completions cannot change a terminal receipt. The delivery API
+adds `ackMode` and nullable `persistenceReceipt` with `schemaVersion`, `receiptId`,
+`persistedAt`, and Broker `acceptedAt`. HTTP deliveries have no persistence evidence.
+Asynchronous processing/custody callbacks and status queries are separate contracts
+and are not implemented by this ACK increment. No ACK produces another partner event.
+
+Network errors, 5xx, 408, 425 and 429
 retry up to ten total claims, with delays of 1, 2, 4, 8, 16, 32, 64, 128 and 256
 seconds (capped at 300 seconds). Other responses, including redirects, are
 terminal failures. No `Retry-After` value can override these bounds. Diagnostic
 states are `PENDING`, `RUNNING`, `DELIVERED`, `FAILED` and `CANCELLED`; remote
-response bodies are never stored.
+response bodies are never stored; receipt mode stores only the evidence described above.
+
+This increment preserves the existing retry policy. It does not introduce jitter,
+Retry-After scheduling, UNKNOWN semantics for remote message sends, dead-letter
+redrive, callback ordering, or delivery guarantees for events never received by
+the Broker. These queues must not be conflated with `integration_jobs` or a new
+WhatsApp send. Receivers must handle duplicate transport after a lost ACK or lease.
 
 Partner event copies and their delivery rows are retained for 30 days. The worker
 prunes up to 500 expired events per organization maintenance pass, excluding an
@@ -162,3 +228,16 @@ previously absent cursor, and retention removes expired records.
 
 This subsystem dispatches partner events only. It never sends WhatsApp messages
 and never needs or stores a receiver's platform administrator token.
+
+Migration 0079 is additive: existing endpoints default to HTTP and existing
+deliveries retain null receipt evidence. It adds no table or lifecycle policy.
+Apply it before running the new API/worker. Application rollback preserves this
+schema and evidence; do not run a down migration. A rollback application candidate
+must explicitly support migration 0079 and its grants. The unmodified 0078 API
+has exact grant/manifest checks and cannot be called compatible with this schema.
+Before using an older worker,
+revoke opted-in receipt endpoints (preserving their ledger), then provision any
+replacement endpoint under a separately agreed contract. The SQL receipt fence
+deliberately rejects an older worker's receipt-free settlement of an opted-in
+endpoint, so a mixed old/new worker rollout is not supported for that mode.
+Revoking receipt endpoints alone does not make an old API's readiness checks pass.

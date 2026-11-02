@@ -1,9 +1,27 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { CompanyWorkspace, NewCompany } from './CompanyWorkspace.js';
 
 afterEach(cleanup);
+
+it.each([true,false])('lets monitoring inspect delivery history read-only for admin=%s without conflating the counters',async(admin)=>{
+ const request=vi.fn(async()=>({data:[{status:'UNKNOWN',code:'CHATWOOT_OUTCOME_UNKNOWN',total:2,
+  firstSeenAt:'2026-10-15T12:00:00.000Z',lastSeenAt:'2026-10-16T12:00:00.000Z'}]}));
+ render(<CompanyWorkspace
+  company={{id:'org-a',name:'Empresa A',slug:'empresa-a',status:'ACTIVE',plan:'Inicial'}}
+  members={[]} monitor={{connections:1,queue:0,failures:0,webhooks:0}} loading={false} admin={admin} disabled={false} defaultTab="monitor"
+  saveCompany={vi.fn()} saveMember={vi.fn()} acknowledge={vi.fn()} refresh={vi.fn()} integrationRequest={request}
+ />);
+ expect(screen.getAllByRole('tab')).toHaveLength(7);
+ const diagnostics=screen.getByRole('region',{name:'Entregas à central de Empresa A'});
+ expect(request).not.toHaveBeenCalled();
+ fireEvent.click(within(diagnostics).getByRole('button',{name:'Diagnóstico de todas as entregas'}));
+ expect(await within(diagnostics).findByText('2 tarefas')).toBeVisible();
+ expect(request).toHaveBeenCalledExactlyOnceWith('/jobs/summary');
+ expect(within(diagnostics).queryByRole('button',{name:/reenviar|reprocessar/i})).not.toBeInTheDocument();
+ expect(screen.getByRole('tab',{name:'Monitoramento'})).toHaveAttribute('aria-selected','true');
+});
 
 it('labels the new-company flag as enabling automations and explains its effect', () => {
   render(<NewCompany disabled={false} cancel={vi.fn()} submit={vi.fn().mockResolvedValue(undefined)} />);

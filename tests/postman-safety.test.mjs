@@ -22,6 +22,18 @@ const round = { broker_origin: 'https://broker.example', jrc_api_key: 'synthetic
   instance_id: 'created-instance', created_instance_id: 'created-instance', created_instance_run_id: 'poc-current', connected_instance_id: 'created-instance',
   channel_id: 'created-channel', created_channel_id: 'created-channel', created_channel_instance_id: 'created-instance', created_channel_run_id: 'poc-current',
   endpoint_id: 'created-endpoint', created_endpoint_id: 'created-endpoint', created_endpoint_run_id: 'poc-current' };
+it('keeps the POC transport ACK default explicit and documents receipt opt-in without enabling writes',()=>{
+ expect(poc.variable.find(value=>value.key==='webhook_ack_mode').value).toBe('HTTP');
+ expect(poc.variable.find(value=>value.key==='allow_writes').value).toBe('false');
+ expect(JSON.parse(named('13 ').request.body.raw)).toMatchObject({url:'{{receiver_url}}',ackMode:'{{webhook_ack_mode}}'});
+ expect(named('13 ').request.description).toContain('PERSISTENCE_RECEIPT_V1');
+ expect(named('13 ').request.description).toContain('204 sem corpo');
+ expect(named('16 ').request.description).toContain('persistenceReceipt');
+ for(const ackMode of ['HTTP','PERSISTENCE_RECEIPT_V1']){
+  const result=execute(named('13 '),'test',{...round,webhook_ack_mode:ackMode},{endpoint:{id:'created-endpoint',ackMode},signingSecret:'synthetic'},201);
+  expect(result.failures).toEqual([]);
+ }
+});
 it.each([['05 ', 'instance_id'], ['07 ', 'instance_id'], ['09 ', 'channel_id'], ['17 ', 'endpoint_id'], ['18 ', 'instance_id']])(
   'blocks a higher-precedence environment/data resource override at %s', (prefix, variable) => {
     const result = execute(named(prefix), 'prerequest', round, {}, 200, { [variable]: 'outside-this-poc' });

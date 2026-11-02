@@ -3,6 +3,7 @@ import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant
 import { createChatwootSafeFetch } from '../integrations/chatwoot-safe-http.js';
 import { normalizeChatwootOrigin } from '../integrations/chatwoot-destination.js';
 import { requireActiveOrganization } from '../tenancy/operational-limits.js';
+import {readPartnerPersistenceReceipt,type PartnerAckMode,type PartnerPersistenceReceipt} from './ack-contract.js';
 
 export function normalizeWebhookUrl(value: string): string {
  const url = new URL(value);
@@ -18,15 +19,16 @@ export interface DeliveryClaim {
  deliveryId: string; endpointId: string; eventId: string; organizationId: string; url: string;
  encryptedSecret: string; attempts: number; envelope: Record<string, unknown>;
  leaseToken?:string;
+ ackMode?:PartnerAckMode;
 }
-export interface DeliverySettlement {status:'DELIVERED'|'PENDING'|'FAILED';attempts:number;errorCode:string|null;delayMs:number}
+export interface DeliverySettlement {status:'DELIVERED'|'PENDING'|'FAILED';attempts:number;errorCode:string|null;delayMs:number;receipt?:PartnerPersistenceReceipt}
 export async function claimDelivery(tx: TenantTransaction, org: string): Promise<DeliveryClaim | null> {
  await requireActiveOrganization(tx, org);
  await tx.query('SELECT partner_publish_events()');
  await tx.query(`UPDATE partner_event_deliveries SET status='FAILED',lease_token=NULL,lease_expires_at=NULL,last_error_code='DELIVERY_ATTEMPTS_EXHAUSTED',updated_at=now()
  WHERE organization_id=$1 AND status='RUNNING' AND lease_expires_at<=now() AND attempts>=10`,[org]);
  const claim=(await tx.query<DeliveryClaim>(`SELECT d.id AS "deliveryId",p.id AS "endpointId",e.id AS "eventId",d.organization_id AS "organizationId",
- p.url,p.encrypted_secret AS "encryptedSecret",d.attempts,
+ p.url,p.encrypted_secret AS "encryptedSecret",p.ack_mode AS "ackMode",d.attempts,
  jsonb_build_object('schemaVersion',1,'eventId',e.id,'cursor',e.sequence_number::text,'organizationId',e.organization_id,
  'type',e.event_type,'occurredAt',e.occurred_at,'data',e.payload) AS envelope
  FROM partner_event_deliveries d JOIN partner_webhook_endpoints p ON p.organization_id=d.organization_id AND p.id=d.endpoint_id
@@ -40,13 +42,14 @@ export async function claimDelivery(tx: TenantTransaction, org: string): Promise
 }
 export async function authorizeDelivery(tx:TenantTransaction,claim:DeliveryClaim):Promise<boolean>{
  await requireActiveOrganization(tx,claim.organizationId);
- return Boolean((await tx.query(`SELECT 1 FROM partner_event_deliveries d JOIN partner_webhook_endpoints p ON p.organization_id=d.organization_id AND p.id=d.endpoint_id WHERE d.organization_id=$1 AND d.id=$2 AND d.lease_token=$3 AND d.status='RUNNING' AND d.lease_expires_at>now() AND p.status='ACTIVE' AND p.encrypted_secret=$4`,[claim.organizationId,claim.deliveryId,claim.leaseToken,claim.encryptedSecret])).rowCount);
+ return Boolean((await tx.query(`SELECT 1 FROM partner_event_deliveries d JOIN partner_webhook_endpoints p ON p.organization_id=d.organization_id AND p.id=d.endpoint_id WHERE d.organization_id=$1 AND d.id=$2 AND d.lease_token=$3 AND d.status='RUNNING' AND d.lease_expires_at>now() AND p.status='ACTIVE' AND p.encrypted_secret=$4 AND p.ack_mode=$5`,[claim.organizationId,claim.deliveryId,claim.leaseToken,claim.encryptedSecret,claim.ackMode??'HTTP'])).rowCount);
 }
 export async function settleDelivery(tx: TenantTransaction, claim: DeliveryClaim, result: DeliverySettlement): Promise<void> {
  await tx.query(`UPDATE partner_event_deliveries SET status=$4,attempts=$5,last_error_code=$6,
- available_at=now()+($7::double precision*interval '1 millisecond'),updated_at=now(),lease_token=NULL,lease_expires_at=NULL
+ available_at=now()+($7::double precision*interval '1 millisecond'),updated_at=now(),lease_token=NULL,lease_expires_at=NULL,
+ receipt_id=$9,receipt_persisted_at=$10,receipt_accepted_at=CASE WHEN $9::uuid IS NOT NULL THEN clock_timestamp() ELSE NULL END
  WHERE organization_id=$1 AND id=$2 AND endpoint_id=$3 AND status='RUNNING' AND lease_token=$8 AND lease_expires_at>now()`,
- [claim.organizationId,claim.deliveryId,claim.endpointId,result.status,result.attempts,result.errorCode,result.delayMs,claim.leaseToken]);
+ [claim.organizationId,claim.deliveryId,claim.endpointId,result.status,result.attempts,result.errorCode,result.delayMs,claim.leaseToken,result.receipt?.receiptId??null,result.receipt?.persistedAt??null]);
 }
 export function createPartnerEventWorker(options: {
  transact<T>(org:string,operation:OrganizationTransaction<T>):Promise<T>;
@@ -56,20 +59,28 @@ export function createPartnerEventWorker(options: {
  return { processOne: async(org:string) => {
   const claim=await options.transact(org,tx=>(options.claim??claimDelivery)(tx,org));if(!claim)return false;
   if(!await options.transact(org,tx=>(options.authorize??authorizeDelivery)(tx,claim)))return true;
-  const attempt=claim.attempts+1;let errorCode:string|null=null;let delivered=false;let permanent=false;
+  const attempt=claim.attempts+1;let errorCode:string|null=null;let delivered=false;let permanent=false;let receipt:PartnerPersistenceReceipt|undefined;
   try {
    const url=normalizeWebhookUrl(claim.url),body=JSON.stringify(claim.envelope);
    if(Buffer.byteLength(body)>2*1024*1024){permanent=true;throw new Error('PAYLOAD_LIMIT');}
    const timestamp=String(Math.floor((options.now?.()??new Date()).getTime()/1000));
    const headers={'content-type':'application/json','x-jrc-event-id':claim.eventId,'x-jrc-timestamp':timestamp,
+    'x-jrc-delivery-id':claim.deliveryId,'x-jrc-endpoint-id':claim.endpointId,'x-jrc-ack-mode':claim.ackMode??'HTTP',
     'x-jrc-signature':signPartnerEvent(options.openSecret(claim),claim.eventId,timestamp,body)};
    const send=options.send??createChatwootSafeFetch({origin:new URL(url).origin,timeoutMs:10000,maxResponseBytes:65536});
-   const response=await send(url,{method:'POST',headers,body,redirect:'manual',signal:AbortSignal.timeout(10000)});
+   const signal=AbortSignal.timeout(10000);
+   const response=await send(url,{method:'POST',headers,body,redirect:'manual',signal});
    delivered=response.status>=200&&response.status<300;
-   if(!delivered){errorCode=`HTTP_${response.status}`;permanent=response.status<500&&![408,425,429].includes(response.status);}
-   await response.body?.cancel();
+   if(delivered&&claim.ackMode==='PERSISTENCE_RECEIPT_V1'){
+    delivered=false;errorCode='PERSISTENCE_RECEIPT_INVALID';
+    const candidate=await readPartnerPersistenceReceipt(response,signal);
+    if(candidate.eventId!==claim.eventId||candidate.deliveryId!==claim.deliveryId||candidate.organizationId!==claim.organizationId||candidate.endpointId!==claim.endpointId)throw new Error('PERSISTENCE_RECEIPT_INVALID');
+    receipt=candidate;delivered=true;errorCode=null;
+   }
+   if(response.status<200||response.status>=300){errorCode=`HTTP_${response.status}`;permanent=response.status<500&&![408,425,429].includes(response.status);}
+   if(!response.body?.locked)void response.body?.cancel().catch(()=>{});
   }catch{errorCode??=permanent?'PAYLOAD_LIMIT':'DELIVERY_UNAVAILABLE';}
-  await options.transact(org,tx=>(options.settle??settleDelivery)(tx,claim,{status:delivered?'DELIVERED':permanent||attempt>=10?'FAILED':'PENDING',attempts:attempt,errorCode,delayMs:delivered?0:retryDelayMs(attempt)}));
+  await options.transact(org,tx=>(options.settle??settleDelivery)(tx,claim,{status:delivered?'DELIVERED':permanent||attempt>=10?'FAILED':'PENDING',attempts:attempt,errorCode,delayMs:delivered?0:retryDelayMs(attempt),...(receipt?{receipt}:{})}));
   return true;
  } };
 }

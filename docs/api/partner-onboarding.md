@@ -75,7 +75,12 @@ Consulte schemas e exemplos reais no Swagger; IDs abaixo são os retornados pela
 4. `POST /v1/messaging/instances/{id}/partner-activate` com `{}` e chave idempotente.
    Exige `instances:write` **e** `messaging:send`. Guardar `response.id` como `channelId`; a resposta do canal é um objeto plano.
 5. `POST /v1/partner-webhooks` com `{ "url": "https://seu-backend.example/hooks/jrc" }`
-   e uma chave idempotente. Guardar o `signingSecret` no backend consumidor.
+   e uma chave idempotente. Sem `ackMode`, o modo é `HTTP`: qualquer 2xx, inclusive
+   204 sem corpo, confirma apenas transporte. Para exigir recibo de persistência,
+   acrescentar `"ackMode":"PERSISTENCE_RECEIPT_V1"` somente após implementar o
+   [contrato do recibo](partner-webhooks.md#negotiated-ack-semantics-migration-0079).
+   Guardar o `signingSecret` no backend consumidor. URL normalizada e modo fazem
+   parte da intenção idempotente; mesma chave com outro modo ou URL retorna 409.
 6. Enviar uma mensagem de um número de homologação ao número conectado; conferir
    `message.received` no webhook e/ou `GET /v1/partner-events?after=0&limit=50`.
 7. Responder com `POST /v1/messaging/channels/{id}/partner-text`, corpo
@@ -114,8 +119,15 @@ isso não amplia acesso entre canais ou empresas. Os exemplos executáveis estã
 na coleção `postman-media.json`, com upload e envio desabilitados por padrão.
 
 Receba webhooks como documentado em [partner-webhooks.md](partner-webhooks.md):
-HMAC com corpo bruto, janela de timestamp, deduplicação durável por `eventId` e
-resposta 2xx somente depois de persistir. Há tentativas e possível entrega fora de
+HMAC com corpo bruto, janela de timestamp e deduplicação durável por `eventId`.
+O receptor deve persistir antes de responder. Em `PERSISTENCE_RECEIPT_V1`, retornar
+2xx com os oito campos estritos do recibo, correlacionados à organização/evento
+do envelope e aos headers de endpoint/delivery; HTTP 204 não satisfaz esse modo.
+`GET /v1/partner-webhook-deliveries` informa `ackMode` e `persistenceReceipt`
+anulável. Essa evidência não significa processamento, entrega WhatsApp ou custódia
+de mídia. A coleção POC usa `webhook_ack_mode=HTTP` e permite optar pelo modo de
+recibo antes de criar o receptor; preserve o modo durante retries da mesma intenção.
+Há tentativas e possível entrega fora de
 ordem. Polling tem retenção de 30 dias; cursor expirado retorna 409 com metadados de
 recuperação. Revogar chave de API não revoga o endpoint: revogue ambos no encerramento.
 

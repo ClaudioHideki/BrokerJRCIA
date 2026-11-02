@@ -15,7 +15,8 @@ from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemp
 ROOT = Path(__file__).resolve().parents[2]
 DATA = json.loads((ROOT / 'tmp/pdfs/contracts.json').read_text(encoding='utf-8'))
 OUT = ROOT / 'scripts/docs/assets/guia-api-jrc.pdf'
-EDITION = '2026-10-29'
+EDITION = '2026-11-01'
+EDITION_LABEL = '/'.join(reversed(EDITION.split('-')))
 OPERATIONS = {method.upper() + ' ' + route: (profile, op)
               for profile, doc in DATA['profiles'].items() for route, methods in doc['paths'].items()
               for method, op in methods.items() if method in ('get', 'post', 'put', 'delete', 'patch')}
@@ -184,7 +185,7 @@ def keys_for(profile):
 
 
 page('Broker | Guia técnico da API')
-text('29/10/2026 | ' + str(len(OPERATIONS)) + ' operações públicas | GET, POST, PUT e DELETE', 'Heading')
+text(EDITION_LABEL + ' | ' + str(len(OPERATIONS)) + ' operações públicas | GET, POST, PUT e DELETE', 'Heading')
 text('Referência para integrar um backend à API HTTPS do Broker: conexões QR, texto, mídia privada, eventos e controle Chatwoot opcional. Os exemplos usam somente IDs sintéticos e variáveis de credencial.')
 h('Acesso e convenções')
 code('BASE_URL="https://broker.example"\n# Use a origem e a chave recebidas para sua instalação.\n# BROKER_API_KEY é uma variável privada do backend.\ncurl "$BASE_URL/v1/provider-accounts?provider=BAILEYS&limit=100" \\\n  -H "X-JRC-API-Key: $BROKER_API_KEY"')
@@ -222,20 +223,19 @@ page('Eventos | receber, confirmar e retomar')
 h('POST - cadastrar receptor HTTPS')
 code('POST /v1/partner-webhooks\nContent-Type: application/json\nIdempotency-Key: receptor-teste-01\n\n' + request_example('POST /v1/partner-webhooks'))
 text('Exige webhooks:manage. Guarde endpoint.id e signingSecret retornados. O segredo HMAC é separado da API key e não aparece nas listagens. HTTPS público, porta 443, DNS/certificado válidos, sem query, fragmento ou credenciais; até cinco endpoints ativos por tenant.')
+text('ackMode é opcional: HTTP mantém o aceite de transporte 2xx, inclusive 204 sem corpo. Para exigir recibo de persistência, cadastrar com ackMode=PERSISTENCE_RECEIPT_V1. Mesma chave idempotente exige URL normalizada e modo iguais; divergência retorna 409. URL e modo são imutáveis.')
 table(['Evento', 'Conteúdo observado'], [
     ['message.received', 'Mensagem recebida.'], ['message.created', 'Registro de saída, inclusive origem observada.'],
     ['message.status', 'Estado de mensagem.'], ['connection.status', 'Estado de conexão QR ou Meta.'],
 ], [54 * mm, 120 * mm])
 h('Verificar assinatura e confirmar recebimento')
-code('X-JRC-Event-Id: UUID_DO_EVENTO\nX-JRC-Timestamp: UNIX_SEGUNDOS\nX-JRC-Signature: sha256=HEX_HMAC\n\nHEX_HMAC = HMAC_SHA256(signingSecret,\n  timestamp + "." + eventId + "." + exactRawBody)')
-text('Valide os bytes brutos antes do JSON, assinatura em tempo constante, eventId do header contra o envelope e timestamp em janela de cinco minutos. Persista eventId único antes do 2xx. Entrega ao menos uma vez e possivelmente fora de ordem: deduplique e preserve a origem para evitar loop de reenvio.')
-text('Até dez tentativas totais. Rede, 5xx, 408, 425 e 429 permitem retry limitado; outros códigos, incluindo redirect, são terminais. DELIVERED em uma entrega HTTP significa 2xx do receptor, não entrega no WhatsApp.')
+code('X-JRC-Event-Id: UUID_DO_EVENTO\nX-JRC-Delivery-Id: UUID_DA_ENTREGA\nX-JRC-Endpoint-Id: UUID_DO_ENDPOINT\nX-JRC-Ack-Mode: HTTP ou PERSISTENCE_RECEIPT_V1\nX-JRC-Timestamp: UNIX_SEGUNDOS\nX-JRC-Signature: sha256=HEX_HMAC\n\nHEX_HMAC = HMAC_SHA256(signingSecret,\n  timestamp + "." + eventId + "." + exactRawBody)')
+text('Valide os bytes brutos antes do JSON, assinatura em tempo constante, eventId do header contra o envelope e timestamp em janela de cinco minutos. Persista eventId único antes do 2xx. O transporte pode se repetir e chegar fora de ordem: deduplique e preserve a origem para evitar loop de reenvio.')
+text('No modo PERSISTENCE_RECEIPT_V1, responder somente após COMMIT com 2xx, Content-Type application/json e exatamente oito campos: schemaVersion=1, contract=PERSISTENCE_RECEIPT_V1, eventId, deliveryId, organizationId, endpointId, receiptId UUID estável e persistedAt UTC ISO. Correlacione organização/evento ao envelope e delivery/endpoint aos headers. 204, HTML, IDs divergentes ou schema inválido não confirmam esse modo; o mesmo retry retorna o recibo já persistido.')
+text('Até dez tentativas totais. Rede, 5xx, 408, 425 e 429 permitem retry limitado; outros códigos, incluindo redirect, são terminais. Recibo ausente/inválido recebido permite retry limitado. DELIVERED depende de ackMode: em HTTP é transporte 2xx; no modo de recibo é aceite de evidência correlacionada. Nenhum dos modos comprova processamento, entrega WhatsApp ou custódia de mídia.')
 h('GET - polling e diagnóstico')
 code('GET /v1/partner-events?after=0&limit=50\nGET /v1/partner-events?after=CURSOR_RETORNADO&limit=50\nGET /v1/partner-webhook-deliveries?limit=50')
 text('Persista nextCursor como string decimal; não converta para Number no JavaScript. Retenção: 30 dias. 409 EVENT_CURSOR_EXPIRED fornece resetCursor/earliestCursor/lastPrunedCursor; reinicie e concilie com mensagens. Eventos históricos importados não são automaticamente novas mensagens acionáveis.')
-h('DELETE - revogar receptor')
-code('DELETE /v1/partner-webhooks/{id}\nX-JRC-API-Key: $BROKER_API_KEY')
-text('Cancela entregas pendentes e remove o segredo; uma requisição já despachada pode chegar. Revogar API key não revoga automaticamente o receptor. O catálogo a seguir informa os parâmetros e códigos declarados de cada operação.')
 
 page('Catálogo | conexões QR')
 text('Rotas e códigos extraídos do contrato público. {id} e demais parâmetros de caminho são obrigatórios; UUIDs do Broker, salvo IDs numéricos explicitamente descritos no controle Chatwoot. Nos exemplos JSON, UUIDs são sintéticos. Os schemas completos no Swagger definem tipos, limites e campos de resposta.', 'Small')
@@ -248,6 +248,8 @@ catalog(keys_for('messaging'))
 
 page('Catálogo | eventos e erros')
 catalog(keys_for('events'))
+text('O diagnóstico informa ackMode e persistenceReceipt anulável: schemaVersion, receiptId, persistedAt do receptor e acceptedAt do Broker. Evidência é gravada junto com DELIVERED sob lease válido; callback ou conclusão tardia não substitui esse contrato. Corpos remotos e segredos não são retornados.', 'Small')
+text('Revogar o receptor cancela entregas pendentes e remove seu segredo; uma requisição já despachada pode chegar. Revogar a API key não revoga automaticamente o receptor.', 'Small')
 h('Tratamento de falhas e resultados incertos')
 table(['HTTP / estado', 'Ação do cliente'], [
     ['400 / 422', 'Corrigir parâmetros/corpo conforme schema.'], ['401 / 403', 'Conferir credencial única, validade, escopos e vínculo.'],
@@ -279,7 +281,7 @@ def decorate(canvas, doc):
     canvas.setFont('Helvetica-Bold', 8)
     canvas.drawString(18 * mm, 285 * mm, 'BROKER | API PÚBLICA')
     canvas.setFont('Helvetica', 8)
-    canvas.drawString(18 * mm, 12 * mm, '29/10/2026 | Guia técnico - exemplos sintéticos')
+    canvas.drawString(18 * mm, 12 * mm, EDITION_LABEL + ' | Guia técnico - exemplos sintéticos')
     canvas.drawRightString(192 * mm, 12 * mm, str(doc.page))
 
 

@@ -4,6 +4,18 @@ import { buildPublicDocument, buildReadOnlyPostman } from '../scripts/docs/publi
 
 const source = JSON.parse(await readFile(new URL('../docs/api/openapi.json', import.meta.url), 'utf8'));
 describe('public partner contract', () => {
+  it('explains negotiated ACK modes and exposes their unchanged canonical schemas',()=>{
+    const contract=buildPublicDocument(source,'events');
+    const create=contract.paths['/v1/partner-webhooks'].post;
+    expect(contract.info.description).toContain('204 sem corpo');
+    expect(create.description).toContain('HTTP por padrão');
+    expect(create.description).toContain('PERSISTENCE_RECEIPT_V1');
+    expect(create.description).toContain('URL normalizada e modo');
+    expect(create.requestBody).toEqual(source.paths['/v1/partner-webhooks'].post.requestBody);
+    const deliveries=contract.paths['/v1/partner-webhook-deliveries'].get;
+    expect(deliveries.description).toContain('persistenceReceipt');
+    expect(deliveries.description).toContain('não comprova processamento');
+  });
   it('publishes separate private upload, metadata and canonical media-send contracts with explicit key scopes', () => {
     const contract = buildPublicDocument(source, 'messaging'), prefix = '/v1/messaging/channels/{id}';
     const upload = contract.paths[prefix + '/media']?.post;

@@ -1,28 +1,57 @@
 {
-  "schemaVersion": 1,
-  "updatedAt": "2026-11-01T21:02:40.945Z",
+  "schemaVersion": 2,
+  "updatedAt": "2026-11-02T02:07:58.467Z",
   "repository": "ClaudioHideki/BrokerJRCIA",
   "branch": "codex/broker-jrc-2-redesign-homologacao-20261030",
-  "baselineCommit": "2f1effdfc365592ac9e0f5bbb5bd19b8668ce259",
-  "pullRequest": 6,
-  "increment": "20261101-origin-composition-media-worker-connection-journey",
-  "status": "CANDIDATA_REVISADA_PUBLICACAO_AUTORIZADA_AGUARDANDO_GATES",
-  "commitStatus": "CONSOLIDADO_NO_COMMIT_QUE_CONTEM_ESTE_CHECKPOINT",
+  "baselineCommit": "977ab0eed78ac3ad1aac75f38e6bba723eb86db2",
+  "commitStatus": "LOCAL_COMMIT_CONTAINING_THIS_CHECKPOINT; exact SHA in external ENTREGA.json",
+  "status": "INCREMENTOS_LOCAIS_REVISADOS_NAO_PUBLICADOS; PRODUTO_PARCIAL",
+  "historicalCheckpoint": "Previous ESTADO-FINAL.json preserved in Git at 977ab0e; old release authorization does not authorize this increment",
+  "pullRequest": {
+    "number": 6,
+    "draft": true,
+    "headShaAtLastRead": "977ab0eed78ac3ad1aac75f38e6bba723eb86db2",
+    "base": "codex/broker-audit-fixes-20261029",
+    "baseSha": "d1b66a56fe6d4f9202969784301abdf61490db45",
+    "descriptionUpdate": "Metadata-only reconciliation requested; final response in external evidence package; no push or retarget"
+  },
+  "lab2": {
+    "repository": "ClaudioHideki/jrc-conversas-lab2",
+    "branch": "codex/release-grupojrc-20261022",
+    "baseline": "abc1f7c57f55a7d9871101cd5b70c8b93becc7ca",
+    "commit": "16f59d786a53c338f82a7285139c4af59edf68d8",
+    "pushed": false,
+    "preexistingWorkflowEdit": "preserved unstaged",
+    "requestSpecsAdded": 6,
+    "railsExecuted": false,
+    "realRubyClassesSyntheticPorts": {
+      "passed": 20,
+      "failed": 0
+    }
+  },
   "production": {
-    "accessed": true,
-    "accessMode": "read-only Dokploy UI and aggregate SQL",
+    "currentStateVerified": false,
+    "accessBlock": "browser.user is unavailable",
     "deployed": false,
     "migrated": false,
     "credentialsChanged": false,
     "realNumbersConnected": 0,
     "messagesSent": 0,
     "realUnknownReplayed": 0,
-    "backupDumpRestoreExecuted": false
+    "backupDumpRestoreExecuted": false,
+    "engineOwnership": "UNPROVEN"
   },
   "migration": {
-    "added": "0078_qr_origin_receipts.sql",
-    "appliedOnlyTo": "isolated local synthetic databases",
-    "rollback": "Retain ledger and journal; do not drop accepted obligations. Stop new capture/worker before binary rollback; legacy ACK remains unconfirmed."
+    "added": "0079_partner_persistence_receipts.sql",
+    "appliedOnlyTo": "exclusive local synthetic databases",
+    "rollback": "0078 API is incompatible with exact 0079 readiness/grants. Keep receipt ledger; use a 0079-compatible binary; no down migration."
+  },
+  "increments": {
+    "ack": "VALIDADO_NO_RECORTE_LOCAL",
+    "mediaReceiver": "VALIDADO_NO_RECORTE_LOCAL",
+    "lab2Binding": "VALIDADO_CLASSES_REAIS_PORTAS_SINTETICAS",
+    "diagnostics": "VALIDADO_COMPONENTES",
+    "mobileJourneys": "VALIDADO_E2E_LOCAL_PROVIDER_SINTETICO"
   },
   "items": {
     "B02": "PARCIAL",
@@ -33,306 +62,262 @@
     "B13": "PARCIAL",
     "B14": "PARCIAL",
     "LAB2": "PARCIAL",
-    "adminShell": "VALIDADO_NO_RECORTE_LOCAL",
-    "companyShell": "VALIDADO_NO_RECORTE_LOCAL",
-    "redesignAllModules": "PENDENTE",
-    "pilot50Numbers30Days": "PENDENTE",
-    "capacity400": "NAO_VERIFICADO",
-    "capacity900": "NAO_VERIFICADO"
+    "redesignAllModules": "PARCIAL"
   },
   "tests": {
     "unitFullRound": {
       "files": 465,
-      "passed": 3628,
-      "failed": 1,
-      "skipped": 0,
-      "seconds": 945.31,
-      "evidence": "unit.json",
-      "failure": "BotSetupJourney expected6tabs; new diagnostic tab makes7"
+      "filesPassed": 462,
+      "filesFailed": 3,
+      "passed": 3667,
+      "failed": 2,
+      "skipped": 4,
+      "seconds": 913.11,
+      "exitCode": 1,
+      "evidence": "unit-final.log",
+      "issues": "two old schema expectations; OpenSSL ENOENT"
     },
-    "unitAffectedRetest": {
+    "unitFailedFilesRetest": {
       "files": 3,
-      "passed": 31,
-      "failed": 0,
-      "skipped": 0,
-      "seconds": 19.64,
-      "evidence": "ux-tabs-regression-green.log",
-      "note": "Updated exact tabs and End/Home/focus/lazy assertions; separate from full round"
-    },
-    "originJournal": {
-      "passed": 55,
-      "failed": 0,
-      "skipped": 0,
-      "seconds": 70.15,
-      "evidence": "origin-final-tests.log",
-      "scope": "PostgreSQL/Broker real and compiled complete engine classes; WhatsApp/auth/enrichment synthetic; process SIGKILL not physical session"
-    },
-    "cclxWorkerPgMinio": {
-      "passed": 22,
-      "failed": 0,
-      "skipped": 0,
-      "evidence": "media-worker-report.md",
-      "scope": "Real partner worker/routes/auth/SQL and private MinIO readback; synthetic provider bytes and loopback transport"
-    },
-    "engineSourceBuild": {
-      "preReview": "PASS full tsc and main CJS/ESM",
-      "afterReview": "NOT_RERUN_LOW_HOST_MEMORY",
-      "postReviewStagingAndClasses": "PASS",
-      "productionOwnership": "UNPROVEN"
-    },
-    "compiledEntrypoint": {
-      "passed": 1,
-      "failed": 0,
-      "skipped": 1,
-      "note": "Database-dependent case awaits final CI with isolated PostgreSQL"
-    },
-    "pdfAudit": {
-      "passed": 6,
-      "failed": 0,
-      "skipped": 0
-    },
-    "partnerQr": {
-      "passed": 34,
-      "failed": 0,
-      "skipped": 0
-    },
-    "capacityBudget": {
       "passed": 11,
       "failed": 0,
-      "skipped": 0
+      "skipped": 0,
+      "seconds": 6.48,
+      "exitCode": 0,
+      "evidence": "unit-retest.log"
     },
-    "lint": "NO_LINT_SCRIPT",
-    "gates": [
-      {
-        "name": "pdf-audit",
-        "arguments": [
-          "test",
-          "--",
-          "tests/security-audit-artifacts.test.mjs",
-          "--maxWorkers=1",
-          "--reporter=dot"
+    "ackFocal": {
+      "files": 6,
+      "passed": 56,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "postgresReceiptsReadiness": {
+      "files": 2,
+      "passed": 53,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "postgresRegressionFirst": {
+      "filesPassed": 4,
+      "passed": 23,
+      "failedSuites": 1,
+      "skipped": 8,
+      "exitCode": 1,
+      "issue": "missing exclusive-cluster flag in runner"
+    },
+    "postgresReplayRetest": {
+      "passed": 8,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "workerPgMinio": {
+      "passed": 2,
+      "failed": 0,
+      "seconds": 21.535,
+      "exitCode": 0,
+      "syntheticMedia": true
+    },
+    "originCrash": {
+      "passed": 2,
+      "failed": 0,
+      "seconds": 48.288,
+      "exitCode": 0,
+      "physicalWhatsApp": false,
+      "fullEngineRebuilt": false
+    },
+    "productComponents": {
+      "passed": 13,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "e2e": {
+      "passed": 41,
+      "failed": 0,
+      "skipped": 1,
+      "minutes": 3.1,
+      "exitCode": 0,
+      "retries": 0,
+      "skip": "mobile-only shell test in desktop project",
+      "provider": "BrowserE2eFakeProvider"
+    },
+    "e2eArtifactRetest": {
+      "passed": 2,
+      "failed": 0,
+      "seconds": 23.1,
+      "exitCode": 0,
+      "scope": "only screenshot prefix masking changed after full E2E"
+    },
+    "newman": {
+      "generatedAt": "2026-11-02T01:58:45.092Z",
+      "newman": "6.2.3",
+      "poc": [
+        {
+          "mode": "HTTP",
+          "environment": "loopback real Fastify / synthetic services and provider",
+          "requests": {
+            "total": 19,
+            "pending": 0,
+            "failed": 0
+          },
+          "assertions": {
+            "total": 49,
+            "pending": 0,
+            "failed": 0
+          },
+          "failures": [],
+          "durationMs": 4772
+        },
+        {
+          "mode": "PERSISTENCE_RECEIPT_V1",
+          "environment": "loopback real Fastify / synthetic services and provider",
+          "requests": {
+            "total": 19,
+            "pending": 0,
+            "failed": 0
+          },
+          "assertions": {
+            "total": 49,
+            "pending": 0,
+            "failed": 0
+          },
+          "failures": [],
+          "durationMs": 4428
+        }
+      ],
+      "media": {
+        "mode": "LOCAL_HTTP_CONTRACTS_SYNTHETIC_SERVICES",
+        "newman": "6.2.3",
+        "guards": [
+          {
+            "name": "upload-disabled-by-default",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          },
+          {
+            "name": "send-disabled-by-default",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          },
+          {
+            "name": "missing-local-file",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          },
+          {
+            "name": "invalid-idempotency-key",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          },
+          {
+            "name": "invalid-origin-path",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          },
+          {
+            "name": "invalid-caption-json",
+            "blocked": true,
+            "httpRequests": 0,
+            "runnerFailures": 0
+          }
         ],
-        "exitCode": 0,
-        "seconds": 70.24
+        "folders": [
+          {
+            "folder": "Upload privado - opt-in allow_media_upload",
+            "requests": 1,
+            "assertions": 1,
+            "failures": [],
+            "statuses": [
+              201
+            ]
+          },
+          {
+            "folder": "Consultar estado do anexo",
+            "requests": 1,
+            "assertions": 1,
+            "failures": [],
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "folder": "Enviar anexo com legenda - opt-in allow_media_send",
+            "requests": 1,
+            "assertions": 1,
+            "failures": [],
+            "statuses": [
+              202
+            ]
+          }
+        ],
+        "httpRequests": [
+          {
+            "method": "POST",
+            "path": "/v1/messaging/channels/34ecb7e5-b3e7-43a3-b9af-23cabcad3efd/media",
+            "status": 201
+          },
+          {
+            "method": "GET",
+            "path": "/v1/messaging/channels/34ecb7e5-b3e7-43a3-b9af-23cabcad3efd/media/10fdefcf-9b1d-461b-b1b4-a160b2960377",
+            "status": 200
+          },
+          {
+            "method": "POST",
+            "path": "/v1/messaging/channels/34ecb7e5-b3e7-43a3-b9af-23cabcad3efd/partner-media",
+            "status": 202
+          }
+        ],
+        "uploads": 1,
+        "reads": 1,
+        "admissions": 1,
+        "providerSends": 0,
+        "fixtureRemoved": true
       },
-      {
-        "name": "typecheck",
-        "arguments": [
-          "run",
-          "typecheck"
-        ],
-        "exitCode": 0,
-        "seconds": 3.6
-      },
-      {
-        "name": "build",
-        "arguments": [
-          "run",
-          "build"
-        ],
-        "exitCode": 0,
-        "seconds": 8.08
-      },
-      {
-        "name": "web-bundle",
-        "arguments": [
-          "run",
-          "test:web:bundle"
-        ],
-        "exitCode": 0,
-        "seconds": 1.26
-      },
-      {
-        "name": "compiled",
-        "arguments": [
-          "exec",
-          "--",
-          "vitest",
-          "run",
-          "--config",
-          "vitest.compiled.config.ts",
-          "--maxWorkers=1"
-        ],
-        "exitCode": 0,
-        "seconds": 7.02
-      },
-      {
-        "name": "partner-qr",
-        "arguments": [
-          "run",
-          "test:partner-qr"
-        ],
-        "exitCode": 0,
-        "seconds": 6.7
-      },
-      {
-        "name": "capacity-budget",
-        "arguments": [
-          "run",
-          "test:capacity-budget"
-        ],
-        "exitCode": 0,
-        "seconds": 1.5
-      },
-      {
-        "name": "public-contracts",
-        "arguments": [
-          "run",
-          "security:contracts"
-        ],
-        "exitCode": 0,
-        "seconds": 2.71
-      },
-      {
-        "name": "notices",
-        "arguments": [
-          "run",
-          "security:notices"
-        ],
-        "exitCode": 0,
-        "seconds": 1.21
-      },
-      {
-        "name": "submodule",
-        "arguments": [
-          "run",
-          "security:submodule"
-        ],
-        "exitCode": 0,
-        "seconds": 4.71
-      },
-      {
-        "name": "openapi",
-        "arguments": [
-          "run",
-          "openapi:generate"
-        ],
-        "exitCode": 0,
-        "seconds": 4.34
-      }
-    ]
+      "realMessages": 0,
+      "productionAccess": false
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "seconds": 4.35
+    },
+    "buildWeb": {
+      "exitCode": 0
+    },
+    "bundle": {
+      "files": 32,
+      "findings": 0
+    },
+    "publicContracts": "PASS",
+    "lint": "NO_BROKER_LINT_SCRIPT; diff-check is not lint",
+    "overlapWarning": "Do not sum overlapping runs or rewrite failed broad round as green"
   },
-  "benchmark": {
-    "scope": "synthetic events, not sessions",
-    "uniqueEvents": 750,
-    "requests": 825,
-    "duplicates": 75,
-    "errors": 0,
-    "persistedInbox": 750,
-    "persistedProjections": 750,
-    "capacityGo": false,
-    "evidence": "benchmark-final.json"
+  "coverage": {
+    "httpOperations": 356,
+    "publicProfileOperations": 37,
+    "screenJourneyRecords": 128,
+    "screenSourceFiles": 82,
+    "registeredRoutes": 43,
+    "requirements": 50,
+    "nature": "Static inventory plus explicitly scoped runtime evidence; not full homologation"
   },
-  "next": [
-    "Publish reviewed API/web exact SHA after CI and image gates; apply additive0078 without credential rewrites; verify runtime digests/readiness",
-    "Finish effective engine image packaging, safe ownership/provisioning and controlled real session/reconnection gate before enabling origin capture",
-    "Homologate productive media custody/key policy and full isolated LAB2 Rails integration; retain KEEP",
-    "Validate effective-image secret canaries, fairness and measured pool budget; finish remaining admin/company journeys",
-    "Run authorized progressive capacity gates;50-number30-day pilot requires real elapsed time; no claim for400/900"
+  "notExecuted": [
+    "backup/dump/restore/policies (excluded)",
+    "full historical security artifact generation",
+    "complete PostgreSQL suite",
+    "Rails/RSpec stack and RuboCop",
+    "final full engine/image build",
+    "production diagnostics",
+    "real sessions/media/Meta",
+    "new CI/image publication/deploy",
+    "50-number 30-day pilot",
+    "100/200/400/900 session benchmark"
   ],
-  "currentProductionState": "READ_ONLY_CONFIRMED_SCHEMA77_PRIOR_IMAGES",
-  "remoteCiCovers": "baseline ea58 only; await current revision CI",
-  "imagesForCurrentDiff": "NOT_BUILT_OR_PUBLISHED",
-  "report": "14-INCREMENTO-RELEASE-20261101.md",
-  "revisionLookup": "git log -1 --format=%H -- docs/broker-jrc-conclusao/ESTADO-FINAL.json",
-  "previousCheckpoint": {
-    "baselineCommit": "ea58a897b923fc5889e99ea039b4bd61c385d781",
-    "tests": {
-      "unit": {
-        "files": 467,
-        "passed": 3639,
-        "failed": 0,
-        "skipped": 0,
-        "evidence": "unit-clean.json"
-      },
-      "integrationFullRound": {
-        "files": 156,
-        "passed": 1531,
-        "failed": 24,
-        "evidence": "integration-full.log",
-        "note": "22 lab-auth failures, two stale schema assertions, plus cleanup-hook timeout retained in log"
-      },
-      "integrationAffectedRetest": {
-        "files": 9,
-        "passed": 293,
-        "failed": 0,
-        "skipped": 0,
-        "evidence": "integration-reviewed.json",
-        "note": "Includes new structural readiness cases; not a clean rerun of the entire suite"
-      },
-      "originJournal": {
-        "passed": 43,
-        "failed": 0,
-        "skipped": 0,
-        "evidence": "origin-final.log",
-        "scope": "Child Node process SIGKILL and actual Broker HTTP/PG; not engine crash"
-      },
-      "cclxPgMinio": {
-        "passed": 21,
-        "failed": 0,
-        "skipped": 0,
-        "evidence": "cclx-minio-ready.log",
-        "note": "Prior attempt 13 pass / 8 fail started before MinIO readiness; retained separately"
-      },
-      "compiledEntrypoint": {
-        "passed": 2,
-        "failed": 0,
-        "skipped": 0,
-        "evidence": "compiled-infra-final.log"
-      },
-      "lab2RubyConsumer": {
-        "passed": 4,
-        "failed": 0,
-        "scope": "actual response class only; Broker authorization/facade fixtures"
-      },
-      "partnerQr": {
-        "passed": 34,
-        "failed": 0
-      },
-      "capacityPreflight": {
-        "passed": 11,
-        "failed": 0
-      },
-      "browserE2e": {
-        "passed": 37,
-        "failed": 0,
-        "skipped": 5,
-        "planned": 42,
-        "evidence": "e2e-final.log",
-        "scope": "Actual Fastify/PostgreSQL/Redis and browser, synthetic provider; 5 profile-conditioned skips"
-      },
-      "build": "PASS",
-      "typecheck": "PASS",
-      "lint": "NO_LINT_SCRIPT",
-      "publicContractGate": "PASS",
-      "webBundleGate": "PASS",
-      "notices": "PASS",
-      "submodule": "PASS",
-      "privateStorageMinio": {
-        "passed": 5,
-        "failed": 0,
-        "skipped": 0,
-        "evidence": "storage-adapter-final.log",
-        "scope": "actual existing durable private media facade + isolated PG/MinIO"
-      }
-    },
-    "benchmark": {
-      "scope": "synthetic events, not sessions",
-      "uniqueEvents": 750,
-      "requests": 825,
-      "duplicates": 75,
-      "errors": 0,
-      "persistedInbox": 750,
-      "persistedProjections": 750,
-      "capacityGo": false,
-      "evidence": "benchmark-final.json"
-    }
-  },
-  "scope": {
-    "backupDumpRestorePolicies": "EXCLUDED_BY_USER",
-    "recoveryCode": "PRESERVED",
-    "recoveryProof": false,
-    "allowedDeployment": "API/web immutable images after final SHA gates; additive0078; no engine replacement",
-    "mainMerge": false
-  }
+  "nextStep": "LAB2 durable obligation between message COMMIT and webhook enqueue, with real isolated Rails/Sidekiq and Broker-down regression; progress next real product journey in parallel",
+  "evidenceReport": "TESTES-E-EVIDENCIAS.md",
+  "technicalReport": "PARECER-FINAL.md"
 }

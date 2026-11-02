@@ -37,7 +37,7 @@ async function freshBucket(){
 }
 
 // Actual Broker module implementations and HTTP routes; only provider download/network routing are lab ports.
-test('actual partner worker delivers persisted media through authenticated HTTP to PG+MinIO then reconciles lost ACK with KEEP', {timeout:180000}, async t=>{
+for (const ackMode of ['HTTP', 'PERSISTENCE_RECEIPT_V1']) test(`actual partner worker ${ackMode} delivers persisted media through authenticated HTTP to PG+MinIO then reconciles lost ACK with KEEP`, {timeout:180000}, async t=>{
  const broker=await createIsolatedLabDatabase({labOnly:true}),receiverDb=await createIsolatedLabDatabase({labOnly:true}),mediaState=await createPrivateMediaState({labOnly:true});
  let app,pool,receiver,listener,markerMoved=false;let receiverCalls=0,mediaDownloads=0,dropAck=false;const observedBodies=[];
  t.after(async()=>{listener?.closeAllConnections();if(listener)await new Promise(r=>listener.close(r));await receiver?.close();await app?.close();await pool?.end();if(markerMoved)await broker.query('ALTER TABLE cclx_fixture.cclx_lab_marker SET SCHEMA public');await broker.dispose();await receiverDb.dispose();await mediaState.dispose();});
@@ -79,7 +79,7 @@ test('actual partner worker delivers persisted media through authenticated HTTP 
  const call=async(path,init={})=>{const response=await fetch(brokerOrigin+path,{...init,headers:{...headers,...init.headers}});return {response,value:await response.json()};};
  listener=createServer(async(req,res)=>{receiverCalls++;const chunks=[];for await(const c of req)chunks.push(c);try{observedBodies.push(JSON.parse(Buffer.concat(chunks)));const result=await receiver.handle({method:req.method,path:req.url,headers:req.headers,rawBody:Buffer.concat(chunks)});if(dropAck&&result.status===202){dropAck=false;res.destroy();return;}res.writeHead(result.status,{'content-type':'application/json'});res.end(JSON.stringify(result.body));}catch{res.destroy();}});
  await new Promise(r=>listener.listen(0,'127.0.0.1',r));
- const target='https://cclx-lab.example.test/lab/cclx/events',created=await call('/v1/partner-webhooks',{method:'POST',headers:{'content-type':'application/json','idempotency-key':randomUUID()},body:JSON.stringify({url:target})});assert.equal(created.response.status,201);
+ const target='https://cclx-lab.example.test/lab/cclx/events',created=await call('/v1/partner-webhooks',{method:'POST',headers:{'content-type':'application/json','idempotency-key':randomUUID()},body:JSON.stringify({url:target,ackMode})});assert.equal(created.response.status,201);
  const endpointId=created.value.endpoint.id;
  await transact(org,tx=>tx.query(`INSERT INTO messaging_messages(id,organization_id,channel_id,conversation_id,direction,source,content,state) VALUES($1,$2,$3,$4,'INCOMING','CONTACT',$5,'DELIVERED')`,[messageId,org,channel,conversation,{type:'MEDIA',mediaId,kind:'document',fileName:file.fileName}]));
  const events=await call('/v1/partner-events?limit=100');assert.equal(events.response.status,200);assert.equal(events.value.data.length,1);const event=events.value.data[0];
@@ -98,6 +98,13 @@ test('actual partner worker delivers persisted media through authenticated HTTP 
  const receipt=await receiver.readMediaReceipt(event.eventId);assert.equal(receipt.storage,'S3');assert.equal(receipt.retention,'KEEP');assert.equal(receipt.readbackVerified,true);
  const receiverEvent=await receiver.readEvent(event.eventId);assert.deepEqual(receiverEvent,observedBodies[0],'persist exact real worker envelope, no synthetic remapping');assert.equal(new Date(receiverEvent.occurredAt).toISOString(),event.occurredAt);
  await new Promise(r=>setTimeout(r,1100));assert.equal(await worker.processOne(org),true);deliveries=await call('/v1/partner-webhook-deliveries?limit=100');assert.equal(deliveries.value.data[0].status,'DELIVERED');assert.equal(deliveries.value.data[0].attempts,2);assert.equal(receiverCalls,3);
+ assert.equal(deliveries.value.data[0].ackMode,ackMode);
+ if(ackMode==='PERSISTENCE_RECEIPT_V1'){
+  const accepted=deliveries.value.data[0].persistenceReceipt;
+  assert.equal(accepted.schemaVersion,1);
+  assert.equal(accepted.receiptId,receipt.eventReceiptId,'receipt identity must survive receiver commit followed by lost ACK');
+  assert.equal(accepted.persistedAt,receipt.committedAt);
+ }else assert.equal(deliveries.value.data[0].persistenceReceipt,null,'legacy transport ACK must not invent a persistence receipt');
  const stats=await call('/v1/partner-webhook-delivery-stats');assert.equal(stats.response.status,200);assert.equal(stats.value.replays,1);assert.equal(stats.value.lifetimeAttempts,3);assert.equal(stats.value.counts.DELIVERED,1);
  assert.deepEqual(await receiver.readMediaReceipt(event.eventId),receipt);assert.deepEqual(await receiver.stats(),{inbox:1,projections:1,mediaReceipts:1});
  assert.equal(mediaDownloads,2,'retry must download authenticated actual Broker bytes again');

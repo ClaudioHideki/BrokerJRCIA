@@ -1,0 +1,17 @@
+.delivery-diagnostics { min-width: 0; }
+.delivery-diagnostics > .button { max-width: 100%; white-space: normal; }
+.delivery-diagnostics__source { color: var(--jrc-text-muted); font-size: .875rem; }
+.delivery-diagnostics__records { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: 1rem; }
+.delivery-diagnostics__record { min-width: 0; border: 1px solid var(--jrc-border); border-radius: var(--jrc-radius-md); padding: 1rem; background: var(--jrc-surface); overflow-wrap: anywhere; }
+.delivery-diagnostics__record-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.delivery-diagnostics__record h3 { font-size: 1rem; margin: .875rem 0 .5rem; color: var(--jrc-heading); }
+.delivery-diagnostics__record p { line-height: 1.5; }
+.delivery-diagnostics__status { display: inline-block; padding: .25rem .5rem; border-radius: var(--jrc-radius-md); font-size: .875rem; font-weight: 600; }
+.delivery-diagnostics__status--failed { color: var(--jrc-state-danger-text); background: var(--jrc-state-danger-surface); }
+.delivery-diagnostics__status--unknown { color: var(--jrc-state-warning-text); background: var(--jrc-state-warning-surface); }
+.delivery-diagnostics .delivery-diagnostics__record details { border: 0; border-top: 1px solid var(--jrc-border); border-radius: 0; padding: .5rem 0 0; margin: .875rem 0 0; }
+.delivery-diagnostics__record summary { cursor: pointer; padding: .625rem 0; min-height: 2.75rem; }
+.delivery-diagnostics__record dl { display: grid; gap: .875rem; margin: .5rem 0; }
+.delivery-diagnostics__record dt { color: var(--jrc-text-muted); font-size: .875rem; }
+.delivery-diagnostics__record dd { margin: .25rem 0 0; }
+.delivery-diagnostics__record code { white-space: normal; overflow-wrap: anywhere; }

@@ -15,7 +15,7 @@ it('classifies all generic partner operations with exact scopes, tenant and sour
  expect(selected('POST','/v1/messaging/instances/{id}/partner-activate')).toMatchObject({authentication:'CURRENT_ORGANIZATION_API_KEY',permission:'INSTANCES_WRITE_AND_MESSAGING_SEND_SCOPES',tenantRls:true,
   idempotency:'HEADER_REQUIRED_CANONICAL_TENANT_INSTANCE_CHANNEL_REUSE',handlerFile:'apps/api/src/http/routes/integrations.ts'});
  for(const [method,path,idempotency] of [
-  ['GET','/v1/partner-webhooks','READ_ONLY'],['POST','/v1/partner-webhooks','TENANT_HASHED_KEY_NORMALIZED_URL_EXACT_REPLAY'],
+  ['GET','/v1/partner-webhooks','READ_ONLY'],['POST','/v1/partner-webhooks','TENANT_HASHED_KEY_NORMALIZED_URL_ACK_MODE_EXACT_REPLAY'],
   ['DELETE','/v1/partner-webhooks/{id}','REVOCATION_ONLY_CANCEL_PENDING_AND_LEASED_DELIVERIES'],
   ['GET','/v1/partner-events','READ_ONLY_COMMIT_ORDERED_CURSOR_RETENTION_WATERMARK'],['GET','/v1/partner-webhook-deliveries','READ_ONLY_BOUNDED_DIAGNOSTICS'],
  ]){

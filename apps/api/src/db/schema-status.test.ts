@@ -9,16 +9,16 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('carrega o manifesto real até a migration 0078', async () => {
+  it('carrega o manifesto real até a migration 0079', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(78);
-    expect(migrations.slice(-4).map(entry => entry.name)).toEqual([
-      '0075_media_custody', '0076_qr_connection_watermark', '0077_partner_delivery_replay', '0078_qr_origin_receipts',
+    expect(migrations).toHaveLength(79);
+    expect(migrations.slice(-5).map(entry => entry.name)).toEqual([
+      '0075_media_custody', '0076_qr_connection_watermark', '0077_partner_delivery_replay', '0078_qr_origin_receipts', '0079_partner_persistence_receipts',
     ]);
   });
   it('keeps the previous media schema pending until all audit corrections are applied',async()=>{
     const migrations=await loadExpectedMigrations();
-    expect(compareMigrationStatus(migrations,migrations.slice(0,74))).toMatchObject({state:'PENDING',compatible:false,expectedVersion:'0078_qr_origin_receipts',appliedVersion:'0074_partner_media',pending:['0075_media_custody','0076_qr_connection_watermark','0077_partner_delivery_replay','0078_qr_origin_receipts']});
+    expect(compareMigrationStatus(migrations,migrations.slice(0,74))).toMatchObject({state:'PENDING',compatible:false,expectedVersion:'0079_partner_persistence_receipts',appliedVersion:'0074_partner_media',pending:['0075_media_custody','0076_qr_connection_watermark','0077_partner_delivery_replay','0078_qr_origin_receipts','0079_partner_persistence_receipts']});
   });
 
   it('informa a versão aplicada e migrations pendentes sem expor hashes', () => {

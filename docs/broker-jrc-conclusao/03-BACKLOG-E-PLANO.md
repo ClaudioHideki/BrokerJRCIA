@@ -1,4 +1,8 @@
-# Escopo vigente de publicação — 01/11/2026
+# Escopo atual — continuação posterior a 977ab0e
+
+O plano vigente está em `PLANO-INCREMENTOS.md`, com resultados em `PARECER-FINAL.md`, `TESTES-E-EVIDENCIAS.md` e `ESTADO-FINAL.json`. A release 977ab0e foi publicada anteriormente; não repetir deploy. O novo incremento é local, sem autorização implícita de rollout, engine ou sessão real. Backup, dump, restore e políticas estão excluídos; preservar o código existente. As seções abaixo são histórico, inclusive suas autorizações e gates antigos, e não definem o estado atual.
+
+## Histórico: escopo de publicação — 01/11/2026
 
 Leia primeiro [12-ESCOPO-PUBLICACAO-20261101.md](12-ESCOPO-PUBLICACAO-20261101.md). O usuário autorizou a publicação da candidata e atualização da imagem no servidor após validação. Backup, dump, restore e políticas de backup estão excluídos desta rodada; preservar mecanismos existentes. Nenhuma dispensa comprova recuperação ou perda zero. As restrições de publicação e gates de backup nos checkpoints abaixo são históricas e foram substituídas por essa decisão; não autorizam mudanças alheias à versão, merge na main, credenciais, sessões ou mensagens reais.
 

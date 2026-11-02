@@ -19,7 +19,7 @@ const profiles = {
   },
   events: {
     title: 'Eventos e webhooks assinados — API JRC',
-    description: 'Exige webhooks:manage. Endpoint do consumidor pode ser cadastrado depois da emissão da chave. Entrega ao menos uma vez com HMAC-SHA256 e tentativas limitadas; deduplique eventId. Ordem de entrega não é garantida; use cursor e não reverta estados mais recentes. Polling retém 30 dias e retorna 409 quando o cursor expira. O segredo de assinatura é separado da chave de API. Revogar uma chave de API não revoga automaticamente endpoints: revogue-os explicitamente.',
+    description: 'Exige webhooks:manage. Endpoint do consumidor pode ser cadastrado depois da emissão da chave. Transporte repetível com HMAC-SHA256 e tentativas limitadas; deduplique eventId duravelmente. ackMode HTTP é padrão e aceita 2xx, inclusive 204 sem corpo, como transporte. PERSISTENCE_RECEIPT_V1 é opt-in na criação e exige 2xx com recibo JSON estrito correlacionado de persistência; não comprova processamento, entrega WhatsApp ou custódia. URL e modo fazem parte da intenção idempotente e são imutáveis. Ordem de entrega não é garantida; use cursor e não reverta estados mais recentes. Polling retém 30 dias e retorna 409 quando o cursor expira. O segredo de assinatura é separado da chave de API. Revogar uma chave de API não revoga automaticamente endpoints: revogue-os explicitamente.',
     operations: [
       ['get','/v1/partner-webhooks'], ['post','/v1/partner-webhooks'],
       ['delete','/v1/partner-webhooks/{id}'], ['get','/v1/partner-events'],
@@ -64,7 +64,7 @@ export function buildPublicDocument(document, profile) {
   if (!selected) throw new Error('PUBLIC_DOCUMENT_PROFILE_UNKNOWN');
   const result = {
     openapi: document.openapi,
-    info: { title: selected.title, version: '2026-10-29', description: selected.description },
+    info: { title: selected.title, version: '2026-11-01', description: selected.description },
     servers: [{ url: '/', description: 'Esta instalação do Broker JRC' }],
     paths: {}, components: { securitySchemes: {} },
   };

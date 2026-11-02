@@ -7,6 +7,13 @@ consumidores nem altera conexões existentes. Consulte também
 [onboarding de parceiro](partner-onboarding.md), [eventos](partner-webhooks.md) e
 [baseline de autorização e mídia](../validation/2026-10-29-api-baseline.md).
 
+Incremento candidato de 01/11/2026: cadastro de endpoint admite `ackMode` opcional.
+`HTTP` permanece o padrão legado de aceite de transporte 2xx, inclusive 204 sem
+corpo. `PERSISTENCE_RECEIPT_V1` exige adesão explícita e recibo JSON correlacionado;
+URL e modo compõem a intenção idempotente. Consultas de entregas exibem modo e
+evidência de persistência, sem afirmar processamento ou custódia. Consulte o
+[contrato de ACK](partner-webhooks.md#negotiated-ack-semantics-migration-0079).
+
 ## Modos e responsabilidades
 
 | Responsabilidade | Modo A: backend do parceiro consome API JRC | Modo B: integração direta Chatwoot/JRC |

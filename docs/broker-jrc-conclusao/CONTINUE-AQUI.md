@@ -1,4 +1,22 @@
-# Escopo vigente de publicação — 01/11/2026
+# Continuação vigente sobre 977ab0e — 01/11/2026
+
+Leia primeiro `PLANO-INCREMENTOS.md`. A publicação API/web de977ab0e e migration0078 já ocorreu e está registrada no pacote externo `output/Broker_JRC_Publicacao_2026-11-01_977ab0e/ESTADO-FINAL-PUBLICACAO.json`. Não repetir esse deploy. As autorizações e gates de publicação descritos nas seções históricas abaixo não promovem automaticamente o novo diff.
+
+Incremento I1 validado no recorte local: modo negociado `PERSISTENCE_RECEIPT_V1`, mantendo `HTTP` como default legado; recibo correlacionado a tenant/endpoint/delivery/evento, limite de resposta/deadline, evidência persistida e migration aditiva0079. RED:12 falhas esperadas/16 anteriores passando. GREEN focal final:56 testes/6 arquivos; PostgreSQL53/53 nos dois arquivos de recibo/readiness. Regressão adicional:23 passaram em quatro arquivos; replay8/8 após corrigir flag do runner. Não somar suites sobrepostas. Migration somente no laboratório. API0078 não é rollback compatível com0079.
+
+Incremento I2: receptor real PostgreSQL/MinIO com ACK depois do COMMIT; perda de socket, retry e recibo estável. RED:HTTP passou e modo estrito falhou; GREEN:2/2. KEEP preservado e nenhuma afirmação de custódia produtiva/criptografia.
+
+Incremento I3: policy real LAB2 rejeita vínculo removido/trocado durante resposta de pareamento. Teste final de classes Ruby/portas sintéticas20/20; seis casos Rails adicionados e sintaxe verificada, sem executar Rails completo. Cache simulado é defesa adicional, não exploração Rails comprovada. Patch no checkout LAB2 correto, workflow alheio preservado.
+
+Incremento I4: diagnóstico de dez códigos e cards; monitoramento admin real por empresa, sete abas preservadas. Componentes 13/13. Revisão independente corrigiu HISTORY_UNAVAILABLE para importação na central. Incremento mobile: quatro jornadas habilitadas; RED 3 passes/1 falha no menu fechado; GREEN na rodada final E2E: 41 passes e um skip intencional do shell mobile no desktop. Sem remover assertions. API/PG/Redis locais e provider sintético; não é sessão WhatsApp real.
+
+Consolidação: typecheck e build web aprovados; OpenAPI, Postman e manual de oito páginas/37 operações regenerados. Newman: 19 requests/49 assertions por modo HTTP/recibo; mídia seis guards e três requests sem envio ao provider. Matrizes: 356 operações, 128 registros de telas e 50 requisitos; inspeção não é homologação. Regressão ampla: 3.667 passes, duas expectativas antigas falharam e quatro casos ficaram sem OpenSSL. As expectativas foram atualizadas mantendo o histórico, PATH local corrigido; reteste dos três arquivos 11/11. Não reescrever a primeira rodada como verde. Dois testes novos desta rodada de crash real de processo, com composição pinada/Broker/PG, passaram em 48,288 s; não são build integral ou sessão real da engine. Ler TESTES-E-EVIDENCIAS.md, PARECER-FINAL.md e ESTADO-FINAL.json antes de promover qualquer candidata.
+
+Próximo incremento verificável: obrigação durável do LAB2 na janela entre COMMIT da mensagem e enqueue do webhook, com Rails/Sidekiq isolados completos e teste de Broker fora; depois pipeline de mídia LAB2 e próxima jornada da matriz. Os request specs novos ainda não rodaram em Rails. B02/B03/B05/B07/B12/B13/B14 seguem parciais. Os commits desta entrega são locais; não usar PR/CI/imagens 977ab0e como prova do novo diff.
+
+Controle do navegador continua indisponível (`browser.user is unavailable` após inventário e nova vinculação). A consulta atual do servidor está BLOQUEADA_POR_ACESSO, não substituída pelo snapshot antigo. Testes locais serializados por memória livre de397600KiB na inspeção inicial. Nenhum deploy, ENV, sessão, mensagem, replay, backup/dump/restore ou credencial alterado nesta continuação.
+
+## Histórico: escopo de publicação — 01/11/2026
 
 Leia primeiro [14-INCREMENTO-RELEASE-20261101.md](14-INCREMENTO-RELEASE-20261101.md), [13-PROCEDIMENTO-RELEASE-20261101.md](13-PROCEDIMENTO-RELEASE-20261101.md) e [12-ESCOPO-PUBLICACAO-20261101.md](12-ESCOPO-PUBLICACAO-20261101.md). O usuário autorizou a publicação da candidata e atualização da imagem no servidor após validação. Backup, dump, restore e políticas de backup estão excluídos desta rodada; preservar mecanismos existentes. Nenhuma dispensa comprova recuperação ou perda zero. As restrições de publicação e gates de backup nos checkpoints abaixo são históricas e foram substituídas por essa decisão; não autorizam mudanças alheias à versão, merge na main, credenciais, sessões ou mensagens reais.
 

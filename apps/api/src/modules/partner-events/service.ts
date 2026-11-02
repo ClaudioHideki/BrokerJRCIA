@@ -3,10 +3,12 @@ import type { OrganizationTransaction } from '../../db/tenant-transaction.js';
 import type { createIntegrationSecrets } from '../integrations/secrets.js';
 import { requireActiveOrganization } from '../tenancy/operational-limits.js';
 import { normalizeWebhookUrl } from './worker.js';
+import {PartnerAckModeSchema,type PartnerAckMode} from './ack-contract.js';
 
 export class PartnerEventError extends Error {constructor(readonly code:string,readonly statusCode:number,readonly cursorInfo?:{retentionDays:30;earliestCursor:string|null;lastPrunedCursor:string;resetCursor:'0'}){super(code);}}
-export interface PartnerEndpoint {id:string;url:string;status:'ACTIVE'|'REVOKED';createdAt:Date;revokedAt:Date|null}
+export interface PartnerEndpoint {id:string;url:string;ackMode:PartnerAckMode;status:'ACTIVE'|'REVOKED';createdAt:Date;revokedAt:Date|null}
 export interface PartnerEvent {eventId:string;cursor:string;organizationId:string;type:string;occurredAt:Date;data:Record<string,unknown>}
+export interface PartnerDelivery {id:string;endpointId:string;eventId:string;status:string;ackMode:PartnerAckMode;attempts:number;lastErrorCode:string|null;availableAt:Date;updatedAt:Date;receiptId:string|null;receiptPersistedAt:Date|null;receiptAcceptedAt:Date|null}
 export interface PartnerDeliveryReplay {schemaVersion:1;replay:{id:string;deliveryId:string;endpointId:string;eventId:string;replayNumber:number;priorAttempts:number;acceptedAt:string};replayed:boolean}
 export interface PartnerDeliveryStats {schemaVersion:1;retentionDays:30;counts:{PENDING:number;RUNNING:number;DELIVERED:number;FAILED:number;CANCELLED:number};oldestPendingAt:string|null;expiredLeases:number;replays:number;lifetimeAttempts:number}
 const replayProblems:Record<string,[string,number]>={partner_replay_forbidden:['PARTNER_REPLAY_FORBIDDEN',403],partner_delivery_not_found:['PARTNER_DELIVERY_NOT_FOUND',404],partner_replay_conflict:['PARTNER_REPLAY_CONFLICT',409],partner_delivery_not_failed:['PARTNER_DELIVERY_NOT_FAILED',409],partner_endpoint_revoked:['PARTNER_ENDPOINT_REVOKED',409],partner_event_expired:['PARTNER_EVENT_EXPIRED',409]};
@@ -16,8 +18,8 @@ function replayError(error:unknown):never{
  if(mapped)throw new PartnerEventError(...mapped);
  throw error;
 }
-const endpointColumns=`id,url,status,created_at AS "createdAt",revoked_at AS "revokedAt"`;
-const endpointView=(row:PartnerEndpoint)=>({...row,createdAt:row.createdAt.toISOString(),revokedAt:row.revokedAt?.toISOString()??null});
+const endpointColumns=`id,url,ack_mode AS "ackMode",status,created_at AS "createdAt",revoked_at AS "revokedAt"`;
+const endpointView=(row:PartnerEndpoint)=>({...row,ackMode:row.ackMode??'HTTP',createdAt:row.createdAt.toISOString(),revokedAt:row.revokedAt?.toISOString()??null});
 export function createPartnerEventService(options:{transact<T>(org:string,operation:OrganizationTransaction<T>):Promise<T>;secrets:ReturnType<typeof createIntegrationSecrets>}){
  return {
   replay:async(org:string,key:string,id:string,idempotencyKey:string)=>{
@@ -36,8 +38,9 @@ export function createPartnerEventService(options:{transact<T>(org:string,operat
    });}catch(error){return replayError(error);}
   },
   list:(org:string)=>options.transact(org,async tx=>{await requireActiveOrganization(tx,org);return {data:(await tx.query<PartnerEndpoint>(`SELECT ${endpointColumns} FROM partner_webhook_endpoints WHERE organization_id=$1 ORDER BY created_at DESC LIMIT 100`,[org])).rows.map(endpointView)};}),
-  create:async(org:string,input:{url:string},idempotencyKey:string)=>{
+  create:async(org:string,input:{url:string;ackMode?:PartnerAckMode|undefined},idempotencyKey:string)=>{
    let url:string;try{url=normalizeWebhookUrl(input.url);}catch{throw new PartnerEventError('INVALID_WEBHOOK_URL',422);}
+   const parsed=PartnerAckModeSchema.safeParse(input.ackMode??'HTTP');if(!parsed.success)throw new PartnerEventError('INVALID_ACK_MODE',422);const ackMode=parsed.data;
    return options.transact(org,async tx=>{
     await requireActiveOrganization(tx,org);
     await tx.query("SELECT pg_advisory_xact_lock(hashtextextended('partner-events:'||$1,0))",[org]);
@@ -45,7 +48,7 @@ export function createPartnerEventService(options:{transact<T>(org:string,operat
     const keyHash=createHash('sha256').update(idempotencyKey).digest('hex');
     const existing=(await tx.query<PartnerEndpoint&{encryptedSecret:string|null}>(`SELECT ${endpointColumns},encrypted_secret AS "encryptedSecret" FROM partner_webhook_endpoints WHERE organization_id=$1 AND idempotency_key=$2`,[org,keyHash])).rows[0];
     if(existing){
-     if(existing.url!==url)throw new PartnerEventError('WEBHOOK_IDEMPOTENCY_CONFLICT',409);
+     if(existing.url!==url||(existing.ackMode??'HTTP')!==ackMode)throw new PartnerEventError('WEBHOOK_IDEMPOTENCY_CONFLICT',409);
      if(existing.status!=='ACTIVE'||!existing.encryptedSecret)throw new PartnerEventError('WEBHOOK_REVOKED',409);
      const {encryptedSecret,...endpoint}=existing;
      return {endpoint:endpointView(endpoint),signingSecret:options.secrets.decrypt(`partner-webhook:${org}:${endpoint.id}`,encryptedSecret),replayed:true};
@@ -54,7 +57,7 @@ export function createPartnerEventService(options:{transact<T>(org:string,operat
     if(count>=5)throw new PartnerEventError('WEBHOOK_ENDPOINT_LIMIT',409);
     const id=randomUUID(),signingSecret=randomBytes(32).toString('base64url');
     const encrypted=options.secrets.encrypt(`partner-webhook:${org}:${id}`,signingSecret);
-    const endpoint=(await tx.query<PartnerEndpoint>(`INSERT INTO partner_webhook_endpoints(organization_id,id,url,encrypted_secret,idempotency_key) VALUES($1,$2,$3,$4,$5) RETURNING ${endpointColumns}`,[org,id,url,encrypted,keyHash])).rows[0]!;
+    const endpoint=(await tx.query<PartnerEndpoint>(`INSERT INTO partner_webhook_endpoints(organization_id,id,url,encrypted_secret,idempotency_key,ack_mode) VALUES($1,$2,$3,$4,$5,$6) RETURNING ${endpointColumns}`,[org,id,url,encrypted,keyHash,ackMode])).rows[0]!;
     return {endpoint:endpointView(endpoint),signingSecret,replayed:false};
    });
   },
@@ -76,7 +79,7 @@ export function createPartnerEventService(options:{transact<T>(org:string,operat
   }),
   deliveries:(org:string,input:{limit:number})=>options.transact(org,async tx=>{
    await requireActiveOrganization(tx,org);
-   return {data:(await tx.query<{id:string;endpointId:string;eventId:string;status:string;attempts:number;lastErrorCode:string|null;availableAt:Date;updatedAt:Date}>(`SELECT id,endpoint_id AS "endpointId",event_id AS "eventId",status,attempts,last_error_code AS "lastErrorCode",available_at AS "availableAt",updated_at AS "updatedAt" FROM partner_event_deliveries WHERE organization_id=$1 ORDER BY updated_at DESC,id LIMIT $2`,[org,input.limit])).rows.map(row=>({...row,availableAt:row.availableAt.toISOString(),updatedAt:row.updatedAt.toISOString()}))};
+   return {data:(await tx.query<PartnerDelivery>(`SELECT d.id,d.endpoint_id AS "endpointId",d.event_id AS "eventId",d.status,p.ack_mode AS "ackMode",d.attempts,d.last_error_code AS "lastErrorCode",d.available_at AS "availableAt",d.updated_at AS "updatedAt",d.receipt_id AS "receiptId",d.receipt_persisted_at AS "receiptPersistedAt",d.receipt_accepted_at AS "receiptAcceptedAt" FROM partner_event_deliveries d JOIN partner_webhook_endpoints p ON p.organization_id=d.organization_id AND p.id=d.endpoint_id WHERE d.organization_id=$1 ORDER BY d.updated_at DESC,d.id LIMIT $2`,[org,input.limit])).rows.map(({receiptId,receiptPersistedAt,receiptAcceptedAt,...row})=>({...row,availableAt:row.availableAt.toISOString(),updatedAt:row.updatedAt.toISOString(),persistenceReceipt:receiptId?{schemaVersion:1 as const,receiptId,persistedAt:receiptPersistedAt!.toISOString(),acceptedAt:receiptAcceptedAt!.toISOString()}:null}))};
   }),
  };
 }

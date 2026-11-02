@@ -6,11 +6,20 @@ import {registerPartnerWebhookRoutes} from '../../src/http/routes/partner-webhoo
 const org='00000000-0000-4000-8000-000000000001',secret='a'.repeat(40);
 async function harness(scopes:string[]=['webhooks:manage']){
  const app=Fastify({genReqId:()=>org});app.setValidatorCompiler(validatorCompiler);app.setSerializerCompiler(serializerCompiler);
- const service={create:vi.fn(async()=>({endpoint:{id:org,url:'https://partner.example/hook',status:'ACTIVE',createdAt:'2026-10-22T16:00:00.000Z',revokedAt:null},signingSecret:'secret',replayed:false})),list:vi.fn(async()=>({data:[]})),revoke:vi.fn(),events:vi.fn(async()=>({schemaVersion:1,retentionDays:30,earliestCursor:null,lastPrunedCursor:'0',data:[],nextCursor:'0'})),deliveries:vi.fn(async()=>({data:[]}))};
+ const service={create:vi.fn(async(_org:string,input:{ackMode?:string})=>({endpoint:{id:org,url:'https://partner.example/hook',ackMode:input.ackMode??'HTTP',status:'ACTIVE',createdAt:'2026-10-22T16:00:00.000Z',revokedAt:null},signingSecret:'secret',replayed:false})),list:vi.fn(async()=>({data:[]})),revoke:vi.fn(),events:vi.fn(async()=>({schemaVersion:1,retentionDays:30,earliestCursor:null,lastPrunedCursor:'0',data:[],nextCursor:'0'})),deliveries:vi.fn(async()=>({data:[]}))};
  await app.register(registerPartnerWebhookRoutes,{jwtSecret:secret,authenticateApiKey:async key=>key==='valid'?{organizationId:org,apiKeyId:org,scopes}:null,service:service as never});
  return {app,service};
 }
 describe('generic webhook API',()=>{
+ it('negotiates a versioned receipt mode while keeping URL-only creation compatible',async()=>{
+  const {app,service}=await harness();try{
+   for(const ackMode of [undefined,'PERSISTENCE_RECEIPT_V1']){
+    const payload={url:'https://partner.example/hook',...(ackMode?{ackMode}:{})};const response=await app.inject({method:'POST',url:'/v1/partner-webhooks',headers:{'x-jrc-api-key':'valid','idempotency-key':'receipt-mode'},payload});
+    expect(response.statusCode).toBe(201);expect(response.json().endpoint.ackMode).toBe(ackMode??'HTTP');expect(service.create).toHaveBeenLastCalledWith(org,payload,'receipt-mode');
+   }
+   const invalid=await app.inject({method:'POST',url:'/v1/partner-webhooks',headers:{'x-jrc-api-key':'valid','idempotency-key':'receipt-mode'},payload:{url:'https://partner.example/hook',ackMode:'DELIVERED_TO_WHATSAPP'}});expect(invalid.statusCode).toBe(400);expect(service.create).toHaveBeenCalledTimes(2);
+  }finally{await app.close();}
+ });
  it('reports parser errors as client errors instead of a server failure',async()=>{
   const {app,service}=await harness();try{
    for(const payload of ['', '{']) {

@@ -57385,6 +57385,13 @@
                       "items": {
                         "additionalProperties": false,
                         "properties": {
+                          "ackMode": {
+                            "enum": [
+                              "HTTP",
+                              "PERSISTENCE_RECEIPT_V1"
+                            ],
+                            "type": "string"
+                          },
                           "attempts": {
                             "maximum": 10,
                             "minimum": 0,
@@ -57414,8 +57421,42 @@
                             "nullable": true,
                             "type": "string"
                           },
+                          "persistenceReceipt": {
+                            "additionalProperties": false,
+                            "nullable": true,
+                            "properties": {
+                              "acceptedAt": {
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                                "type": "string"
+                              },
+                              "persistedAt": {
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                                "type": "string"
+                              },
+                              "receiptId": {
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                "type": "string"
+                              },
+                              "schemaVersion": {
+                                "enum": [
+                                  1
+                                ],
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "schemaVersion",
+                              "receiptId",
+                              "persistedAt",
+                              "acceptedAt"
+                            ],
+                            "type": "object"
+                          },
                           "status": {
-                            "description": "PENDING, RUNNING, DELIVERED, FAILED or CANCELLED",
+                            "description": "PENDING, RUNNING, DELIVERED, FAILED or CANCELLED; DELIVERED has the configured ACK meaning only",
                             "type": "string"
                           },
                           "updatedAt": {
@@ -57429,6 +57470,8 @@
                           "endpointId",
                           "eventId",
                           "status",
+                          "ackMode",
+                          "persistenceReceipt",
                           "attempts",
                           "lastErrorCode",
                           "availableAt",
@@ -58634,6 +58677,13 @@
                       "items": {
                         "additionalProperties": false,
                         "properties": {
+                          "ackMode": {
+                            "enum": [
+                              "HTTP",
+                              "PERSISTENCE_RECEIPT_V1"
+                            ],
+                            "type": "string"
+                          },
                           "createdAt": {
                             "format": "date-time",
                             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -58665,6 +58715,7 @@
                         "required": [
                           "id",
                           "url",
+                          "ackMode",
                           "status",
                           "createdAt",
                           "revokedAt"
@@ -59020,6 +59071,13 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "ackMode": {
+                    "enum": [
+                      "HTTP",
+                      "PERSISTENCE_RECEIPT_V1"
+                    ],
+                    "type": "string"
+                  },
                   "url": {
                     "format": "uri",
                     "maxLength": 2048,
@@ -59045,6 +59103,13 @@
                     "endpoint": {
                       "additionalProperties": false,
                       "properties": {
+                        "ackMode": {
+                          "enum": [
+                            "HTTP",
+                            "PERSISTENCE_RECEIPT_V1"
+                          ],
+                          "type": "string"
+                        },
                         "createdAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -59076,6 +59141,7 @@
                       "required": [
                         "id",
                         "url",
+                        "ackMode",
                         "status",
                         "createdAt",
                         "revokedAt"
@@ -59413,7 +59479,7 @@
             "jrcApiKeyAuth": []
           }
         ],
-        "summary": "Create an HTTPS endpoint with its independent signing secret",
+        "summary": "Create an HTTPS endpoint; ACK defaults to HTTP transport acceptance",
         "tags": [
           "Partner webhooks"
         ]
@@ -59440,6 +59506,13 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
+                    "ackMode": {
+                      "enum": [
+                        "HTTP",
+                        "PERSISTENCE_RECEIPT_V1"
+                      ],
+                      "type": "string"
+                    },
                     "createdAt": {
                       "format": "date-time",
                       "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -59471,6 +59544,7 @@
                   "required": [
                     "id",
                     "url",
+                    "ackMode",
                     "status",
                     "createdAt",
                     "revokedAt"

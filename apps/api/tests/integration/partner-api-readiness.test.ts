@@ -7,7 +7,7 @@ beforeAll(async () => { db = await attendanceDatabase(); }, 60_000);
 afterAll(async () => { await db?.dispose(); });
 
 it('accepts the fully migrated partner API under the actual app role', async () => {
-  expect(RUNTIME_SCHEMA_BASELINE).toBe('0078_qr_origin_receipts');
+  expect(RUNTIME_SCHEMA_BASELINE).toBe('0079_partner_persistence_receipts');
   const client = await db.database.pool.connect();
   try {
     await client.query('BEGIN');
@@ -17,6 +17,18 @@ it('accepts the fully migrated partner API under the actual app role', async () 
 });
 
 it.each([
+  'ALTER TABLE partner_webhook_endpoints DROP COLUMN ack_mode CASCADE',
+  'ALTER TABLE partner_webhook_endpoints DROP CONSTRAINT partner_webhook_ack_mode',
+  'ALTER TABLE partner_event_deliveries DROP CONSTRAINT partner_delivery_receipt_complete',
+  'DROP INDEX partner_delivery_receipt_identity',
+  'ALTER TABLE partner_webhook_endpoints DROP CONSTRAINT partner_webhook_ack_mode; ALTER TABLE partner_webhook_endpoints ADD CONSTRAINT partner_webhook_ack_mode CHECK(true)',
+  'ALTER TABLE partner_event_deliveries DROP CONSTRAINT partner_delivery_receipt_complete; ALTER TABLE partner_event_deliveries ADD CONSTRAINT partner_delivery_receipt_complete CHECK(true)',
+  'DROP INDEX partner_delivery_receipt_identity; CREATE UNIQUE INDEX partner_delivery_receipt_identity ON partner_event_deliveries(organization_id,id,receipt_id) WHERE receipt_id IS NOT NULL',
+  `CREATE OR REPLACE FUNCTION partner_delivery_receipt_fence() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$ BEGIN RETURN NEW; END $$`,
+  'ALTER TABLE partner_event_deliveries DISABLE TRIGGER partner_delivery_receipt_fence',
+  'GRANT UPDATE (ack_mode) ON partner_webhook_endpoints TO jrc_app',
+  'REVOKE UPDATE (receipt_id) ON partner_event_deliveries FROM jrc_app',
+  'GRANT EXECUTE ON FUNCTION partner_delivery_receipt_fence() TO PUBLIC',
   'DROP TABLE partner_event_cursor_state',
   'ALTER TABLE messaging_messages DROP COLUMN authorizing_api_key_id',
   'ALTER TABLE messaging_messages ALTER COLUMN authorizing_api_key_id SET NOT NULL',

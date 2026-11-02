@@ -1,4 +1,4 @@
-import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
+import {createHash,createHmac,timingSafeEqual,randomUUID} from 'node:crypto';
 import {requireLabOnly,validateDatabaseUrl,validateMediaState,poolFor} from './state.mjs';
 import {createLabS3Custody} from './s3-custody.mjs';
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u;
@@ -40,6 +40,9 @@ export async function openPartnerWorkerLabReceiver(options){
    if(typeof id!=='string'||!uuid.test(id)||typeof ts!=='string'||!/^\d{1,12}$/.test(ts)||Math.abs(Date.now()/1000-Number(ts))>300||typeof signature!=='string'||!/^sha256=[a-f0-9]{64}$/.test(signature))throw problem(401,'AUTHENTICATION_REFUSED');
    const digest=createHmac('sha256',signingSecret).update(`${ts}.${id}.`).update(raw).digest();
    if(!timingSafeEqual(digest,Buffer.from(signature.slice(7),'hex')))throw problem(401,'AUTHENTICATION_REFUSED');
+   const ackMode=h['x-jrc-ack-mode']??'HTTP',deliveryId=h['x-jrc-delivery-id'];
+   if(!['HTTP','PERSISTENCE_RECEIPT_V1'].includes(ackMode))throw problem(422,'ACK_CONTRACT_UNSUPPORTED');
+   if(ackMode==='PERSISTENCE_RECEIPT_V1'&&(!uuid.test(deliveryId??'')||h['x-jrc-endpoint-id']!==endpointId))throw problem(422,'ACK_CORRELATION_INVALID');
    let event;try{event=JSON.parse(raw);}catch{throw problem(400,'INVALID_WORKER_BODY');}
    const data=event?.data;
    if(event.schemaVersion!==1||event.eventId!==id||event.organizationId!==fixed.organizationId||event.type!=='message.received'||!/^\d{1,19}$/.test(event.cursor)||BigInt(event.cursor)>9223372036854775807n||!Number.isFinite(Date.parse(event.occurredAt))||
@@ -54,7 +57,7 @@ export async function openPartnerWorkerLabReceiver(options){
    const bytes=Buffer.concat(chunks);
    if(total!==fixed.byteSize||sha(bytes)!==fixed.sha256||bytes.toString('ascii',0,5)!=='%PDF-')throw problem(422,'MEDIA_INTEGRITY_MISMATCH');
    const custody=await store.persist({organizationId:fixed.organizationId,eventId:id,bytes,hash:fixed.sha256});
-   const candidate={...custody,organizationId:fixed.organizationId,eventId:id,hash:fixed.sha256,bytes:total,mime:fixed.mime,sourceEligibleForDeletion:false,validation:'SIGNATURE_ONLY_NO_CODEC_VALIDATION',committedAt:new Date().toISOString()};
+   const candidate={...custody,organizationId:fixed.organizationId,eventId:id,eventReceiptId:randomUUID(),hash:fixed.sha256,bytes:total,mime:fixed.mime,sourceEligibleForDeletion:false,validation:'SIGNATURE_ONLY_NO_CODEC_VALIDATION',committedAt:new Date().toISOString()};
    const client=await pool.connect();let receipt,duplicate=false;
    try{
     await client.query('BEGIN');await client.query('SET LOCAL synchronous_commit=on');
@@ -70,6 +73,13 @@ export async function openPartnerWorkerLabReceiver(options){
    // Attestation is sent only after physical readback plus local SQL COMMIT. Broker still returns KEEP.
    const attested=await request('/v1/media-custody/receipts',{method:'POST',headers:{'content-type':'application/json','idempotency-key':id},body:JSON.stringify({schemaVersion:1,channelId:fixed.channelId,messageId:fixed.messageId,mediaId:fixed.mediaId,endpointId,destinationVersion:1,clientReceiptId:id,byteSize:total,sha256:fixed.sha256,storageObjectId:receipt.objectName,attestation:'DURABLY_STORED'})});
    if(attested.status!==201){await attested.body?.cancel();throw problem(503,'BROKER_ATTESTATION_UNAVAILABLE');}await attested.body?.cancel();
+   // Stable identity is read from the committed row, including a lost-ACK retry.
+   // This receipt attests local persistence; it does not authorize source deletion.
+   if(ackMode==='PERSISTENCE_RECEIPT_V1'){
+    if(!uuid.test(receipt.eventReceiptId??''))throw problem(409,'LEGACY_RECEIPT_NOT_NEGOTIATED');
+    return {status:202,body:{schemaVersion:1,contract:ackMode,eventId:id,deliveryId,organizationId:fixed.organizationId,
+     endpointId,receiptId:receipt.eventReceiptId,persistedAt:receipt.committedAt}};
+   }
    return {status:202,body:{status:'accepted',duplicate,eventId:id,custody:receipt}};
   }catch(error){return {status:error.status??500,body:{code:error.status?error.message:'LAB_INTERNAL_ERROR'}};}
  }

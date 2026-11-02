@@ -8,6 +8,7 @@ import { Metric, number } from "../broker/components.js";
 import { Icon } from "../broker/Icon.js";
 import { CompanyMark, Status } from "./components.js";
 import { ChatwootPanel, type IntegrationRequest } from '../integrations/ChatwootPanel.js';
+import { DeliveryDiagnostics } from '../integrations/DeliveryDiagnostics.js';
 import {
   initialLimits,
   limitKeys,
@@ -231,6 +232,18 @@ export function CompanyWorkspace({
                 </p>
                 <p>Atualize os dados para consultar a operação novamente.</p>
               </div>
+            )}
+            {tab === "monitor" && integrationRequest && (
+              <section className="panel" aria-label={`Entregas à central de ${company.name}`}>
+                <h2>Entregas à central</h2>
+                <p>Consulta de {company.name}. Os indicadores de mensagens acima e as tarefas de integração abaixo pertencem a filas diferentes.</p>
+                <DeliveryDiagnostics key={company.id} request={integrationRequest} />
+                <p>Para conferir uma tarefa individual, abra o acompanhamento da central. Nenhum reenvio é feito neste diagnóstico.</p>
+                <button type="button" className="button button--secondary" onClick={() => {
+                  setTab('chatwoot');
+                  document.getElementById('company-tab-chatwoot')?.focus();
+                }}>Examinar tarefas na central</button>
+              </section>
             )}
           </>
         )}
