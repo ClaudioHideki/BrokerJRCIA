@@ -1,0 +1,10 @@
+.git
+.env
+.env.*
+node_modules
+dist
+*.log
+*.tsbuildinfo
+store
+instances
+temp

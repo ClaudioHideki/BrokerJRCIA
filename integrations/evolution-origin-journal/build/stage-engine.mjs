@@ -4,8 +4,15 @@ import { fileURLToPath,pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { preparePinnedEngineSources,ENGINE_SOURCE_HASHES } from '../src/engine-overlay.mjs';
 import { PINNED_SOURCE_COMMIT } from '../src/overlay.mjs';
+import { verifyPinnedImageSource, completeEngineBuildContext } from './context-inputs.mjs';
 const own=fileURLToPath(new URL('../',import.meta.url)),vendor=fileURLToPath(new URL('../../../upstream/evolution-api/',import.meta.url)),parent=join(own,'.staging');
 const sha=value=>createHash('sha256').update(value).digest('hex');
+async function stageParent(){
+ await mkdir(parent,{recursive:true});
+ const root=await realpath(parent),base=await realpath(own);
+ if((await lstat(parent)).isSymbolicLink()||dirname(root)!==base||basename(root)!=='.staging')throw Error('ORIGIN_ENGINE_STAGE_DELETE_REFUSED');
+ return root;
+}
 async function inventory(directory,prefix=''){
  const result=[];
  for(const name of (await readdir(directory)).sort()){
@@ -16,10 +23,11 @@ async function inventory(directory,prefix=''){
  }
  return result;
 }
-export async function stagePinnedEngine(){
+export async function stagePinnedEngine({imageContext=false}={}){
+ if(imageContext)await verifyPinnedImageSource();
  const originals={};for(const path of Object.keys(ENGINE_SOURCE_HASHES))originals[path]=await readFile(join(vendor,path),'utf8');
  const prepared=preparePinnedEngineSources(originals),files=await inventory(join(vendor,'src'));
- await mkdir(parent,{recursive:true});const directory=await mkdtemp(join(parent,'engine-'));
+ await stageParent();const directory=await mkdtemp(join(parent,'engine-'));
  try{
   await cp(join(vendor,'src'),join(directory,'src'),{recursive:true});
   const legalFiles=['LICENSE','NOTICE','TRADEMARKS.md'];
@@ -38,12 +46,14 @@ export async function stagePinnedEngine(){
   await writeFile(join(directory,'tsup.config.ts'),buildConfig.replace("entry: ['src'],","entry: ['src/main.ts'],"));
   const manifest={schemaVersion:1,kind:'EVOLUTION_PINNED_LAB_STAGING',sourceCommit:PINNED_SOURCE_COMMIT,deliveryOwnership:'UNPROVEN',buildEntry:'src/main.ts',sourceFileCount:files.length,
    sourceInventorySha256:sha(JSON.stringify(files)),runtimeInventorySha256:sha(JSON.stringify(await inventory(join(directory,'jrc-origin')))),lockfileSha256:sha(await readFile(join(directory,'package-lock.json'))),patches:prepared.manifest,legalFiles};
-  await writeFile(join(directory,'jrc-origin-provenance.json'),JSON.stringify(manifest,null,2)+'\n');
+  if(imageContext)await completeEngineBuildContext(directory,manifest);
+  else await writeFile(join(directory,'jrc-origin-provenance.json'),JSON.stringify(manifest,null,2)+'\n');
   return {directory,manifest};
  }catch(error){await removeOwnStage(directory);throw error;}
 }
 export async function removeOwnStage(directory){
- const target=await realpath(directory),root=await realpath(parent);
+ if((await lstat(directory)).isSymbolicLink())throw Error('ORIGIN_ENGINE_STAGE_DELETE_REFUSED');
+ const target=await realpath(directory),root=await stageParent();
  if(dirname(target)!==root||!/^engine-[A-Za-z0-9]+$/u.test(basename(target)))throw Error('ORIGIN_ENGINE_STAGE_DELETE_REFUSED');
  await rm(target,{recursive:true});
 }
