@@ -85,6 +85,12 @@ HTTP 202/pending confirma uma operação pendente, não conexão. 409 exige conf
 
 ## Montagem do painel
 
+### Revogação durante uma operação
+
+O backend reconsulta `authorize` antes de cada POST ao Broker e antes de devolver a resposta. O tenant deve ser o mesmo autorizado no início; listas são filtradas também pelo escopo atual. O host deve consultar sua sessão/permissões atuais nesse hook, sem reutilizar uma autorização antiga em cache. Troca de empresa ou revogação durante o preflight impede o POST. Revogação depois de um efeito remoto impede expor a resposta, mas não desfaz esse efeito: a intenção continua incerta e conserva sua chave de idempotência. Não desconectar nem emitir nova chave de intenção automaticamente.
+
+Este pacote é um componente externo com autenticação fornecida pelo host. Ele não se torna módulo nativo do CCLX por ser exibido em iframe/link, não implementa mensageria e não suporta Embedded Signup Meta. Para Meta, os endpoints e a jornada do Broker são separados e ainda exigem homologação do consumidor.
+
 ```js
 import { mountQRCodePanel } from '/assets/jrc-partner-qr/panel.mjs';
 // Carregue /assets/jrc-partner-qr/panel.css como stylesheet do host.

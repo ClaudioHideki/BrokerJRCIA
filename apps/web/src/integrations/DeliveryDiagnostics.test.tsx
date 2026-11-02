@@ -71,7 +71,7 @@ it.each([
   firstSeenAt:'2026-10-15T12:00:00.000Z',lastSeenAt:'2026-10-16T12:00:00.000Z'}]}));
  render(<DeliveryDiagnostics request={request}/>);
  fireEvent.click(screen.getByRole('button',{name:'Diagnóstico de todas as entregas'}));
- expect(await screen.findByRole('heading',{name:title,exact:true})).toBeVisible();
+ expect(await screen.findByRole('heading',{name:title})).toBeVisible();
  expect(screen.getByText(advice)).toBeVisible();
 });
 

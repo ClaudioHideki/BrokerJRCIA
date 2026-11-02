@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
-import { executeFlow, type FlowGraph } from '@jrc/contracts';
+import { AUTOMATION_NODE_CATALOG_V1, executeFlow, type FlowGraph } from '@jrc/contracts';
 import { FlowCanvas } from './FlowCanvas.js';
 
 const makeGraph = (): FlowGraph => ({
@@ -24,16 +24,29 @@ const makeGraph = (): FlowGraph => ({
   ],
 });
 describe('menu editing in the canvas', () => {
-  function setup() {
+  function setup(canonical = false) {
     let latest = makeGraph();
     function Editor() {
       const [graph, setGraph] = useState(latest);
-      return <FlowCanvas graph={graph} editable onChange={next => { latest = next; setGraph(next); }} />;
+      return <FlowCanvas graph={graph} editable {...(canonical ? {catalog:AUTOMATION_NODE_CATALOG_V1.filter(item=>item.availability==='AVAILABLE').map(item=>({...item}))} : {})} onChange={next => { latest = next; setGraph(next); }} />;
     }
     render(<Editor />);
     fireEvent.click(screen.getByRole('button', { name: 'Configurar Menu principal' }));
     return () => latest;
   }
+  it('offers bounded retries only in the canonical canvas and connects its exhausted exit',()=>{
+    const latest=setup(true);
+    fireEvent.click(screen.getByRole('checkbox',{name:'Limitar respostas inválidas'}));
+    fireEvent.change(screen.getByRole('combobox',{name:'Destino Sem tentativas'}),{target:{value:'support'}});
+    expect(latest().edges).toContainEqual(expect.objectContaining({source:'menu',port:'exhausted',target:'support'}));
+    fireEvent.click(screen.getByRole('checkbox',{name:'Limitar respostas inválidas'}));
+    expect(latest().edges.some(edge=>edge.port==='exhausted')).toBe(false);
+    expect(latest().edges.find(edge=>edge.id==='menu-support')?.port).toBe('option-2');
+    expect(latest().nodes.some(node=>node.id==='support')).toBe(true);
+  });
+  it('does not offer canonical attempt limits in the legacy flow canvas',()=>{
+    setup();expect(screen.queryByRole('checkbox',{name:'Limitar respostas inválidas'})).not.toBeInTheDocument();
+  });
   it('keeps the chosen branch executable after reorder and number change', () => {
     const latest = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Mover opção 2 para cima' }));

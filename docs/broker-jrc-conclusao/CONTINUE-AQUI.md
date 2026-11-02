@@ -1,3 +1,25 @@
+# Incremento dos trÍs documentos ó 02/11/2026
+
+Leia `19-DOCUMENTOS-20261102.md`. O usu·rio autorizou publicaÁ„o das candidatas e atualizaÁ„o de imagens apÛs gates. A consolidaÁ„o LAB2 inclui os histÛricos local89d87ccb, e4a6a007 e a vers„o produtiva50f7f07d; n„o voltar ‡ base antiga nem copiar runtime especÌfico de outro cliente. Preservar source/branches e n„o executar merge na main. Fontes histÛricas ainda n„o foram fornecidas para todos os domÌnios: n„o declarar migraÁ„o completa.
+
+Broker: Flow limitado opt-in, seguranÁa do mÛdulo QR, typecheck/build e testes descritos em19. LAB2: cards/di·logo, distribuiÁ„o por conex„o/auditoria, reconciliaÁ„o somente leitura e correÁıes do callback dur·vel. Gerar o editor compartilhado do commit Broker antes de publicar LAB2. N„o ativar o overlay Evolution, conectar n˙meros, enviar mensagens, limpar histÛrico ou fazer replay UNKNOWN. Backup/dump de dados/restore continuam excluÌdos.
+
+Os checkpoints abaixo s„o histÛricos; o relatÛrio final da execuÁ„o registra os SHAs, CI, digests e eventual implantaÁ„o efetiva. N„o inferir deploy deste texto.
+
+# Escopo comum vigente ‚Äî Chatwoot / CCLX / JRC Conversas, 02/11/2026
+
+Leia `17-CONTRATO-COMUM-CHATWOOT-20261102.md` e `18-CHATWOOT-SIDEKIQ-20261102.md`. O objetivo √© o mesmo Broker SaaS para LAB2 e consumidor CCLX independente; n√£o exigir LAB2 completo do cliente, substituir Evolution ou declarar m√≥dulo externo como nativo.
+
+Incremento: Sidekiq7.3.1/Rails7.1.5.2/Redis/PG reais em laborat√≥rio, fila exclusiva, SIGKILL ap√≥s recibo e recupera√ß√£o com duas obriga√ß√µes delivered, tentativas2/1 e um recibo por delivery/account. S√£o duas contas em uma instala√ß√£o; transporte √© modelado. N√£o fecha dois Chatwoots independentes, TLS, m√≠dia ou CCLX real. A leitura do observador foi corrigida para uncached ap√≥s timeout sem perda; logs originais preservados. Probes guardados em spec/homologation no LAB2, commit89d87ccb5e41480e9cd7e99647b3b00c0ce24729, al√©m de01fd99c6 preservado.
+
+Backend externo QR: revoga√ß√£o/troca de tenant durante HTTP foi reproduzida (3RED/21passes) e corrigida por reautoriza√ß√£o antes de POST/resposta; listas usam escopo atual.37/37 testes passaram e revis√£o independente sem novoP1/P2. A inten√ß√£o ap√≥s efeito incerto mant√©m a chave, sem novo POST autom√°tico.
+
+Broker est√° no commit que cont√©m este checkpoint; sem push ou CI nova. PR6 e produ√ß√£o n√£o foram alteradas. Nenhuma migration nova;0079 Broker e20261102090000 LAB2 preservadas. Todos os containers exclusivos desta rodada encerrados com volumes preservados; nenhum cron geral ou rotina de backup/dump/restore executado.
+
+Pr√≥xima prova: dois consumidores Chatwoot isolados, um stock identificado sem copiar LAB2, mais LAB2; TLS e fluxo bidirecional/media/cust√≥dia. Meta no m√≥dulo externo, vers√£o/acesso/extens√µes CCLX, regras do legado, imagem final/ownership e CI permanecem gates expl√≠citos. N√£o retirar QuePasa/n8n/PubSub/Cloud Functions nem conectar n√∫meros por infer√™ncia.
+
+## Hist√≥rico do incremento anterior
+
 # Continua√ß√£o atual ‚Äî 02/11/2026, sobre Broker63f3282b / LAB2 16f59d78
 
 Leia primeiro `16-LAB2-DURABLE-20261102.md` e `15-ENGINE-HOST-20261102.md`. Novo c√≥digo local da obriga√ß√£o dur√°vel est√° no LAB2 correto, incluindo migration20261102090000;66 exemplos Rails reais passaram, lint dos quatro arquivos novos passou e SIGKILL ap√≥s COMMIT foi recuperado por outro processo. Transporte/receptor do probe s√£o sint√©ticos; Sidekiq real n√£o foi homologado. Duas falhas de helper legado foram confirmadas tamb√©m no baseline e permanecem abertas.

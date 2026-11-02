@@ -34,6 +34,20 @@ function setup(initial = node, editable = true) {
   return changed;
 }
 describe('visual menu configuration', () => {
+  it('opts into a bounded menu without changing option branches or historical fields',()=>{
+    const changed=setup();
+    fireEvent.click(screen.getByRole('checkbox',{name:'Limitar respostas inválidas'}));
+    expect(changed.mock.lastCall![0]).toMatchObject({menuConfigVersion:1,maxAttempts:3,preserved:'unchanged',options});
+    expect(changed.mock.lastCall![1]).toEqual(edges);
+    fireEvent.change(screen.getByRole('spinbutton',{name:'Tentativas de resposta inválida'}),{target:{value:'5'}});
+    expect(changed.mock.lastCall![0].maxAttempts).toBe(5);
+  });
+  it('preserves an invalid imported limit for repair and makes it visible',()=>{
+    const changed=setup({...node,data:{...node.data,menuConfigVersion:1,maxAttempts:0}});
+    expect(changed).not.toHaveBeenCalled();
+    expect(screen.getByRole('spinbutton',{name:'Tentativas de resposta inválida'})).toHaveAttribute('aria-invalid','true');
+    expect(screen.getByRole('alert')).toHaveTextContent('1 a 100');
+  });
   it('reorders display without renumbering choices or changing branch identities', () => {
     const changed = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Mover opção 2 para cima' }));
@@ -91,10 +105,13 @@ describe('visual menu configuration', () => {
     expect(changed.mock.lastCall![0].options[0]).toBeNull();
   });
   it('disables configuration and mutations for a reader', () => {
-    const changed = setup(node, false);
+    const changed = setup({...node,data:{...node.data,menuConfigVersion:1,maxAttempts:3}}, false);
     expect(screen.getByRole('button', { name: 'Adicionar opção' })).toBeDisabled();
     expect(screen.getByRole('combobox', { name: 'Número da opção 2' })).toBeDisabled();
     expect(screen.getByRole('textbox', { name: 'Texto da opção 1' })).toBeDisabled();
+    expect(screen.getByRole('checkbox',{name:'Limitar respostas inválidas'})).toBeDisabled();
+    expect(screen.getByRole('spinbutton',{name:'Tentativas de resposta inválida'})).toBeDisabled();
+    fireEvent.change(screen.getByRole('spinbutton',{name:'Tentativas de resposta inválida'}),{target:{value:'7'}});
     fireEvent.click(screen.getByRole('button', { name: 'Remover opção 2' }));
     expect(changed).not.toHaveBeenCalled();
   });

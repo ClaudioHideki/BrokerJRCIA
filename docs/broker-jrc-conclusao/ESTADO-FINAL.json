@@ -1,11 +1,11 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-11-02T13:29:53.297248+00:00",
+  "updatedAt": "2026-11-02T14:22:53.243131+00:00",
   "repository": "ClaudioHideki/BrokerJRCIA",
   "branch": "codex/broker-jrc-2-redesign-homologacao-20261030",
-  "baselineCommit": "63f3282b7082c8097e0d8800c6a7e8c2b3783f3b",
+  "baselineCommit": "f79d4a6dea1d94c5c0f87c76e5dcbd8607513e11",
   "commitStatus": "BROKER_LOCAL_COMMIT_CONTAINING_THIS_CHECKPOINT; no push; exact SHA in external delivery record",
-  "status": "INCREMENTO_DURABILIDADE_LOCAL_TESTADO; HOMOLOGACAO_GLOBAL_PARCIAL",
+  "status": "COMMON_CONTRACT_INCREMENT_LOCAL; GLOBAL_HOMOLOGATION_PARTIAL",
   "historicalCheckpoint": "Previous ESTADO-FINAL.json preserved in Git at 977ab0e; old release authorization does not authorize this increment",
   "pullRequest": {
     "number": 6,
@@ -19,7 +19,7 @@
     "repository": "ClaudioHideki/jrc-conversas-lab2",
     "branch": "codex/release-grupojrc-20261022",
     "baseline": "abc1f7c57f55a7d9871101cd5b70c8b93becc7ca",
-    "commit": "01fd99c6e4c47a2e1a82ad3c2e73c52dd243c29d",
+    "commit": "89d87ccb5e41480e9cd7e99647b3b00c0ce24729",
     "pushed": false,
     "preexistingWorkflowEdit": "preserved unstaged",
     "requestSpecsAdded": 6,
@@ -87,7 +87,7 @@
     "50-number 30-day pilot",
     "100/200/400/900 session benchmark"
   ],
-  "nextStep": "Final pinned Evolution image/bootstrap/ownership; real Sidekiq/TLS and media LAB2 pipeline; fix Rails legacy helper; full suites and candidate CI; no production activation",
+  "nextStep": "Two independent isolated Chatwoot consumers, including identified stock consumer without LAB2; real TLS/bidirectional/media; verify CCLX fork and authorized extension; complete image/ownership and candidate CI gates.",
   "evidenceReport": "TESTES-E-EVIDENCIAS.md",
   "technicalReport": "PARECER-FINAL.md",
   "priorIncrementTests": {
@@ -322,7 +322,7 @@
     "lint": "NO_BROKER_LINT_SCRIPT; diff-check is not lint",
     "overlapWarning": "Do not sum overlapping runs or rewrite failed broad round as green"
   },
-  "tests": {
+  "priorIncrementTests_Durable": {
     "railsAffected": {
       "passed": 66,
       "failed": 0,
@@ -365,5 +365,87 @@
     "fullEngineImage": "NOT_BUILT",
     "newCI": "NOT_EXECUTED",
     "fullRailsSuite": "NOT_EXECUTED; legacy failures remain"
+  },
+  "tests": {
+    "partnerQr": {
+      "passed": 37,
+      "failed": 0,
+      "files": 2,
+      "seconds": 11.3,
+      "red": {
+        "failed": 3,
+        "passed": 21
+      }
+    },
+    "realSidekiq": {
+      "version": "7.3.1",
+      "rails": "7.1.5.2",
+      "redis": true,
+      "postgres": true,
+      "workerExitAfterCommit": 137,
+      "deliveredObligations": 2,
+      "persistedReceipts": 2,
+      "accounts": 2,
+      "attempts": [
+        2,
+        1
+      ],
+      "transport": "synthetic port with actual PG receipts",
+      "independentChatwootInstallations": false,
+      "controlledLeaseExpiry": true,
+      "initialObserverFailure": "query cache; no re-send; uncached observation passed"
+    },
+    "versionedProbe": {
+      "syntax": "PASS",
+      "guardedBoot": "PASS",
+      "rejectBeforeBoot": "PASS",
+      "generalCronKeys": 0
+    },
+    "fullSuites": "NOT_EXECUTED_THIS_INCREMENT",
+    "candidateCI": "NOT_EXECUTED",
+    "review": "independent read-only; no new P1/P2"
+  },
+  "commonContract": {
+    "document": "17-CONTRATO-COMUM-CHATWOOT-20261102.md",
+    "eventsMatrix": "MATRIZ-EVENTOS-COMUNS.csv",
+    "consumerCodeDependency": "CCLX does not require full LAB2",
+    "cclxVersion": "NOT_VERIFIED",
+    "nativeCclxModule": "NOT_IMPLEMENTED_NO_ACCESS_OR_INSTALLATION_AUTHORIZATION",
+    "externalQr": "existing host-authenticated component hardened; not turnkey messaging or Meta adapter",
+    "legacyFlow": "user report only; no legacy disabled"
+  },
+  "documentIncrement20261102": {
+    "baseBroker": "f79d4a6dea1d94c5c0f87c76e5dcbd8607513e11",
+    "lab2IntegrationHead": "57efc6e14208ee67e72eb778f4b09d4c905da127",
+    "preservedLab2Heads": [
+      "89d87ccb5e41480e9cd7e99647b3b00c0ce24729",
+      "e4a6a007193988af3f314a902ec68531fd25a14a",
+      "50f7f07d802829dd44a67547fabad3aa77f3d196"
+    ],
+    "tests": {
+      "flowRelated": 128,
+      "flowPostgres": 9,
+      "qrBff": 37,
+      "lab2Integrity": 73,
+      "lab2BrokerRegression": 210,
+      "brokerBroadFirstRun": {
+        "passed": 3703,
+        "failed": 1,
+        "skipped": 4,
+        "setupError": "OPENSSL_UNAVAILABLE_IN_SANDBOX"
+      },
+      "environmentRetest": {
+        "passed": 10,
+        "failed": 0
+      }
+    },
+    "build": "PASS",
+    "typecheck": "PASS",
+    "openapiDiff": "NONE",
+    "newPublication": "PENDING_FINAL_CANDIDATE_CI",
+    "deployment": "NOT_APPLIED_THIS_INCREMENT",
+    "recoveryScope": "NO_BACKUP_DATA_DUMP_RESTORE",
+    "operationalHomologation": "NOT_CLAIMED",
+    "document": "19-DOCUMENTOS-20261102.md"
   }
 }

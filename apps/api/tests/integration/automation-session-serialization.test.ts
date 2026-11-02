@@ -59,6 +59,23 @@ describe('serial conversation input persistence', () => {
     expect(results.filter(r => r.duplicate)).toHaveLength(1);
     expect((await lab.database.pool.query('select count(*)::int as n from automation_executions where organization_id=$1', [t.org])).rows[0].n).toBe(1);
   });
+  it('persists the bounded menu counter across workers and does not count a duplicate event twice',async()=>{
+    const graph={nodes:[node('start','start'),node('menu','menu',{text:'Escolha',menuConfigVersion:1,maxAttempts:3,
+      options:[{value:'1',label:'Comercial'},{value:'2',label:'Suporte'}]}),node('fallback','message',{text:'Limite atingido'}),node('end','end')],
+      edges:[edge('start','menu'),edge('menu','end','option-1'),edge('menu','end','option-2'),edge('menu','fallback','exhausted'),edge('fallback','end')]};
+    const t=await setup(graph),first=await t.route('Olá');await t.worker().runOnce(t.org);
+    const snapshot=async()=> (await lab.database.pool.query('select state from automation_executions where organization_id=$1 and id=$2',[t.org,first.execution!.id])).rows[0].state;
+    expect((await snapshot()).waiting.invalidAttempts).toBe(0);
+    await t.route('9','invalid-once');expect(await t.route('9','invalid-once')).toMatchObject({duplicate:true});
+    await t.worker().runOnce(t.org);expect((await snapshot()).waiting.invalidAttempts).toBe(1);
+    expect(await t.worker().runOnce(t.org)).toEqual({processed:false});
+    const savedWait=(await lab.database.pool.query("select state from automation_waits where organization_id=$1 and execution_id=$2 and status='WAITING'",[t.org,first.execution!.id])).rows[0].state;
+    expect(savedWait.waiting.invalidAttempts).toBe(1);
+    await t.route('x','invalid-twice');await t.worker().runOnce(t.org);expect((await snapshot()).waiting.invalidAttempts).toBe(2);
+    await t.route('0','invalid-thrice');await t.worker().runOnce(t.org);
+    expect(await t.worker().get(t.org,first.execution!.id)).toMatchObject({status:'COMPLETED'});
+    expect((await snapshot()).waiting).toBeUndefined();
+  });
   it('admits distinct replies into the existing execution while a worker holds a lease', async () => {
     const t = await setup(), first = await t.route('Olá');
     const repository = createPostgresAutomationRepository();

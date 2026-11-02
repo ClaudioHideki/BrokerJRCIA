@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { FlowGraphSchema, AutomationHandoffConfigSchema, hasNativeHandoffConfig, automationNodePorts, menuOptions,InputCaptureConfigSchema,
-  ConversationEffectConfigSchema, MediaEffectConfigSchema, ConversationEffectWaitSchema,
+  ConversationEffectConfigSchema, MediaEffectConfigSchema, ConversationEffectWaitSchema,MenuAttemptConfigSchema,
   type AutomationGraphV1, type FlowNode } from '@jrc/contracts';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
 import { executeDataNode } from './data-nodes.js';
@@ -101,6 +101,29 @@ export async function executeAutomation(
         if(saved.deadlineAt!==undefined&&input.inputWait.admittedAt!>saved.deadlineAt)current=next(published.graph,waiting.id,'timeout')??null;
         else{variables[string(waiting.data.variable)]=runtimeJson(input.text);current=next(published.graph,waiting.id)??null;}
       }else return pending();
+    }else if(waiting.type==='menu'&&waiting.data.menuConfigVersion!==undefined){
+      const config=MenuAttemptConfigSchema.parse(waiting.data),saved=state.waiting;
+      const attempts=saved.invalidAttempts;
+      if(typeof attempts!=='number'||!Number.isInteger(attempts)||attempts<0||attempts>=config.maxAttempts)throw new Error('AUTOMATION_MENU_WAIT_INVALID');
+      const pending=()=>finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:waiting.id}});
+      if(input.eventType!=='MESSAGE')return pending();
+      const selected=input.text.trim(),option=menuOptions(waiting).find(item=>item.value===selected);
+      if(option){
+        const variable=string(waiting.data.variable)||'menu.choice';if(safeKey(variable))variables[variable]=selected;
+        current=next(published.graph,waiting.id,`option-${option.value}`)??null;
+      }else{
+        const invalidAttempts=attempts+1;
+        trace.push({nodeId:waiting.id,type:waiting.type,label:waiting.label,input:{},output:{invalidAttempts,maxAttempts:config.maxAttempts,port:invalidAttempts===config.maxAttempts?'exhausted':'retry'}});
+        if(invalidAttempts===config.maxAttempts){
+          current=next(published.graph,waiting.id,'exhausted')??null;
+          if(!current)throw new Error('AUTOMATION_MENU_EXHAUSTED_CONNECTION_MISSING');
+        }else{
+          state.waiting={...saved,invalidAttempts};
+          const prompt=renderFlowText(waiting.data.text,variables),list=menuOptions(waiting).map(item=>`${item.value} - ${item.label}`).join('\n');
+          effects.push({nodeId:waiting.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text:[prompt,list,'Responda com o número da opção.'].filter(Boolean).join('\n')}});
+          return pending();
+        }
+      }
     }else{
       if(input.eventType==='TIMER')throw new Error('AUTOMATION_EVENT_WAIT_REQUIRES_EVENT');
       if(waiting.type==='input'){
@@ -152,7 +175,9 @@ export async function executeAutomation(
         state.nodeId=node.id;state.waiting={kind:'EVENT',nodeId:node.id,waitId,...(deadlineAt===undefined?{}:{deadlineAt})};
         return finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:node.id,waitId,...(deadlineAt===undefined?{}:{deadlineAt:new Date(deadlineAt)})}});
       }
-      state.nodeId=node.id;state.waiting={kind:'EVENT',nodeId:node.id};return finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:node.id}});
+      const boundedMenu=node.type==='menu'&&node.data.menuConfigVersion!==undefined;
+      if(boundedMenu)MenuAttemptConfigSchema.parse(node.data);
+      state.nodeId=node.id;state.waiting={kind:'EVENT',nodeId:node.id,...(boundedMenu?{invalidAttempts:0}:{})};return finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:node.id}});
     }
     if(node.type==='delay'){
       const seconds=Number(node.data.seconds);const wakeAt=new Date(input.now.getTime()+seconds*1000);

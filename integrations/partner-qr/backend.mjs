@@ -9,6 +9,7 @@ const only=(value,keys)=>record(value)&&Object.keys(value).every(key=>keys.inclu
 const identifiers=value=>value==='*'||Array.isArray(value)&&value.length<=1000&&value.every(id=>typeof id==='string'&&uuid.test(id));
 const permits=(values,id)=>values==='*'||values.includes(id);
 const text=(value,max)=>typeof value==='string'&&value.length>0&&value.length<=max;
+const validGrant=(grant,mutates,csrf)=>record(grant)&&grant.allow===true&&text(grant.tenantRef,128)&&identifiers(grant.allowedInstanceIds)&&identifiers(grant.allowedProviderAccountIds)&&(!mutates||grant.csrfVerified===true&&typeof csrf==='string'&&text(csrf.trim(),1024));
 function instance(value){
  if(!record(value)||!uuid.test(value.id)||!text(value.name,120)||value.provider!=='BAILEYS'||!states.has(value.status))throw fault(502,'BROKER_RESPONSE_INVALID');
  return {id:value.id,name:value.name,provider:'BAILEYS',status:value.status};
@@ -77,7 +78,8 @@ export function createPartnerQrHandler({brokerOrigin,authorize,resolveCredential
    if(req.headers['sec-fetch-site']==='cross-site')throw fault(403,'HOST_ACCESS_DENIED');
    const grant=await authorize(req,{operation,...(id?{instanceId:id}:{})});
    const csrf=req.headers['x-csrf-token'];
-   if(!record(grant)||grant.allow!==true||!text(grant.tenantRef,128)||!identifiers(grant.allowedInstanceIds)||!identifiers(grant.allowedProviderAccountIds)||mutates&&(grant.csrfVerified!==true||typeof csrf!=='string'||!text(csrf.trim(),1024)))throw fault(403,'HOST_ACCESS_DENIED');
+   if(!validGrant(grant,mutates,csrf))throw fault(403,'HOST_ACCESS_DENIED');
+   const tenantRef=grant.tenantRef;
    if(id&&!permits(grant.allowedInstanceIds,id))throw fault(403,'HOST_RESOURCE_DENIED');
    let body,idem;
    if(mutates){
@@ -96,11 +98,18 @@ export function createPartnerQrHandler({brokerOrigin,authorize,resolveCredential
    if(!record(credentials)||!text(credentials.apiKey,512)||credentials.apiKey.length<16||/[\r\n]/u.test(credentials.apiKey))throw fault(503,'BROKER_NOT_CONFIGURED');
    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs),aborted=()=>controller.abort();req.once('aborted',aborted);res.once('close',aborted);
    try{
+    const reauthorize=async()=>{
+     const current=await abortable(authorize(req,{operation,...(id?{instanceId:id}:{})}),controller.signal);
+     if(!validGrant(current,mutates,csrf)||current.tenantRef!==tenantRef)throw fault(403,'HOST_ACCESS_DENIED');
+     if(id&&!permits(current.allowedInstanceIds,id)||operation==='create'&&!permits(current.allowedProviderAccountIds,body.providerAccountId))throw fault(403,'HOST_RESOURCE_DENIED');
+     return current;
+    };
     const upstream=async(path,method='GET',payload)=>{
      const headers={accept:'application/json','accept-encoding':'identity','x-jrc-api-key':credentials.apiKey};
      if(method==='POST'){headers['content-type']='application/json';headers['idempotency-key']=idem.trim();}
      try{
       controller.signal.throwIfAborted();
+      if(method==='POST')await reauthorize();
       const response=await abortable(transport(origin+path,{method,headers,redirect:'manual',signal:controller.signal,...(payload===undefined?{}:{body:JSON.stringify(payload)})}),controller.signal);
       if(response.status<200||response.status>=300){await response.body?.cancel().catch(()=>{});throw fault(response.status===409?409:response.status===403?403:502,response.status===409?'BROKER_RECONCILIATION_REQUIRED':'BROKER_REQUEST_REJECTED');}
       return {status:response.status,value:await responseBody(response,controller.signal)};
@@ -125,6 +134,8 @@ export function createPartnerQrHandler({brokerOrigin,authorize,resolveCredential
      if(operation==='pair'||operation==='reconnect')projected.action=action(value.action);
     }
     if(JSON.stringify(projected).includes(credentials.apiKey))throw fault(502,'BROKER_RESPONSE_INVALID');
+    const current=await reauthorize();
+    if(Array.isArray(projected.data))projected.data=projected.data.filter(item=>permits(operation==='providers'?current.allowedProviderAccountIds:current.allowedInstanceIds,item.id));
     send(status,projected);
    }finally{clearTimeout(timer);req.off('aborted',aborted);res.off('close',aborted);}
   }catch(error){const known=error?.[internalFault]===true;send(known?error.status:502,{code:known?error.code:'PARTNER_QR_UNAVAILABLE',message:known?error.code:'A operação não foi confirmada. Consulte o estado antes de repetir.'});}

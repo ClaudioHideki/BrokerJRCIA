@@ -6,6 +6,7 @@ import {DATA_NODE_TYPES,compatibleDataNodeSchema,dataNodePorts} from './automati
 import {compatibleAiNodeSchema} from './automation-ai.js';
 import {compatibleHttpQuerySchema} from './automation-http-query.js';
 import {compatibleInputCaptureSchema,inputCapturePorts} from './automation-input.js';
+import {compatibleMenuSchema,menuAttemptPorts} from './automation-menu.js';
 import {compatibleConversationEffectSchema,conversationEffectPorts} from './automation-conversation-effects.js';
 import {SwitchNodeConfigSchema,switchNodePorts} from './automation-switch.js';
 import {DomainCommandConfigSchema} from './automation-domain-command.js';
@@ -45,10 +46,10 @@ export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = 
   define('input', 'Capturar resposta', 'INPUTS', compatibleInputCaptureSchema(config({ variable: safeKey,
     text: z.unknown().refine(input => value(input).length <= 4096, 'Pergunta muito longa.').optional(),
     timeout: z.unknown().refine(input => !(Number(input ?? 0) > 0), 'Timeout importado ainda não suportado.').optional() })),inputCapturePorts),
-  define('menu', 'Menu textual', 'INPUTS', config({ text, options: z.unknown().refine(options => {
+  define('menu', 'Menu textual', 'INPUTS', compatibleMenuSchema(config({ text, options: z.unknown().refine(options => {
     const parsed = menuOptions({ id: '', label: '', position: { x: 0, y: 0 }, type: 'menu', data: { options } });
     return Array.isArray(options) && parsed.length >= 2 && parsed.length <= 10 && parsed.length === options.length && new Set(parsed.map(option => option.value)).size === parsed.length;
-  }, 'Configure de 2 a 10 opções numeradas e únicas.') }), node => menuOptions(node).map(option => `option-${option.value}`)),
+  }, 'Configure de 2 a 10 opções numeradas e únicas.') })), menuAttemptPorts),
   define('condition', 'Condição', 'LOGIC', config({ field: safeKey, operator: z.enum(['equals', 'not_equals', 'contains', 'starts_with', 'present']) }), () => ['yes', 'no']),
   define('switch','Decidir por vários valores','LOGIC',SwitchNodeConfigSchema,node=>switchNodePorts(node.data)),
   define('variable', 'Definir variável', 'DATA', config({ variable: safeKey })),
