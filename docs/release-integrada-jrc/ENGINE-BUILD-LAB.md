@@ -221,6 +221,13 @@ Não executou runners; o parecer limita-se a esse gate, sem aprovar produção.
 
 ## Design aprovado — 02/11/2026
 
+O incremento também registra `engine-build.test.mjs` explicitamente na CI e no
+workflow de imagens, com heap128 e execução serial. São contratos unitários de
+contexto/entrypoint, sem boot Docker da engine. As listas anteriores de
+`test:origin-journal` não incluíam esse novo arquivo. Os gates manuais Docker e
+PostgreSQL prístino continuam separados; sucesso da CI não os substitui. A CI
+do novo SHA da branch precisa terminar antes de qualquer aprovação desse SHA.
+
 O core Broker segue sua release independente. Este incremento fecha a receita de
 imagem derivada da fonte Evolution `fa09d37892cdbb1d65a250155d293d92230c5b30`,
 com sete overlays e runtime JRC existentes, sem editar esse upstream. Ownership
