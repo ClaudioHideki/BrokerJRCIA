@@ -1,0 +1,122 @@
+name: Verify and optionally publish pinned Evolution candidate
+on:
+  pull_request:
+    paths:
+      - 'integrations/evolution-origin-journal/**'
+      - 'packages/evolution-origin-journal/**'
+      - 'scripts/ci/verify-engine-candidate.mjs'
+      - 'tests/engine-image-workflow.test.mjs'
+      - '.github/workflows/engine-image.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the exact tested candidate to GHCR; does not deploy or authorize production capture'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: engine-candidate-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    environment: ghcr-release
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - run: npm ci
+      - name: Verify gate contracts and source integrity
+        run: |
+          npm test -- tests/engine-image-workflow.test.mjs --maxWorkers=1
+          npm run test:engine-artifact
+          npm run security:submodule
+      - name: Use only the ephemeral runner local Docker socket
+        run: |
+          test -z "${DOCKER_HOST:-}"
+          docker context create desktop-linux --docker host=unix:///var/run/docker.sock
+          test "$(docker context inspect desktop-linux --format '{{.Endpoints.docker.Host}}')" = 'unix:///var/run/docker.sock'
+      - name: Stage the pinned source and build once
+        run: |
+          mkdir -p .sessions/engine-release
+          node --max-old-space-size=128 integrations/evolution-origin-journal/build/context-engine.mjs > .sessions/engine-release/context.json
+          context=$(node -e 'const f=require("fs");process.stdout.write(JSON.parse(f.readFileSync(".sessions/engine-release/context.json","utf8")).directory)')
+          docker --context desktop-linux build --iidfile .sessions/engine-release/image-id.txt --label jrc.task=engine-build-20261102 --label "org.opencontainers.image.revision=$GITHUB_SHA" "$context"
+      - name: Verify all four admission cases on the built IID
+        run: |
+          export JRC_ENGINE_IMAGE_GATE_ID=$(cat .sessions/engine-release/image-id.txt)
+          node --max-old-space-size=128 integrations/evolution-origin-journal/tests/engine-image-gates.mjs > .sessions/engine-release/admission.json
+      - name: Prepare pinned disposable PostgreSQL and Redis images
+        run: |
+          docker --context desktop-linux pull postgres@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
+          docker --context desktop-linux tag postgres@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c postgres:16-alpine
+          docker --context desktop-linux pull redis@sha256:c35af3bbcef51a62c8bae5a9a563c6f1b60d7ebaea4cb5a3ccbcc157580ae098
+          docker --context desktop-linux tag redis@sha256:c35af3bbcef51a62c8bae5a9a563c6f1b60d7ebaea4cb5a3ccbcc157580ae098 redis:7.4.0-alpine
+      - name: Verify the real provisioned main and handler with controlled source crash
+        env:
+          JRC_ENGINE_REAL_HOOK_GATE: "true"
+        run: |
+          export JRC_ENGINE_IMAGE_GATE_ID=$(cat .sessions/engine-release/image-id.txt)
+          node --max-old-space-size=128 integrations/evolution-origin-journal/tests/engine-provisioned-gate.mjs > .sessions/engine-release/provisioned.json
+      - name: Require correlated current-image evidence before publication
+        run: |
+          node scripts/ci/verify-engine-candidate.mjs --image "$(cat .sessions/engine-release/image-id.txt)" --revision "$GITHUB_SHA" --admission .sessions/engine-release/admission.json --provisioned .sessions/engine-release/provisioned.json --output .sessions/engine-release/candidate.json
+          echo 'Candidate gates verified. Production ownership/capture and real WhatsApp sessions remain unapproved.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Authenticate only for requested publication
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the identical tested image without rebuilding
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        id: publish
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          export IMAGE_BASE="ghcr.io/${REPOSITORY,,}-evolution"
+          tested=$(cat .sessions/engine-release/image-id.txt)
+          image_ref="$IMAGE_BASE:$GITHUB_SHA"
+          docker --context desktop-linux tag "$tested" "$image_ref"
+          rebuilt=$(docker --context desktop-linux image inspect "$image_ref" --format '{{.Id}}')
+          test "$rebuilt" = "$tested"
+          docker --context desktop-linux push "$image_ref"
+          docker --context desktop-linux image inspect "$image_ref" --format '{{json .RepoDigests}}' > .sessions/engine-release/registry-digests.json
+          digest=$(node -e 'const f=require("fs"),a=JSON.parse(f.readFileSync(".sessions/engine-release/registry-digests.json","utf8"));const v=a.find(x=>x.startsWith(process.env.IMAGE_BASE+"@sha256:"));if(!v)process.exit(1);process.stdout.write(v)')
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "$digest" >> "$GITHUB_STEP_SUMMARY"
+      - name: Install pinned signing client
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9 # v3
+      - name: Sign the published immutable digest
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        env:
+          IMAGE_DIGEST: ${{ steps.publish.outputs.digest }}
+        run: cosign sign --yes "$IMAGE_DIGEST"
+      - name: Preserve sanitized candidate evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: engine-candidate-${{ github.sha }}
+          retention-days: 14
+          include-hidden-files: true
+          path: |
+            .sessions/engine-release/*.json
+            .sessions/engine-release/image-id.txt
+            integrations/evolution-origin-journal/build/image-gates-*/report.log
+            integrations/evolution-origin-journal/build/image-gates-*/cleanup.log
+            integrations/evolution-origin-journal/build/provisioned-gate-*/report.log
+            integrations/evolution-origin-journal/build/provisioned-gate-*/cleanup.log
