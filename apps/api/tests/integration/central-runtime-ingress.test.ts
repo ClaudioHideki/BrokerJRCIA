@@ -1,10 +1,10 @@
 import { createHmac, randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe,expect, it } from 'vitest';
 import { attendanceDatabase } from './helpers/attendance.js';
 import { createIntegrationSecrets } from '../../src/modules/integrations/secrets.js';
-import { createAutomationService, createEventRouter } from '../../src/modules/automations/service.js';
+import { createAutomationService, createEventRouter,createExecutionService } from '../../src/modules/automations/service.js';
 import { transitionChannelOwner } from '../../src/modules/attendance/transition.js';
-import { AUTOMATION_ORIGIN } from '@jrc/contracts';
+import { AUTOMATION_ORIGIN,type AutomationGraphV1 } from '@jrc/contracts';
 import { createChatwootService } from '../../src/modules/integrations/chatwoot-service.js';
 import {readCentralTransportBinding} from '../../src/modules/messaging/central-transport.js';
 
@@ -83,10 +83,10 @@ it('does not let a second company claim the same remote origin/account/inbox or 
   expect((await db.database.pool.query('SELECT m.id FROM messaging_channels m JOIN chatwoot_accounts a ON a.organization_id=m.organization_id WHERE a.base_url=$1',[t.binding.origin])).rows)
     .toEqual([{id:t.channel}]);
 });
-async function ownedFixture() {
+async function ownedFixture(graphOverride?:AutomationGraphV1) {
  const t=await fixture(),automation=createAutomationService({transact:db.transact,enabled:true});
  const graph={nodes:[{id:'start',type:'start',label:'Start',position:{x:0,y:0},data:{}},{id:'menu',type:'menu',label:'Menu',position:{x:100,y:0},data:{text:'Synthetic menu',variable:'choice',options:[{value:'1',label:'End'},{value:'2',label:'Finish'}]}},{id:'end',type:'end',label:'End',position:{x:200,y:0},data:{}}],edges:[{id:'next',source:'start',target:'menu',port:'next'},{id:'end',source:'menu',target:'end',port:'option-1'},{id:'finish',source:'menu',target:'end',port:'option-2'}]};
- const draft=await automation.create(t.org,{name:'Synthetic central menu',graph});
+ const draft=await automation.create(t.org,{name:'Synthetic central menu',graph:graphOverride??graph});
  expect(await automation.validate(t.org,draft.id)).toMatchObject({valid:true});
  await automation.publish(t.org,draft.id,1);
  await db.transact(t.org,async tx=>{
@@ -98,6 +98,86 @@ async function ownedFixture() {
 const canonical = (status='pending',createdAt=Math.floor(Date.now()/1000)) => ({
  conversation:{id:101,account_id:7,inbox_id:9,status,meta:{assignee:null,team:null}},
  message:{id:201,conversation_id:101,message_type:'incoming',private:false,content:'Synthetic greeting',content_type:'text',sender:{id:301,type:'contact'},created_at:createdAt},
+});
+describe('central media v1',()=>{
+ const mediaGraph:AutomationGraphV1={nodes:[{id:'start',type:'start',label:'Start',position:{x:0,y:0},data:{}},
+  {id:'input',type:'input',label:'Capture',position:{x:1,y:0},data:{inputConfigVersion:3,inputType:'image',variable:'attachment',maxAttempts:2,timeoutSeconds:300}},
+  {id:'end',type:'end',label:'End',position:{x:2,y:0},data:{}}],edges:[{id:'a',source:'start',target:'input',port:'next'},
+   ...['next','exhausted','timeout'].map(port=>({id:port,source:'input',target:'end',port}))]};
+ const attachment={id:401,message_id:202,account_id:7,file_type:'image',data_url:'https://private.invalid/attachment',filename:'PRIVATE_FILENAME.png'};
+ async function prepare(media=true){
+  const t=await ownedFixture(media?mediaGraph:undefined),router=createEventRouter({transact:db.transact,enabled:true}),worker=createExecutionService({transact:db.transact,enabled:true});
+  const first=await receiver({router,readCanonical:async()=>canonical()}),receipt=await first.receive(signed(t));await first.process(t.org,receipt.eventId);await worker.runOnce(t.org);
+  const execution=(await db.transact(t.org,tx=>tx.query('SELECT id,state FROM automation_executions'))).rows[0];
+  return{...t,router,worker,execution};
+ }
+ function mediaCanonical(){return{...canonical(),message:{...canonical().message,id:202,content:'PRIVATE_CAPTION',attachments:[attachment]}};}
+ async function receiveMedia(t:Awaited<ReturnType<typeof prepare>>,readCanonical=async()=>mediaCanonical()){
+  const service=await receiver({router:t.router,readCanonical}),receipt=await service.receive(signed(t,202,101,{content:'PRIVATE_CAPTION',attachments:[attachment]}));
+  expect(receipt.disposition).toBe('RECEIVED');return{service,receipt};
+ }
+ it('stores immutable scoped references after GET, captures once after restart, and creates no asset/download/send',async()=>{
+  const t=await prepare(),{service,receipt}=await receiveMedia(t);
+  expect((await db.transact(t.org,tx=>tx.query('SELECT id FROM central_flow_input_media'))).rows).toEqual([]);
+  const results=await Promise.all([service.process(t.org,receipt.eventId),service.process(t.org,receipt.eventId)]);
+  expect(results.map((r:{duplicate:boolean})=>r.duplicate).sort()).toEqual([false,true]);
+  const rows=(await db.transact(t.org,tx=>tx.query('SELECT * FROM central_flow_input_media'))).rows;expect(rows).toHaveLength(1);
+  expect(JSON.stringify(rows)).not.toMatch(/PRIVATE|private\.invalid/);
+  await createExecutionService({transact:db.transact,enabled:true}).runOnce(t.org);
+  expect(await t.worker.get(t.org,t.execution.id)).toMatchObject({status:'COMPLETED',state:{variables:{attachment:{source:'CENTRAL_ATTACHMENT_REFERENCE',referenceId:rows[0].id,kind:'image',fileName:'anexo-401'}}}});
+  for(const table of ['messaging_media','messaging_bot_jobs','integration_jobs'])expect((await db.transact(t.org,tx=>tx.query(`SELECT 1 AS present FROM ${table}`))).rows).toEqual([]);
+  const other=await fixture();expect((await db.transact(other.org,tx=>tx.query('SELECT id FROM central_flow_input_media'))).rows).toEqual([]);
+  await expect(db.transact(t.org,tx=>tx.query("UPDATE central_flow_input_media SET file_name='changed'"))).rejects.toMatchObject({code:'42501'});
+  await expect(db.database.pool.query("UPDATE central_flow_input_media SET file_name='changed' WHERE organization_id=$1",[t.org])).rejects.toThrow('CENTRAL_MEDIA_REFERENCE_IMMUTABLE');
+ });
+ it.each(['private','wrong account','wrong conversation','wrong contact','wrong attachment','credential change','webhook secret change'])('rejects %s after the canonical GET without a reference or resumed execution',async reason=>{
+  const t=await prepare(),{service,receipt}=await receiveMedia(t,async()=>{
+   const result=mediaCanonical();
+   if(reason==='private')result.message.private=true;
+   if(reason==='wrong account')result.message.attachments=[{...attachment,account_id:8}];
+   if(reason==='wrong conversation')result.message.conversation_id=102;
+   if(reason==='wrong contact')result.message.sender.id=302;
+   if(reason==='wrong attachment')result.message.attachments=[{...attachment,id:402}];
+   if(reason==='credential change')await db.database.pool.query('UPDATE chatwoot_accounts SET credential_version=2 WHERE organization_id=$1',[t.org]);
+   if(reason==='webhook secret change')await db.database.pool.query('UPDATE chatwoot_connections SET encrypted_webhook_secret=$2 WHERE organization_id=$1',[t.org,codec.encrypt(`${t.org}:chatwoot-webhook:${t.integration}`,'rotated-synthetic')]);
+   return result;
+  });
+  await expect(service.process(t.org,receipt.eventId)).rejects.toThrow();
+  expect((await db.transact(t.org,tx=>tx.query('SELECT id FROM central_flow_input_media'))).rows).toEqual([]);
+  expect((await db.transact(t.org,tx=>tx.query('SELECT state FROM automation_executions WHERE id=$1',[t.execution.id]))).rows[0].state).toEqual(t.execution.state);
+ });
+ it.each(['human','history'])('does not materialize a reference for %s input',async reason=>{
+  const t=await prepare(),{service,receipt}=await receiveMedia(t,async()=>{const result=mediaCanonical();if(reason==='human')result.conversation.status='open';else result.message.created_at=1;return result;});
+  expect(await service.process(t.org,receipt.eventId)).toMatchObject({disposition:'IGNORED'});
+  expect((await db.transact(t.org,tx=>tx.query('SELECT id FROM central_flow_input_media'))).rows).toEqual([]);
+ });
+ it('never turns a media caption into a historical text/menu response',async()=>{
+  const t=await prepare(false),{service,receipt}=await receiveMedia(t);await service.process(t.org,receipt.eventId);
+  expect(await t.worker.runOnce(t.org)).toEqual({processed:false});
+  expect((await db.transact(t.org,tx=>tx.query('SELECT state FROM automation_executions WHERE id=$1',[t.execution.id]))).rows[0].state).toEqual(t.execution.state);
+ });
+ it('rejects absent, JSON-null or incomplete versioned media envelopes at the database boundary',async()=>{
+  const t=await prepare(false),{receipt}=await receiveMedia(t);
+  for(const value of [null,{}, {contactId:301,attachments:[{id:401,kind:'image'}]}, {version:1,contactId:301}, {version:1,contactId:301,attachments:null}]){
+   await expect(db.database.pool.query('UPDATE central_runtime_events SET media_input=$3::jsonb WHERE organization_id=$1 AND id=$2',[t.org,receipt.eventId,JSON.stringify(value)])).rejects.toMatchObject({code:'23514'});
+  }
+  await expect(db.database.pool.query('UPDATE central_runtime_events SET media_input=NULL WHERE organization_id=$1 AND id=$2',[t.org,receipt.eventId])).rejects.toMatchObject({code:'23514'});
+ });
+ it('rejects a reference that points to another conversation event in the same tenant and channel',async()=>{
+  const t=await prepare(false),{service,receipt}=await receiveMedia(t);await service.process(t.org,receipt.eventId);
+  const other=await service.receive(signed(t,203,102));
+  await expect(db.transact(t.org,tx=>tx.query(`INSERT INTO central_flow_input_media(organization_id,channel_id,integration_id,conversation_id,event_id,origin,account_id,inbox_id,contact_id,
+   remote_conversation_id,remote_message_id,attachment_id,destination_revision,credential_version,owner_revision,kind,file_name)
+   SELECT organization_id,channel_id,integration_id,conversation_id,$2,origin,account_id,inbox_id,contact_id,
+    remote_conversation_id,remote_message_id,402,destination_revision,credential_version,owner_revision,kind,file_name
+   FROM central_flow_input_media WHERE organization_id=$1`,[t.org,other.eventId]))).rejects.toMatchObject({code:'23503'});
+ });
+ it('does not start a new Flow from a canonical media-only event',async()=>{
+  const t=await ownedFixture(),router=createEventRouter({transact:db.transact,enabled:true}),service=await receiver({router,readCanonical:async()=>mediaCanonical()});
+  const receipt=await service.receive(signed(t,202,101,{attachments:[attachment],content:'caption'}));
+  expect(await service.process(t.org,receipt.eventId)).toMatchObject({disposition:'IGNORED'});
+  expect((await db.transact(t.org,tx=>tx.query('SELECT id FROM automation_executions'))).rows).toEqual([]);
+ });
 });
 it('admits one fresh canonical input through the existing runtime after concurrent GETs and restart',async()=>{
  const t=await ownedFixture(),service=await receiver({readCanonical:async()=>canonical(),router:createEventRouter({transact:db.transact,enabled:true})});

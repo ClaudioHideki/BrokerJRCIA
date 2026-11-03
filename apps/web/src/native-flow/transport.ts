@@ -1,3 +1,4 @@
+import {FlowExecutionQuerySchema} from '@jrc/contracts';
 import { ApiClientError, type ApiClient } from '../api/client.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -62,6 +63,14 @@ export function createNativeEditorTransport(options: NativeEditorOptions): Pick<
     if (init.body !== undefined && typeof init.body !== 'string') invalid();
     let body: unknown;
     if (typeof init.body === 'string') { try { body = JSON.parse(init.body); } catch { invalid(); } if (!record(body)) invalid(); }
+    const execution=/^\/v1\/automations\/([^/]+)\/executions(?:\/([^/]+))?$/.exec(uri.pathname);
+    if(execution){
+      const id=execution[1]!,target=execution[2];if(!root||!uuid.test(id)||target&&!uuid.test(target)||method!=='GET'||body!==undefined)invalid();assertRoot(id);
+      if(target){if(uri.search)invalid();return await call('get',`/${id}/executions/${target}`,undefined,init.signal) as T;}
+      for(const key of uri.searchParams.keys())if(uri.searchParams.getAll(key).length!==1)invalid();
+      const parsed=FlowExecutionQuerySchema.safeParse(Object.fromEntries(uri.searchParams));if(!parsed.success)invalid();
+      return await call('get',`/${id}/executions${uri.search}`,undefined,init.signal) as T;
+    }
     const query = uri.searchParams;
     for (const key of query.keys()) if (!['cursor', 'pageSize'].includes(key) || query.getAll(key).length !== 1) invalid();
     const cursor = query.get('cursor'), size = query.get('pageSize');

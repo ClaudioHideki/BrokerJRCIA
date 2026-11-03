@@ -21,4 +21,9 @@ test('three real PostgreSQL events reconcile response totals with persisted inbo
   assert.equal(report.stages.length,1);
   for(const key of ['p50Ms','p95Ms','maxMs','totalMs'])assert.ok(Number.isFinite(report.stages[0][key])&&report.stages[0][key]>=0);
   assert.ok(report.stages[0].maxMs>=report.stages[0].p95Ms);
+  assert.equal(report.stages[0].identityAudit.reconciled,true);
+  assert.equal(report.stages[0].identityAudit.expectedUnique,3);
+  assert.deepEqual(report.stages[0].identityAudit.tenants.map(row=>row.expected),[2,1]);
+  assert.deepEqual(report.stages[0].tenants.map(row=>[row.accepted,row.requests,row.latencySamples]),[[2,2,2],[1,1,1]]);
+  assert.match(report.identityPolicy,/intentionally collide/);
 });

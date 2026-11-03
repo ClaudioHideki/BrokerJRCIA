@@ -1,12 +1,32 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { access, readFile, readdir, writeFile, mkdir, mkdtemp, symlink, unlink, rename } from 'node:fs/promises';
+import { access, readFile, readdir, writeFile, mkdir, mkdtemp, symlink, unlink, rename, open } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { stagePinnedEngine, removeOwnStage } from '../build/stage-engine.mjs';
-import { runtimeInventory } from '../../../infra/evolution/artifacts.mjs';
+import { runtimeInventory, fileHash } from '../../../infra/evolution/artifacts.mjs';
+
+test('runtime inventory cancellation stops before touching artifacts', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(runtimeInventory('nonexistent-cancelled-engine', { signal: controller.signal }), { name: 'AbortError' });
+});
+
+test('runtime hash cancellation interrupts an already opened stream', async () => {
+  const parent = fileURLToPath(new URL('../.staging/', import.meta.url));
+  await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(join(parent, 'engine-')), path = join(root, 'synthetic-large-file');
+  try {
+    const descriptor = await open(path, 'w');
+    try { await descriptor.truncate(16 * 1024 * 1024); } finally { await descriptor.close(); }
+    const controller = new AbortController(), hashing = fileHash(path, controller.signal);
+    const rejected = assert.rejects(hashing, { name: 'AbortError' });
+    setImmediate(() => controller.abort());
+    await rejected;
+  } finally { await removeOwnStage(root); }
+});
 
 test('image context CLI finishes and returns its own disposable directory', async () => {
   const cli = fileURLToPath(new URL('../build/context-engine.mjs', import.meta.url));

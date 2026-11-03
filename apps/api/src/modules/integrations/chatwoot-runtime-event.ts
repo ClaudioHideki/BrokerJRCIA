@@ -22,6 +22,9 @@ export type CentralRuntimeEcho = CentralRuntimeEventBinding & { remoteConversati
 const sameBinding = (left: CentralRuntimeEventBinding, right: CentralRuntimeEventBinding) =>
   (Object.keys(left) as (keyof CentralRuntimeEventBinding)[]).every(key => left[key] === right[key]);
 const scopedId = z.object({ id: eventId });
+const mediaAttachments=z.array(z.object({id:eventId,message_id:eventId,account_id:eventId,file_type:z.enum(['image','file'])})).min(1).max(10);
+export const CentralMediaInputSchema=z.strictObject({version:z.literal(1),contactId:id,
+  attachments:z.array(z.strictObject({id,kind:z.enum(['image','document'])})).min(1).max(10)});
 const conversation = z.object({
   id: eventId, inbox_id: eventId, account: scopedId.optional(), account_id: eventId.optional(),
   contact_inbox: z.object({ inbox_id: eventId.optional(), contact_id: eventId.optional() }).optional(),
@@ -46,6 +49,7 @@ const scopedKey = (scope: CentralRuntimeEventBinding, identity: unknown) => 'cha
 type Base = { scope: CentralRuntimeEventBinding; mayExecute: false; mayForwardReply: false; requiresCanonicalRead: true; dedupeKey: string | null };
 export type CentralRuntimeEvent = Base & (
   { kind: 'CONTACT_TEXT'; remoteConversationId: number; remoteMessageId: number; contactId: number; text: string } |
+  { kind: 'CONTACT_MEDIA'; mediaInputVersion:1; remoteConversationId:number; remoteMessageId:number; contactId:number; attachments:z.infer<typeof CentralMediaInputSchema>['attachments'] } |
   { kind: 'ATTENDANCE_OBSERVATION' | 'BROKER_ECHO'; classification: ChatwootAttendanceEvent; observationPayload: unknown; remoteConversationId: number; remoteMessageId?: number } |
   { kind: 'IGNORED' }
 );
@@ -88,9 +92,16 @@ export function decodeChatwootRuntimeEvent(input: {
     base.dedupeKey = scopedKey(scope, ['message', conv.id, message.id]);
     if (message.message_type === 'incoming' || message.message_type === 0) {
       const sender = record(message.sender), contactId = eventId.safeParse(sender.id);
-      if (message.private || sender.type !== 'contact' || !contactId.success || !message.content?.trim() ||
-        (message.content_type !== undefined && message.content_type !== 'text') || message.attachments?.length) return { ...base, kind: 'IGNORED' };
+      if (message.private || sender.type !== 'contact' || !contactId.success ||
+        (message.content_type !== undefined && message.content_type !== 'text')) return { ...base, kind: 'IGNORED' };
       if (conv.contact_inbox?.contact_id !== undefined && conv.contact_inbox.contact_id !== contactId.data) return fail('CENTRAL_EVENT_SCOPE_MISMATCH');
+      if(message.attachments?.length){
+        const media=mediaAttachments.safeParse(message.attachments);
+        if(!media.success||new Set(media.data.map(a=>a.id)).size!==media.data.length||media.data.some(a=>a.account_id!==scope.accountId||a.message_id!==message.id))return {...base,kind:'IGNORED'};
+        return {...base,kind:'CONTACT_MEDIA',mediaInputVersion:1,...identity,contactId:contactId.data,
+          attachments:media.data.map(a=>({id:a.id,kind:a.file_type==='file'?'document':'image'}))};
+      }
+      if(!message.content?.trim())return {...base,kind:'IGNORED'};
       return { ...base, kind: 'CONTACT_TEXT', ...identity, contactId: contactId.data, text: message.content };
     }
     // The existing classifier accepts numeric IDs. Normalize only the safely

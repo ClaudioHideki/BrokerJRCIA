@@ -57,6 +57,17 @@ it('explains queued attendance blocked by a human instead of claiming a send fai
 });
 
 describe('Automation Studio',()=>{
+  it('uses explicitly synthetic attachment fixtures in a V3 Playground wait without uploading or downloading a file',async()=>{
+    const bodies:Record<string,unknown>[]=[];const request=vi.fn(async(path:string,init?:RequestInit)=>{
+      if(path===`/v1/automations/${automationId}`)return definition;if(path==='/v1/automation-nodes')return{data:AUTOMATION_NODE_CATALOG_V1};
+      if(path.endsWith('/simulate')){bodies.push(JSON.parse(String(init?.body)));return{status:'WAITING',state:{variables:{},waiting:{inputConfigVersion:3}},effects:[],trace:[],wait:{kind:'EVENT',nodeId:'capture',waitId:automationId}};}
+      throw Error(path);
+    }) as ApiClient['request'];
+    mountEditor(request);fireEvent.click(await screen.findByRole('button',{name:'Testar'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Usar imagem de exemplo'}));
+    await waitFor(()=>expect(bodies).toHaveLength(2));expect(bodies[1]).toMatchObject({events:[{type:'MEDIA',kind:'image',fileName:'exemplo.png'}]});
+    expect(screen.getByText(/nenhum arquivo é enviado, baixado ou armazenado/i)).toBeVisible();
+  });
   it('keeps publication separate from binding and offers the original box after publishing',async()=>{
     const box='22222222-2222-4222-8222-222222222222';let published=false;
     const request=vi.fn(async(path:string)=>{

@@ -7,9 +7,10 @@ export const BASE_IMAGE = 'node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a
 const SOURCE_COMMIT = 'fa09d37892cdbb1d65a250155d293d92230c5b30';
 export const DEPENDENCY_INVENTORY = 'ALL_NODE_MODULES_V1';
 export const sha = bytes => createHash('sha256').update(bytes).digest('hex');
-export async function fileHash(path) {
+export async function fileHash(path, signal) {
+  signal?.throwIfAborted();
   const hash = createHash('sha256');
-  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  for await (const chunk of createReadStream(path, { signal })) hash.update(chunk);
   return hash.digest('hex');
 }
 
@@ -24,7 +25,7 @@ function inside(directory, path) {
   return part !== '' && !isAbsolute(part) && part !== '..' && !part.startsWith('..' + sep);
 }
 
-async function binLink(root, path) {
+async function binLink(root, path, signal) {
   const parts = path.split('/');
   if (parts[0] !== 'node_modules' || parts.at(-2) !== '.bin' || parts.at(-3) !== 'node_modules') {
     throw Error('ORIGIN_ENGINE_DEPENDENCY_SYMLINK_REFUSED');
@@ -37,22 +38,7 @@ async function binLink(root, path) {
   const target = await realpath(link), moduleRealRoot = await realpath(moduleRoot);
   if (!inside(moduleRealRoot, target) || !(await lstat(target)).isFile()) throw Error('ORIGIN_ENGINE_DEPENDENCY_SYMLINK_REFUSED');
   return { path, type: 'bin-symlink', target: raw.replaceAll(String.fromCharCode(92), '/'),
-    resolvedTarget: relative(moduleRealRoot, target).split(sep).join('/'), sha256: await fileHash(target) };
-}
-
-async function dependencyFiles(root, path = 'node_modules') {
-  const directory = join(root, path), stat = await lstat(directory);
-  if (stat.isSymbolicLink() || !stat.isDirectory()) throw Error('ORIGIN_ENGINE_DEPENDENCY_SYMLINK_REFUSED');
-  const files = [];
-  for (const name of (await readdir(directory)).sort()) {
-    const child = path + '/' + name, absolute = join(root, child), entry = await lstat(absolute);
-    if (!artifactPath(child)) throw Error('ORIGIN_ENGINE_IMAGE_PROVENANCE_INVALID');
-    if (entry.isSymbolicLink()) files.push(await binLink(root, child));
-    else if (entry.isDirectory()) files.push(...await dependencyFiles(root, child));
-    else if (entry.isFile()) files.push({ path: child, sha256: await fileHash(absolute) });
-    else throw Error('ORIGIN_ENGINE_INPUT_TYPE_INVALID');
-  }
-  return files;
+    resolvedTarget: relative(moduleRealRoot, target).split(sep).join('/'), sha256: await fileHash(target, signal) };
 }
 
 export async function inventoryTree(directory, prefix = '') {
@@ -108,15 +94,35 @@ export async function verifyContextInputs(root, manifest) {
   if (JSON.stringify(ordered(actual)) !== JSON.stringify(ordered(expected))) throw Error('ORIGIN_ENGINE_IMAGE_INPUT_CHANGED');
 }
 
-export async function runtimeInventory(root) {
+export async function runtimeInventory(root, { signal } = {}) {
+  signal?.throwIfAborted();
   const files = [];
-  for (const directory of ['dist', 'jrc-origin', 'jrc-image', 'schema', 'prisma', 'public', 'manager']) {
-    files.push(...await inventoryTree(join(root, directory), directory + '/'));
+  const pending = ['dist', 'jrc-origin', 'jrc-image', 'schema', 'prisma', 'public', 'manager', 'node_modules']
+    .map(path => ({ path, root: true }));
+  pending.push(...['package.json', 'package-lock.json', 'LICENSE', 'NOTICE', 'TRADEMARKS.md'].map(path => ({ path, leaf: true })));
+  // At most eight metadata/hash operations and eight 64KiB read streams. Every
+  // entry and link still receives the same lstat/realpath/content checks; no
+  // inventory scope, receipt assertion or expected file is removed for speed.
+  while (pending.length) {
+    signal?.throwIfAborted();
+    const outcomes = await Promise.allSettled(pending.splice(0, 8).map(async item => {
+      const { path } = item, dependency = path === 'node_modules' || path.startsWith('node_modules/');
+      if (!artifactPath(path)) throw Error('ORIGIN_ENGINE_IMAGE_PROVENANCE_INVALID');
+      signal?.throwIfAborted();
+      const absolute = join(root, path), stat = await lstat(absolute);
+      if (stat.isSymbolicLink()) {
+        if (dependency && !item.root) files.push(await binLink(root, path, signal));
+        else throw Error(dependency ? 'ORIGIN_ENGINE_DEPENDENCY_SYMLINK_REFUSED' : 'ORIGIN_ENGINE_SOURCE_SYMLINK_REFUSED');
+      } else if (stat.isDirectory() && !item.leaf) {
+        signal?.throwIfAborted();
+        for (const name of await readdir(absolute)) pending.push({ path: path + '/' + name });
+      } else if (stat.isFile() && !item.root) files.push({ path, sha256: await fileHash(absolute, signal) });
+      else throw Error('ORIGIN_ENGINE_INPUT_TYPE_INVALID');
+    }));
+    const failed = outcomes.find(outcome => outcome.status === 'rejected');
+    if (failed) throw failed.reason;
   }
-  files.push(...await dependencyFiles(root));
-  for (const path of ['package.json', 'package-lock.json', 'LICENSE', 'NOTICE', 'TRADEMARKS.md']) {
-    files.push({ path, sha256: await fileHash(join(root, path)) });
-  }
+  signal?.throwIfAborted();
   for (const path of ['dist/main.js', 'node_modules/.prisma/client/index.js', 'node_modules/.prisma/client/schema.prisma']) {
     if (!files.some(file => file.path === path)) throw Error('ORIGIN_ENGINE_COMPILED_ARTIFACT_MISSING');
   }

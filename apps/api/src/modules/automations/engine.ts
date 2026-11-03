@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { FlowGraphSchema, AutomationHandoffConfigSchema, hasNativeHandoffConfig, automationNodePorts, menuOptions,InputCaptureConfigSchema,
+import { FlowGraphSchema, AutomationHandoffConfigSchema, hasNativeHandoffConfig, automationNodePorts, menuOptions,InputCaptureConfigSchema,parseInputCapture,parseMediaInputCapture,
   ConversationEffectConfigSchema, MediaEffectConfigSchema, ConversationEffectWaitSchema,MenuAttemptConfigSchema,
   type AutomationGraphV1, type FlowNode } from '@jrc/contracts';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
@@ -36,6 +36,7 @@ export { validateAutomationGraph } from '@jrc/contracts';
 export async function executeAutomation(
   root:PublishedAutomation,input:RuntimeInput,resolve:(automationId:string,version:number)=>Promise<PublishedAutomation>,previous?:RuntimeState,
 ):Promise<RuntimeResult>{
+  if(input.media&&!previous?.waiting)throw new Error('AUTOMATION_INPUT_MEDIA_VERSION_MISMATCH');
   const dependencyPolicy=publishedDependencyPolicy(root.graph);
   const stateVersion=runtimeStateVersion(previous,root.runtimeStateVersion);
   const variables:RuntimeState['variables']=Object.create(null) as RuntimeState['variables'];
@@ -61,6 +62,7 @@ export async function executeAutomation(
   if(state.waiting){
     const waiting=published.graph.nodes.find(node=>node.id===state.waiting!.nodeId);
     if(!waiting)throw new Error('AUTOMATION_WAIT_NODE_MISSING');
+    if(input.media&&(waiting.type!=='input'||waiting.data.inputConfigVersion!==3))throw new Error('AUTOMATION_INPUT_MEDIA_VERSION_MISMATCH');
     if(state.waiting.kind==='DELAY'){
       const wakeAt=state.waiting.wakeAt===undefined?undefined:new Date(state.waiting.wakeAt);
       if(wakeAt&&!Number.isFinite(wakeAt.getTime()))throw new Error('AUTOMATION_DELAY_STATE_INVALID');
@@ -89,18 +91,34 @@ export async function executeAutomation(
       const outcome=string(input.payload?.outcome)||'unknown',allowed=automationNodePorts(waiting);
       current=next(published.graph,waiting.id,allowed.includes(outcome)?outcome:allowed.at(-1))??null;
     }else if(waiting.type==='input'&&waiting.data.inputConfigVersion!==undefined){
-      InputCaptureConfigSchema.parse(waiting.data);
+      const config=InputCaptureConfigSchema.parse(waiting.data);
       const saved=state.waiting;
+      if(config.inputConfigVersion===3&&saved.inputConfigVersion!==3)throw new Error('AUTOMATION_INPUT_WAIT_INVALID');
       if(!saved.waitId||saved.deadlineAt!==undefined&&!Number.isFinite(saved.deadlineAt))throw new Error('AUTOMATION_INPUT_WAIT_INVALID');
-      const pending=()=>finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:waiting.id,waitId:saved.waitId!,...(saved.deadlineAt===undefined?{}:{deadlineAt:new Date(saved.deadlineAt)})}} as RuntimeResult);
+      if(config.inputConfigVersion!==1&&(!Number.isInteger(saved.invalidAttempts)||saved.invalidAttempts!<0||saved.invalidAttempts!>=config.maxAttempts))
+        throw new Error('AUTOMATION_INPUT_WAIT_INVALID');
+      const pending=()=>finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:waiting.id,waitId:state.waiting!.waitId!,...(saved.deadlineAt===undefined?{}:{deadlineAt:new Date(saved.deadlineAt)})}} as RuntimeResult);
       if(input.inputWait?.waitId!==saved.waitId)return pending();
       if(input.eventType==='TIMER'){
         if(saved.deadlineAt===undefined||input.now.getTime()<saved.deadlineAt)return pending();
         current=next(published.graph,waiting.id,'timeout')??null;
       }else if(input.eventType==='MESSAGE'&&Number.isFinite(input.inputWait.admittedAt)){
         if(saved.deadlineAt!==undefined&&input.inputWait.admittedAt!>saved.deadlineAt)current=next(published.graph,waiting.id,'timeout')??null;
-        else{variables[string(waiting.data.variable)]=runtimeJson(input.text);current=next(published.graph,waiting.id)??null;}
+        else if(config.inputConfigVersion!==1){
+          if(stateVersion!==2)throw new Error('AUTOMATION_INPUT_RUNTIME_VERSION_MISMATCH');
+          const captured=config.inputConfigVersion===3?parseMediaInputCapture(config.inputType,input.media):parseInputCapture(config.inputType,input.text);
+          if(captured.valid){
+            variables[config.variable]=runtimeJson(captured.value);current=next(published.graph,waiting.id)??null;
+            trace.push({nodeId:waiting.id,type:waiting.type,label:waiting.label,input:{},output:{valid:true,inputType:config.inputType,port:'next'}});
+          }else{
+            const invalidAttempts=saved.invalidAttempts!+1,exhausted=invalidAttempts===config.maxAttempts;
+            trace.push({nodeId:waiting.id,type:waiting.type,label:waiting.label,input:{},output:{valid:false,inputType:config.inputType,invalidAttempts,maxAttempts:config.maxAttempts,port:exhausted?'exhausted':'retry'}});
+            if(exhausted){current=next(published.graph,waiting.id,'exhausted')??null;if(!current)throw new Error('AUTOMATION_INPUT_EXHAUSTED_CONNECTION_MISSING');}
+            else{state.waiting={...saved,waitId:randomUUID(),invalidAttempts};effects.push({nodeId:waiting.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text:config.errorMessage??'Resposta inválida. Confira o formato e tente novamente.'}});return pending();}
+          }
+        }else{variables[string(waiting.data.variable)]=runtimeJson(input.text);current=next(published.graph,waiting.id)??null;}
       }else return pending();
+      if(config.inputConfigVersion!==1&&!current)throw new Error('AUTOMATION_INPUT_CONNECTION_MISSING');
     }else if(waiting.type==='menu'&&waiting.data.menuConfigVersion!==undefined){
       const config=MenuAttemptConfigSchema.parse(waiting.data),saved=state.waiting;
       const attempts=saved.invalidAttempts;
@@ -171,8 +189,9 @@ export async function executeAutomation(
       if(text.trim())effects.push({nodeId:node.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text}});
       if(node.type==='input'&&node.data.inputConfigVersion!==undefined){
         const config=InputCaptureConfigSchema.parse(node.data),waitId=randomUUID(),deadlineAt=config.timeoutSeconds===undefined?undefined:input.now.getTime()+config.timeoutSeconds*1000;
+        if(config.inputConfigVersion!==1&&stateVersion!==2)throw new Error('AUTOMATION_INPUT_RUNTIME_VERSION_MISMATCH');
         if(deadlineAt!==undefined&&!Number.isFinite(deadlineAt))throw new Error('AUTOMATION_INPUT_DEADLINE_INVALID');
-        state.nodeId=node.id;state.waiting={kind:'EVENT',nodeId:node.id,waitId,...(deadlineAt===undefined?{}:{deadlineAt})};
+        state.nodeId=node.id;state.waiting={kind:'EVENT',nodeId:node.id,waitId,...(config.inputConfigVersion===3?{inputConfigVersion:3 as const}:{}),...(config.inputConfigVersion!==1?{invalidAttempts:0}:{}),...(deadlineAt===undefined?{}:{deadlineAt})};
         return finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:node.id,waitId,...(deadlineAt===undefined?{}:{deadlineAt:new Date(deadlineAt)})}});
       }
       const boundedMenu=node.type==='menu'&&node.data.menuConfigVersion!==undefined;

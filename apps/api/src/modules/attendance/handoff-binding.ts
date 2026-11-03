@@ -8,7 +8,7 @@ import { assertLocalHumanTarget } from './local-directory.js';
 /** Common local admission for every native owner path. Remote policy/target
  * readiness belongs to asynchronous publication and, decisively, dispatch. */
 export async function assertHandoffBinding(tx:TenantTransaction,org:string,channelId:string,automationId:string,version:number){
-  const seen=new Set<string>();
+  const seen=new Set<string>();let mediaTransportChecked=false;
   const visit=async(id:string,v:number):Promise<void>=>{
     const key=`${id}:${v}`;if(seen.has(key))return;seen.add(key);
     const row=(await tx.query<{graph:AutomationGraphV1}>('SELECT graph FROM automation_versions WHERE organization_id=$1 AND automation_id=$2 AND version=$3',[org,id,v])).rows[0];
@@ -17,6 +17,11 @@ export async function assertHandoffBinding(tx:TenantTransaction,org:string,chann
     const graph=parsed.data,reachable=new Set<string>(),walk=(nodeId:string)=>{if(reachable.has(nodeId))return;reachable.add(nodeId);for(const edge of graph.edges.filter(e=>e.source===nodeId))walk(edge.target);};
     for(const node of graph.nodes.filter(n=>n.type==='start'))walk(node.id);
     for(const node of graph.nodes.filter(n=>reachable.has(n.id))){
+      if(node.type==='input'&&node.data.inputConfigVersion===3&&!mediaTransportChecked){
+        const channel=(await tx.query<{transport:string}>('SELECT transport FROM messaging_channels WHERE organization_id=$1 AND id=$2',[org,channelId])).rows[0];
+        if(!channel||!['BROKER_TRANSPORT','CENTRAL_TRANSPORT'].includes(channel.transport))throw new AttendanceError('AUTOMATION_INPUT_MEDIA_TRANSPORT_UNSUPPORTED',409);
+        mediaTransportChecked=true;
+      }
       if(node.type==='handoff'){
         const configured=AutomationHandoffConfigSchema.safeParse(node.data);
         if(!configured.success)throw new AttendanceError('ATTENDANCE_HANDOFF_DESTINATION_REQUIRED',409);

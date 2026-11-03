@@ -4,7 +4,8 @@ import type { OrganizationTransaction } from '../../db/tenant-transaction.js';
 import { readCentralTransportBinding } from '../messaging/central-transport.js';
 import { createCentralTransportChannel } from '../messaging/central-transport.js';
 import { createPostgresMessagingRepository } from '../messaging/repository.js';
-import { decodeChatwootRuntimeEvent } from './chatwoot-runtime-event.js';
+import { decodeChatwootRuntimeEvent,CentralMediaInputSchema } from './chatwoot-runtime-event.js';
+import {canonicalCentralMedia} from './chatwoot-runtime-media.js';
 import { recordChatwootAttendanceEvent } from './chatwoot-attendance-store.js';
 import { initializeChatwootAttendanceMap } from './chatwoot-attendance-store.js';
 import { createEventRouter } from '../automations/service.js';
@@ -20,7 +21,7 @@ type Options={transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>
  readCanonical?(binding:CentralRuntimeEventBinding,conversationId:number,messageId:number):Promise<{conversation:unknown;message:unknown;inboxBot?:unknown}>};
 type StoredInput={id:string;channel_id:string;integration_id:string;event_key:string;kind:string;destination_revision:number;credential_version:number;owner_revision:number;
  remote_conversation_id:string;remote_message_id:string|null;conversation_id:string|null;message_id:string|null;disposition:string;created_at:Date;
- lease_token:string|null;lease_expires_at:Date|null;attempts:number};
+ lease_token:string|null;lease_expires_at:Date|null;attempts:number;media_input:unknown};
 const positiveId=z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const canonicalMessage=z.object({id:positiveId,conversation_id:positiveId,message_type:z.union([z.literal('incoming'),z.literal(0)]),private:z.literal(false),
  content:z.string().min(1).max(4096),content_type:z.literal('text').optional(),attachments:z.array(z.unknown()).max(0).optional(),
@@ -47,10 +48,11 @@ export function createChatwootRuntimeIngress(options:Options) {
     WHERE organization_id=$1 AND channel_id=$2 AND event_key=$3`,[org,event.scope.channelId,event.dedupeKey])).rows[0];
    if(prior)return {duplicate:true,eventId:prior.id,conversationId:prior.conversation_id,disposition:prior.disposition};
    const eventId=randomUUID();
-   await tx.query(`INSERT INTO central_runtime_events(organization_id,id,channel_id,integration_id,event_key,kind,destination_revision,credential_version,owner_revision,remote_conversation_id,remote_message_id)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[org,eventId,event.scope.channelId,id,event.dedupeKey,event.kind,event.scope.destinationRevision,event.scope.credentialVersion,event.scope.ownerRevision,event.remoteConversationId,event.remoteMessageId??null]);
+   await tx.query(`INSERT INTO central_runtime_events(organization_id,id,channel_id,integration_id,event_key,kind,destination_revision,credential_version,owner_revision,remote_conversation_id,remote_message_id,media_input)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[org,eventId,event.scope.channelId,id,event.dedupeKey,event.kind,event.scope.destinationRevision,event.scope.credentialVersion,event.scope.ownerRevision,event.remoteConversationId,event.remoteMessageId??null,
+     event.kind==='CONTACT_MEDIA'?JSON.stringify({version:event.mediaInputVersion,contactId:event.contactId,attachments:event.attachments}):null]);
    let conversationId:string|null=null;
-   if(event.kind==='CONTACT_TEXT') {
+   if(event.kind==='CONTACT_TEXT'||event.kind==='CONTACT_MEDIA') {
     const contact=await messaging.upsertContact(tx,{id:randomUUID(),organizationId:org,externalId:`central:${id}:${event.contactId}`,displayName:null,consentStatus:'UNKNOWN',consentUpdatedAt:null});
     const conversation=(await tx.query<{id:string}>(`INSERT INTO messaging_conversations(organization_id,channel_id,contact_id,remote_conversation_key,bot_public_id,bot_origin_reference)
      SELECT $1,$2,$3,$4,bot_public_id,bot_origin_reference FROM messaging_channels WHERE organization_id=$1 AND id=$2
@@ -61,10 +63,14 @@ export function createChatwootRuntimeIngress(options:Options) {
     if(existing&&Number(existing.contact_id)!==event.contactId)throw new Error('CENTRAL_CONTACT_CHANGED');
     await tx.query(`INSERT INTO chatwoot_conversations(organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id)
      VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(organization_id,integration_id,remote_conversation_id) DO NOTHING`,[org,id,conversationId,event.contactId,`central:${event.contactId}`,event.remoteConversationId]);
-    const message=await messaging.recordIncoming(tx,{id:randomUUID(),organizationId:org,channelId:event.scope.channelId,conversationId,
-     webhookEventKey:event.dedupeKey,upstreamMessageId:event.dedupeKey,content:{type:'TEXT',text:event.text},scheduleBot:false});
-    await tx.query(`INSERT INTO chatwoot_messages(organization_id,integration_id,message_id,remote_message_id) VALUES($1,$2,$3,$4)`,[org,id,message.message.id,event.remoteMessageId]);
-    await tx.query('UPDATE central_runtime_events SET conversation_id=$3,message_id=$4 WHERE organization_id=$1 AND id=$2',[org,eventId,conversationId,message.message.id]);
+    let messageId:string|null=null;
+    if(event.kind==='CONTACT_TEXT'){
+     const message=await messaging.recordIncoming(tx,{id:randomUUID(),organizationId:org,channelId:event.scope.channelId,conversationId,
+      webhookEventKey:event.dedupeKey,upstreamMessageId:event.dedupeKey,content:{type:'TEXT',text:event.text},scheduleBot:false});
+     messageId=message.message.id;
+     await tx.query(`INSERT INTO chatwoot_messages(organization_id,integration_id,message_id,remote_message_id) VALUES($1,$2,$3,$4)`,[org,id,messageId,event.remoteMessageId]);
+    }
+    await tx.query('UPDATE central_runtime_events SET conversation_id=$3,message_id=$4 WHERE organization_id=$1 AND id=$2',[org,eventId,conversationId,messageId]);
    }else{
     // Observations retain human precedence and never create a CHATWOOT_REPLY.
     // Preserve the decoder's safe decimal ID normalization. Reclassifying raw
@@ -72,7 +78,7 @@ export function createChatwootRuntimeIngress(options:Options) {
     await recordChatwootAttendanceEvent(tx,{...event.scope,credentialRevision:event.scope.credentialVersion},event.observationPayload);
     await tx.query("UPDATE central_runtime_events SET disposition='OBSERVED' WHERE organization_id=$1 AND id=$2",[org,eventId]);
    }
-   return {duplicate:false,eventId,conversationId,disposition:event.kind==='CONTACT_TEXT'?'RECEIVED' as const:'OBSERVED' as const};
+   return {duplicate:false,eventId,conversationId,disposition:event.kind==='CONTACT_TEXT'||event.kind==='CONTACT_MEDIA'?'RECEIVED' as const:'OBSERVED' as const};
   });
  },async process(organizationId:string,eventId:string,leaseToken?:string){
   const org=z.uuid().parse(organizationId),eventKey=z.uuid().parse(eventId);
@@ -84,8 +90,8 @@ export function createChatwootRuntimeIngress(options:Options) {
    if(leaseToken&&(event.lease_token!==leaseToken||!event.lease_expires_at||event.lease_expires_at.getTime()<=Date.now()))throw new Error('CENTRAL_INGRESS_LEASE_LOST');
    return {event,context:await readCentralTransportBinding(tx,org,event.integration_id)};
   });
-  if(snapshot.event.disposition!=='RECEIVED'||snapshot.event.kind!=='CONTACT_TEXT')return {duplicate:true,disposition:snapshot.event.disposition};
-  if(!snapshot.event.remote_message_id||!snapshot.event.conversation_id||!snapshot.event.message_id)throw new Error('CENTRAL_EVENT_INVALID');
+  if(snapshot.event.disposition!=='RECEIVED'||!['CONTACT_TEXT','CONTACT_MEDIA'].includes(snapshot.event.kind))return {duplicate:true,disposition:snapshot.event.disposition};
+  if(!snapshot.event.remote_message_id||!snapshot.event.conversation_id||snapshot.event.kind==='CONTACT_TEXT'&&!snapshot.event.message_id)throw new Error('CENTRAL_EVENT_INVALID');
   const remoteConversationId=Number(snapshot.event.remote_conversation_id),remoteMessageId=Number(snapshot.event.remote_message_id);
   const canonical=await readCanonical(snapshot.context.binding,remoteConversationId,remoteMessageId);
   if(snapshot.context.botId!==null){
@@ -96,24 +102,47 @@ export function createChatwootRuntimeIngress(options:Options) {
   // checked after GET. A mutable token/destination/owner cannot authorize an old input.
   return options.transact(org,async tx=>{
    const current=await readCentralTransportBinding(tx,org,snapshot.event.integration_id,true);
-   if(current.botId!==snapshot.context.botId||current.botCallback!==snapshot.context.botCallback)throw new Error('CENTRAL_CONTEXT_CHANGED');
+   if(current.botId!==snapshot.context.botId||current.botCallback!==snapshot.context.botCallback||current.encryptedWebhookSecret!==snapshot.context.encryptedWebhookSecret)throw new Error('CENTRAL_CONTEXT_CHANGED');
    const event=(await tx.query<StoredInput>('SELECT * FROM central_runtime_events WHERE organization_id=$1 AND id=$2 FOR UPDATE',[org,eventKey])).rows[0]!;
    if(leaseToken&&(event.lease_token!==leaseToken||!event.lease_expires_at||event.lease_expires_at.getTime()<=Date.now()))throw new Error('CENTRAL_INGRESS_LEASE_LOST');
    if(!sameContext(snapshot.context.binding,current.binding)||event.destination_revision!==current.binding.destinationRevision||
     event.credential_version!==current.binding.credentialVersion||event.owner_revision!==current.binding.ownerRevision)throw new Error('CENTRAL_CONTEXT_CHANGED');
    if(event.disposition!=='RECEIVED')return {duplicate:true,disposition:event.disposition};
-   const message=canonicalMessage.parse(canonical.message);
-   if(message.id!==remoteMessageId||message.conversation_id!==remoteConversationId)throw new Error('CENTRAL_CANONICAL_MISMATCH');
-   const saved=(await tx.query<{content:{type:string;text:string};contact_id:string}>(`SELECT m.content,c.contact_id FROM messaging_messages m
-    JOIN chatwoot_conversations c ON c.organization_id=m.organization_id AND c.conversation_id=m.conversation_id AND c.integration_id=$3
-    WHERE m.organization_id=$1 AND m.id=$2`,[org,event.message_id,event.integration_id])).rows[0];
-   if(!saved||saved.content.type!=='TEXT'||saved.content.text!==message.content||Number(saved.contact_id)!==message.sender.id)throw new Error('CENTRAL_CANONICAL_MISMATCH');
+   let text='',createdAt:number,media:ReturnType<typeof canonicalCentralMedia>|undefined;
+   if(event.kind==='CONTACT_MEDIA'){
+    if(event.kind!==snapshot.event.kind||event.channel_id!==snapshot.event.channel_id||event.integration_id!==snapshot.event.integration_id||event.conversation_id!==snapshot.event.conversation_id||
+      event.remote_conversation_id!==snapshot.event.remote_conversation_id||event.remote_message_id!==snapshot.event.remote_message_id||JSON.stringify(event.media_input)!==JSON.stringify(snapshot.event.media_input))throw Error('CENTRAL_CONTEXT_CHANGED');
+    media=canonicalCentralMedia(canonical.message,{accountId:current.binding.accountId,conversationId:remoteConversationId,messageId:remoteMessageId,expected:event.media_input});
+    const expected=CentralMediaInputSchema.parse(event.media_input);
+    const saved=(await tx.query<{contact_id:string}>('SELECT contact_id FROM chatwoot_conversations WHERE organization_id=$1 AND integration_id=$2 AND conversation_id=$3 AND remote_conversation_id=$4',[org,event.integration_id,event.conversation_id,remoteConversationId])).rows[0];
+    if(!saved||Number(saved.contact_id)!==expected.contactId)throw Error('CENTRAL_CANONICAL_MISMATCH');
+    createdAt=media.createdAt;
+   }else{
+    const message=canonicalMessage.parse(canonical.message);
+    if(message.id!==remoteMessageId||message.conversation_id!==remoteConversationId)throw new Error('CENTRAL_CANONICAL_MISMATCH');
+    const saved=(await tx.query<{content:{type:string;text:string};contact_id:string}>(`SELECT m.content,c.contact_id FROM messaging_messages m
+     JOIN chatwoot_conversations c ON c.organization_id=m.organization_id AND c.conversation_id=m.conversation_id AND c.integration_id=$3
+     WHERE m.organization_id=$1 AND m.id=$2`,[org,event.message_id,event.integration_id])).rows[0];
+    if(!saved||saved.content.type!=='TEXT'||saved.content.text!==message.content||Number(saved.contact_id)!==message.sender.id)throw new Error('CENTRAL_CANONICAL_MISMATCH');
+    text=message.content;createdAt=message.created_at;
+   }
    await initializeChatwootAttendanceMap(tx,{...current.binding,credentialRevision:current.binding.credentialVersion},{conversationId:event.conversation_id!,remoteConversationId,canonical:canonical.conversation});
    const owner=(await tx.query<{automation_id:string|null;version:number|null}>('SELECT automation_id,version FROM attendance_owners WHERE organization_id=$1 AND channel_id=$2',[org,event.channel_id])).rows[0];
-   const fresh=Math.abs(event.created_at.getTime()-message.created_at*1000)<=300000;
+   const fresh=Math.abs(event.created_at.getTime()-createdAt*1000)<=300000;
    const allowed=fresh&&owner?.automation_id&&owner.version!==null&&await runtimeAuthorityAllows(tx,{organizationId:org,channelId:event.channel_id,conversationId:event.conversation_id,automationId:owner.automation_id,version:owner.version});
-   const routed=allowed?await router.routeWithinTransaction(tx,org,{channelId:event.channel_id,conversationId:event.conversation_id,eventKey:event.event_key,text:message.content}):null;
-   const disposition=routed?.execution?'ROUTED':'IGNORED';
+   let routed=false;
+   if(allowed&&media){
+    for(const attachment of media.attachments){
+     const reference=(await tx.query<{id:string}>(`INSERT INTO central_flow_input_media(organization_id,channel_id,integration_id,conversation_id,event_id,origin,account_id,inbox_id,contact_id,
+       remote_conversation_id,remote_message_id,attachment_id,destination_revision,credential_version,owner_revision,kind,file_name)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,[org,event.channel_id,event.integration_id,event.conversation_id,event.id,
+       current.binding.origin,current.binding.accountId,current.binding.inboxId,CentralMediaInputSchema.parse(event.media_input).contactId,
+       remoteConversationId,remoteMessageId,attachment.id,event.destination_revision,event.credential_version,event.owner_revision,attachment.kind,attachment.fileName])).rows[0]!;
+     const result=await router.routeWithinTransaction(tx,org,{channelId:event.channel_id,conversationId:event.conversation_id,eventKey:`${event.event_key}:a${attachment.id}`,text:'',centralMedia:{type:'MEDIA',referenceId:reference.id}});
+     routed=Boolean(result.execution)||routed;
+    }
+   }else if(allowed)routed=Boolean((await router.routeWithinTransaction(tx,org,{channelId:event.channel_id,conversationId:event.conversation_id,eventKey:event.event_key,text})).execution);
+   const disposition=routed?'ROUTED':'IGNORED';
    await tx.query('UPDATE central_runtime_events SET disposition=$3,updated_at=now() WHERE organization_id=$1 AND id=$2',[org,eventKey,disposition]);
    return {duplicate:false,disposition};
   });

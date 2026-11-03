@@ -995,13 +995,14 @@ export function createPostgresMessagingRepository(): MessagingRepository {
             AND conversation.mode = 'BOT'
             AND conversation.bot_public_id IS NOT NULL
             AND conversation.bot_origin_reference IS NOT NULL
-            AND message.content->>'type' = 'TEXT'
+            AND (message.content->>'type' = 'TEXT'
+              OR (message.content->>'type' = 'MEDIA' AND conversation.bot_origin_reference = $4))
             AND $3::boolean
             AND EXISTS(SELECT 1 FROM messaging_channels channel WHERE channel.organization_id=message.organization_id
               AND channel.id=message.channel_id AND channel.transport='BROKER_TRANSPORT')
          ON CONFLICT (organization_id, message_id) DO NOTHING
          RETURNING true AS scheduled`,
-        [input.organizationId, message.id, input.scheduleBot !== false],
+        [input.organizationId, message.id, input.scheduleBot !== false, AUTOMATION_ORIGIN],
       );
       return {
         kind,

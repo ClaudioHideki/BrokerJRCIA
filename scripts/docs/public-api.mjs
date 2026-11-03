@@ -64,7 +64,7 @@ export function buildPublicDocument(document, profile) {
   if (!selected) throw new Error('PUBLIC_DOCUMENT_PROFILE_UNKNOWN');
   const result = {
     openapi: document.openapi,
-    info: { title: selected.title, version: '2026-11-01', description: selected.description },
+    info: { title: selected.title, version: '2026-11-02', description: selected.description },
     servers: [{ url: '/', description: 'Esta instalação do Broker JRC' }],
     paths: {}, components: { securitySchemes: {} },
   };

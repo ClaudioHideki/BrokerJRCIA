@@ -12,7 +12,7 @@ const graph={nodes:[{id:'s',type:'start',label:'Start',position:{x:0,y:0},data:{
 const definition={schemaVersion:1,id,organizationId:org,name:'Scoped',lifecycleStatus:'DRAFT',draft:{revision:1,graph},activeVersion:null,updatedAt:'2026-10-08T00:00:00.000Z',scopeRevision:1};
 async function harness(){
  let role:'OWNER'|'ADMIN'|'OPERATOR'|'VIEWER'|null='OWNER';
- const service={issueBrokerSession:vi.fn(async()=>({id,token,expiresAt:'2026-10-08T00:05:00.000Z'})),configureExecutorProfile:vi.fn(async()=>({revision:1,hostKind:'STOCK',originCapabilityRevision:1})),revokeSession:vi.fn(async()=>({revoked:true})),setMemberGrant:vi.fn(async()=>({revision:1})),
+ const service={executions:vi.fn(async()=>({scope:{capabilityVersion:1,organizationId:org,rootAutomationId:id,accountId:7,inboxIds:[9],revision:1},data:[],nextCursor:null,period:{from:'2030-01-01T00:00:00.000Z',to:'2030-01-02T00:00:00.000Z'},metrics:{total:0,completed:0,active:0,failed:0,unknown:0,canceled:0,handoff:0,completionRate:null}})),execution:vi.fn(),issueBrokerSession:vi.fn(async()=>({id,token,expiresAt:'2026-10-08T00:05:00.000Z'})),configureExecutorProfile:vi.fn(async()=>({revision:1,hostKind:'STOCK',originCapabilityRevision:1})),revokeSession:vi.fn(async()=>({revoked:true})),setMemberGrant:vi.fn(async()=>({revision:1})),
  list:vi.fn(async()=>({data:[(({scopeRevision,...rest})=>rest)(definition)],nextCursor:null})),get:vi.fn(async()=>definition),create:vi.fn(async()=>definition),save:vi.fn(async()=>({...definition,draft:{revision:2,graph}})),publish:vi.fn(async()=>({schemaVersion:1,automationId:id,organizationId:org,version:1,graph,checksum:'a'.repeat(64),publishedAt:'2026-10-08T00:00:00.000Z'})),versions:vi.fn(async()=>({data:[]})),validate:vi.fn(async()=>({valid:true,diagnostics:[],errors:[]})),
  prepareCutover:vi.fn(async()=>({id,revision:1,phase:'DRAINED'})),getCutover:vi.fn(async()=>null),reconcileCutover:vi.fn(async()=>({id,revision:1,phase:'DRAINED'})),bind:vi.fn(async()=>({schemaVersion:1,id,organizationId:org,automationId:id,version:1,channelId:integration,humanDestinationId:null,status:'ACTIVE',revision:1,ownerRevision:1,createdAt:'2026-10-08T00:00:00.000Z',updatedAt:'2026-10-08T00:00:00.000Z'})),simulate:vi.fn(async()=>({status:'COMPLETED',state:{variables:{}},effects:[],trace:[]}))};
  const app=Fastify();apps.push(app);app.setValidatorCompiler(validatorCompiler);app.setSerializerCompiler(serializerCompiler);
@@ -75,4 +75,13 @@ it('sanitizes provider errors and rejects extra credential fields in strict resp
 });
 it.each([['FLOW_ORIGIN_NATIVE_EVIDENCE_REQUIRED',409],['FLOW_QR_IDENTITY_UNVERIFIED',409],['FLOW_CUTOVER_OBSERVATION_FAILED',503]])('preserves the safe operational status for %s without provider details',async(code,status)=>{
  const h=await harness();h.service.get.mockRejectedValueOnce(new FlowDelegationError(code,status));const r=await h.app.inject({url:'/v1/delegated-flows/'+id,headers:h.flow});expect(r.statusCode).toBe(status);expect(r.json()).toMatchObject({code});expect(r.headers['cache-control']).toBe('no-store');
+});
+
+it('exposes bounded native history through the opaque session and propagates denied capabilities',async()=>{
+ const h=await harness(),period={from:'2030-01-01T00:00:00.000Z',to:'2030-01-02T00:00:00.000Z'},url='/v1/delegated-flows/'+id+'/executions',query=new URLSearchParams(period);
+ let r=await h.app.inject({url:url+'?'+query,headers:h.flow});expect(r.statusCode).toBe(200);expect(r.headers['cache-control']).toBe('no-store');expect(h.service.executions).toHaveBeenCalledWith({organizationId:org,token},id,period);
+ for(const suffix of ['', '?'+query+'&organizationId='+org,'?'+query+'&automationId='+id,'?'+query+'&pageSize=101'])expect((await h.app.inject({url:url+suffix,headers:h.flow})).statusCode).toBe(400);
+ h.service.executions.mockRejectedValueOnce(new FlowDelegationError('FLOW_ACCESS_DENIED'));r=await h.app.inject({url:url+'?'+query,headers:h.flow});expect(r.statusCode).toBe(403);
+ expect((await h.app.inject({url:url+'?'+query,headers:h.jwt})).statusCode).toBe(401);
+ expect((await h.app.inject({method:'POST',url:url+'/'+id+'/simulate',headers:h.flow,payload:{}})).statusCode).toBe(404);
 });

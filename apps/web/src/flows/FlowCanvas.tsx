@@ -4,6 +4,7 @@ import { MenuEditor } from '../automations/node-editors/MenuEditor.js';
 import { HandoffEditor } from '../automations/node-editors/HandoffEditor.js';
 import type { ApiClient } from '../api/client.js';
 import { InputEditor } from '../automations/node-editors/InputEditor.js';
+import { EntryEditor } from '../automations/node-editors/EntryEditor.js';
 import { DataReferencePicker } from '../automations/node-editors/DataReferencePicker.js';
 import {DataNodeEditor} from '../automations/node-editors/DataNodeEditor.js';
 import {isDataNodeType} from '@jrc/contracts';
@@ -18,13 +19,13 @@ import type { ConversationActionTransport } from '../automations/conversation-ap
 const portName=(port:string,node?:FlowNode)=>node?.type==='switch'?(port==='default'?'Saída padrão':String((Array.isArray(node.data.cases)?node.data.cases:[]).find((item:unknown)=>item!==null&&typeof item==='object'&&'id' in item&&'case-'+item.id===port)?.label??port)):port==='success'?'Sucesso':port==='error'?'Erro':port==='client_error'?'Erro do cliente':port==='server_error'?'Erro do servidor':port==='exhausted'?'Sem tentativas':port==='timeout'?'Tempo limite':port==='unknown'?'Resultado desconhecido':port==='yes'?'Sim':port==='no'?'Não':port==='open'?'Dentro do horário':port==='closed'?'Fora do horário':port.startsWith('option-')?'Opção '+port.slice(7):'Continuar';
 const ioTypes=['http','sql','code','ai-generate','ai-classify','ai-extract','ai-summarize','ai-agent'];
 type CatalogItem={type:string;label:string;description:string;category?:string;version?:number};
-export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as readonly CatalogItem[],errorNodeIds=[],handoffContext,subflowContext,httpContext,aiContext,actionContext}:{graph:FlowGraph;onChange:(graph:FlowGraph)=>void;editable:boolean;catalog?:readonly CatalogItem[];errorNodeIds?:readonly string[];handoffContext?:{client:ApiClient;organizationId:string}|undefined;subflowContext?:{client:ApiClient;organizationId:string;rootAutomationId:string}|undefined;aiContext?:{client:ApiClient;organizationId:string;rootAutomationId:string}|undefined;httpContext?:{client:ApiClient;organizationId:string;rootAutomationId:string}|undefined;actionContext?:{transport:ConversationActionTransport}|undefined}){
+export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as readonly CatalogItem[],errorNodeIds=[],focusRequest,trackExternalChanges=false,handoffContext,subflowContext,httpContext,aiContext,actionContext}:{graph:FlowGraph;onChange:(graph:FlowGraph)=>void;editable:boolean;catalog?:readonly CatalogItem[];errorNodeIds?:readonly string[];focusRequest?:{nodeId:string;sequence:number}|undefined;trackExternalChanges?:boolean;handoffContext?:{client:ApiClient;organizationId:string}|undefined;subflowContext?:{client:ApiClient;organizationId:string;rootAutomationId:string}|undefined;aiContext?:{client:ApiClient;organizationId:string;rootAutomationId:string}|undefined;httpContext?:{client:ApiClient;organizationId:string;rootAutomationId:string}|undefined;actionContext?:{transport:ConversationActionTransport}|undefined}){
  const [selected,setSelected]=useState(graph.nodes[0]?.id??'');
  const [historyVersion,setHistoryVersion]=useState(0);
  const history=useRef<{items:FlowGraph[];index:number}>({items:[graph],index:0});
  const expectedGraph=useRef<FlowGraph|null>(null);
  const currentGraph=useRef(graph);currentGraph.current=graph;
- useLayoutEffect(()=>{if(graph===expectedGraph.current){expectedGraph.current=null;return;}if(graph!==history.current.items[history.current.index]&&JSON.stringify(graph)!==JSON.stringify(history.current.items[history.current.index])){history.current={items:[graph],index:0};setHistoryVersion(v=>v+1);}},[graph]);
+ useLayoutEffect(()=>{if(graph===expectedGraph.current){expectedGraph.current=null;return;}if(graph!==history.current.items[history.current.index]&&JSON.stringify(graph)!==JSON.stringify(history.current.items[history.current.index])){if(trackExternalChanges&&editable){const items=[...history.current.items.slice(0,history.current.index+1),graph].slice(-100);history.current={items,index:items.length-1};}else history.current={items:[graph],index:0};setHistoryVersion(v=>v+1);}},[graph,trackExternalChanges,editable]);
  function emitGraph(next:FlowGraph,coalesce=false){const state=history.current;if(JSON.stringify(next)===JSON.stringify(state.items[state.index]))return;if(coalesce)state.items[state.index]=next;else{state.items=[...state.items.slice(0,state.index+1),next].slice(-100);state.index=state.items.length-1;}expectedGraph.current=next;setHistoryVersion(v=>v+1);onChange(next);}
  function stepHistory(direction:-1|1){const state=history.current,next=state.index+direction;if(!editable||next<0||next>=state.items.length)return;state.index=next;expectedGraph.current=state.items[next]!;setHistoryVersion(v=>v+1);onChange(state.items[next]!);}
  const [zoom,setZoom]=useState(1);
@@ -54,6 +55,8 @@ export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as
  }
  function toolbarZoom(factor:number){const viewport=scrollRef.current;zoomAt(view.current.zoom*factor,(viewport?.clientWidth||800)/2,(viewport?.clientHeight||600)/2);}
  function focusNode(id:string){const current=graph.nodes.find(n=>n.id===id);if(!current)return;setSelected(id);const viewport=scrollRef.current;updateView(1,{x:(viewport?.clientWidth||800)/2-(current.position.x+offset.x+110),y:(viewport?.clientHeight||600)/2-(current.position.y+offset.y+70)});}
+ useLayoutEffect(()=>{if(focusRequest)focusNode(focusRequest.nodeId);},[focusRequest]);
+ function removeNode(id:string){const target=graph.nodes.find(entry=>entry.id===id);if(!editable||!target||target.type==='start')return;const connected=graph.edges.filter(edge=>edge.source===id||edge.target===id).length;if(connected&&!window.confirm('Remover “'+target.label+'” e suas '+connected+' conexões? Você poderá desfazer esta alteração.'))return;emitGraph({...graph,nodes:graph.nodes.filter(entry=>entry.id!==id),edges:graph.edges.filter(edge=>edge.source!==id&&edge.target!==id)});setSelected(graph.nodes.find(entry=>entry.type==='start')?.id??'');setConnecting(null);}
  function centerSelection(){focusNode(graph.nodes.find(n=>n.id===selected)?.id??graph.nodes[0]?.id??'');}
  function duplicate(){if(!editable||!node||node.type==='start'||graph.nodes.length>=150)return;const id=crypto.randomUUID();emitGraph({...graph,nodes:[...graph.nodes,{...node,id,label:`${node.label} (cópia)`,position:{x:node.position.x+40,y:node.position.y+40},data:{...node.data}}]});setSelected(id);}
  useLayoutEffect(()=>{
@@ -114,7 +117,7 @@ export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as
         onClick={()=>{if(connecting&&editable&&n.type!=='start'&&connecting.source!==n.id)connect(connecting.source,connecting.port,n.id);else setSelected(n.id);}}
         onPointerDown={event=>{if(event.button!==0||!editable||connecting)return;drag.current={id:n.id,x:event.clientX,y:event.clientY,originX:n.position.x,originY:n.position.y,moved:false};event.currentTarget.setPointerCapture(event.pointerId);}}
         onPointerMove={event=>{const d=drag.current;if(d?.id!==n.id||!editable)return;const x=Math.min(100000,Math.max(-10000,d.originX+(event.clientX-d.x)/zoom)),y=Math.min(100000,Math.max(-10000,d.originY+(event.clientY-d.y)/zoom));if(Math.abs(event.clientX-d.x)+Math.abs(event.clientY-d.y)>3){emitGraph({...currentGraph.current,nodes:currentGraph.current.nodes.map(item=>item.id===n.id?{...item,position:{x,y}}:item)},d.moved);d.moved=true;}}}
-        onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}} onKeyDown={event=>{if(!editable)return;const delta=event.shiftKey?20:5;if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const dx=event.key==='ArrowLeft'?-delta:event.key==='ArrowRight'?delta:0,dy=event.key==='ArrowUp'?-delta:event.key==='ArrowDown'?delta:0;emitGraph({...graph,nodes:graph.nodes.map(item=>item.id===n.id?{...item,position:{x:Math.max(-10000,item.position.x+dx),y:Math.max(-10000,item.position.y+dy)}}:item)});}}}>
+        onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}} onKeyDown={event=>{if(!editable)return;if(event.key==='Delete'||event.key==='Backspace'){event.preventDefault();removeNode(n.id);return;}const delta=event.shiftKey?20:5;if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const dx=event.key==='ArrowLeft'?-delta:event.key==='ArrowRight'?delta:0,dy=event.key==='ArrowUp'?-delta:event.key==='ArrowDown'?delta:0;emitGraph({...graph,nodes:graph.nodes.map(item=>item.id===n.id?{...item,position:{x:Math.max(-10000,item.position.x+dx),y:Math.max(-10000,item.position.y+dy)}}:item)});}}}>
         <span className={'flow-dot flow-dot--'+n.type}/><strong>{n.label}</strong>
        </button>
        <small>{catalog.find(c=>c.type===n.type)?.label??'Requer adaptação'}</small>
@@ -127,9 +130,10 @@ export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as
   </section>
   <aside className="flows-inspector"><h3>Configurar bloco</h3>{node?<fieldset disabled={!editable}>
    <label>Nome do bloco<input value={node.label} maxLength={160} onChange={e=>patch({label:e.target.value})}/></label>
+   {node.type==='start'&&catalog.some(item=>item.type==='start'&&item.version===1)&&<EntryEditor node={node} editable={editable} onChange={next=>patch({data:next})}/>}
    {['message','menu'].includes(node.type)&&<label>{node.type==='message'?'Mensagem':'Mensagem do menu'}<textarea rows={5} maxLength={4096} value={String(node.data.text??'')} onChange={e=>data('text',e.target.value)}/></label>}
    {['variable','menu'].includes(node.type)&&<label>Variável<input value={String(node.data.variable??'')} maxLength={100} onChange={e=>data('variable',e.target.value)}/></label>}
-   {node.type==='input'&&<InputEditor node={node} editable={editable} onChange={next=>patch({data:next})}/>}
+   {node.type==='input'&&<InputEditor node={node} editable={editable} allowTypedCapture={catalog.some(item=>item.type==='input'&&item.version===1)} onChange={next=>patch({data:next})}/>}
    {node.type==='switch'&&<SwitchEditor key={node.id} node={node} nodes={graph.nodes} editable={editable} onChange={next=>patch({data:next})}/>}
    {['tag','attribute','note','resolve','media','domain'].includes(node.type)&&(actionContext?<ConversationActionEditor key={node.id} node={node} editable={editable} transport={actionContext.transport} onChange={next=>patch({data:next})}/>:<p>Abra este bloco no editor de Automações para escolher a caixa e seus recursos pelo nome.</p>)}
    {node.type==='menu'&&<MenuEditor node={node} edges={graph.edges} editable={editable} allowAttemptLimit={catalog.some(item=>item.type==='menu'&&item.version===1)} onChange={(nextData,edges)=>emitGraph({...graph,nodes:graph.nodes.map(current=>current.id===node.id?{...current,data:nextData}:current),edges})}/>}
@@ -149,7 +153,7 @@ export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as
    {node.type==='handoff'&&(handoffContext?<HandoffEditor key={handoffContext.organizationId+':'+node.id} node={node} editable={editable} client={handoffContext.client} organizationId={handoffContext.organizationId} onChange={next=>patch({data:next})}/>:<p>Configure o destino humano no editor de Automações para obter uma transferência confirmada.</p>)}
    <h4>Próximos passos</h4>{ports(node).map(port=><label key={port}>{portName(port,node)}<select aria-label={'Destino '+portName(port,node)} value={graph.edges.find(e=>e.source===node.id&&e.port===port)?.target??''} onChange={e=>connect(node.id,port,e.target.value)}><option value="">Sem conexão</option>{graph.nodes.filter(n=>n.id!==node.id&&n.type!=='start').map(n=><option key={n.id} value={n.id}>{n.label}</option>)}</select></label>)}
    <p className="flows-help">Use {'{{message}}'} ou uma variável definida no fluxo, como {'{{nome}}'}.</p>
-   {node.type!=='start'&&<button type="button" className="flows-delete" onClick={()=>{emitGraph({...graph,nodes:graph.nodes.filter(n=>n.id!==node.id),edges:graph.edges.filter(e=>e.source!==node.id&&e.target!==node.id)});setSelected(graph.nodes[0]?.id??'');}}>Remover bloco</button>}
+   {node.type!=='start'&&<button type="button" className="flows-delete" onClick={()=>removeNode(node.id)}>Remover bloco</button>}
   </fieldset>:<p>Selecione um bloco no canvas.</p>}</aside>
  </div>;
 }

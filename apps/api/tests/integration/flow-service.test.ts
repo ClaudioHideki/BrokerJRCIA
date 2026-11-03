@@ -744,3 +744,23 @@ it('performs no native introspection when initial authority outlives a credentia
   expect(await outcome).toMatchObject({error:{code:'FLOW_ACCESS_DENIED'}});expect(introspections).toBe(0);
  }finally{await locker.query('ROLLBACK');locker.release();}
 });
+it('native execution capability confines history to current root channels and refuses stale authority',async()=>{
+ const t=await fixture(),other=await secondInbox(t),draft=await t.service.create(t.access,{name:'Native inspection',graph,integrationIds:[t.integration]});
+ const published=await t.service.publish(t.access,draft.id,{revision:1,expectedScopeRevision:1});
+ const ids=[randomUUID(),randomUUID()],binding=randomUUID();
+ await db.database.pool.query("insert into automation_bindings(organization_id,id,automation_id,version,channel_id,status) values($1,$2,$3,$4,$5,'DISABLED')",[t.org,binding,draft.id,published.version,t.channel]);
+ for(const [index,channel] of [t.channel,other.channel].entries())await db.database.pool.query("insert into automation_executions(organization_id,id,automation_id,version,binding_id,channel_id,trigger_event_key,correlation_id,status,started_at,completed_at,input,error_code) values($1,$2,$3,$4,$5,$6,$7,$2,'COMPLETED','2030-01-01T12:00:00Z','2030-01-01T12:00:01Z',$8,$9)",[t.org,ids[index],draft.id,published.version,binding,channel,'inspection-'+index,JSON.stringify({text:'PRIVATE_MESSAGE_CANARY'}),'PRIVATE MESSAGE ERROR CANARY']);
+ await db.database.pool.query("insert into automation_node_executions(organization_id,execution_id,node_id,ordinal,status,input,output,error_code) values($1,$2,'capture',1000,'COMPLETED',$3,$3,'PRIVATE_TOKEN_CANARY')",[t.org,ids[0],JSON.stringify({text:'PRIVATE_MESSAGE_CANARY'})]);
+ await db.database.pool.query("insert into automation_outbox(organization_id,execution_id,node_id,ordinal,kind,payload,status,remote_reference,last_error) values($1,$2,'capture',1000,'SEND_TEXT',$3,'SENT','PRIVATE_REMOTE_CANARY','PRIVATE_ERROR_CANARY')",[t.org,ids[0],JSON.stringify({text:'PRIVATE_MESSAGE_CANARY'})]);
+ const period={from:'2030-01-01T00:00:00.000Z',to:'2030-01-02T00:00:00.000Z'};
+ await expect(t.service.executions(t.access,draft.id,period)).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ const session=await t.service.issueBrokerSession(t.principal,{integrationIds:[t.integration],scopes:[...full,'flow:executions:read']}),access={organizationId:t.org,token:session.token};
+ const page=await t.service.executions(access,draft.id,period);expect(page.data.map(row=>row.id)).toEqual([ids[0]]);expect(page.metrics).toMatchObject({total:1,completed:1});expect(page.scope).toMatchObject({capabilityVersion:1,accountId:7,inboxIds:[9]});expect(JSON.stringify(page)).not.toContain('CANARY');
+ const detail=await t.service.execution(access,draft.id,ids[0]!);expect(detail.data.id).toBe(ids[0]);expect(detail.nodes[0]).toMatchObject({nodeId:'capture',attempt:2});expect(detail.effects[0]).toMatchObject({kind:'SEND_TEXT',status:'SENT'});expect(JSON.stringify(detail)).not.toContain('CANARY');
+ await expect(t.service.execution(access,draft.id,ids[1]!)).rejects.toMatchObject({code:'AUTOMATION_EXECUTION_NOT_FOUND'});
+ await expect(t.service.executions(access,draft.id,{...period,channelId:other.channel})).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ await expect(t.service.execution(access,randomUUID(),ids[0]!)).rejects.toMatchObject({code:'FLOW_DEFINITION_NOT_FOUND'});
+ const foreign=await fixture();await expect(t.service.execution({organizationId:foreign.org,token:session.token},draft.id,ids[0]!)).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ await db.database.pool.query("UPDATE memberships SET role='VIEWER' WHERE organization_id=$1 AND user_id=$2",[t.org,t.actor]);
+ await expect(t.service.executions(access,draft.id,period)).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+});

@@ -33,7 +33,7 @@ export async function stagePinnedEngine({imageContext=false}={}){
   const legalFiles=['LICENSE','NOTICE','TRADEMARKS.md'];
   for(const name of ['package.json','package-lock.json','tsconfig.json','tsup.config.ts',...legalFiles])await cp(join(vendor,name),join(directory,name));
   for(const [path,source]of Object.entries(prepared.sources))await writeFile(join(directory,path),source);
-  const runtimeFiles=['bootstrap.mjs','dispatcher.mjs','engine-composition.mjs','engine-host.mjs','hook.mjs','http-transport.mjs','journal.mjs','projection.mjs','webhook-ownership.mjs','worker.mjs'];
+  const runtimeFiles=['bootstrap.mjs','dispatcher.mjs','engine-composition.mjs','engine-host.mjs','hook.mjs','http-transport.mjs','journal.mjs','projection.mjs','runtime-lifecycle.mjs','webhook-ownership.mjs','worker.mjs'];
   await mkdir(join(directory,'jrc-origin'),{recursive:true});
   for(const name of runtimeFiles)await cp(join(own,'src',name),join(directory,'jrc-origin',name));
   await mkdir(join(directory,'schema'),{recursive:true});

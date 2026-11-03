@@ -34,6 +34,9 @@ export * from './automation-subflow.js';
 export * from './automation-http-query.js';
 export * from './automation-input.js';
 export * from './automation-menu.js';
+export * from './automation-simulation.js';
+export * from './automation-entry.js';
+export * from './automation-inspection.js';
 export * from './automation-ai.js';
 
 export * from './flow-delegation.js';
@@ -44,3 +47,5 @@ export * from './automation-switch.js';
 export * from './history-import.js';
 export * from './automation-domain-command.js';
 export * from './media-custody.js';
+
+export * from './flow-executions.js';

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {readDeliverySummary} from './delivery-summary.js';
+import {readJobFailureDiagnostic} from './job-failure-diagnostics.js';
 import { createChatwootAttendanceService } from './chatwoot-attendance-service.js';
 import type { ChatwootStatus } from "@jrc/contracts";
 import type {
@@ -735,12 +736,13 @@ export function createChatwootService(options: ChatwootOptions) {
       return tx(org, async (t) => ({
         data: (
           await t.query(
-            `SELECT id,integration_id AS "integrationId",kind,coalesce(payload->>'historical'='true',false) AS historical,status,attempts,last_error AS "lastError",payload->>'operation' AS operation,message_id AS "messageId",created_at AS "createdAt",updated_at AS "updatedAt"
+            `SELECT id,integration_id AS "integrationId",kind,coalesce(payload->>'historical'='true',false) AS historical,status,attempts,last_error AS "lastError",failure_diagnostic AS "failureDiagnostic",payload->>'operation' AS operation,message_id AS "messageId",created_at AS "createdAt",updated_at AS "updatedAt"
         FROM integration_jobs WHERE organization_id=$1 ORDER BY created_at DESC,id DESC LIMIT 100`,
             [org],
           )
         ).rows.map((row) => ({
           ...row,
+          failureDiagnostic:readJobFailureDiagnostic(row.failureDiagnostic),
           createdAt: new Date(row.createdAt).toISOString(),
           updatedAt: new Date(row.updatedAt).toISOString(),
         })),
@@ -884,10 +886,33 @@ export function createChatwootService(options: ChatwootOptions) {
       }
       await tx(org, async (t) => {
         await requireActiveOrganization(t, org);
+        // Remote reads prove only the captured destination/account/inbox. Hold
+        // the configuration rows until settlement so a concurrent remapping or
+        // revocation cannot make that evidence apply to a different consumer.
+        // HTTP stays outside this transaction; UNKNOWN is preserved on conflict.
+        await lockChatwootDestination(t, org);
+        await t.query('SELECT organization_id FROM chatwoot_destinations WHERE organization_id=$1 FOR SHARE', [org]);
+        await t.query('SELECT organization_id FROM chatwoot_accounts WHERE organization_id=$1 FOR SHARE', [org]);
+        await t.query('SELECT id FROM chatwoot_connections WHERE organization_id=$1 AND id=$2 FOR SHARE', [org, c.id]);
+        const currentAccount = await readChatwootAccount(t, org);
+        const currentConnection = await readChatwootConnection(t, org, c.id);
+        if (!currentAccount || currentAccount.status !== 'READY'
+          || currentAccount.credential_version !== a.credential_version
+          || currentAccount.encrypted_token !== a.encrypted_token
+          || currentAccount.account_id !== a.account_id || currentAccount.base_url !== a.base_url
+          || currentAccount.destination?.revision !== a.destination?.revision
+          || currentAccount.destination?.baseUrl !== a.destination?.baseUrl
+          || currentAccount.destination?.mode !== a.destination?.mode
+          || currentAccount.destination?.approvalStatus !== 'APPROVED'
+          || !currentConnection || currentConnection.channel_id !== c.channel_id
+          || currentConnection.inbox_id !== c.inbox_id || currentConnection.status !== c.status
+          || currentConnection.encrypted_webhook_secret !== c.encrypted_webhook_secret)
+          throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
         const result = await t.query(
           `UPDATE integration_jobs SET status=CASE WHEN payload->>'historical'='true' THEN 'HISTORY_PENDING' ELSE 'PENDING' END,payload=payload||$3::jsonb,last_error=NULL,available_at=now(),updated_at=now()
-          WHERE organization_id=$1 AND id=$2 AND status='UNKNOWN' RETURNING id`,
-          [org, id, JSON.stringify(patch)],
+          WHERE organization_id=$1 AND id=$2 AND status='UNKNOWN' AND integration_id=$4 AND message_id=$5
+            AND kind=$6 AND payload=$7::jsonb RETURNING id`,
+          [org, id, JSON.stringify(patch), job.integration_id, job.message_id, job.kind, JSON.stringify(job.payload)],
         );
         if (!result.rowCount)
           throw new IntegrationError("JOB_REQUIRES_RECONCILIATION", 409);

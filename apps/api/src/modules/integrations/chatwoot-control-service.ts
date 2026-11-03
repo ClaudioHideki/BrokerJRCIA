@@ -7,7 +7,7 @@ import { InstanceServiceError, type InstanceService } from '../instances/service
 import { claimIdempotency, completeIdempotencyRecord, hashIdempotencyRequest } from '../instances/idempotency.js';
 import { chatwootEnvironment, type ChatwootOptions, type ChatwootService, type ConnectionRow } from './chatwoot-service.js';
 import { readChatwootAccount } from './chatwoot-context.js';
-import { readChatwootHealth, identityStatus, deriveTransportStatus, type ChatwootHealth } from './chatwoot-health.js';
+import { readChatwootHealth, identityStatus, deriveTransportStatus, connectionIdentityFields, type ChatwootHealth } from './chatwoot-health.js';
 import { IntegrationError } from './integration-error.js';
 import { ChatwootError } from './chatwoot-client.js';
 import { observeChatwootCapabilities } from './chatwoot-compatibility.js';
@@ -112,7 +112,7 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
       return { ...progress, action };
     },
     async status(p: ChatwootControlPrincipal, id: string): Promise<ConnectionHealth> {
-      const c = await tx(p.organizationId, async t => {
+      let c = await tx(p.organizationId, async t => {
         const mapped = await mapping(t, p, id, 'chatwoot:read');
         await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, [p.organizationId, id, mapped.channel_id]);
         return mapped;
@@ -120,10 +120,14 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
       let instance = await options.instances.getInstance(delegated(p, id), c.instance_id);
       try { instance = await options.instances.getInstanceStatus(delegated(p, id), c.instance_id); }
       catch (error) { if (!(error instanceof InstanceServiceError)) throw error; }
-      try { await options.health.refresh(p.organizationId, c.channel_id); }
+      let liveIdentity: { revision: number; phone: string | null } | undefined;
+      try { liveIdentity = (await options.health.refresh(p.organizationId, c.channel_id))?.liveIdentity; }
       catch (error) { if (!(error instanceof IntegrationError && error.code === 'IDENTITY_UNVERIFIED')) throw error; }
       return tx(p.organizationId, async t => {
-        await mapping(t, p, id, 'chatwoot:read');
+        const current = await mapping(t, p, id, 'chatwoot:read');
+        if (current.channel_id !== c.channel_id || current.instance_id !== c.instance_id)
+          throw new IntegrationError('CONTROL_MAPPING_CHANGED', 409);
+        c = current;
         const h = (await readChatwootHealth(t, p.organizationId, id))!;
         const a = (await readChatwootAccount(t, p.organizationId))!;
         const evidence = (await t.query<{ incoming: Date | null; outgoing: Date | null; failure: boolean }>(`SELECT
@@ -149,6 +153,9 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
           callbackVerifiedAt: callback?.toISOString() ?? null, lastSuccessfulInboundAt: evidence.incoming?.toISOString() ?? null, lastSuccessfulOutboundAt: evidence.outgoing?.toISOString() ?? null,
           transportStatus: deriveTransportStatus({ integrationReady: c.status === 'READY', connected: instance.status === 'CONNECTED' && h.observed_connected && identity === 'CONFIRMED',
             callbackVerified: Boolean(callback), recentInbound: recent(evidence.incoming), recentOutbound: recent(evidence.outgoing), activeFailure: Boolean(lastError) || evidence.failure }),
+          ...connectionIdentityFields(h, liveIdentity),
+          // Last successful inbound MIRROR_MESSAGE after identity approval; not complete WhatsApp history synchronization.
+          lastSyncAt: evidence.incoming?.toISOString() ?? null,
           checkedAt: new Date().toISOString(), lastError, allowedActions, identityStatus: identity, identityApproved: Boolean(h.approved_fingerprint), identityRevision: h.identity_revision, observedNumberSuffix: h.observed_last4 };
       });
     },

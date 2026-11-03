@@ -10,6 +10,10 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/executions/{id}/playground',
+  'POST /v1/executions/{id}/simulate',
+  'GET /v1/delegated-flows/{id}/executions',
+  'GET /v1/delegated-flows/{id}/executions/{executionId}',
   'POST /v1/webhooks/whatsapp/{id}',
   'POST /v1/media-custody/receipts',
   'GET /v1/media-custody/receipts/{id}',

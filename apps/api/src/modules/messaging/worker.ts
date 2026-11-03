@@ -13,7 +13,7 @@ export interface MessagingWorkerOptions {
   captureQrBinding?:(channel:MessagingChannel)=>Promise<{assert(tx:TenantTransaction):Promise<void>}|undefined>;
   groupAutomation?: Pick<ReturnType<typeof createGroupAutomationRuntime>, 'dispatchOnce'>;
   automationRuntimeEnabled?:boolean;
-  automations?:{route(organizationId:string,event:{channelId:string;conversationId:string;eventKey:string;text:string;payload?:Record<string,unknown>}):Promise<unknown>};
+  automations?:{route(organizationId:string,event:{channelId:string;conversationId:string;eventKey:string;text:string;payload?:Record<string,unknown>;mediaMessageId?:string}):Promise<unknown>};
   flows?: Pick<ReturnType<typeof createFlowService>,'runTurn'|'settleHandoffs'>;
   prepareMedia?: DispatchPorts["prepareMedia"];
   repository: MessagingRepository;
@@ -62,8 +62,10 @@ export function createMessagingWorker(options: MessagingWorkerOptions) {
         };
         const conversation = botClaim.conversation;
         if(conversation.botOriginReference===AUTOMATION_ORIGIN){
-          if(options.automations&&botClaim.message.content.type==='TEXT')try{
-            await options.automations.route(organizationId,{channelId:botClaim.channel.id,conversationId:conversation.id,eventKey:`message:${botClaim.message.id}`,text:botClaim.message.content.text,payload:{messageId:botClaim.message.id}});
+          if(options.automations&&['TEXT','MEDIA'].includes(botClaim.message.content.type))try{
+            const content=botClaim.message.content;
+            await options.automations.route(organizationId,{channelId:botClaim.channel.id,conversationId:conversation.id,eventKey:`message:${botClaim.message.id}`,
+              ...(content.type==='MEDIA'?{text:'',mediaMessageId:botClaim.message.id}:{text:content.type==='TEXT'?content.text:'',payload:{messageId:botClaim.message.id}})});
             await transact(organizationId,tx=>repository.completeBotTurn(tx,{...key,sessionId:`automation:${conversation.botPublicId}`,texts:[]}));
           }catch{await transact(organizationId,tx=>repository.failBotTurn(tx,{...key,canonicalErrorCode:'FLOWS_UNAVAILABLE',uncertain:false}));}
           else await transact(organizationId,tx=>repository.failBotTurn(tx,{...key,canonicalErrorCode:'FLOWS_UNAVAILABLE',uncertain:false}));

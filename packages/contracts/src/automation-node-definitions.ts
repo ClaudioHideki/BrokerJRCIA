@@ -10,6 +10,7 @@ import {compatibleMenuSchema,menuAttemptPorts} from './automation-menu.js';
 import {compatibleConversationEffectSchema,conversationEffectPorts} from './automation-conversation-effects.js';
 import {SwitchNodeConfigSchema,switchNodePorts} from './automation-switch.js';
 import {DomainCommandConfigSchema} from './automation-domain-command.js';
+import {compatibleAutomationEntrySchema} from './automation-entry.js';
 
 export const NodeDiagnosticSchema = z.object({
   nodeId: z.string().nullable(), field: z.string(), code: z.string(), message: z.string(),
@@ -41,7 +42,7 @@ const define = (type: string, label: string, category: string, schema: z.ZodType
 // Version 1 accepts historical configurations without changing their execution semantics.
 // Availability controls the creation palette only; it must never gate a published executor.
 export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = [
-  define('start', 'Mensagem recebida', 'TRIGGERS', config()),
+  define('start', 'Mensagem recebida', 'TRIGGERS', compatibleAutomationEntrySchema(config())),
   define('message', 'Enviar texto', 'CONVERSATION', config({ text })),
   define('input', 'Capturar resposta', 'INPUTS', compatibleInputCaptureSchema(config({ variable: safeKey,
     text: z.unknown().refine(input => value(input).length <= 4096, 'Pergunta muito longa.').optional(),

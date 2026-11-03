@@ -66,6 +66,7 @@ export function validateFlow(input:unknown):string[] {
     if(['input','variable'].includes(n.type)&&!safeKey(n.data.variable)) errors.push(n.label+': nome de variável inválido.');
     if(n.type==='input'&&value(n.data.text).length>4096) errors.push(n.label+': pergunta muito longa.');
     if(n.type==='input'&&Number(n.data.timeout??0)>0) errors.push(n.label+': timeout importado ainda não suportado.');
+    if(n.type==='input'&&n.data.inputConfigVersion!==undefined&&![1,2].includes(n.data.inputConfigVersion as number)) errors.push(n.label+': esta versão de captura exige o Flow canônico.');
     if(n.type==='menu'){
       const options=menuOptions(n), raw=Array.isArray(n.data.options)?n.data.options:[];
       if(!value(n.data.text).trim()||value(n.data.text).length>4096)errors.push(n.label+': informe a mensagem do menu.');

@@ -15,7 +15,7 @@ from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemp
 ROOT = Path(__file__).resolve().parents[2]
 DATA = json.loads((ROOT / 'tmp/pdfs/contracts.json').read_text(encoding='utf-8'))
 OUT = ROOT / 'scripts/docs/assets/guia-api-jrc.pdf'
-EDITION = '2026-11-01'
+EDITION = '2026-11-02'
 EDITION_LABEL = '/'.join(reversed(EDITION.split('-')))
 OPERATIONS = {method.upper() + ' ' + route: (profile, op)
               for profile, doc in DATA['profiles'].items() for route, methods in doc['paths'].items()

@@ -1,0 +1,65 @@
+{
+  "base": "768181bbbcd265c39a9b43c64661f7132ae773cd",
+  "kind": "LOCAL_SOURCE_CHECKPOINT",
+  "method": "Latest whole-file result replaces its earlier result; not a second full-suite run",
+  "inputs": [
+    {
+      "path": "output/integral-full-unit-20261102.json",
+      "sha256": "81a248b376d3d5d2096eb087cf386dd9a1d9172f68bcfdd92e6974a2084342f3"
+    },
+    {
+      "path": "output/integral-full-unit-repair-20261102.json",
+      "sha256": "28295dd30d68a9da30965192ac17fa65c98cbabdebe6e079908148387fd2b4b6"
+    }
+  ],
+  "initial": {
+    "files": 496,
+    "tests": 3862,
+    "passed": 3855,
+    "failed": 3,
+    "pending": 4
+  },
+  "repair": {
+    "files": 5,
+    "tests": 50,
+    "passed": 50,
+    "failed": 0,
+    "pending": 0
+  },
+  "effective": {
+    "files": 497,
+    "tests": 3868,
+    "statuses": {
+      "passed": 3868
+    }
+  },
+  "excluded": [
+    "tests/backup.test.mjs",
+    "tests/recovery.test.mjs"
+  ],
+  "separatelyExecuted": "tests/security-audit-artifacts.test.mjs",
+  "security": {
+    "passed": true,
+    "routeCount": 360,
+    "reportSha256": "e7d6f02342f4fcf127eefff7dec9f380c1903ffddbb43fe52c186998f5457860"
+  },
+  "productionChanged": false,
+  "newImageBuilt": false,
+  "postReview": {
+    "readiness": {
+      "passed": 2,
+      "failed": 0,
+      "corruptions": 33,
+      "seconds": 22.38,
+      "redAssertions": 16
+    },
+    "typecheckExit": 0,
+    "schemaUnit": {
+      "passed": 15,
+      "failed": 0,
+      "files": 4
+    },
+    "independentReview": "Operational column/default/check gap reproduced and fixed; no further concrete P1/P2 identified in reviewed diff",
+    "imageGate": "Pending final engine build and real-hook boot from committed source"
+  }
+}

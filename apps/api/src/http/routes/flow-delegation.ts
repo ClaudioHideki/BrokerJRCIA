@@ -26,7 +26,7 @@ const problem=(reply:FastifyReply,request:FastifyRequest,status:number,code:stri
 export async function registerFlowDelegationRoutes(app:FastifyInstance,options:FlowDelegationRouteOptions){
  app.addHook('onRoute',route=>{route.bodyLimit??=16_384;});
  app.addHook('onSend',async(request,reply,payload)=>{
-  const path=request.routeOptions.url??'',graph=path.startsWith('/v1/delegated-flows')&&(/\/(?:simulate|import-preview|publish|versions(?:-page)?|action-catalog|resource-channels|media)$/.test(path)||path==='/v1/delegated-flows'||path==='/v1/delegated-flows/:id');
+  const path=request.routeOptions.url??'',graph=path.startsWith('/v1/delegated-flows')&&(/\/(?:executions(?:\/:executionId)?|simulate|import-preview|publish|versions(?:-page)?|action-catalog|resource-channels|media)$/.test(path)||path==='/v1/delegated-flows'||path==='/v1/delegated-flows/:id');
   const limit=graph?2_200_000:16_384;
   if((typeof payload==='string'||Buffer.isBuffer(payload))&&Buffer.byteLength(payload)>limit){reply.code(502).type('application/problem+json');return JSON.stringify({type:'about:blank',title:'FLOW_RESPONSE_TOO_LARGE',status:502,code:'FLOW_RESPONSE_TOO_LARGE',requestId:request.id});}
   return payload;
@@ -106,6 +106,8 @@ export async function registerFlowDelegationRoutes(app:FastifyInstance,options:F
   api.get(base+'/:id',{schema:{params,querystring:empty,response:{200:c.FlowDefinitionSchema}}},req=>result(c.FlowDefinitionSchema,options.service.get(access(req),req.params.id)));
   api.put(base+'/:id',{bodyLimit:2_200_000,schema:{params,querystring:empty,body:c.FlowDraftSaveSchema,response:{200:c.FlowDefinitionSchema}}},req=>result(c.FlowDefinitionSchema,options.service.save(access(req),req.params.id,req.body)));
   api.post(base+'/:id/publish',{schema:{params,querystring:empty,body:c.FlowPublishSchema,response:{200:AutomationPublishedVersionV1Schema}}},req=>options.service.publish(access(req),req.params.id,req.body));
+  api.get(base+'/:id/executions',{schema:{params,querystring:c.FlowExecutionQuerySchema,response:{200:c.FlowExecutionPageSchema}}},req=>options.service.executions(access(req),req.params.id,req.query));
+  api.get(base+'/:id/executions/:executionId',{schema:{params:params.extend({executionId:z.uuid()}),querystring:empty,response:{200:c.FlowExecutionDetailSchema}}},req=>options.service.execution(access(req),req.params.id,req.params.executionId));
   api.get(base+'/:id/versions',{schema:{params,querystring:empty,response:{200:c.FlowVersionsSchema}}},req=>options.service.versions(access(req),req.params.id));
   api.get(base+'/:id/versions-page',{schema:{params,querystring:z.strictObject({pageSize:z.coerce.number().int().min(1).max(1).default(1),cursor:z.string().regex(/^[1-9][0-9]{0,8}$/).optional()})}},req=>options.service.versionsPage(access(req),req.params.id,req.query));
   api.post(base+'/:id/validate',{schema:{params,querystring:empty,body:empty,response:{200:c.FlowValidationSchema}}},req=>options.service.validate(access(req),req.params.id));

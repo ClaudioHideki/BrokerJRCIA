@@ -26,7 +26,13 @@ export const poolFor=url=>new Pool({connectionString:url,max:3,connectionTimeout
 
 export async function createIsolatedLabDatabase(options={}) {
   requireLabOnly(options);
-  const adminUrl=requireTestDatabaseUrl(),admin=poolFor(adminUrl),name=`jrc_test_cclx_${randomUUID().replaceAll('-','')}`,token=randomUUID();
+  // CREATE DATABASE can wait for a template checkpoint. A client-only five-second
+  // timeout abandons the receipt while PostgreSQL may still create the database.
+  // Keep the connection until the server confirms success or cancels the DDL.
+  // This budget is only for disposable laboratory provisioning, not delivery SQL.
+  const adminUrl=requireTestDatabaseUrl(),admin=new Pool({connectionString:adminUrl,max:1,
+    connectionTimeoutMillis:3000,idleTimeoutMillis:1000,statement_timeout:30000,query_timeout:0}),
+    name=`jrc_test_cclx_${randomUUID().replaceAll('-','')}`,token=randomUUID();
   const url=new URL(adminUrl);url.pathname='/'+name;
   let pool,created=false;
   try {

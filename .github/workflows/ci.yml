@@ -140,7 +140,7 @@ jobs:
       - name: Verify isolated origin journal and PostgreSQL receiver
         run: npm run test:origin-journal && npm run test:cclx-receiver
       - name: Verify engine context and entrypoint unit contracts (no Docker engine boot)
-        run: node --max-old-space-size=128 --test --test-concurrency=1 integrations/evolution-origin-journal/tests/engine-build.test.mjs
+        run: npm run test:engine-artifact
       - name: Verify explicit pool inventory and rollout budget
         run: npm run test:capacity-budget
       - name: Run browser journeys against the real JRC API composition

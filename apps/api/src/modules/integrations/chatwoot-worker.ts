@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createPostgresMessagingRepository } from "../messaging/repository.js";
 import { isOrganizationActive } from "../tenancy/operational-limits.js";
 import { ChatwootError } from "./chatwoot-client.js";
+import {createJobFailureDiagnostic} from './job-failure-diagnostics.js';
 import { requireApprovedDestination } from './chatwoot-context.js';
 import {
   chatwootEnvironment,
@@ -782,10 +783,11 @@ export function createChatwootWorker(options: ChatwootOptions) {
           error instanceof MessagingRepositoryError
             ? error.code
             : "INTEGRATION_PROCESSING_FAILED";
+        const failureDiagnostic=createJobFailureDiagnostic(error,job.attempts,uncertain?'UNKNOWN':retry?'RETRY_SCHEDULED':'FAILED');
         await tx(org, (t) =>
           t
             .query(
-              `UPDATE integration_jobs SET status=$4,last_error=$5,lease_token=NULL,lease_expires_at=NULL,
+              `UPDATE integration_jobs SET status=$4,last_error=$5,failure_diagnostic=$7::jsonb,lease_token=NULL,lease_expires_at=NULL,
           available_at=now()+($6*interval '1 second'),updated_at=now() WHERE organization_id=$1 AND id=$2 AND lease_token=$3`,
               [
                 org,
@@ -794,6 +796,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
                 uncertain ? "UNKNOWN" : retry ? job.payload.historical===true ? 'HISTORY_PENDING' : "PENDING" : "FAILED",
                 code,
                 Math.min(300, 5 * 2 ** Math.min(job.attempts, 6)),
+                JSON.stringify(failureDiagnostic),
               ],
             )
             .then(() => undefined),

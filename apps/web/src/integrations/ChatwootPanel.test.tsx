@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
   cleanup,
+  act,
   fireEvent,
   render,
   screen,
@@ -101,6 +102,29 @@ it("loads inbox agents after the StrictMode mount cycle", async () => {
   fireEvent.click(await screen.findByText("Atendentes desta caixa"));
   fireEvent.click(screen.getByRole("button", { name: "Consultar atendentes" }));
   expect(await screen.findByLabelText(/Atendente · atendente/)).toBeVisible();
+});
+it.each(['loaded', 'in-flight'])('discards %s agent choices when the same connection is remapped to another inbox', async phase => {
+  let inboxId = 31;
+  let release!: (result: unknown) => void;
+  const oldAgents = { data: [{ id: 5, name: 'Atendente antigo', email: 'old@example.test', assigned: false }] };
+  const pending = new Promise(resolve => { release = resolve; });
+  const request = vi.fn(async (path: string, _method?: string) => path === '' ? {
+    ...status,
+    account: { accountId: 1, status: 'READY', hasCredential: true, lastError: null },
+    connections: [{ id, channelId: id, name: 'Comercial', inboxId, status: 'READY', webhookUrl: 'https://broker.test/events', lastError: null }],
+  } : path.endsWith('/agents') ? phase === 'loaded' ? oldAgents : pending : { data: [] });
+  render(<ChatwootPanel request={request} canManage platform={false} />);
+  fireEvent.click(await screen.findByText('Atendentes desta caixa'));
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar atendentes' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/connections/' + id + '/agents'));
+  if (phase === 'loaded') await screen.findByLabelText(/Atendente antigo/);
+  inboxId = 32;
+  fireEvent.click(screen.getByRole('button', { name: 'Atualizar integração' }));
+  await waitFor(() => expect(request.mock.calls.filter(([path]) => path === '')).toHaveLength(2));
+  await act(async () => { release(oldAgents); await pending; });
+  expect(screen.queryByLabelText(/Atendente antigo/)).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Adicionar selecionados', hidden: true })).not.toBeInTheDocument();
+  expect(request.mock.calls.every(([, method]) => !method || method === 'GET')).toBe(true);
 });
 it("explains missing server configuration without displaying a false ready state", async () => {
   render(

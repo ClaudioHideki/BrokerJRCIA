@@ -61,6 +61,9 @@ export const ConnectionHealthSchema = z.strictObject({
   identityStatus: z.enum(['UNVERIFIED', 'CONFIRMED', 'CONFIRMATION_REQUIRED']), identityRevision: z.number().int().positive(),
   identityApproved: z.boolean(),
   observedNumberSuffix: z.string().regex(/^\d{4}$/).nullable(),
+  phoneNumber: z.string().regex(/^\+[1-9]\d{6,14}$/).nullable().optional(),
+  connectedAt: z.iso.datetime().nullable().optional(),
+  lastSyncAt: z.iso.datetime().nullable().optional(),
 });
 /** Durable provider progress plus an optional, short-lived, single-read challenge. */
 export const PairOperationActionSchema = z.discriminatedUnion('type', [

@@ -17,7 +17,7 @@ import { withGlobalRoleLock } from './helpers/global-role-lock.js';
 describe('tenant Chatwoot destinations with real PostgreSQL and two HTTP fixtures', () => {
   let db: IsolatedPostgresDatabase, pool: Pool, options: ChatwootOptions;
   let service: ReturnType<typeof createChatwootService>;
-  const tenants: { org: string; origin: string; local: string; token: string; channel: string; server: Server; calls: string[]; rejectSearch: boolean }[] = [];
+  const tenants: { org: string; origin: string; local: string; token: string; channel: string; server: Server; calls: string[]; rejectSearch: boolean; rejectMessage: boolean }[] = [];
   beforeAll(async () => {
     const admin = requireTestDatabaseAdminUrl();
     db = await createIsolatedPostgresDatabase(admin);
@@ -35,7 +35,7 @@ describe('tenant Chatwoot destinations with real PostgreSQL and two HTTP fixture
         const instance = (await tx.query("INSERT INTO instances(organization_id,provider_account_id,name,upstream_instance_key,status) VALUES($1,$2,'Fixture',$3,'CONNECTED') RETURNING id", [org, provider.id, `fixture-${label}`])).rows[0];
         return (await ensureQrChannel(tx, org, instance.id)).id;
       });
-      const item = { org, channel, origin: `https://${label}.example.com`, local: '', token: `synthetic-token-${label}`, server: createServer(), calls: [] as string[], rejectSearch: false };
+      const item = { org, channel, origin: `https://${label}.example.com`, local: '', token: `synthetic-token-${label}`, server: createServer(), calls: [] as string[], rejectSearch: false, rejectMessage:false };
       item.server.on('request', async (req, res) => {
         const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
         const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
@@ -58,7 +58,10 @@ describe('tenant Chatwoot destinations with real PostgreSQL and two HTTP fixture
         else if (path.endsWith('/conversations')) result = { id: 51 };
         else if (path.endsWith('/conversations/51')) result = { id: 51, account_id: 1, inbox_id: 31, meta: { sender: { id: 41, phone_number: null } } };
         else if (path.endsWith('/messages') && req.method === 'GET') result = { payload: [{ id: 61, attachments: [{ id: 71, account_id: 1, message_id: 61, file_type: 'file', data_url: `${item.origin}/rails/active_storage/blobs/signed/fixture.pdf` }] }] };
-        else if (path.endsWith('/messages')) result = { id: 61 };
+        else if (path.endsWith('/messages')) {
+          if(item.rejectMessage){item.rejectMessage=false;res.writeHead(503);res.end('{"private":"not-for-diagnostics"}');return;}
+          result = { id: 61 };
+        }
         else { res.writeHead(404); res.end('{}'); return; }
         res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result));
       });
@@ -135,15 +138,50 @@ describe('tenant Chatwoot destinations with real PostgreSQL and two HTTP fixture
       await qr.ingest(t.channel, authorization, { event: 'messages.upsert', instance: `fixture-${index === 0 ? 'a' : 'b'}`, data: {
         key: { id: 'same-remote-id', remoteJid: '15550000001@s.whatsapp.net', fromMe: false }, messageTimestamp: Math.floor(Date.now() / 1000), message: { conversation: 'Synthetic HTTP fixture' } } });
       await createChatwootWorker(transport).runOnce(t.org);
-      expect((await service.jobs(t.org)).data[0]).toMatchObject({ status: 'PENDING', attempts: 1 });
+      expect((await service.jobs(t.org)).data[0]).toMatchObject({ status: 'PENDING', attempts: 1,
+        failureDiagnostic:{version:1,phase:'HTTP_STATUS',method:'GET',httpStatus:503,attempt:1,settlement:'RETRY_SCHEDULED',failedAt:expect.any(String)} });
       await withOrganizationTransaction(pool, t.org, tx => tx.query('UPDATE integration_jobs SET available_at=now() WHERE organization_id=$1', [t.org]));
       await createChatwootWorker(transport).runOnce(t.org);
-      expect((await service.jobs(t.org)).data[0]).toMatchObject({ status: 'SUCCEEDED', attempts: 2 });
+      expect((await service.jobs(t.org)).data[0]).toMatchObject({ status: 'SUCCEEDED', attempts: 2,
+        failureDiagnostic:{httpStatus:503,attempt:1,settlement:'RETRY_SCHEDULED'} });
       expect(t.calls.filter(c => c === 'POST /api/v1/accounts/1/conversations/51/messages')).toHaveLength(1);
       const a = await withOrganizationTransaction(pool, t.org, tx => readChatwootAccount(tx, t.org));
       const file = await chatwootEnvironment(transport).client(a!).downloadAttachment(1, 31, 51, 61, 71);
       expect(Buffer.from(file.bytes).toString()).toContain(`fixture-${index === 0 ? 'a' : 'b'}`);
     }
+  });
+  it('persists mutation uncertainty across a new worker without replay or cross-tenant disclosure',async()=>{
+    const a=tenants[1]!,b=tenants[0]!,otherBefore=await service.jobs(b.org);
+    a.rejectMessage=true;
+    const message=(await db.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)
+      SELECT organization_id,channel_id,conversation_id,'INCOMING','CONTACT','{"type":"TEXT","text":"Synthetic diagnostic uncertainty"}','DELIVERED'
+      FROM messaging_messages WHERE organization_id=$1 AND direction='INCOMING' LIMIT 1 RETURNING id`,[a.org])).rows[0].id;
+    await createChatwootWorker(options).runOnce(a.org);
+    const observed=(await service.jobs(a.org)).data.find(j=>j.messageId===message);
+    expect(observed).toMatchObject({status:'UNKNOWN',attempts:1,failureDiagnostic:{version:1,phase:'HTTP_STATUS',method:'POST',httpStatus:503,attempt:1,settlement:'UNKNOWN'}});
+    expect(JSON.stringify(observed)).not.toContain('not-for-diagnostics');
+    const calls=a.calls.length;
+    await createChatwootWorker(options).runOnce(a.org);
+    expect(a.calls).toHaveLength(calls);
+    expect((await service.jobs(a.org)).data.find(j=>j.messageId===message)).toEqual(observed);
+    expect(await service.jobs(b.org)).toEqual(otherBefore);
+  });
+  it('preserves null legacy diagnostics and constrains new observations behind tenant RLS',async()=>{
+    const a=tenants[0]!,b=tenants[1]!;
+    const integration=(await db.pool.query('SELECT id FROM chatwoot_connections WHERE organization_id=$1',[a.org])).rows[0].id;
+    const id=(await db.pool.query(`INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,status,last_error)
+      VALUES($1,$2,'MIRROR_MESSAGE','synthetic-diagnostic-legacy','FAILED','CHATWOOT_REQUEST_REJECTED') RETURNING id`,[a.org,integration])).rows[0].id;
+    try{
+      expect((await service.jobs(a.org)).data.find(j=>j.id===id)?.failureDiagnostic).toBeNull();
+      const diagnostic={version:1,phase:'HTTP_STATUS',method:'GET',httpStatus:401,attempt:1,settlement:'FAILED',failedAt:'2026-11-02T20:30:00.000Z'};
+      for(const value of [{...diagnostic,token:'synthetic-forbidden'}, {...diagnostic,method:null,httpStatus:'401'}, {...diagnostic,phase:null}, {...diagnostic,attempt:2147483648}, {...diagnostic,failedAt:null}, {}, [], 'synthetic-forbidden']){
+        await expect(withOrganizationTransaction(pool,a.org,tx=>tx.query('UPDATE integration_jobs SET failure_diagnostic=$2::jsonb WHERE id=$1',[id,JSON.stringify(value)]))).rejects.toMatchObject({code:'23514'});
+      }
+      await withOrganizationTransaction(pool,a.org,tx=>tx.query('UPDATE integration_jobs SET failure_diagnostic=$2::jsonb WHERE id=$1',[id,JSON.stringify(diagnostic)]));
+      expect((await service.jobs(a.org)).data.find(j=>j.id===id)?.failureDiagnostic).toEqual(diagnostic);
+      expect((await withOrganizationTransaction(pool,b.org,tx=>tx.query('SELECT failure_diagnostic FROM integration_jobs WHERE id=$1',[id]))).rows).toEqual([]);
+      expect((await withOrganizationTransaction(pool,b.org,tx=>tx.query('UPDATE integration_jobs SET failure_diagnostic=NULL WHERE id=$1',[id]))).rowCount).toBe(0);
+    }finally{await db.pool.query('DELETE FROM integration_jobs WHERE organization_id=$1 AND id=$2',[a.org,id]);}
   });
   it('never provisions an external account with the global platform credential', async () => {
     const before = tenants.map(t => t.calls.length);

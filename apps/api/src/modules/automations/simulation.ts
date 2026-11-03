@@ -1,22 +1,25 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
-import {AiSimulationResponseSchema,AiNodeConfigSchema,validateAiOutput,type AiSimulationWait,HttpSimulationResponseSchema,
-  ActionSimulationResponseSchema,ConversationEffectWaitSchema,type ConversationEffectWait} from '@jrc/contracts';
+import {automationEntryConfig,matchesAutomationEntry,AUTOMATION_SIMULATION_MAX_EVENTS,AUTOMATION_SIMULATION_MAX_INPUT_BYTES,AUTOMATION_SIMULATION_MAX_OUTPUT_BYTES,
+  AiSimulationResponseSchema,AiNodeConfigSchema,validateAiOutput,type AiSimulationWait,HttpSimulationResponseSchema,
+  ActionSimulationResponseSchema,ConversationEffectWaitSchema,AutomationMediaSimulationEventSchema,type ConversationEffectWait} from '@jrc/contracts';
 import { executeAutomation } from './engine.js';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
 
 export const SimulationEventSchema=z.union([
   z.strictObject({type:z.literal('MESSAGE'),text:z.string().max(4096)}),
   z.strictObject({type:z.literal('ELAPSE'),seconds:z.number().int().min(1).max(604800)}),
-  HttpSimulationResponseSchema,AiSimulationResponseSchema,ActionSimulationResponseSchema,
+  HttpSimulationResponseSchema,AiSimulationResponseSchema,ActionSimulationResponseSchema,AutomationMediaSimulationEventSchema,
 ]);
 export const SimulationInputSchema=z.strictObject({
   text:z.string().max(4096),
-  replies:z.array(z.string().max(4096)).max(30).optional(),
-  events:z.array(SimulationEventSchema).max(30).optional(),
+  replies:z.array(z.string().max(4096)).max(AUTOMATION_SIMULATION_MAX_EVENTS).optional(),
+  events:z.array(SimulationEventSchema).max(AUTOMATION_SIMULATION_MAX_EVENTS).optional(),
   clock:z.iso.datetime().optional(),
 }).refine(input=>input.replies===undefined||input.events===undefined,{
   path:['events'],message:'Use respostas ou eventos de simulação, nunca ambos.',
+}).refine(input=>Buffer.byteLength(JSON.stringify(input),'utf8')<=AUTOMATION_SIMULATION_MAX_INPUT_BYTES,{
+  message:'AUTOMATION_SIMULATION_INPUT_LIMIT',
 });
 export type SimulationInput=z.infer<typeof SimulationInputSchema>;
 
@@ -34,6 +37,7 @@ function actionWait(result:RuntimeResult,effects:RuntimeResult['effects']):Conve
 export async function simulateConversation(root:PublishedAutomation,input:SimulationInput,
   resolve:(automationId:string,version:number)=>Promise<PublishedAutomation>):Promise<RuntimeResult&{httpWaitNodeId?:string;aiWait?:AiSimulationWait;actionWait?:ConversationEffectWait}>{
   const parsed=SimulationInputSchema.parse(input);
+  if(!matchesAutomationEntry(automationEntryConfig(root.graph),parsed.text))throw new Error('AUTOMATION_SIMULATION_TRIGGER_NOT_MATCHED');
   let now=new Date(parsed.clock??Date.now());
   const seed=createHash('sha256').update(JSON.stringify([root.automationId,root.version,root.graph,parsed.text,parsed.clock??null])).digest('hex');
   const effectWaitId:NonNullable<RuntimeInput['effectWaitId']>=scope=>{
@@ -42,11 +46,23 @@ export async function simulateConversation(root:PublishedAutomation,input:Simula
   };
   const run=(input:Omit<RuntimeInput,'effectWaitId'>,state?:RuntimeState)=>executeAutomation(root,{...input,effectWaitId},resolve,state);
   let result=await run({text:parsed.text,eventType:'MESSAGE',now});
-  const effects=[...result.effects],trace=[...result.trace];
+  const effects:RuntimeResult['effects']=[],trace:RuntimeResult['trace']=[];
+  let outputBytes=0;
+  const append=(turn:RuntimeResult)=>{
+    outputBytes+=Buffer.byteLength(JSON.stringify({effects:turn.effects,trace:turn.trace}),'utf8');
+    if(outputBytes+Buffer.byteLength(JSON.stringify(turn.state),'utf8')>AUTOMATION_SIMULATION_MAX_OUTPUT_BYTES)
+      throw new Error('AUTOMATION_SIMULATION_OUTPUT_LIMIT');
+    effects.push(...turn.effects);trace.push(...turn.trace);
+  };
+  append(result);
   const events=parsed.events??parsed.replies?.map(text=>({type:'MESSAGE' as const,text}))??[];
   for(const event of events){
     if(result.status!=='WAITING')throw new Error('AUTOMATION_SIMULATION_NOT_WAITING');
-    if(event.type==='MESSAGE'){
+    if(event.type==='MEDIA'){
+      if(result.wait?.kind!=='EVENT'||result.state.waiting?.inputConfigVersion!==3||!result.wait.waitId)throw new Error('AUTOMATION_SIMULATION_MEDIA_NOT_WAITING');
+      result=await run({text:'',eventType:'MESSAGE',now,media:{source:'SIMULATION_FIXTURE',kind:event.kind,fileName:event.fileName},
+        inputWait:{waitId:result.wait.waitId,admittedAt:now.getTime()}},result.state);
+    }else if(event.type==='MESSAGE'){
       // Retain the legacy replies contract; explicit events may observe messages during DELAY.
       if(result.wait?.kind==='IO'||(parsed.replies&&result.wait?.kind!=='EVENT'))throw new Error('AUTOMATION_SIMULATION_NOT_WAITING');
       result=await run({text:event.text,eventType:'MESSAGE',now,...(result.wait?.waitId?{inputWait:{waitId:result.wait.waitId,admittedAt:now.getTime()}}:{})},result.state);
@@ -87,12 +103,12 @@ export async function simulateConversation(root:PublishedAutomation,input:Simula
         if(wakeAt.getTime()>until.getTime())break;
         now=new Date(Math.max(now.getTime(),wakeAt.getTime()));
         result=await run({text:'',eventType:'TIMER',now,...(result.wait.waitId?{inputWait:{waitId:result.wait.waitId}}:{})},result.state);
-        effects.push(...result.effects);trace.push(...result.trace);
+        append(result);
       }
       now=until;
       continue;
     }
-    effects.push(...result.effects);trace.push(...result.trace);
+    append(result);
   }
   const httpWaitNodeId=result.wait?.kind==='IO'&&result.effects.some(effect=>effect.kind==='IO_HTTP'&&effect.nodeId===result.wait?.nodeId)?result.wait.nodeId:undefined;
   const aiEffect=result.wait?.kind==='IO'?result.effects.find(effect=>effect.kind==='IO_AI'&&effect.nodeId===result.wait?.nodeId&&effect.payload.aiConfigVersion===1):undefined;

@@ -1,5 +1,235 @@
 # Engine JRC: contexto e imagem candidata de laboratório
 
+## Incremento runtime de 02/11/2026 — artefato validado e fonte posterior
+
+**Estado atual:** a imagem f670 abaixo passou nos gates físicos descritos.
+Depois desses gates, a fonte candidata mudou para 11 overlays, observador
+explícito de laboratório, registro do host compartilhado entre loader/bundle e
+remoção do console incondicional de notify. Essas fontes têm regressão local
+22/22 GREEN, mas ainda não possuem imagem/gates próprios. Os resultados de
+f670 não são transferíveis para o próximo artefato. Captura produtiva permanece
+false e ownership permanece UNPROVEN.
+
+Imagem final após correção de SIGINT: contexto engine-IaEIMb,313 insumos e10
+overlays; engine-supervisor-signals-image-build.log concluiu exportação e unpack.
+Tag local jrc-evolution-engine:lab-supervisor-signals-20261102,
+IIDf6704623f7b66c792b21501bac7a8ab20c982a6fabbe1d54f16ff0b8542dcf5e,
+manifestd0172182e09870c85506f425fb0d6cac6676334cea41142b93e9f85325b799b8,
+config92991e9491bb1e8fc717197e1dc001199df70089cdc69ce7c6cfaef264459fc2.
+Prisma16,2s, tsc/tsup56,56s, prune na etapa186,3s e record-build73,9s.
+O IID9e93 abaixo é intermediário e não contém essa correção. O teste focal
+engine-supervisor-sigint-red.log reproduziu143 em vez de130; depois
+engine-supervisor-sigint-green.log passou9/9,30.654,871ms. Não somar essas
+rodadas aos61 casos anteriores. Gates de admissão da imagem f670:4/4 GREEN,
+engine-supervisor-signals-image-gates.log e image-gates-669dd13e08/report.log,
+exit0. Leitura completa34439 entradas/5909389bytes, UID1000/Prisma6.19.0,
+scan160662ms e RSS103884KiB sob cgroup192MiB/heap128/1CPU. Capture true,
+flag inválida e recibo adulterado recusados com exit1 em2873/2783/2838ms,
+sem importar o canário nem expor segredo. Cinco nomes de container confirmados
+ausentes/removidos. Sem rede, PG ou main nessa matriz; o boot real é a prova abaixo.
+
+**Gate físico da imagem final: GREEN**, engine-supervisor-signals-provisioned-gate.log,
+provisioned-gate-e7f6df499f/report.log, processo de teste exit0. Schema explicitamente
+provisionado em6518ms,110 relações, zero instâncias. Cancelamento durante inventário:
+exit0/COMPLETE em1124ms. Cancelamento durante import do main: exit143 em2952ms,
+ready=false/forced=false, sem COMPLETE. Nessa primeira inicialização o scan completo
+levou141278ms. A engine principal depois alcançou HTTP em86118ms (86,118 segundos),
+com novo scan de34439 entradas em66788ms. GET autenticado /instance/fetchInstances
+retornou200 e array vazio. Shutdown levou1461ms, exit0, ready=true/forced=false,
+duas mensagens Repository:Prisma OFF e COMPLETE do filho e do supervisor.
+OOMfalse; nenhuma sessão criada, zero chaves Redis, zero DDL observado na vida da
+engine. Catálogo antes/depois idêntico:
+e70784a027a4638b3b16fa412015e5e9885f77963f475454da7110656047c0d4.
+Amostra de memória: engine354,4MiB/512MiB, PG72,03MiB/192MiB e Redis4,559MiB/64MiB.
+Tempos de observação incluem chamadas da CLI; não são benchmark de capacidade nem
+prova de ganho de desempenho. PID host/filho não foi persistido por esse harness.
+
+Após o shutdown real, a subprova de custódia dos módulos da mesma imagem passou
+em8370ms: dois SIGKILL reais de filhos Node/Linux, depois do COMMIT da origem e
+depois do COMMIT do receiver antes do ACK; os mesmos eventos foram recuperados,
+com2 eventos DELIVERED e2 linhas únicas no receiver, zero efeitos legados no replay
+e zero bytes emitidos pelos filhos. Essa subprova declara engineMainImported=false,
+origem/receiver sintéticos e PostgreSQL vivo em tmpfs: não prova crash de PG/host,
+hook em sessão real ou ownership da captura produtiva. Nenhum segredo sintético
+apareceu nos logs. Os7 containers e a rede foram confirmados removidos; o volume
+tmpfs foi descartado. Boot HTTP e custódia modular são níveis distintos de prova.
+
+Próxima lacuna reproduzida depois desses gates: o InstanceController upstream
+chama ChannelController.init antes de gerar/atribuir instanceId. Sob o host
+explícito de captura, o overlay exigia identidade cedo demais. Novo teste
+engine-api-construction.test.mjs executa InstanceController, ChannelController
+e construtor Baileys inteiros compilados, com DB/settings/network sintéticos:
+engine-api-construction-red.log1/1 RED, ORIGIN_ENGINE_INSTANCE_INVALID;
+engine-api-construction-green.log1/1 GREEN após mover a atribuição do mesmo UUID
+para antes do init, sem mudar pin upstream. InstanceController passa a ser o
+11º overlay, SHA256 LF b0921eac4e202344e9c3100754965f1b97db94faf74b7b2089ac7cca16d5713f.
+Regressão focal das quatro suítes20/20,3908ms, zero skips/falhas. Essa correção
+**ainda não pertence à imagem f670**: exige novo artefato e prova do hook real.
+Ela não altera os resultados já medidos com captura false, mas impede considerar
+f670 prova de captura instalada via criação real. Nenhum pairing foi feito.
+
+Dois pré-requisitos adicionais foram reproduzidos antes do próximo build.
+engine-host-evaluation-red.log mostrou que uma segunda avaliação do módulo não
+enxergava o host instalado pelo loader; o registro process-local compartilhado
+por Symbol corrige isso sem instalar host automaticamente. O teste completo
+de notify revelou console.log(messageRaw) expondo texto mesmo sem verbose:
+engine-handler-privacy-red.log RED true!=false, handler inteiro executado.
+O overlay remove somente esse console incondicional, sem alterar o hash/pin
+original. engine-handler-privacy-green.log:22/22 GREEN,2532ms. Isso não é auditoria
+de todos os logs verbose, mídia ou erros upstream. Contexto atual engine-xdNVbe,
+11 overlays; engine-FE3cdt e engine-tIfy7V são estágios intermediários preservados.
+O runner engine-real-hook-gate.mjs está preparado para usar main/controller/
+handler/Prisma/fanout reais com porta de socket sintética, COMMIT da origem seguido
+de SIGKILL e restart fechado; ainda não executado. Não confundir preparo com prova.
+
+As observações Linux sintéticas preservam os limites de cada rodada:
+supervisor-linux-c8b00a9de4 confirmou TERM143 e INT130 durante import bloqueante,
+HTTP admitido concluído e saída0, saída23 e crash137. O caso travado registrou
+forced=true e137, FinishedAt em8.920ms, mas o assert antigo usava a conclusão
+da CLI em14.408ms e falhou. O harness passou a medir FinishedAt do daemon,
+mantendo stop10s, watchdog8s e escalada7s. Uma nova rodada d43cf61551 interrompeu
+no limite antigo de5s da CLI do primeiro caso; não é prova7/7. O caso isolado
+parent-kill em a0cb0c9c52 passou: SIGKILL ao PID1 encerrou o namespace,
+exit137/OOMfalse/PID0; restart do mesmo container teve execução nova e parada143.
+Esse teste usou módulos/entrada sintéticos recebidos, não o main da engine.
+
+Semântica explícita: cancelamento durante inventário, antes de existir filho,
+pode terminar0 com SHUTDOWN_COMPLETE; não implica READY, boot saudável ou
+ownership. Cancelamento do main antes de ready preserva143/130; encerramento
+ativo normal é0, e encerramento forçado é137. Nenhum desses sinais homologa
+sessões. A prova de boot real provisionado e a prova de módulos de custódia
+continuam separadas.
+
+O incremento autorizado pela execução integral corrige o encerramento observado
+como exit137 e prepara um gate de schema explicitamente provisionado. A fonte
+upstream permanece limpa no pin fa09d378; não houve edição de produção, mudança
+de pin, backup/dump/restore, pairing, sessão ou envio real.
+
+Decisão implementada: lifecycle JRC com SIGTERM/SIGINT idempotentes, cancelamento
+do inventário por AbortSignal, fechamento da admissão HTTP e espera pelas
+respostas admitidas, espera do carregamento inicial e fechamento dos clientes
+Prisma/Redis registrados. Não há process.exit(0): sucesso exige saída natural
+sem handles pendentes. Erro/pendência excedendo 8s gera diagnóstico fixo e exit1;
+o gate mantém Docker stop10s. Uma instância presente em waInstances causa
+ORIGIN_ENGINE_SESSION_DRAIN_UNPROVEN: não efetua logout/delete nem simula prova
+de shutdown de sessão. O fechamento de sessões e do host produtivo continua
+fora desta prova.
+
+Três fontes adicionais recebem overlays com hash LF completo: main.ts,
+repository.service.ts e rediscache.client.ts. O staging passa de sete para dez
+entradas pinadas e inclui o mesmo lifecycle no runtime e na base de confiança
+do guard jrc-image; nenhum módulo aplicativo de jrc-origin é importado antes
+do inventário. O guard e o bundle compartilham um registro de processo. A nova
+travessia usa no máximo oito operações/streams simultâneos, preservando
+ALL_NODE_MODULES_V1, todos os arquivos, hashes e regras de symlinks. A ordenação
+final permanece determinística. O guard registra contagem e duração do scan,
+sem configuração, URI, payload ou segredo.
+
+Evidência anterior ao gate físico (logs em integrations/evolution-origin-journal/build):
+
+- runtime-lifecycle-red.log: Windows3/3 RED por necessidade de SIGKILL.
+  runtime-lifecycle-linux-red.log: Linux3/3 RED, SIGTERM real interrompia a
+  resposta HTTP admitida. Windows emite o evento de processo e não prova POSIX.
+- runtime-lifecycle-green.log:3/3; runtime-lifecycle-linux-green.log:3/3,
+  1.793,422ms. Incluem resposta HTTP real, fechamento, erro sanitizado e hang.
+  O teste revelou keep-alive tornando-se ocioso após close(); closeIdleConnections
+  roda somente após finish, sem destruir respostas ativas.
+- runtime-overlay-red.log:2/2 RED, ausência de registro dos dois clientes Prisma
+  e do servidor. runtime-overlay-green.log:2/2 GREEN em fontes pinadas compiladas;
+  dependências externas desse teste são sintéticas, não PG/engine reais.
+- runtime-inventory-abort-red.log:1/1 RED; runtime-inventory-abort-green.log:2/2
+  GREEN, cobrindo cancelamento prévio e interrupção de stream já iniciado.
+- runtime-regression-green.log:22/22, zero skips,105.482,426ms; depois
+  runtime-origin-regression-green.log:30/30, zero skips,2.574,894ms. O segundo
+  caso de cancelamento foi acrescentado depois: não somar rodadas sobrepostas.
+  stripTypeScriptTypes mantém o aviso experimental preexistente.
+- Regressão final dos oito arquivos na fonte atual: **53/53**, zero falhas/skips,
+  exit0,88.410,954ms; runtime-regression-final.log. Inclui staging, recibo e
+  canários de dependências completos, sinais, overlays, host, proveniência e
+  composição compilada. Não substitui npm test integral, CI ou os gates físicos.
+
+Contexto engine-iMT1Vy com311 insumos e10 entradas pinadas, ownershipUNPROVEN,
+captureDefault=false. Build local engine-runtime-image-build.log passou
+tsc/tsup, Prisma Client6.19.0 e recibo completo (etapa record-build94,6s,
+incluindo validação de insumos). Tag jrc-evolution-engine:lab-runtime-20261102,
+IID25479f1a7e70ac36468e0c9632b0056d4ac7f679d20aae4c085bf9d4689a01c1,
+manifest e23bd8461427bff7f417d2c574ae1047a18c873586e0edb97dff8162ab784828,
+config3d23584fa858c4a6c0cae00092af40fb27c71527b364f88035baa67c4b5bd090.
+Avisos SWC/import.meta do instalador CJS permanecem. Não foi publicado registry.
+
+O novo tests/engine-provisioned-gate.mjs prepara exclusivamente PostgreSQL novo
+em tmpfs/rede interna, usa PrismaCLI da própria imagem para db push explícito
+antes do boot e exige leitura autenticada de zero instâncias, catálogo
+provisionado inalterado e parada da engine real com exit0. Não usa auto-migração
+do entrypoint ou --accept-data-loss. Também observa parada durante o scan e
+durante o import inicial, sem transformar falha de startup em readiness.
+Após parar a engine, tests/engine-artifact-custody.mjs instala explicitamente o
+journal nesse laboratório e exercita os módulos JRC da mesma imagem com PG/HTTP
+reais, origem/receiver sintéticos e SIGKILL após COMMIT da origem e do receiver
+antes do ACK. Essa subprova não importa dist/main e não habilita captura no
+entrypoint: o protocolo declara esses limites e mantém ownershipUNPROVEN.
+
+Primeiro gate provisionado da imagem25479f: **RED**, sem ocultar a falha.
+provisioned-gate-3a3d9631fe/ registra provisionamento explícito9.086ms,
+110relações e zero instâncias. SIGTERM durante scan saiu0 em1.069ms; durante
+import após scan130.112ms ainda exigiu SIGKILL Docker, exit137 em12.346ms,
+OOMfalse. A importação síncrona bloqueia o loop JS antes de bootstrap instalar
+os handlers. O boot completo e a custódia não foram alcançados nessa rodada.
+Cinco containers e a rede foram removidos e a base tmpfs descartada.
+
+Correção subsequente: o entrypoint conserva o inventário integral e passa a
+supervisionar um filho que importa main. Esse filho repete a recusa de captura,
+ownership e valida o recibo e hash do main antes do import; IPC transporta
+somente hashes de admissão e readiness. O pai preserva saída23/sinal137, e
+cancelamento pré-ready é143, sem SHUTDOWN_COMPLETE. Encerramento envia SIGTERM
+ao grupo do filho; após7s sem saída, força SIGKILL e registra falha137 antes
+do limite8s do pai. Windows usa IPC cooperativo depois de ready, pois seu
+child.kill(SIGTERM) encerra abruptamente e não prova semântica POSIX.
+
+engine-supervisor-red.log:5/5 RED no desenho anterior. Após implementação,
+engine-supervisor-bounded-green.log:13/13 incluindo admission/lifecycle/overlay,
+zero skips,31.025,892ms. Teste de import bloqueante, resposta HTTP admitida,
+saída/crash e filho travado foram executados no host Windows; prova Linux
+permanece separada. O teste físico engine-supervisor-linux-gate.mjs usa main
+sintético recebido e não a engine real. A garantia de terminar descendentes
+após SIGKILL do pai exige o supervisor como PID1 em namespace isolado:
+[a semântica do kernel está documentada em pid_namespaces(7)](https://man7.org/linux/man-pages/man7/pid_namespaces.7.html).
+O handler IPC de disconnect é adicional; não garante resposta enquanto import
+síncrono bloqueia fora desse namespace. Parent-kill standalone/Windows não é
+homologado. npm test integral e Git/CI seguem coordenados pela raiz.
+
+Build com supervisor: contexto engine-IiAzqk,313insumos/10overlays;
+engine-supervisor-image-build.log exit0. tsc/tsup concluídos em61,96s,
+npm prune encerrado na etapa279,7s e record-build71,8s. Tag local
+jrc-evolution-engine:lab-supervisor-20261102,
+IID9e93d4d51d4e737cba8b55a80e3a42a44bf5835e5ed887f8abde82354a2fbe1f,
+manifest90061366685dea664c712bc2cd7b4585bb853f2c7ffdd971347a2cf20f0ab837,
+config0754fb0c80b878d36cd50852b88ff98fc69cd9c06b7abe8924ac745d8345659a.
+Regressão dos nove arquivos: **61/61**, zero falhas/skips,170.071,170ms,
+engine-supervisor-regression.log. Gates físicos desta imagem ainda pendentes.
+Primeira matriz Linux sintética (supervisor-linux-252386816b) confirmou
+exit143/OOMfalse no import bloqueante, mas falhou no assert de tempo da CLI
+menor5s durante concorrência com build. A duração não foi salva antes do
+assert; o harness foi corrigido para registrar duração e FinishedAt antes
+de avaliar o limite. Essa rodada não prova performance nem os demais casos.
+
+Gates da imagem25479f sem PG/main: **4/4 GREEN**, recibo34.437 entradas e
+5.909.113bytes, UID1000, client6.19.0, scan166.271ms e RSS104.192KiB com
+heap128/cgroup192/1CPU. Capture true/flag inválida/recibo adulterado falharam
+antes do main em1.229/1.579/1.674ms. Logs engine-runtime-image-gates.log e
+image-gates-5f9c17489d; os cinco nomes de container foram confirmados ausentes.
+Não houve extensão de budget240s para leitura ou20s para recusas.
+
+Esse scan foi mais lento que86.661ms da observação histórica478f. Um experimento
+LIFO, lendo o mesmo recibo completo fora do código instalado da imagem, levou
+88.948ms/RSS107.356KiB; microteste sem I/O mediu FIFO34.437itens484ms e LIFO0,5ms.
+O deslocamento de fila sozinho não explica a diferença de80s; cache/carga/I/O
+não foram controlados. **Não há ganho de performance comprovado.** A execução
+coordenada decidiu manter o código correspondente ao artefato25479f e preservar
+o experimento apenas em build/runtime-inventory-lifo-experiment.mjs.log e
+runtime-inventory-lifo-benchmark.log (ignorados pelo Git). Hash SHA256 do scanner
+atual e do contexto construído:68097f2b3e1c3d7422575c6691ad4d78c2c4baf89a5b65a88ac120198380c514.
+
 **Estado após revisão independente P2, 02/11/2026:** código corrigido para
 inventariar TODO node_modules, regressão Node Windows **46/46**, teste Linux de
 links **1/1** e nova imagem candidata local com gates físicos **4/4**, zero skips.
@@ -542,33 +772,29 @@ adicional de proveniência física e compatibilidade de assets/schema/client e
 runtime antes de cogitar substituição. Não mudar o pin, inferir ownership, migrar
 ou reiniciar a engine real com base apenas nessa ancestralidade.
 
-## Gates que continuam pendentes
+## Checkpoint atual e gates que continuam pendentes
 
-1. Memória Docker e janela serial confirmadas acima. Última amostra host com
-   cerca de 327MiB livres e disco C com 25,39GB livres. Coordenar novo slot antes
-   de qualquer boot/PG, sem parar/remover outros serviços.
-2. Primeiro build/gates sem rede tinham recibo parcial; o rebuild P2 com
-   ALL_NODE_MODULES_V1 e novos gates físicos 4/4 estão documentados acima.
-   Os outputs físicos P2 e o gate prístino posterior receberam revisão
-   independente sem P1/P2 novo. Ainda não há CI/registry, assinatura, boot
-   operacional com schema provisionado ou validação de sessão.
-3. O entrypoint **da imagem final** foi exercitado em rede Docker interna e PG
-   prístino, com P2021 esperado, catálogo selecionado inalterado e zero statements
-   DDL registrados na janela. A falta de tabelas não é prontidão operacional.
-   Os riscos observados de startup (~104s), memória (373,4MiB na amostra) e parada
-   exit137 exigem avaliação antes de qualquer operação. A recusa de captura true
-   não equivale a captura/ACK/custódia duráveis.
-4. Provisionamento/schema, instalação do host, ownership durável e custódia real
-   continuam gates posteriores separados, não implementados por esta receita.
-   Não migrar o banco do lab automaticamente para fazer o teste parecer passar.
+1. Coordenar janela Docker serial antes de novo build/PG. Amostras antigas de
+   RAM/disco neste documento são históricas, não disponibilidade atual.
+2. O artefato f670 teve schema descartável explicitamente provisionado, boot
+   real vazio, HTTP autenticado200, scan completo66788ms e shutdown1461ms/exit0.
+   Seus quatro gates finais de admissão passaram; o leitor final levou160662ms.
+   O P2021/startup~104s/stop137 das seções anteriores é histórico e foi superado
+   nesse caso vazio. Não representa sessão WhatsApp nem prontidão produtiva.
+3. Os dois crashes Linux de custódia usaram módulos da imagem f670 com
+   engineMainImported=false; são separados do boot real. Falta provar o hook
+   de captura no main real, criação de instância e receptor sintético privado.
+   Captura true continua recusada no entrypoint produtivo.
+4. As fontes posteriores têm 11 overlays, corrigem a identidade antes do init,
+   compartilham o host entre avaliações e removem o console incondicional de
+   notify. Regressão focal22/22 GREEN; nova imagem e gates físicos ainda pendentes.
+   Não reutilizar os gates de f670 para certificar essas fontes.
 5. Revisão independente e gates CI do diff antes de qualquer integração da
    candidata. Nenhum novo workflow, publicação ou substituição de engine
    produtiva foi feito. Nenhum número/sessão/mensagem foi ativado.
 
-Não foi executado npm test completo nesta janela limitada pela coordenação da
-raiz. Tampouco foram repetidos testes PostgreSQL/crash ou comprovados os marcos
-50/400/900. A documentação antiga 15-ENGINE descreve o gap anterior de receita;
-este documento atualiza **código/materialização/testes leves/build da imagem e
-gates de recusa do artefato e observação prístina limitada**, mantendo boot
-operacional com schema, instalação/ownership, equivalência produtiva,
-CI/publicação e marcos de escala como pendências explícitas.
+O npm test completo e a revisão de integração são coordenados pela raiz.
+Não foram comprovados os marcos50/400/900, equivalência produtiva, instalação
+do host produtivo, ownership operacional, shutdown de sessões, CI/publicação
+ou assinatura. Os resultados acima são laboratório local e dados sintéticos;
+nenhum número/sessão/mensagem real foi ativado.

@@ -13,7 +13,7 @@ export function automationMessageInput(payload:Record<string,unknown>):Record<st
  * message; IO and delay waits can only be advanced by their own completion.
  */
 export async function promoteAttendanceInput(tx: TenantTransaction, org: string, executionId: string, policy?:GroupPhysicalPolicy): Promise<boolean> {
-  const waiting = (await tx.query<{id:string;nodeId:string;deadline:Date|null;expired:boolean;state:{waiting?:{kind?:string;nodeId?:string;waitId?:string;deadlineAt?:number}};channelId:string;conversationId:string|null;automationId:string;version:number}>(`
+  const waiting = (await tx.query<{id:string;nodeId:string;deadline:Date|null;expired:boolean;state:{waiting?:{kind?:string;nodeId?:string;waitId?:string;deadlineAt?:number;inputConfigVersion?:3}};channelId:string;conversationId:string|null;automationId:string;version:number}>(`
     select w.id,w.node_id as "nodeId",w.deadline_at as deadline,w.deadline_at<=clock_timestamp() as expired,e.state,
       e.channel_id as "channelId",e.conversation_id as "conversationId",e.automation_id as "automationId",e.version
     from automation_waits w join automation_executions e
@@ -27,6 +27,10 @@ export async function promoteAttendanceInput(tx: TenantTransaction, org: string,
     if(state.waitId!==waiting.id||state.kind!=='EVENT'||state.nodeId!==waiting.nodeId||state.deadlineAt!==waiting.deadline?.getTime()&&!(state.deadlineAt===undefined&&waiting.deadline===null))throw new Error('AUTOMATION_INPUT_WAIT_INVALID');
     if(!await runtimeAuthorityAllows(tx,{organizationId:org,channelId:waiting.channelId,conversationId:waiting.conversationId,automationId:waiting.automationId,version:waiting.version,executionId},true,policy))return false;
   }
+  // A queued attachment belonged to an earlier V3 wait. Never turn it into a
+  // textual answer if the next wait uses the historical input/menu contract.
+  if(waiting.state.waiting?.inputConfigVersion!==3)await tx.query(`update automation_events set status='CONSUMED',consumed_at=now()
+    where organization_id=$1 and execution_id=$2 and status='PENDING' and type='MESSAGE' and payload ? 'inputMedia'`,[org,executionId]);
   const event = (await tx.query<{ id:string; event_key:string; payload:Record<string,unknown>;admittedAt:Date|null }>(`
     select id,event_key,payload,admitted_at as "admittedAt" from automation_events where organization_id=$1 and execution_id=$2
       and status='PENDING' and type='MESSAGE' and (NOT $3::boolean OR (admitted_at IS NOT NULL AND ($4::timestamptz IS NULL OR admitted_at<=$4)))

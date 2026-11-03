@@ -1,7 +1,15 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createOriginJournal } from './journal.mjs';
 import { createOriginEngineComposition, snapshotOriginBatch } from './engine-composition.mjs';
-const construction = new AsyncLocalStorage(), capturedWork = new AsyncLocalStorage(), instances = new WeakMap(), names = new Map(), retired = new WeakSet();
+// tsup embeds this module in main while the explicit lab loader imports the
+// inventoried module file. Share only process-local host state across those
+// evaluations; no host is installed until withOriginEngineLabHost is invoked.
+const stateKey = Symbol.for('jrc.evolution.origin.engine-host.v1');
+const state = globalThis[stateKey] ??= Object.freeze({
+  construction: new AsyncLocalStorage(), capturedWork: new AsyncLocalStorage(),
+  instances: new WeakMap(), names: new Map(), retired: new WeakSet(),
+});
+const { construction, capturedWork, instances, names, retired } = state;
 const enabled = () => process.env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED === 'true';
 
 /** Explicit lab-only host. There is intentionally no production ownership installer. */
@@ -42,7 +50,9 @@ export function attachOriginEngineInstance(scope, instance) {
   const entry = { name, id, instance, captureQueue: Promise.resolve(), fanouts: new Set() }, authority = Object.freeze({ instanceName: name, instanceId: id });
   let timer, expired = false;
   const preparing = (async () => {
-    const options = await host.prepareInstance(authority);
+    // Only the explicit trusted laboratory host receives the constructed object;
+    // this is not an HTTP hook or a production ownership installer.
+    const options = await host.prepareInstance(authority, instance);
     if (expired) throw new Error();
     if (options.binding?.instanceName !== name || options.binding?.instanceId !== id) throw new Error('ORIGIN_ENGINE_BINDING_CHANGED');
     const result = await options.pool.query("SELECT current_setting('fsync')='on' AND current_setting('full_page_writes')='on' AND to_regclass('jrc_evolution_origin.events') IS NOT NULL AS ready");

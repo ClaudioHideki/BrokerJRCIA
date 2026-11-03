@@ -77,6 +77,15 @@ export const IntegrationDeliverySummarySchema = z.object({data:z.array(z.object(
   total:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   firstSeenAt:z.iso.datetime(),lastSeenAt:z.iso.datetime(),
 }))});
+export const IntegrationFailureDiagnosticSchema = z.strictObject({
+  version:z.literal(1),
+  phase:z.enum(['TRANSPORT','HTTP_STATUS','RESPONSE_BODY','UNKNOWN']),
+  method:z.enum(['GET','POST','PATCH']).nullable(),
+  httpStatus:z.number().int().min(100).max(599).nullable(),
+  attempt:z.number().int().min(1).max(2147483647),
+  settlement:z.enum(['RETRY_SCHEDULED','FAILED','UNKNOWN']),
+  failedAt:z.iso.datetime(),
+});
 export const IntegrationJobsSchema = z.object({
   data: z.array(
     z.object({
@@ -87,6 +96,9 @@ export const IntegrationJobsSchema = z.object({
       status: z.enum(["PENDING", "HISTORY_PENDING", "RUNNING", "SUCCEEDED", "FAILED", "UNKNOWN"]),
       attempts: z.number().int().nonnegative(),
       lastError: z.string().nullable(),
+      // Optional for clients talking to a server predating migration 0080.
+      // Null means there is no trustworthy structured observation for this job.
+      failureDiagnostic:IntegrationFailureDiagnosticSchema.nullable().optional(),
       operation: z.enum([
         'CREATE_CONTACT','LINK_CONTACT','CREATE_CONVERSATION','SEND_MESSAGE','IMPORT_HISTORY','UPDATE_STATUS',
         'GROUP_FIND_CONTACT','GROUP_CREATE_CONTACT','GROUP_LINK_CONTACT','GROUP_INBOX_POLICY',

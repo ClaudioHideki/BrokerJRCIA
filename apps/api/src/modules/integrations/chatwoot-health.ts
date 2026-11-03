@@ -24,6 +24,12 @@ export function identityStatus(row: HealthRow | undefined): 'UNVERIFIED' | 'CONF
   if (!row?.observed_fingerprint) return 'UNVERIFIED';
   return row.approved_fingerprint === row.observed_fingerprint && !row.identity_error ? 'CONFIRMED' : 'CONFIRMATION_REQUIRED';
 }
+export function connectionIdentityFields(row: HealthRow, live: { revision: number; phone: string | null } | undefined) {
+  const confirmed = live?.revision === row.identity_revision && row.observed_connected && identityStatus(row) === 'CONFIRMED';
+  const phone = confirmed && live?.phone && /^[1-9]\d{6,14}$/.test(live.phone) ? `+${live.phone}` : null;
+  // This is a live provider identity, never persisted in the health ledger. No connection-start timestamp exists here.
+  return { phoneNumber: phone, connectedAt: null };
+}
 export function createChatwootHealth(options: ChatwootHealthOptions) {
   const key = Buffer.from(options.encryptionKey, 'base64');
   if (key.length !== 32 || key.toString('base64') !== options.encryptionKey) throw new Error('INVALID_INTEGRATION_ENCRYPTION_KEY');
@@ -59,7 +65,8 @@ export function createChatwootHealth(options: ChatwootHealthOptions) {
         const locked = (await t.query<HealthRow>('SELECT * FROM chatwoot_connection_health WHERE organization_id=$1 AND channel_id=$2 FOR UPDATE', [org, channel])).rows[0];
         if (locked?.identity_revision !== snapshot?.identity_revision) return undefined;
         await observe(t, org, channel, current);
-        return readChatwootHealth(t, org, mapped.integration_id);
+        const row = await readChatwootHealth(t, org, mapped.integration_id);
+        return row ? { ...row, liveIdentity: { revision: row.identity_revision, phone: current.phone } } : undefined;
       });
     } catch {
       await options.transact(org, t => t.query(`UPDATE chatwoot_connection_health SET observed_connected=false,identity_error='IDENTITY_UNVERIFIED',observed_at=now(),updated_at=now()

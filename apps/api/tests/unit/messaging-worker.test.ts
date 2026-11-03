@@ -5,6 +5,15 @@ import type { TenantTransaction } from '../../src/db/tenant-transaction.js';
 import { AUTOMATION_ORIGIN } from '@jrc/contracts';
 
 describe('composição do worker durável', () => {
+  it.each(['image','document'])('routes a canonical %s message by internal identity without transporting its media URL',async kind=>{
+    const events:unknown[]=[];
+    const repository={async claimBotTurn(){return{message:{id:'message',content:{type:'MEDIA',mediaId:'media',kind,fileName:'private-name',caption:'caption'}},channel:{id:'channel'},conversation:{id:'conversation',botPublicId:'automation',botOriginReference:AUTOMATION_ORIGIN}};},
+      async completeBotTurn(){events.push('completed');},async failBotTurn(){events.push('failed');},async claimOutgoing(){return[];}} as unknown as MessagingRepository;
+    await createMessagingWorker({repository,automations:{async route(org,event){events.push({org,...event});}},transact:(_org,work)=>work({} as TenantTransaction),
+      async resolveMetaClient(){throw Error('unexpected');},async resolveTypebotClient(){throw Error('unexpected');}}).runOnce('tenant');
+    expect(events).toEqual([{org:'tenant',channelId:'channel',conversationId:'conversation',eventKey:'message:message',text:'',mediaMessageId:'message'},'completed']);
+    expect(JSON.stringify(events)).not.toContain('private-name');expect(JSON.stringify(events)).not.toContain('caption');
+  });
   it('preserves the runtime pause in the bot claim while still processing ordinary outbound work',async()=>{
     const repository={
       async claimBotTurn(_tx:unknown,input:{automationRuntimeEnabled?:boolean}){expect(input.automationRuntimeEnabled).toBe(false);return null;},

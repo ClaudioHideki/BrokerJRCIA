@@ -33,9 +33,12 @@ export async function completeEngineBuildContext(directory, manifest) {
     await cp(join(vendor, path), join(directory, path));
   }
   await mkdir(join(directory, 'jrc-image'));
-  for (const name of ['entrypoint.mjs', 'record-build.mjs', 'artifacts.mjs']) {
+  for (const name of ['entrypoint.mjs', 'record-build.mjs', 'artifacts.mjs', 'supervisor.mjs', 'main-child.mjs']) {
     await cp(join(recipe, name), join(directory, 'jrc-image', name));
   }
+  // The guard uses its own trusted lifecycle copy before inventory, just like
+  // artifacts.mjs. No jrc-origin application module runs before its hash check.
+  await cp(fileURLToPath(new URL('../src/runtime-lifecycle.mjs', import.meta.url)), join(directory, 'jrc-image/runtime-lifecycle.mjs'));
   for (const name of ['Dockerfile', '.dockerignore']) await cp(join(recipe, name), join(directory, name));
   const inputs = await inventoryTree(directory);
   manifest.buildContext = {

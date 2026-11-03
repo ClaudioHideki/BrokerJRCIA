@@ -30,6 +30,7 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
   const pair = vi.fn(async () => ({ type: 'QR_CODE', encoding: 'BASE64', value: 'synthetic-ephemeral-qr', expiresAt: new Date(Date.now() + 60000).toISOString() }));
   const disconnect = vi.fn(async () => undefined);
   let providerState = 'DISCONNECTED', providerPhone: string | null = null, rejectRemote = false;
+  let duringStatusRead: (() => Promise<void>) | undefined;
   const key = Buffer.alloc(32, 8).toString('base64'), vault = createIntegrationSecrets(key);
   const transient = new Map<string, string>();
   const encryptedPairActions = createPairActionStore({ encryptionKey: key, client: {
@@ -75,7 +76,7 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
         throw new Error('UNEXPECTED_FIXTURE_URL');
       } };
     health = createChatwootHealth({ transact, encryptionKey: key, readIdentity: async () => ({ connected: providerState === 'CONNECTED', phone: providerPhone }) });
-    const instances = createInstanceService({ repository: createPostgresInstanceRepository(), providers: { getProvider: () => ({ beginConnection: pair, disconnect, getStatus: async () => providerState }) as unknown as WhatsAppProvider }, runInOrganizationTransaction: transact, writeAudit: writeTenantAudit });
+    const instances = createInstanceService({ repository: createPostgresInstanceRepository(), providers: { getProvider: () => ({ beginConnection: pair, disconnect, getStatus: async () => { await duringStatusRead?.(); return providerState; } }) as unknown as WhatsAppProvider }, runInOrganizationTransaction: transact, writeAudit: writeTenantAudit });
     chatwoot = createChatwootService(options);
     control = createChatwootControlService({ ...options, auth, instances, health, chatwoot, pairActions });
     principal = await auth.authorize({ kind: 'JWT', organizationId: org, actorId: owner, role: 'OWNER' }, 'chatwoot:manage');
@@ -137,6 +138,17 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
       await transact(org, t => t.query("UPDATE chatwoot_connections SET status='READY' WHERE organization_id=$1 AND id=$2", [org, integration]));
     }
   });
+  it('projects a pause committed while provider status is in flight instead of returning stale READY', async () => {
+    duringStatusRead = async () => {
+      await transact(org, t => t.query("UPDATE chatwoot_connections SET status='DISABLED' WHERE organization_id=$1 AND id=$2", [org, integration]));
+    };
+    try {
+      expect(await control.status(principal, integration)).toMatchObject({ integrationStatus: 'DISABLED' });
+    } finally {
+      duringStatusRead = undefined;
+      await transact(org, t => t.query("UPDATE chatwoot_connections SET status='READY' WHERE organization_id=$1 AND id=$2", [org, integration]));
+    }
+  });
   it('requires explicit admin approval of the observed number and blocks a changed identity before outgoing claims', async () => {
     providerState = 'CONNECTED'; providerPhone = '15555550100';
     let status = await control.status(principal, integration);
@@ -145,6 +157,7 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
     await control.confirmIdentity(principal, integration, status.identityRevision, randomUUID());
     status = await control.status(principal, integration);
     expect(status.identityStatus).toBe('CONFIRMED'); expect(status.identityApproved).toBe(true); expect(status.transportStatus).toBe('UNVERIFIED');
+    expect(status).toMatchObject({ phoneNumber: '+15555550100', connectedAt: null, lastSyncAt: null });
     const repo = createPostgresMessagingRepository();
     await transact(org, async t => {
       const contact = await repo.upsertContact(t, { id: randomUUID(), organizationId: org, externalId: '15555550199', displayName: null, consentStatus: 'UNKNOWN', consentUpdatedAt: null });
@@ -154,7 +167,7 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
     const claimed = await transact(org, t => repo.claimOutgoing(t, { organizationId: org, workerId: randomUUID(), now: new Date(), leaseMs: 120000, limit: 1 }));
     expect(claimed).toHaveLength(1);
     providerPhone = '15555550101'; await health.refresh(org, channel);
-    expect(await control.status(principal, integration)).toMatchObject({ identityStatus: 'CONFIRMATION_REQUIRED', transportStatus: 'DEGRADED' });
+    expect(await control.status(principal, integration)).toMatchObject({ identityStatus: 'CONFIRMATION_REQUIRED', transportStatus: 'DEGRADED', phoneNumber: null });
     expect(await transact(org, t => repo.validateClaim(t, { organizationId: org, messageId: claimed[0]!.message.id, leaseToken: claimed[0]!.leaseToken })))
       .toMatchObject({ eligible: false, reason: 'IDENTITY_CONFIRMATION_REQUIRED' });
     expect((await transact(org, t => t.query('SELECT state FROM messaging_messages WHERE id=$1', [claimed[0]!.message.id]))).rows[0].state).toBe('ACCEPTED');

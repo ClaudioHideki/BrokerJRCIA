@@ -170,6 +170,7 @@ describe('dados reproduzíveis da auditoria de segurança', () => {
     const currentExpectedPolicy = route => {
       const key = route.method+' '+route.path;
       if(key==='GET /v1/automations')return {...withoutLocation(route),requestSchemas:['query:cursor','query:pageSize']};
+      if(key==='GET /v1/executions')return {...withoutLocation(route),requestSchemas:['query:automationId','query:channelId','query:cursor','query:from','query:nodeId','query:pageSize','query:search','query:status','query:to']};
       if(key==='GET /v1/channels')return {...withoutLocation(route),requestSchemas:['query:cursor','query:includeArchived','query:pageSize']};
       if(key==='GET /v1/platform/organizations')return {...withoutLocation(route),requestSchemas:['query:cursor']};
       if(['PUT /v1/channels/{id}/automation','PUT /v1/channels/{id}/destination'].includes(key))return {...withoutLocation(route),permission:'OWNER_ADMIN'};

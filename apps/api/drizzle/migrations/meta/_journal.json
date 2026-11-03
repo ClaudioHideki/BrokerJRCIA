@@ -554,6 +554,34 @@
       "when": 1794350400000,
       "tag": "0079_partner_persistence_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1794436800000,
+      "tag": "0080_integration_failure_diagnostics",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1794523200000,
+      "tag": "0081_automation_execution_inspection",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1794609600000,
+      "tag": "0082_flow_execution_capability",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1794696000000,
+      "tag": "0083_central_flow_media_references",
+      "breakpoints": true
     }
   ]
 }

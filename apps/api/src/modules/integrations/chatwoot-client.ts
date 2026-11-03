@@ -59,13 +59,29 @@ const flowBot = z.object({ id: integer, name: z.string(), outgoing_url: z.string
   secret: z.string().optional(), access_token: z.union([z.string(), z.object({ token: z.string() })]).optional(),
 }).transform(({ access_token, ...bot }) => ({ ...bot, token: typeof access_token === 'string' ? access_token : access_token?.token }));
 export class ChatwootError extends Error {
+  readonly diagnostic: Readonly<{
+    phase: 'TRANSPORT' | 'HTTP_STATUS' | 'RESPONSE_BODY' | 'UNKNOWN';
+    method: 'GET' | 'POST' | 'PATCH' | null;
+    httpStatus: number | null;
+  }>;
   constructor(
     readonly code: string,
     readonly retrySafe = false,
     readonly uncertain = false,
     readonly httpStatus?: number,
+    diagnostic?: unknown,
   ) {
     super(code);
+    const value = typeof diagnostic === 'object' && diagnostic !== null
+      ? diagnostic as Record<string, unknown> : {};
+    const phase = value.phase;
+    const method = value.method;
+    const status = value.httpStatus ?? httpStatus;
+    this.diagnostic = Object.freeze({
+      phase: phase === 'TRANSPORT' || phase === 'HTTP_STATUS' || phase === 'RESPONSE_BODY' ? phase : 'UNKNOWN',
+      method: method === 'GET' || method === 'POST' || method === 'PATCH' ? method : null,
+      httpStatus: typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
+    });
   }
 }
 type Options = {
@@ -134,10 +150,14 @@ export class ChatwootClient {
         safe ? "CHATWOOT_UNAVAILABLE" : "CHATWOOT_OUTCOME_UNKNOWN",
         safe,
         !safe,
+        undefined,
+        { phase: 'TRANSPORT', method },
       );
     }
     if (!response.ok) {
-      await response.body?.cancel();
+      // Releasing an unread rejected body must not replace the observed status
+      // with an arbitrary transport/stream error or change retry semantics.
+      try { await response.body?.cancel(); } catch { /* preserve bounded HTTP evidence */ }
       const retrySafe =
         response.status === 429 || (safe && response.status >= 500);
       const uncertain =
@@ -147,6 +167,7 @@ export class ChatwootClient {
         retrySafe,
         uncertain,
         response.status,
+        { phase: 'HTTP_STATUS', method, httpStatus: response.status },
       );
     }
     try {
@@ -167,7 +188,8 @@ export class ChatwootClient {
       if (allowEmpty && size === 0) return undefined;
       return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
     } catch {
-      throw new ChatwootError("CHATWOOT_INVALID_RESPONSE", safe, !safe);
+      throw new ChatwootError("CHATWOOT_INVALID_RESPONSE", safe, !safe, response.status,
+        { phase: 'RESPONSE_BODY', method, httpStatus: response.status });
     }
   }
   private account(id: number) {

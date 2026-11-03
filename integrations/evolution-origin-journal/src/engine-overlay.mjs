@@ -3,6 +3,10 @@ import { parse } from '@babel/parser';
 import { PINNED_SERVICE_LF_SHA256 } from './overlay.mjs';
 import { PINNED_WEBHOOK_LF_SHA256, preparePinnedWebhookOwnership } from './webhook-overlay.mjs';
 export const ENGINE_SOURCE_HASHES = Object.freeze({
+  'src/main.ts': '070d5954999a0894f2a4a11928dfcac0b4818b485cfb08f9c5402468a4f9f306',
+  'src/api/repository/repository.service.ts': 'a1daf5dd69bc990353e7f0d613e35774c8aa2b266aa1787333ad415af76e9bbf',
+  'src/cache/rediscache.client.ts': '22bb94d835ccf91d3bb4567d55c9e120eeec1d82e860fa004f598e794d389843',
+  'src/api/controllers/instance.controller.ts': 'b0921eac4e202344e9c3100754965f1b97db94faf74b7b2089ac7cca16d5713f',
   'src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts': PINNED_SERVICE_LF_SHA256,
   'src/api/integrations/channel/channel.controller.ts': '2cfb9244569ead825f004846a257da3a01669e5e44363a7060f001eb81dbaf16',
   'src/api/services/channel.service.ts': 'ab8b495c07906cf66f083186a0fd6f5c4da7847b2e2492e72b28744b1e3491be',
@@ -31,6 +35,9 @@ export function preparePinnedEngineSources(input) {
   }
   const servicePath = 'src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts';
   let service = sources[servicePath];
+  const rawConsole = '          console.log(messageRaw);';
+  if (service.split(rawConsole).length !== 2) throw new Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
+  service = service.replace(rawConsole, '          // Do not write message payloads to unconditional process output.');
   const queue = nodes(ast(service), n => n.type === 'ExpressionStatement' && service.slice(n.start,n.end).startsWith('this.eventProcessingQueue = this.eventProcessingQueue.then'));
   if (queue.length !== 1) throw new Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
   const statement = queue[0];
@@ -64,5 +71,37 @@ export function preparePinnedEngineSources(input) {
   // Attached host owns the immutable opt-in. A mutable global flag must never bypass its guard.
   webhook = webhook.replace(globalFlagShortcut, '');
   sources[webhookPath] = `import { decideOriginWebhook } from '@jrc-origin/engine-host.mjs';\n${webhook}`;
+  const replaceOnce = (source, before, after) => {
+    if (source.split(before).length !== 2) throw new Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
+    return source.replace(before, after);
+  };
+  const instancePath = 'src/api/controllers/instance.controller.ts';
+  let instanceController = sources[instancePath];
+  const assignIdentity = '      const instanceId = v4();\n\n      instanceData.instanceId = instanceId;\n\n';
+  instanceController = replaceOnce(instanceController, assignIdentity, '');
+  instanceController = replaceOnce(instanceController, '      const instance = channelController.init(instanceData, {',
+    `${assignIdentity}      const instance = channelController.init(instanceData, {`);
+  sources[instancePath] = instanceController;
+  const mainPath = 'src/main.ts';
+  let main = sources[mainPath];
+  main = replaceOnce(main, 'async function bootstrap() {', 'async function bootstrap() {\n  installRuntimeLifecycle();');
+  main = replaceOnce(main, '  eventManager.init(server);', '  registerRuntimeHttp(server);\n  eventManager.init(server);');
+  main = replaceOnce(main, '  initWA().catch((error) => {', '  const startup = initWA().catch((error) => {');
+  main = replaceOnce(main, '  onUnexpectedError();', `  registerRuntimeDrain(async () => {
+    await startup;
+    // Session/socket teardown is a separate gate. Never logout/delete a session
+    // or report a graceful drain merely because HTTP/DB have been closed.
+    if (Object.keys(waMonitor.waInstances).length) throw Error('ORIGIN_ENGINE_SESSION_DRAIN_UNPROVEN');
+  });
+  onUnexpectedError();`);
+  main = replaceOnce(main, "  server.listen(httpServer.PORT, () => logger.log(httpServer.TYPE.toUpperCase() + ' - ON: ' + httpServer.PORT));",
+    "  server.listen(httpServer.PORT, () => { markRuntimeReady(); logger.log(httpServer.TYPE.toUpperCase() + ' - ON: ' + httpServer.PORT); });");
+  sources[mainPath] = `import { installRuntimeLifecycle, registerRuntimeHttp, registerRuntimeDrain, markRuntimeReady } from '@jrc-origin/runtime-lifecycle.mjs';\n${main}`;
+  const repositoryPath = 'src/api/repository/repository.service.ts';
+  sources[repositoryPath] = `import { registerRuntimeResource } from '@jrc-origin/runtime-lifecycle.mjs';\n${replaceOnce(sources[repositoryPath], '    super();', '    super();\n    registerRuntimeResource(this, () => this.onModuleDestroy());')}`;
+  const redisPath = 'src/cache/rediscache.client.ts';
+  sources[redisPath] = `import { registerRuntimeResource } from '@jrc-origin/runtime-lifecycle.mjs';\n${replaceOnce(sources[redisPath], "      this.client.on('connect', () => {", `      const client = this.client;
+      registerRuntimeResource(client, async () => { if (client.isOpen) await client.quit(); });
+      this.client.on('connect', () => {`)}`;
   return Object.freeze({ sources: Object.freeze(sources), manifest: Object.freeze(Object.entries(sources).map(([path,source]) => Object.freeze({ path, originalLfSha256: ENGINE_SOURCE_HASHES[path], stagedLfSha256: hash(source) }))), deliveryOwnership: 'UNPROVEN' });
 }

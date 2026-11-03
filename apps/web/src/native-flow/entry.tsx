@@ -1,3 +1,4 @@
+import {NativeExecutions,NativeExecutionDetail} from './Executions.js';
 import { createRoot } from 'react-dom/client';
 import { useMemo, type CSSProperties } from 'react';
 import { MemoryRouter, Route, Routes, useParams } from 'react-router';
@@ -19,14 +20,16 @@ function Editor({ options }: { options: NativeFlowMountOptions }) {
   const client = useMemo(() => createNativeEditorTransport({ ...options, rootAutomationId: id }) as ApiClient, [options, id]);
   return <AutomationEditorSurface key={id} client={client} organizationId={options.context.organizationId}
     administrator={options.context.scopes.includes('flow:edit')} canPublish={options.context.scopes.includes('flow:publish')}
-    scopeKey={`${options.accountId}:${options.context.actorId}:${options.handleId}`} bindingPath={`/automations/${id}/bind`} />;
+    canValidate={options.context.scopes.includes('flow:edit')}
+    scopeKey={`${options.accountId}:${options.context.actorId}:${options.handleId}`} bindingPath={`/automations/${id}/bind`} executionPanel={options.context.scopes.includes('flow:executions:read')?<NativeExecutions client={client} organizationId={options.context.organizationId} accountId={options.accountId} automationId={id}/>:undefined} />;
 }
+function NativeExecutionRoute({options}:{options:NativeFlowMountOptions}){const {id='',executionId=''}=useParams();const client=useMemo(()=>createNativeEditorTransport({...options,rootAutomationId:id}) as ApiClient,[options,id]);return options.context.scopes.includes('flow:executions:read')?<NativeExecutionDetail client={client} organizationId={options.context.organizationId} accountId={options.accountId} automationId={id} executionId={executionId}/>:<p role="alert">A sessão não possui permissão para consultar execuções.</p>;}
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function mountNativeFlowEditor(element: HTMLElement, options: NativeFlowMountOptions): () => void {
   const context = options.context;
   if (context.accountId !== options.accountId || !uuid.test(context.organizationId) ||
       !Number.isSafeInteger(context.actorId) || context.actorId < 1 || !Array.isArray(context.scopes) ||
-      !context.scopes.includes('flow:read') || context.scopes.some(scope => !['flow:read', 'flow:edit', 'flow:publish', 'flow:bind'].includes(scope))) {
+      !context.scopes.includes('flow:read') || context.scopes.some(scope => !['flow:read', 'flow:edit', 'flow:publish', 'flow:bind', 'flow:executions:read'].includes(scope))) {
     throw new Error('FLOW_INVALID_CONTEXT');
   }
   const expires = Date.parse(context.expiresAt);
@@ -54,6 +57,7 @@ export function mountNativeFlowEditor(element: HTMLElement, options: NativeFlowM
     <Route path="/automations" element={<NativeWorkspace client={client} canEdit={context.scopes.includes('flow:edit')} />} />
     <Route path="/automations/new" element={<NativeNewFlow client={client} canEdit={context.scopes.includes('flow:edit')} />} />
     <Route path="/automations/:id/edit" element={<Editor options={bound} />} />
+    <Route path="/automations/:id/executions/:executionId" element={<NativeExecutionRoute options={bound}/>} />
     <Route path="/automations/:id/versions" element={<NativeVersions client={client} />} />
     <Route path="/automations/:id/bind" element={<NativeBinding options={bound} />} />
   </Routes></MemoryRouter></div>);

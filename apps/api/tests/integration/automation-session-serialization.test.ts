@@ -53,11 +53,60 @@ describe('serial conversation input persistence', () => {
     expect(events.rows).toHaveLength(3);
     expect(events.rows.every(e => e.status === 'CONSUMED')).toBe(true);
   });
+  it('pages execution metadata with full-period totals, tenant isolation and historical simulation after publication',async()=>{
+    const graph={nodes:[node('start','start'),node('end','end')],edges:[edge('start','end')]};
+    const t=await setup(graph),other=await setup(graph),ids:string[]=[];
+    for(let i=0;i<3;i++){const started=await t.route('Mensagem '+i);ids.push(started.execution!.id);await t.worker().runOnce(t.org);}
+    await other.route('Outra empresa');await other.worker().runOnce(other.org);
+    const query={from:new Date(Date.now()-86400000).toISOString(),to:new Date(Date.now()+86400000).toISOString(),pageSize:2,status:'COMPLETED' as const};
+    const first=await t.worker().list(t.org,undefined,query);if(!('metrics' in first))throw Error('INSPECTION_RESULT_REQUIRED');
+    expect(first.metrics).toMatchObject({total:3,completed:3,completionRate:100});expect(first.data).toHaveLength(2);
+    const second=await t.worker().list(t.org,undefined,{...query,cursor:first.nextCursor!});if(!('metrics' in second))throw Error('INSPECTION_RESULT_REQUIRED');
+    expect(second.data).toHaveLength(1);expect(second.metrics.total).toBe(3);
+    expect(new Set([...first.data,...second.data].map(row=>row.id))).toEqual(new Set(ids));
+    await expect(Promise.resolve().then(()=>t.worker().list(other.org,undefined,{...query,cursor:first.nextCursor!}))).rejects.toMatchObject({code:'AUTOMATION_CURSOR_INVALID'});
+    const saved=await t.service.get(t.org,t.draft.id),updated={nodes:[node('start','start'),node('new','message',{text:'Nova versão'}),node('end','end')],edges:[edge('start','new'),edge('new','end')]};
+    const draft=await t.service.save(t.org,t.draft.id,{name:'Versão nova',graph:updated,revision:saved.draft.revision});await t.service.publish(t.org,t.draft.id,draft.draft.revision);
+    expect(await t.worker().playground(t.org,ids[0]!)).toMatchObject({text:'Mensagem 0',version:1});
+    const replay=await t.worker().simulateHistorical(t.org,ids[0]!,{text:'Replay'});
+    expect(replay).toMatchObject({status:'COMPLETED',effects:[],source:{version:1}});
+    expect((await lab.database.pool.query('select count(*)::int as n from automation_executions where organization_id=$1',[t.org])).rows[0].n).toBe(3);
+  });
   it('deduplicates an input delivered concurrently without creating a second execution', async () => {
     const t = await setup(), key = randomUUID();
     const results = await Promise.all([t.route('Olá', key), t.route('Olá', key)]);
     expect(results.filter(r => r.duplicate)).toHaveLength(1);
     expect((await lab.database.pool.query('select count(*)::int as n from automation_executions where organization_id=$1', [t.org])).rows[0].n).toBe(1);
+  });
+  it('uses the published keyword policy only for initial admission and enforces once-per-conversation after completion',async()=>{
+    const graph=structuredClone(questionGraph);
+    graph.nodes[0]!.data={entryConfigVersion:1,trigger:'MESSAGE_RECEIVED',reentry:'ONCE_PER_CONVERSATION',
+      keywords:{mode:'EXACT',terms:['orçamento'],quantifier:'ANY',ignoreCase:true,ignoreAccents:true}};
+    const t=await setup(graph);
+    expect(await t.route('Suporte')).toMatchObject({execution:null});
+    const first=await t.route('ORCAMENTO');expect(first.execution).not.toBeNull();
+    await t.worker().runOnce(t.org);
+    // Replies continue the pinned execution, even when they do not match entry keywords.
+    await t.route('Nome sintético');await t.worker().runOnce(t.org);
+    await t.route('Setor sintético');await t.worker().runOnce(t.org);
+    expect(await t.worker().get(t.org,first.execution!.id)).toMatchObject({status:'COMPLETED'});
+    const attempts=await Promise.all([t.route('orçamento'),t.route('ORÇAMENTO')]);
+    expect(attempts.every(attempt=>attempt.execution===null)).toBe(true);
+    expect((await lab.database.pool.query('select count(*)::int as n from automation_executions where organization_id=$1',[t.org])).rows[0].n).toBe(1);
+    const saved=await t.service.get(t.org,t.draft.id),draft=structuredClone(questionGraph);
+    // Draft changes cannot change the already bound immutable admission policy.
+    await t.service.save(t.org,t.draft.id,{name:'Rascunho sem filtro',graph:draft,revision:saved.draft.revision});
+    expect(await t.route('Outro início')).toMatchObject({execution:null});
+  });
+  it('persists typed input attempts through worker replacement and keeps the normalized number typed',async()=>{
+    const graph={nodes:[node('start','start'),node('capture','input',{inputConfigVersion:2,inputType:'number',maxAttempts:2,variable:'answer',timeoutSeconds:60}),node('end','end')],
+      edges:[edge('start','capture'),edge('capture','end'),edge('capture','end','exhausted'),edge('capture','end','timeout')]};
+    const t=await setup(graph),first=await t.route('Oi');await t.worker().runOnce(t.org);
+    await t.route('inválido','typed-invalid');await t.worker().runOnce(t.org);
+    expect(await t.worker().get(t.org,first.execution!.id)).toMatchObject({status:'WAITING',state:{waiting:{invalidAttempts:1}}});
+    expect(await t.route('inválido','typed-invalid')).toMatchObject({duplicate:true});
+    await t.route('12,5','typed-valid');await t.worker().runOnce(t.org);
+    expect(await t.worker().get(t.org,first.execution!.id)).toMatchObject({status:'COMPLETED',state:{variables:{answer:12.5}}});
   });
   it('persists the bounded menu counter across workers and does not count a duplicate event twice',async()=>{
     const graph={nodes:[node('start','start'),node('menu','menu',{text:'Escolha',menuConfigVersion:1,maxAttempts:3,

@@ -1,7 +1,7 @@
 import { AttendanceError } from '../../modules/attendance/types.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { AUTOMATION_NODE_CATALOG_V1, AutomationGraphV1Schema, IdempotencyHeadersSchema, ActionResourceWriteSchema,
+import { AutomationExecutionQuerySchema,AUTOMATION_NODE_CATALOG_V1, AutomationGraphV1Schema, IdempotencyHeadersSchema, ActionResourceWriteSchema,
   ActionCatalogPageSchema, AutomationResourceChannelsSchema, AutomationMediaAssetSchema, nodeDiagnosticsToStrings, type NodeDiagnostic } from '@jrc/contracts';
 import { MediaError, SUPPORTED_UPLOAD_MIME_TYPES } from '@jrc/providers';
 import {tenantOperationalProblem} from '../../modules/tenancy/operational-limits.js';
@@ -83,8 +83,11 @@ export async function registerAutomationRoutes(app:FastifyInstance,options:Autom
   api.get('/v1/automations/:id/bindings',{preHandler:read,schema:{params,querystring:empty}},request=>options.service.bindings(org(request),request.params.id));
   api.post('/v1/automations/:id/bindings',{preHandler:write,schema:{params,headers:IdempotencyHeadersSchema,querystring:empty,body:z.strictObject({expectedOwnerRevision:z.number().int().nonnegative(),channelId:z.uuid(),version:z.number().int().positive().optional(),humanDestinationId:z.uuid().nullable().optional()})}},async(request,reply)=>reply.code(201).send(await options.service.bind(org(request),request.params.id,{expectedOwnerRevision:request.body.expectedOwnerRevision,channelId:request.body.channelId,...(request.body.version===undefined?{}:{version:request.body.version}),...(request.body.humanDestinationId===undefined?{}:{humanDestinationId:request.body.humanDestinationId})})));
   api.patch('/v1/automations/:id/bindings/:bindingId',{preHandler:write,schema:{params:bindingParams,querystring:empty,body:z.strictObject({expectedOwnerRevision:z.number().int().nonnegative(),status:z.enum(['ACTIVE','PAUSED','DISABLED']),revision:z.number().int().positive()})}},request=>options.service.setBindingStatus(org(request),request.params.bindingId,request.body,request.params.id));
-  api.get('/v1/executions',{preHandler:read,schema:{querystring:z.strictObject({automationId:z.uuid().optional()})}},request=>options.executions.list(org(request),request.query.automationId));
+  api.get('/v1/executions',{preHandler:read,schema:{querystring:AutomationExecutionQuerySchema}},request=>request.query.from&&request.query.to
+    ?options.executions.list(org(request),request.query.automationId,request.query):options.executions.list(org(request),request.query.automationId));
   api.get('/v1/executions/:id',{preHandler:read,schema:{params,querystring:empty}},request=>options.executions.get(org(request),request.params.id));
+  api.get('/v1/executions/:id/playground',{preHandler:write,schema:{params,querystring:empty}},request=>options.executions.playground(org(request),request.params.id));
+  api.post('/v1/executions/:id/simulate',{preHandler:write,schema:{params,querystring:empty,body:SimulationInputSchema}},request=>options.executions.simulateHistorical(org(request),request.params.id,request.body));
   api.post('/v1/executions/:id/cancel',{preHandler:write,schema:{params,querystring:empty,body:empty}},request=>options.executions.cancel(org(request),request.params.id));
   api.post('/v1/executions/:id/retry',{preHandler:write,schema:{params,headers:IdempotencyHeadersSchema,querystring:empty,body:empty}},request=>options.executions.retry(org(request),request.params.id));
   api.post('/v1/executions/:id/reconcile',{preHandler:write,schema:{params,headers:IdempotencyHeadersSchema,querystring:empty,body:z.strictObject({outboxId:z.uuid(),outcome:z.enum(['CONFIRMED_SENT','CONFIRMED_NOT_SENT','UNRESOLVED']),evidenceCode:z.string().regex(/^[A-Z][A-Z0-9_]{2,79}$/),providerReference:z.string().max(300).optional()})}},request=>options.executions.reconcile(org(request),request.params.id,request.authentication!.actorId!,{outboxId:request.body.outboxId,outcome:request.body.outcome,evidenceCode:request.body.evidenceCode,...(request.body.providerReference===undefined?{}:{providerReference:request.body.providerReference})}));

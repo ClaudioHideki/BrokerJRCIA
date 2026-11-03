@@ -15,11 +15,14 @@ import type { HandoffReadiness, PreparedHandoffReadiness } from '../attendance/h
 import { readAttendanceDiagnostic } from '../attendance/diagnostics.js';
 import { unknownOutboxDiagnostic } from './outbox-diagnostics.js';
 import {AutomationError} from './errors.js';
+import {readCanonicalInputMedia,readCanonicalCentralInputMedia} from './media-capture.js';
 import {prepareSubflowSnapshot,type SubflowSnapshot} from './subflow-dependencies.js';
 import {assertAiPolicies,readAiCredentialCatalog} from './ai-policy.js';
 import {assertHttpQueryPolicies,readHttpCredentialCatalog} from './http-query-policy.js';
 import {createConversationResourceService,assertConversationResourcePolicies,type ConversationCatalogPort} from './conversation-resources.js';
 import type {MediaStore} from '../messaging/media-store.js';
+import type {AutomationExecutionQuery} from '@jrc/contracts';
+import {prepareExecutionSearch,readExecutionPage} from './execution-inspection.js';
 
 export {AutomationError} from './errors.js';
 export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean;runtimeReady?(org:string):Promise<boolean>;handoffReadiness?:HandoffReadiness;media?:Pick<MediaStore,'writeUpload'|'read'>;conversationCatalog?:ConversationCatalogPort;resourceAuthorization?:(tx:TenantTransaction,org:string,root:string,channel:string)=>Promise<void>}
@@ -229,15 +232,21 @@ export function createAutomationService(options:AutomationServiceOptions){
 }
 
 export type AutomationService=ReturnType<typeof createAutomationService>;
-export interface RouteAutomationEvent {channelId:string;conversationId?:string|null;eventKey:string;text:string;payload?:Record<string,unknown>}
+export interface RouteAutomationEvent {channelId:string;conversationId?:string|null;eventKey:string;text:string;payload?:Record<string,unknown>;mediaMessageId?:string;centralMedia?:{type:'MEDIA';referenceId:string}}
 export function createEventRouter(options:AutomationServiceOptions){
   const repository=options.repository??createPostgresAutomationRepository();
   // Durable ingress already owns the channel lock. Reuse its transaction instead
   // of opening another connection which would wait on the caller's own lock.
   const routeWithinTransaction=async(tx:TenantTransaction,org:string,event:RouteAutomationEvent)=>{
     if(options.enabled===false)return {duplicate:false,execution:null};
-    const eventId=randomUUID();const inserted=await repository.insertEvent(tx,{org,id:eventId,eventKey:event.eventKey,type:'MESSAGE',payload:event.payload??{text:event.text}});if(!inserted)return {duplicate:true,execution:null};
-    const routed=await repository.routeEvent(tx,{org,eventId,executionId:randomUUID(),correlationId:randomUUID(),channelId:event.channelId,conversationId:event.conversationId??null,eventKey:event.eventKey,input:{text:event.text,eventType:'MESSAGE',...(event.payload??{})}});
+    const {inputMedia:_untrustedMedia,centralMediaReferenceId:_untrustedReference,...publicPayload}=event.payload??{};
+    if(event.centralMedia&&event.mediaMessageId)throw new AutomationError('AUTOMATION_INPUT_MEDIA_NOT_FOUND',404);
+    const media=event.centralMedia?await readCanonicalCentralInputMedia(tx,org,event.channelId,event.conversationId??null,event.centralMedia):
+      event.mediaMessageId===undefined?undefined:await readCanonicalInputMedia(tx,org,event.channelId,event.conversationId??null,event.mediaMessageId);
+    const input={...publicPayload,text:media?'':event.text,eventType:'MESSAGE',...(media?{inputMedia:media,
+      ...(event.centralMedia?{centralMediaReferenceId:event.centralMedia.referenceId}:{messageId:event.mediaMessageId})}:{})};
+    const eventId=randomUUID();const inserted=await repository.insertEvent(tx,{org,id:eventId,eventKey:event.eventKey,type:'MESSAGE',payload:input});if(!inserted)return {duplicate:true,execution:null};
+    const routed=await repository.routeEvent(tx,{org,eventId,executionId:randomUUID(),correlationId:randomUUID(),channelId:event.channelId,conversationId:event.conversationId??null,eventKey:event.eventKey,input});
     return routed?{duplicate:false,execution:execution(routed.execution),resumed:routed.resumed}:{duplicate:false,execution:null};
   };
   return {routeWithinTransaction,route:(org:string,event:RouteAutomationEvent)=>options.enabled===false?Promise.resolve({duplicate:false,execution:null}):options.transact(org,tx=>routeWithinTransaction(tx,org,event))};
@@ -246,8 +255,31 @@ export function createEventRouter(options:AutomationServiceOptions){
 export function createExecutionService(options:AutomationServiceOptions){
   const repository=options.repository??createPostgresAutomationRepository();
   const resolve=async(tx:TenantTransaction,org:string,id:string,v:number)=>{const row=await repository.getVersion(tx,org,id,v);if(!row)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return {automationId:id,version:v,graph:row.graph,runtimeStateVersion:row.runtimeStateVersion??1};};
+  const historical=async(tx:TenantTransaction,org:string,id:string)=>{
+    await requireAutomationDraftAccess(tx,org);
+    const execution=await repository.getExecution(tx,org,id);if(!execution)throw new AutomationError('AUTOMATION_EXECUTION_NOT_FOUND',404);
+    const root=await resolve(tx,org,execution.automationId,execution.version);
+    return {execution,root};
+  };
   return {
-    list:(org:string,automationId?:string)=>options.transact(org,async tx=>({data:(await repository.listExecutions(tx,org,automationId)).map(execution)})),
+    playground:(org:string,id:string)=>options.transact(org,async tx=>{
+      const {execution}=await historical(tx,org,id);
+      const initial=(await tx.query<{text:string|null}>(`select payload->>'text' as text from automation_events
+        where organization_id=$1 and execution_id=$2 and type='MESSAGE' order by queue_sequence limit 1`,[org,id])).rows[0]?.text;
+      if(typeof initial!=='string'||initial.length>4096)throw new AutomationError('AUTOMATION_SIMULATION_INITIAL_INPUT_UNAVAILABLE',409);
+      return {executionId:id,automationId:execution.automationId,version:execution.version,text:initial,clock:iso(execution.startedAt)};
+    }),
+    simulateHistorical:(org:string,id:string,input:SimulationInput)=>options.transact(org,async tx=>{
+      const {execution,root}=await historical(tx,org,id);
+      const dependencies=await prepareSubflowSnapshot(tx,org,root,repository,'HISTORICAL');
+      try{return {...await simulateConversation(dependencies.root,input,dependencies.resolve),source:{executionId:id,automationId:execution.automationId,version:execution.version}};}
+      catch(error){if(error instanceof Error&&error.message.startsWith('AUTOMATION_SIMULATION_'))throw new AutomationError(error.message,409);throw error;}
+    }),
+    list:(org:string,automationId?:string,query?:AutomationExecutionQuery)=>{
+      if(!query)return options.transact(org,async tx=>({data:(await repository.listExecutions(tx,org,automationId)).map(execution)}));
+      const search=prepareExecutionSearch(org,{...query,...(automationId?{automationId}:{})});
+      return options.transact(org,tx=>readExecutionPage(tx,search));
+    },
     get:(org:string,id:string)=>options.transact(org,async tx=>{const row=await repository.getExecution(tx,org,id);if(!row)throw new AutomationError('AUTOMATION_EXECUTION_NOT_FOUND',404);const nodes=await repository.listNodeExecutions(tx,org,id),outbox=await repository.listExecutionOutbox(tx,org,id),context=await repository.getExecutionContext(tx,org,id);const diagnostic=context.conversationId?await readAttendanceDiagnostic(tx,{organizationId:org,channelId:row.channelId,conversationId:context.conversationId}):undefined;return {...execution(row),...(diagnostic?{attendanceDiagnostic:diagnostic}:{}),conversationRef:context.conversationId,contactRef:context.contactId,state:redact(row.state),errorCode:row.errorCode,input:redact(row.input),durationMs:(row.completedAt?new Date(row.completedAt):new Date()).getTime()-new Date(row.startedAt).getTime(),nodes:nodes.map(node=>({...node,attempt:Math.floor(node.ordinal/1000)+1,durationMs:node.completedAt?Math.max(0,new Date(node.completedAt).getTime()-new Date(node.startedAt).getTime()):null,input:redact(node.input),output:redact(node.output),startedAt:iso(node.startedAt),completedAt:node.completedAt?iso(node.completedAt):null})),outbox:outbox.map(item=>({...item,lastError:item.lastError,createdAt:iso(item.createdAt),updatedAt:iso(item.updatedAt)}))};}),
     runOnce:(org:string)=>options.enabled===false?Promise.resolve({processed:false}):options.transact(org,async tx=>{const leaseToken=randomUUID(),claimed=await repository.claimExecution(tx,org,leaseToken,120000);if(!claimed)return {processed:false};
       try{const root=await resolve(tx,org,claimed.automationId,claimed.version),kind=String(claimed.input.eventType??'MESSAGE') as 'MESSAGE'|'RESUME'|'TIMER';
@@ -255,7 +287,11 @@ export function createExecutionService(options:AutomationServiceOptions){
         const rawWait=claimed.input.inputWait;
         const inputWait=rawWait&&typeof rawWait==='object'&&!Array.isArray(rawWait)&&typeof (rawWait as Record<string,unknown>).waitId==='string'
           ?rawWait as {waitId:string;admittedAt?:number}:undefined;
-        const result=await executeAutomation(dependencies?.root??root,{text:String(claimed.input.text??''),eventType:kind,now:new Date(),payload:claimed.input,...(inputWait?{inputWait}:{})},dependencies?.resolve??((id,v)=>resolve(tx,org,id,v)),Object.keys(claimed.state??{}).length?claimed.state as RuntimeState:undefined);
+        const media=kind==='MESSAGE'&&Object.hasOwn(claimed.input,'inputMedia')
+          ?Object.hasOwn(claimed.input,'centralMediaReferenceId')
+            ?await readCanonicalCentralInputMedia(tx,org,claimed.channelId,claimed.conversationId,{type:'MEDIA',referenceId:claimed.input.centralMediaReferenceId})
+            :await readCanonicalInputMedia(tx,org,claimed.channelId,claimed.conversationId,String(claimed.input.messageId??'')):undefined;
+        const result=await executeAutomation(dependencies?.root??root,{text:String(claimed.input.text??''),eventType:kind,now:new Date(),payload:claimed.input,...(media?{media}:{}),...(inputWait?{inputWait}:{})},dependencies?.resolve??((id,v)=>resolve(tx,org,id,v)),Object.keys(claimed.state??{}).length?claimed.state as RuntimeState:undefined);
         await repository.saveExecutionResult(tx,claimed,result);return {processed:true,executionId:claimed.id,status:result.status};
       }catch(error){await repository.failExecution(tx,org,claimed.id,leaseToken,error instanceof Error?error.message.slice(0,120):'AUTOMATION_EXECUTION_FAILED',false);return {processed:true,executionId:claimed.id,status:'FAILED' as const};}}),
     cancel:(org:string,id:string)=>options.transact(org,async tx=>{if(!await repository.cancelExecution(tx,org,id))throw new AutomationError('AUTOMATION_EXECUTION_NOT_CANCELABLE',409);return {ok:true};}),

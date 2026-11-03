@@ -1,4 +1,4 @@
-import type { AutomationGraphV1, AutomationSubflowCatalogItem } from '@jrc/contracts';
+import {automationEntryConfig,matchesAutomationEntry,type AutomationGraphV1,type AutomationSubflowCatalogItem} from '@jrc/contracts';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { RuntimeResult, RuntimeState } from './types.js';
 import { automationMessageInput,promoteAttendanceInput } from '../attendance/event-router.js';
@@ -125,6 +125,12 @@ export function createPostgresAutomationRepository(policy?:GroupPhysicalPolicy):
     // Historical duplicate sessions need explicit reconciliation; never choose an arbitrary survivor.
     if(active.length>1)throw new Error('AUTOMATION_SESSION_RECONCILIATION_REQUIRED');
     const current=active[0];
+    // Media is an opt-in reply to a V3 capture; it neither starts a Flow nor
+    // advances historical text/menu captures through a caption or empty text.
+    if(Object.hasOwn(row.input,'inputMedia')&&current?.state.waiting?.inputConfigVersion!==3){
+      await tx.query("update automation_events set execution_id=$3,status='CONSUMED',consumed_at=now() where organization_id=$1 and id=$2 and status='PENDING'",[row.org,row.eventId,current?.id??null]);
+      return current?{execution:current,resumed:false}:null;
+    }
     if(current){
       await tx.query(`update automation_events set execution_id=$3,payload=$4,admitted_at=clock_timestamp() where organization_id=$1 and id=$2 and status='PENDING'`,
         [row.org,row.eventId,current.id,JSON.stringify(automationMessageInput(row.input))]);
@@ -132,6 +138,19 @@ export function createPostgresAutomationRepository(policy?:GroupPhysicalPolicy):
       return {execution:(await this.getExecution(tx,row.org,current.id))!,resumed};
     }
     if(binding.status!=='ACTIVE')return null;
+    // The immutable bound version owns admission. A new draft never changes an
+    // active session, and existing sessions above bypass entry keyword filters.
+    const published=await this.getVersion(tx,row.org,binding.automationId,binding.version);
+    if(!published)throw new Error('AUTOMATION_VERSION_NOT_FOUND');
+    const entry=automationEntryConfig(published.graph);
+    const permitted=matchesAutomationEntry(entry,typeof row.input.text==='string'?row.input.text:'')&&
+      (entry?.reentry!=='ONCE_PER_CONVERSATION'||row.conversationId!==null&&!(await tx.query(
+        'select 1 from automation_executions where organization_id=$1 and automation_id=$2 and channel_id=$3 and conversation_id=$4 limit 1',
+        [row.org,binding.automationId,row.channelId,row.conversationId])).rowCount);
+    if(!permitted){
+      await tx.query("update automation_events set status='CONSUMED',consumed_at=now() where organization_id=$1 and id=$2 and status='PENDING'",[row.org,row.eventId]);
+      return null;
+    }
     const created=(await tx.query<ExecutionRow>(`insert into automation_executions(organization_id,id,automation_id,version,binding_id,channel_id,conversation_id,trigger_event_key,correlation_id,input,state) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'{}') returning ${executionColumns}`,[row.org,row.executionId,binding.automationId,binding.version,binding.id,row.channelId,row.conversationId,row.eventKey,row.correlationId,JSON.stringify(automationMessageInput(row.input))])).rows[0]!;
     await tx.query(`update automation_events set execution_id=$3,status='CONSUMED',consumed_at=now(),admitted_at=clock_timestamp() where organization_id=$1 and id=$2`,[row.org,row.eventId,created.id]);return {execution:created,resumed:false};
   },

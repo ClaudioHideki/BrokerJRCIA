@@ -14,6 +14,7 @@ import { ChatwootControlPanel } from './ChatwootControlPanel.js';
 import { NativeJrcSetup } from './NativeJrcSetup.js';
 import { ChatwootOnboarding } from './ChatwootOnboarding.js';
 import {DeliveryDiagnostics} from './DeliveryDiagnostics.js';
+import {JobFailureDetails} from './JobFailureDetails.js';
 
 export type IntegrationRequest = (
   path: string,
@@ -801,7 +802,7 @@ export function ChatwootPanel({
                     c.inboxId &&
                     ["READY", "DISABLED"].includes(c.status) && (
                       <InboxAgents
-                        key={c.id}
+                        key={JSON.stringify([c.id, c.inboxId, data.account?.accountId, data.destination?.revision, data.baseUrl])}
                         request={request}
                         connectionId={c.id}
                         disabled={blocked}
@@ -867,6 +868,7 @@ export function ChatwootPanel({
                         {j.lastError && (
                           <small>{errors[j.lastError] ?? j.lastError}</small>
                         )}
+                        <JobFailureDetails diagnostic={j.failureDiagnostic}/>
                       </td>
                       <td>{j.attempts}</td>
                       <td>

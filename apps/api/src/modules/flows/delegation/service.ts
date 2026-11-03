@@ -1,3 +1,6 @@
+import {FlowExecutionQuerySchema,FlowExecutionPageSchema,FlowExecutionDetailSchema} from '@jrc/contracts';
+import {prepareExecutionSearch,readExecutionPage} from '../../automations/execution-inspection.js';
+import {readDelegatedExecution} from './executions.js';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {AUTOMATION_NODE_CATALOG_V1,AutomationGraphV1Schema,type AutomationGraphV1,type ActionResourceWrite} from '@jrc/contracts';
@@ -21,7 +24,7 @@ import {createChannelFacade} from '../../channels/facade.js';
 import {remoteDeadline} from './remote.js';
 import {NativeContextQuerySchema,NativeContextResponseSchema} from './native-context.js';
 
-export type FlowScope='flow:read'|'flow:edit'|'flow:publish'|'flow:bind';
+export type FlowScope='flow:read'|'flow:edit'|'flow:publish'|'flow:bind'|'flow:executions:read';
 export interface BrokerPrincipal {organizationId:string;actorId:string;authVersion:number}
 export interface FlowAccess {organizationId:string;token:string}
 export interface FlowDelegationOptions {
@@ -39,7 +42,7 @@ export class FlowDelegationError extends Error {
 }
 function fail(code='FLOW_ACCESS_DENIED',status=403):never{throw new FlowDelegationError(code,status);}
 const digest=(token:string)=>createHash('sha256').update(token).digest('hex');
-const scopes=z.array(z.enum(['flow:read','flow:edit','flow:publish','flow:bind'])).min(1).max(4).refine(v=>new Set(v).size===v.length);
+const scopes=z.array(z.enum(['flow:read','flow:edit','flow:publish','flow:bind','flow:executions:read'])).min(1).max(5).refine(v=>new Set(v).size===v.length);
 const integrationIds=z.array(z.uuid()).min(1).max(100).refine(v=>new Set(v).size===v.length);
 const brokerSessionInput=z.strictObject({integrationIds,scopes});
 export interface Mapping {integration_id:string;channel_id:string;inbox_id:string;account_id:string;destination_revision:number;scopes:FlowScope[];transport:string;provider:string|null}
@@ -318,7 +321,7 @@ export function createFlowDelegationService(options:FlowDelegationOptions){
     if(role==='OPERATOR'){
      const grants=(await tx.query<{integration_id:string;scopes:FlowScope[]}>('SELECT integration_id,scopes FROM flow_member_grants WHERE organization_id=$1 AND user_id=$2 ORDER BY integration_id FOR SHARE',[principal.organizationId,principal.actorId])).rows;
      rows=rows.flatMap(row=>{const granted=grants.find(grant=>grant.integration_id===row.integration_id&&grant.scopes.includes('flow:read'));return granted?[{...row,scopes:['flow:read'] as FlowScope[]}]:[];});
-    }else rows=rows.map(row=>({...row,scopes:['flow:read','flow:edit','flow:publish','flow:bind'] as FlowScope[]}));
+    }else rows=rows.map(row=>({...row,scopes:['flow:read','flow:edit','flow:publish','flow:bind','flow:executions:read'] as FlowScope[]}));
     const value=await projectTargets(tx,principal.organizationId,rows);await brokerMember(tx,principal,false);return value;
    });
   },
@@ -479,6 +482,25 @@ export function createFlowDelegationService(options:FlowDelegationOptions){
    });
   },
   async list(access:FlowAccess,raw:unknown={}){const input=z.strictObject({pageSize:z.number().int().min(1).max(100).default(50),cursor:z.string().regex(/^[A-Za-z0-9_-]{1,256}$/).optional()}).parse(raw);return scoped(access,{action:'flow:read'}).list(access.organizationId,{pageSize:input.pageSize,...(input.cursor===undefined?{}:{cursor:input.cursor})});},
+  async executions(access:FlowAccess,id:string,raw:unknown){
+   z.uuid().parse(id);const input=FlowExecutionQuerySchema.parse(raw),common=scoped(access,{action:'flow:executions:read',id});
+   return common._transact(access.organizationId,async tx=>{
+    const bound=(await tx.query<Mapping>('SELECT * FROM automation_definition_scopes WHERE organization_id=$1 AND automation_id=$2 ORDER BY integration_id FOR SHARE',[access.organizationId,id])).rows;
+    const revision=(await tx.query<{delegation_scope_revision:number}>('SELECT delegation_scope_revision FROM automation_definitions WHERE organization_id=$1 AND id=$2',[access.organizationId,id])).rows[0]!.delegation_scope_revision;
+    const scope={capabilityVersion:1 as const,organizationId:access.organizationId,rootAutomationId:id,accountId:Number(bound[0]!.account_id),inboxIds:bound.map(row=>Number(row.inbox_id)),revision};
+    if(input.channelId&&!bound.some(row=>row.channel_id===input.channelId))fail();
+    const search=prepareExecutionSearch(access.organizationId,{...input,automationId:id},{channelIds:bound.map(row=>row.channel_id),scopeKey:JSON.stringify(scope)});
+    return FlowExecutionPageSchema.parse({...await readExecutionPage(tx,search),scope});
+   });
+  },
+  async execution(access:FlowAccess,id:string,executionId:string){
+   z.uuid().parse(id);z.uuid().parse(executionId);const common=scoped(access,{action:'flow:executions:read',id});
+   return common._transact(access.organizationId,async tx=>{
+    const bound=(await tx.query<Mapping>('SELECT * FROM automation_definition_scopes WHERE organization_id=$1 AND automation_id=$2 ORDER BY integration_id FOR SHARE',[access.organizationId,id])).rows;
+    const revision=(await tx.query<{delegation_scope_revision:number}>('SELECT delegation_scope_revision FROM automation_definitions WHERE organization_id=$1 AND id=$2',[access.organizationId,id])).rows[0]!.delegation_scope_revision;
+    return FlowExecutionDetailSchema.parse({...await readDelegatedExecution(tx,access.organizationId,id,executionId,bound.map(row=>row.channel_id)),scope:{capabilityVersion:1,organizationId:access.organizationId,rootAutomationId:id,accountId:Number(bound[0]!.account_id),inboxIds:bound.map(row=>Number(row.inbox_id)),revision}});
+   });
+  },
   get:(access:FlowAccess,id:string)=>scoped(access,{action:'flow:read',id}).get(access.organizationId,id),
   async status(access:FlowAccess){const common=scoped(access,{action:'flow:read'}),result=await common.status(access.organizationId);
    const decision=await nativeDecision(access);return options.transact(access.organizationId,async tx=>{const state=await authority(tx,access,'flow:read',decision);

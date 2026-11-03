@@ -92,6 +92,19 @@ it('requires migration 0031 for app-role readiness after a valid 0030 upgrade', 
     expect(await probeWithout('revoke update on qr_outbound_observations from jrc_app')).toBe(false);
     expect(await probeWithout('alter table qr_dispatch_attempts drop column revision')).toBe(false);
     expect(await probeWithout('alter table qr_outbound_observations drop column revision')).toBe(false);
+    expect(await probeWithout('alter table integration_jobs drop column failure_diagnostic')).toBe(false);
+    expect(await probeWithout('alter table integration_jobs drop constraint integration_failure_diagnostic_shape')).toBe(false);
+    expect.soft(await probeWithout('drop index automation_execution_inspection_page')).toBe(false);
+    expect.soft(await probeWithout(`drop index automation_execution_inspection_page;
+      create index automation_execution_inspection_page on automation_executions(organization_id,id)`)).toBe(false);
+    for (const table of ['flow_delegation_credentials','flow_delegation_session_grants','flow_member_grants']) {
+      expect.soft(await probeWithout(`alter table ${table} drop constraint ${table}_scopes_check`)).toBe(false);
+      // A same-named legacy check must not attest the new capability.
+      expect.soft(await probeWithout(`alter table ${table} drop constraint ${table}_scopes_check;
+        alter table ${table} add constraint ${table}_scopes_check check(scopes <@ ARRAY['flow:read','flow:edit','flow:publish','flow:bind']::text[])`)).toBe(false);
+      expect.soft(await probeWithout(`alter table ${table} drop constraint ${table}_scopes_check;
+        alter table ${table} add constraint ${table}_scopes_check check(scopes <@ ARRAY['flow:executions:read']::text[] OR TRUE)`)).toBe(false);
+    }
   } finally {
     await database.dispose();
     if (!resolve(folder).startsWith(`${scratch}${sep}`)) {

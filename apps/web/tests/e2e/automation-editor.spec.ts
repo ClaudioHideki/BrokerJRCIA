@@ -1,6 +1,6 @@
 import {expect,test} from '@playwright/test';
 import {welcomeFlow} from '@jrc/contracts';
-import {signIn} from './helpers.js';
+import {signIn,expectNoAutomaticAccessibilityViolations} from './helpers.js';
 
 test('builds, saves and simulates a menu with a captured response using only the editor',async({page,isMobile})=>{
   test.setTimeout(90000);
@@ -13,6 +13,7 @@ test('builds, saves and simulates a menu with a captured response using only the
   const inspector=page.locator('.flows-inspector');
   const palette=page.locator('.flows-palette');
   const selectNode=async(label:string)=>{
+    await page.getByRole('tab',{name:'Editor',exact:true}).click();
     await page.getByRole('region',{name:'Canvas do flow',exact:true}).getByRole('button',{name:'Visão geral',exact:true}).click();
     await page.getByRole('button',{name:'Configurar '+label,exact:true}).click();
   };
@@ -141,4 +142,21 @@ test('150-block draft remains intact while navigating the editor and editing one
   await page.getByRole('button',{name:'Configurar Boas-vindas'}).click();
   await expect(message).toHaveValue('Mensagem sintética revisada');
   await test.info().attach('automation-editor-150-blocks',{body:await page.screenshot({path:`test-results/automation-editor-${isMobile?'mobile':'desktop'}.png`}),contentType:'image/png'});
+});
+
+
+test('four Flow areas keep canvas history and use scoped execution metrics with accessible tab navigation',async({page,isMobile})=>{
+ test.setTimeout(90000);await signIn(page);await page.goto('/automations/new');
+ await page.getByRole('textbox',{name:'Nome da automação'}).fill('Áreas do Flow sintético');await page.getByRole('button',{name:'Criar e abrir editor'}).click();
+ const editor=page.getByRole('tab',{name:'Editor',exact:true});await expect(editor).toHaveAttribute('aria-selected','true');await expect(page.getByRole('tab')).toHaveCount(4);
+ await editor.focus();await editor.press('ArrowRight');const configuration=page.getByRole('tab',{name:'Configurações',exact:true});await expect(configuration).toBeFocused();
+ await page.getByRole('button',{name:'Configurar condições de entrada'}).click();await page.getByRole('combobox',{name:'Reexecução'}).selectOption('ONCE_PER_CONVERSATION');
+ await page.getByRole('button',{name:'Salvar',exact:true}).click();await expect(page.getByText('Rascunho salvo.',{exact:true})).toBeVisible();
+ await editor.click();await page.getByRole('button',{name:'Configurar Boas-vindas'}).click();const message=page.locator('.flows-inspector').getByRole('textbox',{name:'Mensagem',exact:true});const before=await message.inputValue();await message.fill('Mensagem de edição sintética');
+ await configuration.click();await page.getByRole('tab',{name:'Playground',exact:true}).click();await editor.click();await expect(message).toHaveValue('Mensagem de edição sintética');await page.getByRole('button',{name:'Desfazer'}).click();await expect(message).toHaveValue(before);
+ await page.getByRole('button',{name:'Testar',exact:true}).click();await expect(page.getByRole('tab',{name:'Playground',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.getByText('Teste local:',{exact:false})).toBeVisible();
+ await page.getByRole('tab',{name:'Execuções',exact:true}).click();await expect(page.getByText('Nenhuma execução encontrada.',{exact:true})).toBeVisible();await expect(page.getByRole('definition').filter({hasText:'—'})).toHaveCount(1);
+ await expectNoAutomaticAccessibilityViolations(page);
+ await test.info().attach('flow-four-areas-executions',{body:await page.screenshot({path:`test-results/flow-four-areas-${isMobile?'mobile':'desktop'}.png`,fullPage:true}),contentType:'image/png'});
+ await editor.click();await expect(message).toHaveValue(before);await expect(page.getByRole('button',{name:'Salvar',exact:true})).toBeDisabled();
 });

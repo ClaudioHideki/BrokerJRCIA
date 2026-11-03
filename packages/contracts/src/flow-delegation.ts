@@ -7,7 +7,7 @@ const externalId = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const unique = (values: readonly unknown[]) => new Set(values).size === values.length;
 const integrationIds = z.array(z.uuid()).min(1).max(100).refine(unique, 'Duplicate integration');
 export const FlowScopeSchema = z.enum(FLOW_SCOPES);
-const scopes = z.array(FlowScopeSchema).min(1).max(4).refine(unique, 'Duplicate scope');
+const scopes = z.array(FlowScopeSchema).min(1).max(5).refine(unique, 'Duplicate scope');
 const name = z.string().trim().min(1).max(120);
 
 // No browser authority fields: organization/account/channel are resolved from
@@ -48,7 +48,7 @@ import {AutomationBindingV1Schema,AutomationDefinitionV1Schema,AutomationPublish
 import {NodeDiagnosticSchema} from './automation-node-definitions.js';
 
 const rev=z.number().int().positive().max(Number.MAX_SAFE_INTEGER),cas=z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-export const FlowScopesSchema=z.array(z.enum(['flow:read','flow:edit','flow:publish','flow:bind'])).min(1).max(4).refine(values=>new Set(values).size===values.length);
+export const FlowScopesSchema=z.array(z.enum(['flow:read','flow:edit','flow:publish','flow:bind','flow:executions:read'])).min(1).max(5).refine(values=>new Set(values).size===values.length);
 export const FlowTargetsSchema=z.strictObject({data:z.array(z.strictObject({integrationId:z.uuid(),channelId:z.uuid(),accountId:z.number().int().positive(),inboxId:z.number().int().positive(),transport:z.enum(['BROKER_TRANSPORT','CENTRAL_TRANSPORT']),scopes:FlowScopesSchema,ownerRevision:cas,profileRevision:cas})).max(100)});
 export const FlowDefinitionScopeSchema=z.strictObject({revision:rev,integrationIds:z.array(z.uuid()).min(1).max(100)});
 export const FlowBrokerSessionSchema=z.strictObject({integrationIds:z.array(z.uuid()).min(1).max(100).refine(values=>new Set(values).size===values.length),scopes:FlowScopesSchema});
