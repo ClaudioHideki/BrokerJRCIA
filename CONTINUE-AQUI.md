@@ -1,5 +1,20 @@
 # Continuação ativa — 03/11/2026
 
+## Publicação da correção de imagem autorizada — 03/11, 16h13 Brasília
+
+O usuário autorizou gerar a imagem e publicar no servidor. Regressão final local do escopo: **3.930/3.930** em `output/campaign-release-unit-20261103.json`, mais **6/6** em `output/campaign-release-security-20261103.json`, ambos exit0; 3.936 casos distintos, sem falhas. Os testes de relatório foram executados sem outros workers concorrentes; backup/dump/restore excluídos. Build, typecheck e diff check passaram. Não reutilizar CI anterior para esta candidata.
+
+Publicar apenas a imagem API, compartilhada pelos workers. Compose main e candidato são idênticos; autodeploy desligado, comando customizado vazio, perfis sem manutenção/recuperação. Preservar as 99 variáveis do Dokploy e alterar somente JRC_API_IMAGE por digest. Não há migration nova; web, engine, bancos e sessões ficam nas referências existentes. CI, digest e instalação precisam de recibos próprios. O estado operacional da publicação será registrado em `output/release-campaign-image-20261103/ESTADO.json` na raiz do workspace. Nenhum novo envio real foi iniciado.
+
+## Incremento de imagem com legenda e pesquisa — 03/11, 15h48 Brasília
+
+Leia `docs/release-integrada-jrc/CORRECAO-IMAGEM-20261103.md` e `PESQUISA-EVOLUTION-BAILEYS-20261103.md` na mesma pasta. Base local/remota do Broker `d1d0f2e6d7812865c39b1250454e238231b720b2`, branch `codex/broker-integral-20261102`; preserve os demais diffs. Correção ainda local, sem staging/commit/push/CI nova, imagem publicada ou deploy deste incremento.
+
+- Reproduzido: nome de imagem sem extensão gera JPEG declarado como MIME `false` na Evolution. Compatibilidade mínima em `packages/providers/src/evolution/messaging.ts` usa `image.jpg` somente para imagens; legenda preservada. Teste RED e 16 testes focados GREEN; Sharp/Baileys reais em container sem rede confirmaram antes/depois; isso não é entrega WhatsApp real.
+- Regressão ampla: 3.935/3.936 passaram (504 arquivos); uma falha no teste de relatório em torno do deadline. Typecheck/compilação TS e `git diff --check` passaram. Teste reorganizado, mantendo geração, scans, canários e PDF: 22/22 afetados passaram, e o último delta de cobertura de normalização/escrita passou 2/2 selecionados. Não somar execuções sobrepostas nem declarar nova regressão ampla inteiramente verde.
+- Sem alteração no LAB2, migration, credencial, engine produtiva ou novo envio real. Histórico de tentativas e UNKNOWN preservado. Nenhuma atividade de backup/dump/restore.
+- Próximo passo verificável: revisão/CI no candidato e, mediante autorização de release aplicável, imagem do Broker e implantação controlada; depois um único teste correlacionado pelo módulo Campanhas até receipt. Não repetir a tentativa antiga. Demais lacunas de journal, status, mídia de grupo, custódia LAB2, logs e sessão constam na matriz de pesquisa; não estão resolvidas por este patch.
+
 Leia primeiro `docs/release-integrada-jrc/CONTINUACAO-20261103.md`. As contagens e o texto de 02/11 abaixo são históricos. O checkout contém correções novas de dependências, expectativas PostgreSQL e comparador Flow; LAB2 contém protocolo de mídia intermediário que ainda NÃO está pronto para publicação. Preserve todas as alterações existentes.
 
 # Broker JRC — checkpoint ativo de 02/11/2026

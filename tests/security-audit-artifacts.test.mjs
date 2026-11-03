@@ -12,6 +12,7 @@ import {
   generateSecurityAudit,
 } from '../scripts/security/generate-security-audit.mjs';
 import { TEST_SECRET_CANARIES } from '../scripts/security/secret-canaries.mjs';
+import { renderAuditMarkdown } from '../scripts/security/render-markdown.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const EPOCH = CURRENT_AUDIT_PROFILE.sourceDateEpoch;
@@ -90,8 +91,12 @@ describe('artefatos reproduzíveis da auditoria de segurança', () => {
   it('gera duas vezes os mesmos JSON, Markdown, issues e PDF', async () => {
     const first = await outputDirectory();
     const second = await outputDirectory();
-    await generateSecurityAudit({ rootDirectory: ROOT, outputDirectory: first, sourceDateEpoch: EPOCH, fingerprintSecret: FINGERPRINT_SECRET });
-    await generateSecurityAudit({ rootDirectory: ROOT, outputDirectory: second, sourceDateEpoch: EPOCH, fingerprintSecret: FINGERPRINT_SECRET });
+    const source = JSON.parse(await readFile(resolve(ROOT, 'docs/security/phase-1-increment-2/findings.json'), 'utf8'));
+    // Preserve the NOT_APPLICABLE fixture through normalization and file writes
+    // within the existing full-pipeline reproducibility test.
+    source.findings.push({ ...source.findings[0], id: 'JRC-SEC-299', status: 'NOT_APPLICABLE', title: 'Controle sintético não aplicável' });
+    await generateSecurityAudit({ rootDirectory: ROOT, outputDirectory: first, sourceDateEpoch: EPOCH, fingerprintSecret: FINGERPRINT_SECRET, auditData: source });
+    await generateSecurityAudit({ rootDirectory: ROOT, outputDirectory: second, sourceDateEpoch: EPOCH, fingerprintSecret: FINGERPRINT_SECRET, auditData: source });
 
     for (const path of [
       'findings.json', 'route-inventory.json', 'secret-scan-summary.json',
@@ -100,6 +105,9 @@ describe('artefatos reproduzíveis da auditoria de segurança', () => {
     ]) {
       expect(await digest(resolve(first, path)), path).toBe(await digest(resolve(second, path)));
     }
+    const markdown = await readFile(resolve(first, 'relatorio-auditoria-seguranca.md'), 'utf8');
+    expect(markdown.split('## Pontos fracos')[1].split('## Tabela de achados')[0]).not.toContain('JRC-SEC-299');
+    expect(markdown.split('## Tabela de achados')[1].split('## Prioridades')[0]).toContain('JRC-SEC-299');
   }, 90_000);
 
   it('preserva o layout, a paleta e todas as seções obrigatórias', async () => {
@@ -157,17 +165,32 @@ describe('artefatos reproduzíveis da auditoria de segurança', () => {
   }, 30_000);
 
   it('não apresenta findings não aplicáveis como pontos fracos', async () => {
-    const directory = await outputDirectory();
     const source = JSON.parse(await readFile(resolve(ROOT, 'docs/security/phase-1-increment-2/findings.json'), 'utf8'));
+    source.findings.push({
+      ...source.findings[0],
+      id: 'JRC-SEC-298',
+      title: 'Controle sintético aplicável',
+      status: 'OPEN',
+    });
     source.findings.push({
       ...source.findings[0],
       id: 'JRC-SEC-299',
       title: 'Controle sintético não aplicável',
       status: 'NOT_APPLICABLE',
     });
-    await generateSecurityAudit({ rootDirectory: ROOT, outputDirectory: directory, sourceDateEpoch: EPOCH, fingerprintSecret: FINGERPRINT_SECRET, auditData: source });
-    const markdown = await readFile(resolve(directory, 'relatorio-auditoria-seguranca.md'), 'utf8');
+    // This assertion is a rendering contract. The preceding tests retain the
+    // complete history scan, generation, canary checks and PDF integration.
+    const markdown = renderAuditMarkdown({
+      auditData: source,
+      routeInventory: [],
+      sourceReference: 'synthetic-rendering-contract',
+      referenceDate: new Date(EPOCH * 1000).toISOString().slice(0, 10),
+      scanSummary: { scans: [] },
+      profile: CURRENT_AUDIT_PROFILE,
+    });
     const weakSection = markdown.split('## Pontos fracos')[1].split('## Tabela de achados')[0];
+    expect(weakSection).toContain('JRC-SEC-298');
     expect(weakSection).not.toContain('JRC-SEC-299');
+    expect(markdown.split('## Tabela de achados')[1].split('## Prioridades')[0]).toContain('JRC-SEC-299');
   }, 30_000);
 });

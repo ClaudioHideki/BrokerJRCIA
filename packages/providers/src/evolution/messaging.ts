@@ -201,7 +201,10 @@ export class EvolutionMessagingClient {
             mediatype: media.kind,
             mimetype: media.mimeType,
             media: encoded,
-            fileName: safeMediaName(media.fileName),
+            // The pinned engine converts images to JPEG, then infers the final
+            // MIME from this name. A PNG/extensionless name would overwrite it
+            // with image/png/"false" even though the uploaded bytes are JPEG.
+            fileName: media.kind === "image" ? "image.jpg" : safeMediaName(media.fileName),
             ...(media.caption ? { caption: media.caption } : {}),
           },
       true,
