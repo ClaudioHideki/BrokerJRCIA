@@ -1,5 +1,7 @@
 # Continuação ativa — 03/11/2026
 
+Atualização de publicação, 16h29: primeira candidata `4a6981d` publicada na branch; a pipeline de imagem `41701702769` parou ANTES do build/publicação por timeout de 30 segundos em layout/canários de auditoria. Nenhuma mudança produtiva. As verificações agora compartilham duas gerações reais do mesmo fixture imutável, sob o orçamento de 90 segundos já usado para duas gerações; histórico Git/scans/PDF, HIGH aberto, NOT_APPLICABLE e canários permanecem cobertos. 6/6 passaram localmente em `output/campaign-release-security-shared-20261103.json`. Só testes/checkpoint mudaram após `4a6981d`; correção de imagem e binário compilado permanecem iguais. Nova CI e publicação ainda precisam terminar.
+
 ## Publicação da correção de imagem autorizada — 03/11, 16h13 Brasília
 
 O usuário autorizou gerar a imagem e publicar no servidor. Regressão final local do escopo: **3.930/3.930** em `output/campaign-release-unit-20261103.json`, mais **6/6** em `output/campaign-release-security-20261103.json`, ambos exit0; 3.936 casos distintos, sem falhas. Os testes de relatório foram executados sem outros workers concorrentes; backup/dump/restore excluídos. Build, typecheck e diff check passaram. Não reutilizar CI anterior para esta candidata.
