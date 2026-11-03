@@ -4,6 +4,7 @@ import {z} from 'zod';
 import type {OrganizationTransaction} from '../../db/tenant-transaction.js';
 import {createIntegrationSecrets} from '../integrations/secrets.js';
 import { convertLocalJrcFlow, isLocalJrcFlow } from './jrc-flow-converter.js';
+import { convertTypebot } from './typebot-converter.js';
 import { AutomationError, requireAutomationDraftAccess } from '../automations/service.js';
 import { claimIdempotency, completeIdempotencyRecord, hashIdempotencyRequest } from '../instances/idempotency.js';
 
@@ -12,15 +13,6 @@ export interface ImportNodeReport{sourceId:string;sourceType:string;classificati
 const record=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
 const string=(value:unknown)=>typeof value==='string'?value:'';
 const credentialNodeTypes=new Set(['http','sql','ai-generate','ai-classify','ai-extract','ai-summarize','ai-agent']);
-function typebot(document:Record<string,unknown>):{name:string;graph:AutomationGraphV1;nodes:ImportNodeReport[]}{const groups=Array.isArray(document.groups)?document.groups:[],rawBlocks=groups.flatMap(group=>Array.isArray(record(group).blocks)?record(group).blocks as unknown[]:[]),nodes:FlowNode[]=[{id:'start',type:'start',label:'Início importado',position:{x:40,y:120},data:{}}],report:ImportNodeReport[]=[];let x=300;
- for(const [index,raw] of rawBlocks.entries()){const block=record(raw),sourceId=string(block.id)||`typebot-${index}`,type=string(block.type),content=record(block.content),node:FlowNode={id:sourceId.slice(0,100),type:'unsupported',label:string(content.label||content.text).slice(0,160)||type||`Bloco ${index+1}`,position:{x,y:120},data:{sourceType:type}};x+=260;let classification:ImportNodeReport['classification']='UNSUPPORTED',notes:string[]=[];
-  if(['text','textBubble'].includes(type)){node.type='message';node.data={text:string(content.richText||content.text||block.text)};classification='PARTIAL';notes=['Formatação rica foi convertida para texto.'];}
-  else if(['text input','textInput','input'].includes(type)){node.type='input';node.data={text:string(content.placeholder||content.label),variable:string(content.variableId)||`resposta_${index+1}`};classification='PARTIAL';notes=['Validações específicas do Typebot exigem revisão.'];}
-  else if(['choice input','choiceInput','buttons'].includes(type)){const items=Array.isArray(content.items)?content.items:[],options=items.slice(0,10).map((item,i)=>({value:String(i+1),label:string(record(item).content||record(item).label)||`Opção ${i+1}`}));node.type='menu';node.data={text:string(content.label)||'Escolha uma opção',variable:string(content.variableId)||`opcao_${index+1}`,options};classification=options.length>=2?'PARTIAL':'UNSUPPORTED';notes=['Ramificações precisam ser reconectadas manualmente.'];}
-  else if(['set variable','setVariable'].includes(type)){node.type='variable';node.data={variable:string(content.variableId)||`variavel_${index+1}`,value:string(content.value)};classification='PARTIAL';notes=['Expressões externas foram mantidas como texto.'];}
-  report.push({sourceId,sourceType:type||'unknown',classification,targetType:classification==='UNSUPPORTED'?null:node.type,notes});nodes.push(node);
- }
- nodes.push({id:'end',type:'end',label:'Encerrar',position:{x,y:120},data:{}});const compatible=nodes.filter(node=>node.type!=='unsupported'),edges=compatible.slice(0,-1).map((node,index)=>({id:`edge-${index}`,source:node.id,target:compatible[index+1]!.id,port:node.type==='menu'?'option-1':'next'}));return {name:string(document.name).slice(0,120)||'Automação importada',graph:FlowGraphSchema.parse({nodes,edges}),nodes:report};}
 export function convertAutomationArtifact(requestedSource:ImportSource|'AUTO',raw:string){
  if(Buffer.byteLength(raw)>2*1024*1024)throw new Error('AUTOMATION_IMPORT_SIZE_LIMIT');
  let document=record(JSON.parse(raw.replace(/^\uFEFF/,'')));
@@ -29,7 +21,7 @@ export function convertAutomationArtifact(requestedSource:ImportSource|'AUTO',ra
  const source:ImportSource=Array.isArray(document.groups)?'TYPEBOT':Array.isArray(document.nodes)&&document.connections?'N8N':requestedSource==='AUTO'?'JRC':requestedSource;
  let converted:{name:string;graph:AutomationGraphV1;nodes:ImportNodeReport[]};const importWarnings:string[]=[];let credentialsRemoved=false;
  if(isLocalJrcFlow(document))converted=convertLocalJrcFlow(document);
- else if(source==='TYPEBOT')converted=typebot(document);
+ else if(source==='TYPEBOT')converted=convertTypebot(document);
  else{
   const imported=importFlow(raw),sourceNodes=Array.isArray(document.nodes)?document.nodes:imported.graph.nodes;
   importWarnings.push(...imported.warnings.filter(warning=>warning==='Posições do canvas n8n foram ajustadas para caber no editor JRC.'));
