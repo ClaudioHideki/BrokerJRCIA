@@ -3,6 +3,11 @@ on:
   pull_request:
     paths:
       - 'integrations/evolution-origin-journal/**'
+      - 'infra/evolution/**'
+      - 'upstream/evolution-api'
+      - '.gitmodules'
+      - 'package.json'
+      - 'package-lock.json'
       - 'packages/evolution-origin-journal/**'
       - 'scripts/ci/verify-engine-candidate.mjs'
       - 'tests/engine-image-workflow.test.mjs'

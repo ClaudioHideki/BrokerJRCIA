@@ -41,3 +41,7 @@ Build final de laboratório concluída: IID sha256:adb1941b7015ed3604aa6e716012c
 ## Regressão ampla concluída
 
 Primeira execução:3926 casos,3913 aprovados,9 falhas e4 pendências. Falhas de Git/OpenSSL bloqueados causaram fallback para manifesto histórico incompatível; sem mudar produto ou enfraquecer verificações, repetidos os cinco arquivos com as ferramentas locais autorizadas:41/41 aprovados. Resultado efetivo por substituição integral de cada arquivo:503 arquivos,3926 aprovados,0 falhas,0 pendências. Não é uma segunda execução integral. Evidência:output/integral-effective-unit-20261103.json. Rotinas backup/recovery foram explicitamente excluídas do comando, conforme escopo.
+
+## Fechamento dos gates desta rodada
+
+Gate provisionado do IID8401689 concluiu e verificador correlacionado passou. Detalhes e limites em ENGINE-BUILD-LAB.md (inclui cancelamento não graceful durante main-import). Captura/ownership/sessão real permanecem não aprovados. Commits locais novos:56a00a4 (segurança/schema/harness) e ef5c5aea41b28a04b2f4e81cddca425145671ef4 (comparação de versões Flow). Editor nativo deste último foi gerado e instalado no checkoutLAB2:216inputs/4outputs/zeroachados, hashes conferidos. Testes Vue do host4/4. PR7Broker e PR4LAB2 consultadas em03/11 permanecem draft/open/mergeable, bases e heads iguais à fotografia anterior; nenhum push/merge/deploy foi feito.

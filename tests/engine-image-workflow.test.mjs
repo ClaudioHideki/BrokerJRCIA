@@ -60,6 +60,7 @@ describe('engine publication evidence (synthetic verifier fixtures, not Docker p
   const gate=yaml.indexOf('verify-engine-candidate.mjs');const push=yaml.indexOf('docker --context desktop-linux push');
   expect(gate).toBeGreaterThan(0);expect(push).toBeGreaterThan(gate);
   expect(yaml).toContain('pull_request:');
+  for(const path of ['infra/evolution/**','upstream/evolution-api','.gitmodules','package.json','package-lock.json'])expect(yaml).toContain("- '"+path+"'");
   expect(yaml.slice(gate,push)).toContain("if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}");
   expect(yaml).toContain('JRC_ENGINE_REAL_HOOK_GATE: "true"');
   expect(yaml).toContain('org.opencontainers.image.revision=$GITHUB_SHA');

@@ -777,8 +777,8 @@ ou reiniciar a engine real com base apenas nessa ancestralidade.
 1. Coordenar janela Docker serial antes de novo build/PG. Amostras antigas de
    RAM/disco neste documento são históricas, não disponibilidade atual.
 2. O artefato f670 teve schema descartável explicitamente provisionado, boot
-   real vazio, HTTP autenticado200, scan completo66788ms e shutdown1461ms/exit0.
-   Seus quatro gates finais de admissão passaram; o leitor final levou160662ms.
+   real vazio, HTTP autenticado 200, scan completo 66788 ms e shutdown 1461 ms/exit 0.
+   Seus quatro gates finais de admissão passaram; o leitor final levou 160662 ms.
    O P2021/startup~104s/stop137 das seções anteriores é histórico e foi superado
    nesse caso vazio. Não representa sessão WhatsApp nem prontidão produtiva.
 3. Os dois crashes Linux de custódia usaram módulos da imagem f670 com
@@ -787,14 +787,39 @@ ou reiniciar a engine real com base apenas nessa ancestralidade.
    Captura true continua recusada no entrypoint produtivo.
 4. As fontes posteriores têm 11 overlays, corrigem a identidade antes do init,
    compartilham o host entre avaliações e removem o console incondicional de
-   notify. Regressão focal22/22 GREEN; nova imagem e gates físicos ainda pendentes.
+   notify. Regressão focal 22/22 GREEN; nova imagem e gates físicos ainda pendentes.
    Não reutilizar os gates de f670 para certificar essas fontes.
-5. Revisão independente e gates CI do diff antes de qualquer integração da
-   candidata. Nenhum novo workflow, publicação ou substituição de engine
-   produtiva foi feito. Nenhum número/sessão/mensagem foi ativado.
+5. A raiz registrou o incremento no checkpoint core local
+   `840168959be211515ca56219761df9209590f681`, sem push ou deploy. O staging
+   posterior `engine-6m934k` contém os mesmos 11 overlays e 313 entradas, com
+   runtimeInventorySha256
+   `9fdcaf99f79edba4875bdb0c8a088caf0f33517299f81b5185aae59561bc5778`.
+   Esse hash identifica os arquivos do runtime no contexto; não é IID, digest
+   de registry ou prova de execução. O pin upstream continua fa09, distinto do
+   SHA core que deverá constar no label OCI da próxima imagem.
+6. A raiz implementou um workflow separado de candidata, com publicação manual
+   opt-in (default false), uma única build, admissão, main provisionado e hook
+   sintético, correlação de evidências ao IID e publicação da mesma imagem.
+   O arquivo local e seus testes não provam execução CI, publicação ou assinatura.
+   O runner de hook real ainda aguarda a nova imagem física e poderá revelar
+   problemas de integração. Não houve substituição da engine produtiva nem
+   ativação de número/sessão/mensagem real.
 
 O npm test completo e a revisão de integração são coordenados pela raiz.
-Não foram comprovados os marcos50/400/900, equivalência produtiva, instalação
+Não foram comprovados os marcos 50/400/900, equivalência produtiva, instalação
 do host produtivo, ownership operacional, shutdown de sessões, CI/publicação
 ou assinatura. Os resultados acima são laboratório local e dados sintéticos;
 nenhum número/sessão/mensagem real foi ativado.
+
+## Gate físico concluído em 03/11/2026 — core8401689
+
+IID local: sha256:adb1941b7015ed3604aa6e716012c26e8fe138c24f7ca67aee321772c34e711c. Contexto313entradas/runtime9fdcaf99f79edba4875bdb0c8a088caf0f33517299f81b5185aae59561bc5778/upstreamfa09; label core840168959be211515ca56219761df9209590f681. A imagem é de laboratório, sem push.
+
+- Admissão4/4 no mesmoIID, artefato34439arquivos, scan122054ms, RSS106100KiB.
+- PostgreSQL inicialmente vazio e provisionamento explícito110relações; boot real do main com captura padrão false; leitura autenticada200/array vazio. Catálogo antes/depois idêntico;0DDL durante boot;0segredos sintéticos expostos;0chaves Redis restantes.
+- Após pronto, encerramento4191ms/exit0. Durante integrity-scan,2082ms/exit0/graceful; durante importação ainda incompleta, cancelamento limitado11027ms/exit143, explicitamente não graceful. Não extrapolar o encerramento vazio para sessões ativas.
+- Custódia em módulos da imagem:2crashes de processo com PostgreSQL vivo, mesmos eventos recuperados e0replays legados; não importa main, e foi registrado separadamente.
+- Hook real: main importado tanto na origemPID18 quanto na recuperaçãoPID33. SIGKILL da origem observado e reinício distinto;2journalEvents/2receiverRows/1nativeMessage/0replayNativeEffects. Handler nativo preservado, socket sintético, sem sessão WhatsApp ou rede externa. Recuperação terminou com SIGTERM/exit1 esperado pelo harness.
+- Verificador correlacionou admissão, cleanup, artefato, label e relatório: publishableCandidate=true apenas para candidata de laboratório; productionCaptureApproved=false/realSessionHomologated=false/deliveryOwnership=UNPROVEN. Todos os containers/rede do gate tiveram cleanup confirmado.
+
+Evidências locais na raiz output/: engine-8401689-{build-label,admission,provisioned,candidate-verified}-20261103 e image-id-20261103.txt. Recibos completos do driver em integrations/evolution-origin-journal/build/provisioned-gate-a0ac726742 e image-gates-720a0a477f. O core Broker atual posterior tem mudanças de dependências/Flow; não atribuir esta imagem a ef5c5ae nem substituir a engine produtiva.
