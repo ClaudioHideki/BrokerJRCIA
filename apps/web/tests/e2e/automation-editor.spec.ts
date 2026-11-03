@@ -2,6 +2,33 @@ import {expect,test} from '@playwright/test';
 import {welcomeFlow} from '@jrc/contracts';
 import {signIn,expectNoAutomaticAccessibilityViolations} from './helpers.js';
 
+test('compares immutable versions and explicitly copies history into the draft without publishing',async({page,isMobile})=>{
+ test.setTimeout(90000);await signIn(page);await page.goto('/automations/new');
+ await page.getByRole('textbox',{name:'Nome da automação'}).fill('Comparação de versões sintética');await page.getByRole('button',{name:'Criar e abrir editor'}).click();
+ await page.getByRole('button',{name:'Configurar Boas-vindas'}).click();const message=page.locator('.flows-inspector').getByRole('textbox',{name:'Mensagem',exact:true});
+ const original=await message.inputValue();
+ // Publications are explicit setup actions in this isolated fixture, never part of copy.
+ await page.getByRole('button',{name:'Publicar',exact:true}).click();await expect(page.getByText('Versão 1 publicada.',{exact:true})).toBeVisible();
+ await message.fill('Mensagem histórica da segunda versão');await page.getByRole('button',{name:'Salvar',exact:true}).click();await expect(page.getByText('Rascunho salvo.',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Publicar',exact:true}).click();await expect(page.getByText('Versão 2 publicada.',{exact:true})).toBeVisible();
+ await message.fill('Alteração local que será substituída');
+ const historyResponse=page.waitForResponse(response=>response.url().endsWith('/versions')&&response.request().method()==='GET');
+ await page.getByRole('link',{name:'Histórico',exact:true}).click();const historyBefore=await (await historyResponse).json();
+ await page.getByRole('combobox',{name:'Versão a consultar'}).selectOption('1');await page.getByRole('combobox',{name:'Comparar com'}).selectOption('2');
+ await expect(page.getByText('Mensagem histórica da segunda versão',{exact:true})).toBeVisible();await expect(page.getByText(original,{exact:true})).toBeVisible();
+ await expectNoAutomaticAccessibilityViolations(page);
+ await test.info().attach('flow-version-comparison',{body:await page.screenshot({path:`test-results/flow-versions-${isMobile?'mobile':'desktop'}.png`,fullPage:true}),contentType:'image/png'});
+ const writes:string[]=[];page.on('request',request=>{if(['POST','PUT','PATCH','DELETE'].includes(request.method()))writes.push(request.method()+' '+new URL(request.url()).pathname);});
+ await page.getByRole('button',{name:'Copiar v1 para rascunho'}).click();await page.getByRole('button',{name:'Cancelar cópia'}).click();expect(writes).toEqual([]);
+ await page.getByRole('button',{name:'Copiar v1 para rascunho'}).click();await page.getByRole('button',{name:'Confirmar cópia'}).click();
+ await expect(page.getByText('v1 copiada para o rascunho. Revise no editor antes de publicar.')).toBeVisible();
+ expect(writes).toHaveLength(1);expect(writes[0]).toMatch(/^PUT \/v1\/automations\/[a-f0-9-]+$/);
+ await page.getByRole('link',{name:'← Editor',exact:true}).click();await page.getByRole('button',{name:'Configurar Boas-vindas'}).click();await expect(message).toHaveValue(original);
+ await expect(page.locator('.flows-badge')).toContainText('v2');await expect(page.getByRole('button',{name:'Salvar',exact:true})).toBeDisabled();
+ const unchangedHistory=page.waitForResponse(response=>response.url().endsWith('/versions')&&response.request().method()==='GET');await page.getByRole('link',{name:'Histórico',exact:true}).click();
+ expect(await (await unchangedHistory).json()).toEqual(historyBefore);
+});
+
 test('builds, saves and simulates a menu with a captured response using only the editor',async({page,isMobile})=>{
   test.setTimeout(90000);
   page.setDefaultTimeout(15000);

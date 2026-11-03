@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { welcomeFlow, type AutomationDefinitionV1, type AutomationGraphV1 } from '@jrc/contracts';
+import { welcomeFlow, AutomationPublishedVersionV1Schema, type AutomationPublishedVersionV1, type AutomationDefinitionV1, type AutomationGraphV1 } from '@jrc/contracts';
 import type { ApiClient } from '../api/client.js';
 import { ImportReview, type ImportReport } from '../automations/ImportReview.js';
 import { AutomationAvailabilityNotice, type AutomationAvailability } from '../automations/AvailabilityNotice.js';
+import {getAutomation} from '../automations/api.js';
+import {VersionComparison,assertVersionScope} from '../automations/VersionComparison.js';
 const message = (reason: unknown) => reason instanceof Error ? reason.message : 'Não foi possível consultar o Flow.';
 
 export function NativeWorkspace({ client, canEdit }: { client: ApiClient; canEdit: boolean }) {
@@ -70,20 +72,25 @@ export function NativeNewFlow({ client, canEdit }: { client: ApiClient; canEdit:
       {preview && <ImportReview report={preview.report} />}<button disabled={!canEdit || busy || !name.trim()}>Criar rascunho e abrir editor</button>
     </form></section>;
 }
-export function NativeVersions({ client }: { client: ApiClient }) {
-  const { id = '' } = useParams(), [data, setData] = useState<Array<{ version: number; graph: AutomationGraphV1; publishedAt: string }>>([]);
+export function NativeVersions({ client,organizationId,canEdit,scopeKey }: { client: ApiClient;organizationId:string;canEdit:boolean;scopeKey:string }) {
+  const { id = '' } = useParams(), [data, setData] = useState<AutomationPublishedVersionV1[]>([]),[item,setItem]=useState<AutomationDefinitionV1|null>(null);
   const [cursor, setCursor] = useState<string | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | null>(null);
   async function load(next?: string) {
-    controller.current?.abort(); const pending = new AbortController(); controller.current = pending; setBusy(true);
+    controller.current?.abort(); const pending = new AbortController(); controller.current = pending; setBusy(true);setError('');
     try {
-      const result = await client.request<{ data: typeof data; nextCursor: string | null }>(`/v1/automations/${id}/versions` + (next ? '?cursor=' + next : ''), { signal: pending.signal });
-      if (!pending.signal.aborted) { setData(current => next ? [...current, ...result.data] : result.data); setCursor(result.nextCursor); }
+      const [definition,result] = await Promise.all([next?Promise.resolve(item):getAutomation(client,id),client.request<{ data: unknown[]; nextCursor: string | null }>(`/v1/automations/${id}/versions` + (next ? '?cursor=' + encodeURIComponent(next) : ''), { signal: pending.signal })]);
+      if(pending.signal.aborted)return;
+      if(!definition)throw Error('O rascunho não está disponível.');
+      assertVersionScope(definition,organizationId,id);
+      const rows=result.data.map(raw=>AutomationPublishedVersionV1Schema.parse(raw)),combined=next?[...data,...rows]:rows;
+      if(combined.some(version=>version.organizationId!==organizationId||version.automationId!==id)||new Set(combined.map(version=>version.version)).size!==combined.length||next&&result.nextCursor===next)throw Error('O histórico não corresponde à empresa e à automação selecionadas.');
+      setItem(definition);setData(combined.sort((a,b)=>b.version-a.version));setCursor(result.nextCursor);
     } catch (reason) { if (!pending.signal.aborted) setError(message(reason)); }
     finally { if (!pending.signal.aborted) setBusy(false); }
   }
-  useEffect(() => { setData([]); setCursor(null); setError(''); void load(); return () => controller.current?.abort(); }, [client, id]);
+  useEffect(() => { setData([]);setItem(null); setCursor(null); setError(''); void load(); return () => controller.current?.abort(); }, [client, id,organizationId]);
   return <section className="automation-page"><Link to={`/automations/${id}/edit`}>Voltar ao editor</Link><h1>Histórico de versões</h1>
-    {error && <p role="alert">{error}</p>}{data.map(version => <p key={version.version}>Versão {version.version} · {version.graph.nodes.length} blocos · {new Date(version.publishedAt).toLocaleString('pt-BR')}</p>)}
+    {error && <p role="alert">{error}</p>}{item&&<VersionComparison key={scopeKey+':'+id} client={client} item={item} versions={data} canEdit={canEdit} draftKey={`jrc-automation-draft:${scopeKey}:${id}`}/>}
     {cursor && <button disabled={busy} onClick={() => void load(cursor)}>Carregar versão anterior</button>}</section>;
 }

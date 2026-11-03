@@ -1,7 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const WEB_PORT = 41_73;
-const API_PORT = 33_10;
 const baseURL = `http://127.0.0.1:${WEB_PORT}`;
 
 export default defineConfig({
@@ -18,16 +17,6 @@ export default defineConfig({
     trace: 'off',
     screenshot: 'off',
     video: 'off',
-  },
-  webServer: {
-    command: `npm --workspace @jrc/web run preview -- --host 127.0.0.1 --port ${WEB_PORT} --strictPort`,
-    url: baseURL,
-    reuseExistingServer: false,
-    timeout: 60_000,
-    env: {
-      ...process.env,
-      JRC_API_PROXY_TARGET: `http://127.0.0.1:${API_PORT}`,
-    },
   },
   projects: [
     {

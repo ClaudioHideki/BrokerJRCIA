@@ -24,6 +24,7 @@ function Editor({ options }: { options: NativeFlowMountOptions }) {
     scopeKey={`${options.accountId}:${options.context.actorId}:${options.handleId}`} bindingPath={`/automations/${id}/bind`} executionPanel={options.context.scopes.includes('flow:executions:read')?<NativeExecutions client={client} organizationId={options.context.organizationId} accountId={options.accountId} automationId={id}/>:undefined} />;
 }
 function NativeExecutionRoute({options}:{options:NativeFlowMountOptions}){const {id='',executionId=''}=useParams();const client=useMemo(()=>createNativeEditorTransport({...options,rootAutomationId:id}) as ApiClient,[options,id]);return options.context.scopes.includes('flow:executions:read')?<NativeExecutionDetail client={client} organizationId={options.context.organizationId} accountId={options.accountId} automationId={id} executionId={executionId}/>:<p role="alert">A sessão não possui permissão para consultar execuções.</p>;}
+function NativeVersionsRoute({options}:{options:NativeFlowMountOptions}){const {id=''}=useParams();const client=useMemo(()=>createNativeEditorTransport({...options,rootAutomationId:id}) as ApiClient,[options,id]);return <NativeVersions key={`${options.context.organizationId}:${id}`} client={client} organizationId={options.context.organizationId} canEdit={options.context.scopes.includes('flow:edit')} scopeKey={`${options.accountId}:${options.context.actorId}:${options.handleId}`}/>;}
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function mountNativeFlowEditor(element: HTMLElement, options: NativeFlowMountOptions): () => void {
   const context = options.context;
@@ -58,7 +59,7 @@ export function mountNativeFlowEditor(element: HTMLElement, options: NativeFlowM
     <Route path="/automations/new" element={<NativeNewFlow client={client} canEdit={context.scopes.includes('flow:edit')} />} />
     <Route path="/automations/:id/edit" element={<Editor options={bound} />} />
     <Route path="/automations/:id/executions/:executionId" element={<NativeExecutionRoute options={bound}/>} />
-    <Route path="/automations/:id/versions" element={<NativeVersions client={client} />} />
+    <Route path="/automations/:id/versions" element={<NativeVersionsRoute options={bound} />} />
     <Route path="/automations/:id/bind" element={<NativeBinding options={bound} />} />
   </Routes></MemoryRouter></div>);
   const timer = window.setTimeout(() => {

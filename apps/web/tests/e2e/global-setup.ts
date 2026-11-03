@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Writable } from 'node:stream';
+import {fileURLToPath} from 'node:url';
 
 import type { FullConfig } from '@playwright/test';
 import { Pool } from 'pg';
@@ -50,6 +51,7 @@ import {
   createRealTenantCreator,
 } from '../../../api/tests/integration/helpers/task7.js';
 import { runE2eCleanupSteps, type E2eCleanupStep } from './cleanup.js';
+import {startE2ePreview} from './preview.js';
 import { SYNTHETIC_PAIRING_HINT } from './artifact-policy.js';
 import { createMessagingFixture } from './messaging-fixture.js';
 import { createAttendanceResumeFixture } from './attendance-resume-fixture.js';
@@ -132,6 +134,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     reconnectDelayMs: 50,
   });
   let app: ReturnType<typeof buildApp> | undefined;
+  let preview: Awaited<ReturnType<typeof startE2ePreview>> | undefined;
   let messagingFixture: Awaited<ReturnType<typeof createMessagingFixture>> | undefined;
   let resumeFixture:Awaited<ReturnType<typeof createAttendanceResumeFixture>>|undefined;
   let redisWasConnected = false;
@@ -151,6 +154,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     delete process.env.JRC_E2E_PASSWORD;
     delete process.env.JRC_E2E_META_SECRET;
     const steps: E2eCleanupStep[] = [];
+    if (preview) steps.push({ name: 'Vite preview', run: async () => preview!.close() });
     if (app) steps.push({ name: 'Fastify API', run: async () => app!.close() });
     if (platformFixture) steps.push({name:'platform pool',run:platformFixture.cleanup});
     if (messagingFixture) steps.push({ name: 'messaging worker', run: messagingFixture.close });
@@ -352,6 +356,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
       },
     });
     await app.listen({ host: '127.0.0.1', port: API_PORT });
+    preview = await startE2ePreview({root:fileURLToPath(new URL('../../',import.meta.url)),port:4173,apiOrigin:`http://127.0.0.1:${API_PORT}`});
     process.env.JRC_E2E_EMAIL = email;
     process.env.JRC_E2E_PASSWORD = password;
     return teardown;

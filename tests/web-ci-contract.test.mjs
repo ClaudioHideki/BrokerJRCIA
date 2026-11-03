@@ -7,6 +7,7 @@ describe('pipeline da console web', () => {
     const workflow = await readFile('.github/workflows/ci.yml', 'utf8');
     const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
     const playwrightConfig = await readFile('playwright.config.ts', 'utf8');
+    const setup = await readFile('apps/web/tests/e2e/global-setup.ts', 'utf8');
 
     expect(workflow).toContain('name: JRC Broker CI');
     expect(workflow).toContain('run: npm run build:web');
@@ -18,7 +19,10 @@ describe('pipeline da console web', () => {
       'node scripts/security/check-web-bundle.mjs apps/web/dist',
     );
     expect(packageJson.scripts['test:e2e']).toBe('npm run build:web && playwright test');
-    expect(playwrightConfig).toContain('npm --workspace @jrc/web run preview');
+    expect(playwrightConfig).not.toContain('webServer:');
+    expect(setup).toContain('await startE2ePreview(');
+    expect(setup).toContain("name: 'Vite preview'");
+    expect(setup).toContain('preview!.close()');
     expect(playwrightConfig).not.toContain('npm --workspace @jrc/web run dev');
     expect(packageJson.scripts['ci:verify']).toContain('npm run test:web:bundle');
     expect(packageJson.scripts['ci:verify']).toContain('npm run test:web');
