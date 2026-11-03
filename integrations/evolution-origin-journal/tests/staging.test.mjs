@@ -10,7 +10,15 @@ test('full source staging copies pinned overlays, runtime and legal provenance w
   const factory=await readFile(stage.directory+'/src/api/integrations/channel/channel.controller.ts','utf8');
   assert.match(factory,/attachOriginEngineInstance\(instanceData, new BaileysStartupService/u);
   assert.match(await readFile(stage.directory+'/src/api/services/channel.service.ts','utf8'),/await trackOriginEngineFanout\(this, \(\) => eventManager\.emit\(/u);
-  assert.equal(stage.manifest.deliveryOwnership,'UNPROVEN');assert.equal(stage.manifest.patches.length,10);assert.ok(stage.manifest.sourceFileCount>100);
+  assert.equal(stage.manifest.deliveryOwnership,'UNPROVEN');
+  assert.deepEqual(stage.manifest.patches.map(patch=>patch.path).sort(),[
+   'src/main.ts','src/api/repository/repository.service.ts','src/cache/rediscache.client.ts',
+   'src/api/controllers/instance.controller.ts','src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts',
+   'src/api/integrations/channel/channel.controller.ts','src/api/services/channel.service.ts',
+   'src/api/integrations/event/webhook/webhook.controller.ts','src/api/integrations/event/event.manager.ts',
+   'src/api/integrations/event/event.controller.ts','src/api/types/wa.types.ts',
+  ].sort());
+  assert.ok(stage.manifest.sourceFileCount>100);
   assert.ok(await readFile(stage.directory+'/jrc-origin/engine-host.mjs','utf8'));
   await assert.rejects(access(stage.directory+'/src/schema/origin-journal.sql'));
   await assert.rejects(access(stage.directory+'/jrc-origin/engine-overlay.mjs'));

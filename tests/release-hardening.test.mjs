@@ -37,4 +37,12 @@ describe('release hardening', () => {
     expect(environment).toContain('JRC_WEB_IMAGE=ghcr.io/claudiohideki/brokerjrcia-web@sha256:replace');
     expect(environment).toContain('PLATFORM_LOGIN_MODE=password_totp');
   });
+
+  it('retains only the sanitized image receipt even though its directory is hidden', async () => {
+    const source = await text('.github/workflows/images.yml');
+    const receiptUpload = source.split('- name: Retain sanitized image evidence')[1];
+    expect(receiptUpload).toContain('path: .sessions/image-release.json');
+    expect(receiptUpload).toContain('include-hidden-files: true');
+    expect(receiptUpload).toContain('if-no-files-found: error');
+  });
 });
