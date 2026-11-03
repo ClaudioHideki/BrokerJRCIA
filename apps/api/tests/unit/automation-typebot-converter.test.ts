@@ -72,4 +72,9 @@ describe('grouped Typebot migration',()=>{
     const source=artifact();source.edges=source.edges.filter(e=>e.id!=='support-edge');
     expect(()=>convertAutomationArtifact('TYPEBOT',JSON.stringify(source))).toThrow(/TYPEBOT.*EDGE/);
   });
+
+  it('rejects an explicit graph with a missing group ID instead of choosing physical order',()=>{
+    const source=artifact();source.groups[0]!.id='';
+    expect(()=>convertAutomationArtifact('TYPEBOT',JSON.stringify(source))).toThrow(/TYPEBOT_GROUP_ID_INVALID/);
+  });
 });

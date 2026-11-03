@@ -14,7 +14,9 @@ function richText(value:unknown):string {
 /** Migration only: external effects remain inert, and the caller adds the review gate. */
 export function convertTypebot(document:Record<string,unknown>):{name:string;graph:AutomationGraphV1;nodes:ImportNodeReport[]} {
   const groups=list(document.groups),blocks=groups.flatMap(group=>list(group.blocks));
-  const structured=Array.isArray(document.edges)&&groups.every(group=>Boolean(string(group.id)));
+  const structured=Object.hasOwn(document,'edges')||Object.hasOwn(document,'events')||blocks.some(block=>
+    Boolean(block.outgoingEdgeId)||list(block.items??record(block.content).items).some(item=>Boolean(item.outgoingEdgeId)));
+  if(structured&&groups.some(group=>!string(group.id)))throw new Error('TYPEBOT_GROUP_ID_INVALID');
   const definitions=new Map(list(document.variables).map(variable=>[string(variable.id),string(variable.name)]));
   const variables=(id:unknown,fallback:string)=>{
     const reference=string(id),name=definitions.get(reference)||reference||fallback;
