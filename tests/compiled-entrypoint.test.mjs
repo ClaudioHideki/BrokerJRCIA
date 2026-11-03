@@ -37,33 +37,21 @@ async function becomesUnavailable(port, timeoutMs = 2_000) {
 }
 
 async function terminateProcessTree(child) {
-  if (child.exitCode !== null) return;
+  if (child.exitCode !== null || child.signalCode !== null) return;
   if (!child.pid) throw new Error('Compiled entrypoint process has no PID');
-
-  if (process.platform === 'win32') {
-    const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
-      stdio: 'ignore',
-      windowsHide: true,
-    });
-    const [status] = await once(killer, 'exit');
-    if (status !== 0 && child.exitCode === null) throw new Error('Could not terminate compiled entrypoint process tree');
-  } else {
-    process.kill(-child.pid, 'SIGTERM');
-  }
-
-  if (child.exitCode !== null) return;
-
-  const exited = await Promise.race([
-    once(child, 'exit').then(() => true),
-    new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
-  ]);
-  if (!exited && child.exitCode === null) {
-    if (process.platform === 'win32') {
-      throw new Error('Compiled entrypoint process tree did not exit');
-    }
-    process.kill(-child.pid, 'SIGKILL');
-    await once(child, 'exit');
-  }
+  // The fixture owns the actual Node child, not a shell/npm subtree. On Windows
+  // SIGTERM terminates it; this test does not attest graceful POSIX shutdown.
+  const stopped = once(child, 'close').then(() => true);
+  child.kill('SIGTERM');
+  let timer;
+  try {
+    const exited = await Promise.race([stopped,new Promise(resolve => { timer=setTimeout(()=>resolve(false),5_000); })]);
+    if (exited) return;
+    child.kill('SIGKILL');
+    clearTimeout(timer);
+    if (!await Promise.race([stopped,new Promise(resolve => { timer=setTimeout(()=>resolve(false),5_000); })]))
+      throw new Error('Owned compiled entrypoint did not exit');
+  } finally { clearTimeout(timer); }
 }
 
 function roleUrl(connectionString, role) {
@@ -77,12 +65,9 @@ describeRuntime('compiled API entrypoint', () => {
   it('starts the real dist entrypoint, serves health, and shuts down', async () => {
     const port = await availablePort();
     const secret = (purpose) => `${purpose}-${randomBytes(32).toString('hex')}`;
-    const command = process.platform === 'win32'
-      ? { executable: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', 'npm start'] }
-      : { executable: 'npm', args: ['start'] };
-    const child = spawn(command.executable, command.args, {
+    const child = spawn(process.execPath, ['apps/api/dist/server.js'], {
       cwd: process.cwd(),
-      detached: process.platform !== 'win32',
+      windowsHide: true,
       env: {
         ...process.env,
         NODE_ENV: 'production',
@@ -108,6 +93,7 @@ describeRuntime('compiled API entrypoint', () => {
     child.stdout.on('data', (chunk) => output.push(chunk.toString()));
     child.stderr.on('data', (chunk) => output.push(chunk.toString()));
 
+    let primaryError;
     try {
       const deadline = Date.now() + 15_000;
       let response;
@@ -124,9 +110,14 @@ describeRuntime('compiled API entrypoint', () => {
       expect(child.exitCode, output.join('')).toBeNull();
       expect(response?.status, output.join('')).toBe(200);
       expect(await response.json()).toEqual({ status: 'ok' });
-    } finally {
+    } catch (error) { primaryError = error; }
+    try {
       await terminateProcessTree(child);
+    } catch (cleanupError) {
+      if (primaryError) throw new AggregateError([primaryError, cleanupError], 'Compiled startup and cleanup failed');
+      throw cleanupError;
     }
+    if (primaryError) throw primaryError;
     expect(await becomesUnavailable(port)).toBe(true);
   }, 25_000);
 });

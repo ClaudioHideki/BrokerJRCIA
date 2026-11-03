@@ -421,7 +421,8 @@ describe('migrations PostgreSQL', () => {
       ...Array.from({length:9},()=>({policyname:'attendance_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'campaign_tenant',roles:['jrc_app'],cmd:'ALL'},
       {policyname:'nico_takeover_tenant',roles:['jrc_app'],cmd:'ALL'},
-      ...Array.from({length:3},()=>({policyname:'central_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      // 0083 adds the immutable central input media reference table.
+      ...Array.from({length:4},()=>({policyname:'central_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'qr_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'qr_origin_tenant',roles:['jrc_app'],cmd:'ALL'},
       ...Array.from({length:3},()=>({policyname:'qr_identity_tenant',roles:['jrc_app'],cmd:'ALL'})),

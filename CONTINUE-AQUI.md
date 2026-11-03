@@ -1,3 +1,7 @@
+# Continuação ativa — 03/11/2026
+
+Leia primeiro `docs/release-integrada-jrc/CONTINUACAO-20261103.md`. As contagens e o texto de 02/11 abaixo são históricos. O checkout contém correções novas de dependências, expectativas PostgreSQL e comparador Flow; LAB2 contém protocolo de mídia intermediário que ainda NÃO está pronto para publicação. Preserve todas as alterações existentes.
+
 # Broker JRC — checkpoint ativo de 02/11/2026
 
 Continue a implementação existente, sem reiniciar o projeto. Leia o plano ativo `docs/superpowers/plans/2026-11-02-integral-completion.md` e as evidências em `docs/release-integrada-jrc/`. O histórico de setembro abaixo é preservado para rastreabilidade; não representa o HEAD, o remoto ou a autorização atual.
