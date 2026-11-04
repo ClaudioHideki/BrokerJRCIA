@@ -19,7 +19,7 @@ export interface PersistedBrokerEcho extends ChatwootEventScope {
   remoteMessageId: number;
 }
 type Assignee = { kind: 'NONE' | 'UNKNOWN' } | { kind: 'HUMAN' | 'EXTERNAL_BOT' | 'BROKER_BOT'; id: number };
-type MessageKind = 'HUMAN_PUBLIC' | 'HUMAN_PRIVATE' | 'EXTERNAL_BOT' | 'AUTOMATED_REPLY' |
+type MessageKind = 'HUMAN_PUBLIC' | 'HUMAN_PRIVATE' | 'EXTERNAL_BOT' | 'AUTOMATED_REPLY' | 'NATIVE_CSAT' |
   'UNVERIFIED_REPLY' | 'BROKER_ECHO' | 'CONTACT_MESSAGE' | 'SYSTEM_MESSAGE';
 export type ChatwootAttendanceEvent = {
   kind: MessageKind;
@@ -44,7 +44,8 @@ const messageSchema = z.object({
   conversation: z.object({ id, inbox_id: id.optional(), account: scopeId.optional() }),
   message_type: z.union([z.enum(['incoming', 'outgoing', 'activity', 'template']), z.number().int().min(0).max(3)]),
   private: z.boolean(), sender: z.unknown().optional(), additional_attributes: z.unknown().optional(),
-  content_attributes: z.unknown().optional(),
+  content_attributes: z.unknown().optional(), content_type:z.unknown().optional(),
+  attachments:z.unknown().optional(),
 });
 const controlSchema = z.object({
   id, account: scopeId, inbox_id: id,
@@ -88,6 +89,13 @@ export function classifyChatwootAttendanceEvent(raw: unknown, scope: ChatwootEve
       ...(senderId === undefined ? {} : { senderId }), mayForwardReply, interruptsBot,
     });
     if (message.message_type === 'incoming' || message.message_type === 0) return result('CONTACT_MESSAGE', false);
+    // Stock Chatwoot emits its own survey invitation without an actor. It is
+    // transport only: neither a human takeover nor permission to execute a bot.
+    if ((message.message_type === 'template' || message.message_type === 3) &&
+      message.content_type === 'input_csat' && !message.private && message.sender == null &&
+      (message.attachments===undefined||Array.isArray(message.attachments)&&message.attachments.length===0) &&
+      !record(message.content_attributes).jrc_broker_message_id)
+      return result('NATIVE_CSAT', false, true);
     if (message.message_type !== 'outgoing' && message.message_type !== 1) return result('SYSTEM_MESSAGE', false);
     if (echo && echo.organizationId === scope.organizationId && echo.integrationId === scope.integrationId &&
       echo.accountId === scope.accountId && echo.inboxId === scope.inboxId &&

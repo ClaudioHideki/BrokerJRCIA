@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AttendanceDiagnosticSchema } from './attendance-resume-v1.js';
+import { MenuWaitConfigV2Schema } from './automation-menu.js';
 
 import { FlowGraphSchema, type FlowGraph } from './flows.js';
 import { type FlowNode } from './flows.js';
@@ -81,8 +82,10 @@ export function validateAutomationGraph(input: unknown): NodeDiagnostic[] {
   const cycles = (id: string): boolean => {
     if (active.has(id)) return true; if (visited.has(id)) return false;
     visited.add(id); active.add(id);
-    // Keep the historical version-1 rule; changing menu/delay cycle semantics requires an explicit migration.
-    if (graph.nodes.find(node => node.id === id)?.type !== 'input') for (const edge of graph.edges.filter(item => item.source === id)) if (cycles(edge.target)) return true;
+    // V2 menus explicitly opt into durable event waits. Historical menus keep their original validation rule.
+    const node=graph.nodes.find(node => node.id === id);
+    const waitsForInput=node?.type==='input'||node?.type==='menu'&&MenuWaitConfigV2Schema.safeParse(node.data).success;
+    if (!waitsForInput) for (const edge of graph.edges.filter(item => item.source === id)) if (cycles(edge.target)) return true;
     active.delete(id); return false;
   };
   if (graph.nodes.some(node => cycles(node.id))) add(null, 'edges', 'CYCLE_WITHOUT_INPUT', 'Há um ciclo sem captura de resposta. Inclua uma espera por nova mensagem.');

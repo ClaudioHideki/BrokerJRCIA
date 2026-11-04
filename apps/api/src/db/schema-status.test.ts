@@ -9,16 +9,16 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('loads the complete migration manifest through 0083', async () => {
+  it('loads the complete migration manifest through 0084', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(83);
-    expect(migrations.slice(-9).map(entry => entry.name)).toEqual([
-      '0075_media_custody', '0076_qr_connection_watermark', '0077_partner_delivery_replay', '0078_qr_origin_receipts', '0079_partner_persistence_receipts','0080_integration_failure_diagnostics','0081_automation_execution_inspection','0082_flow_execution_capability','0083_central_flow_media_references',
+    expect(migrations).toHaveLength(84);
+    expect(migrations.slice(-10).map(entry => entry.name)).toEqual([
+      '0075_media_custody', '0076_qr_connection_watermark', '0077_partner_delivery_replay', '0078_qr_origin_receipts', '0079_partner_persistence_receipts','0080_integration_failure_diagnostics','0081_automation_execution_inspection','0082_flow_execution_capability','0083_central_flow_media_references','0084_native_csat_transport',
     ]);
   });
   it('keeps the previous media schema pending until all audit corrections are applied',async()=>{
     const migrations=await loadExpectedMigrations();
-    expect(compareMigrationStatus(migrations,migrations.slice(0,74))).toMatchObject({state:'PENDING',compatible:false,expectedVersion:'0083_central_flow_media_references',appliedVersion:'0074_partner_media',pending:['0075_media_custody','0076_qr_connection_watermark','0077_partner_delivery_replay','0078_qr_origin_receipts','0079_partner_persistence_receipts','0080_integration_failure_diagnostics','0081_automation_execution_inspection','0082_flow_execution_capability','0083_central_flow_media_references']});
+    expect(compareMigrationStatus(migrations,migrations.slice(0,74))).toMatchObject({state:'PENDING',compatible:false,expectedVersion:'0084_native_csat_transport',appliedVersion:'0074_partner_media',pending:['0075_media_custody','0076_qr_connection_watermark','0077_partner_delivery_replay','0078_qr_origin_receipts','0079_partner_persistence_receipts','0080_integration_failure_diagnostics','0081_automation_execution_inspection','0082_flow_execution_capability','0083_central_flow_media_references','0084_native_csat_transport']});
   });
 
   it('informa a versão aplicada e migrations pendentes sem expor hashes', () => {

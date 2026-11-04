@@ -24,6 +24,17 @@ function client(request: ApiClient['request']): ApiClient {
 beforeEach(() => sessionStorage.clear());
 
 describe('NewAutomation retry', () => {
+  it('offers the partial OIA reconstruction as an unbound draft',async()=>{
+    const request=vi.fn(async(path:string,_init?:RequestInit)=>path==='/v1/automations/status'?{enabled:true}:definition);
+    render(<SessionProvider client={client(request as ApiClient['request'])}><MemoryRouter><NewAutomationPage/></MemoryRouter></SessionProvider>);
+    const template=await screen.findByLabelText('Modelo inicial');await waitFor(()=>expect(template).toBeEnabled());
+    fireEvent.change(template,{target:{value:'OIA_VISUAL_HML'}});
+    fireEvent.change(screen.getByLabelText('Nome da automação'),{target:{value:'OIA parcial HML'}});
+    fireEvent.click(screen.getByRole('button',{name:'Criar e abrir editor'}));
+    await waitFor(()=>expect(request.mock.calls.some(call=>call[0]==='/v1/automations')).toBe(true));
+    const creation=request.mock.calls.find(call=>call[0]==='/v1/automations')!;
+    const body=JSON.parse(String(creation[1]?.body));expect(body.graph.nodes.filter((n:{type:string})=>n.type==='handoff')).toHaveLength(13);
+  });
   it('creates the operator reception as a draft without publishing or binding it',async()=>{
     const request=vi.fn(async(path:string,_init?:RequestInit)=>path==='/v1/automations/status'?{enabled:true}:definition);
     render(<SessionProvider client={client(request as ApiClient['request'])}><MemoryRouter initialEntries={['/automations/new']}><Routes>

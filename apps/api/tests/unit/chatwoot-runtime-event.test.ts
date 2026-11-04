@@ -25,6 +25,13 @@ const outgoing = { ...message, message_type: 'outgoing', sender: { id: 9, type: 
 const echo = { ...binding, remoteConversationId: 7, remoteMessageId: 101 };
 
 describe('central runtime authenticated event boundary', () => {
+  it('does not start or resume the bot for CSAT invitations, survey replies or delivery updates',()=>{
+    for(const value of [
+      {...message,message_type:'template',content_type:'input_csat',sender:null},
+      {...message,content_type:'input_csat',content:'5'},
+      {...message,event:'message_updated',message_type:'template',content_type:'input_csat',sender:null},
+    ])expect(decode(value)).toMatchObject({kind:'IGNORED',mayExecute:false,mayForwardReply:false});
+  });
   it('returns scoped contact text without trusting payload organization or copying personal metadata', () => {
     const event = decode({ ...message, organizationId: 'foreign', sender: { ...message.sender, email: 'private@example.test' } });
     expect(event).toMatchObject({ kind: 'CONTACT_TEXT', scope: binding, remoteConversationId: 7, remoteMessageId: 101,

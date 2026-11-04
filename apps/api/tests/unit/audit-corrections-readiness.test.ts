@@ -10,7 +10,7 @@ describe('phase 2 schema compatibility contract', () => {
     const journal = JSON.parse(await readFile('apps/api/drizzle/migrations/meta/_journal.json', 'utf8'));
     expect(journal.entries.slice(74,79).map((entry: { tag: string }) => entry.tag))
       .toEqual(['0075_media_custody', '0076_qr_connection_watermark', '0077_partner_delivery_replay', '0078_qr_origin_receipts', '0079_partner_persistence_receipts']);
-    expect(RUNTIME_SCHEMA_BASELINE).toBe('0083_central_flow_media_references');
+    expect(RUNTIME_SCHEMA_BASELINE).toBe('0084_native_csat_transport');
   });
   it('checks custody, clock, redrive and their lifecycle catalogue before reporting readiness', async () => {
     const queries: string[] = [];

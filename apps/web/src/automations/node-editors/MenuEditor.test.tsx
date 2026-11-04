@@ -34,6 +34,23 @@ function setup(initial = node, editable = true) {
   return changed;
 }
 describe('visual menu configuration', () => {
+  it('opts into localized retries and a deadline without downgrading V2 when attempts change',()=>{
+    const changed=setup({...node,data:{...node.data,menuConfigVersion:1,maxAttempts:3}});
+    fireEvent.click(screen.getByRole('checkbox',{name:'Mensagem de erro e prazo do menu'}));
+    expect(changed.mock.lastCall![0]).toMatchObject({menuConfigVersion:2,maxAttempts:3,errorMessage:expect.any(String),timeoutSeconds:300});
+    fireEvent.change(screen.getByRole('textbox',{name:'Mensagem de opção inválida'}),{target:{value:'Invalid option'}});
+    fireEvent.change(screen.getByRole('spinbutton',{name:'Prazo em segundos'}),{target:{value:'120'}});
+    fireEvent.change(screen.getByRole('spinbutton',{name:'Tentativas de resposta inválida'}),{target:{value:'4'}});
+    expect(changed.mock.lastCall![0]).toMatchObject({menuConfigVersion:2,maxAttempts:4,errorMessage:'Invalid option',timeoutSeconds:120});
+    expect(screen.getByRole('spinbutton',{name:'Tentativas de resposta inválida'})).toHaveAttribute('aria-invalid','false');
+  });
+  it('removes only exhausted and timeout connections when disabling the menu policy',()=>{
+    const changed=setup({...node,data:{...node.data,menuConfigVersion:2,maxAttempts:3,errorMessage:'Invalid',timeoutSeconds:300}});
+    fireEvent.click(screen.getByRole('checkbox',{name:'Limitar respostas inválidas'}));
+    expect(changed.mock.lastCall![0]).not.toHaveProperty('menuConfigVersion');
+    expect(changed.mock.lastCall![0]).not.toHaveProperty('errorMessage');
+    expect(changed.mock.lastCall![0]).not.toHaveProperty('timeoutSeconds');
+  });
   it('opts into a bounded menu without changing option branches or historical fields',()=>{
     const changed=setup();
     fireEvent.click(screen.getByRole('checkbox',{name:'Limitar respostas inválidas'}));

@@ -9,6 +9,7 @@ export * from './messaging/schemas.js';
 export * from './broker/schemas.js';
 export * from './integrations/schemas.js';
 export * from './operator-reception.js';
+export * from './oia-visual-reconstruction.js';
 export * from './integrations/destinations.js';
 export * from './integrations/control.js';
 export * from './integrations/embed.js';

@@ -7,7 +7,7 @@ beforeAll(async () => { db = await attendanceDatabase(); }, 60_000);
 afterAll(async () => { await db?.dispose(); });
 
 it('accepts the fully migrated partner API under the actual app role', async () => {
-  expect(RUNTIME_SCHEMA_BASELINE).toBe('0083_central_flow_media_references');
+  expect(RUNTIME_SCHEMA_BASELINE).toBe('0084_native_csat_transport');
   const client = await db.database.pool.connect();
   try {
     await client.query('BEGIN');
