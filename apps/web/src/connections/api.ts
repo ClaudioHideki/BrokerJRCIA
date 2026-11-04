@@ -21,10 +21,10 @@ function parseContract<T>(schema: { safeParse(value: unknown): { success: true; 
   return parsed.data;
 }
 
-export async function listConnections(client: ApiClient, cursor?: string): Promise<Page<Instance>> {
-  const query = new URLSearchParams({ limit: '20' });
+export async function listConnections(client: ApiClient, cursor?: string,options?:{limit:100;signal:AbortSignal}): Promise<Page<Instance>> {
+  const query = new URLSearchParams({ limit: String(options?.limit??20) });
   if (cursor) query.set('cursor', cursor);
-  return parseContract(InstancePageSchema, await client.request<unknown>(`/v1/instances?${query}`));
+  return parseContract(InstancePageSchema, await (options?client.request<unknown>(`/v1/instances?${query}`,{signal:options.signal}):client.request<unknown>(`/v1/instances?${query}`)));
 }
 
 export async function listBaileysProviderAccounts(client: ApiClient): Promise<Page<ProviderAccount>> {

@@ -12,6 +12,8 @@ import "../connections/components/instance-workspace.css";
 import { Metric } from "../broker/components.js";
 import { Icon } from "../broker/Icon.js";
 import { downloadCsv } from "../broker/import.js";
+import {collectNameSearchPages,matchesConnectionName} from '../connections/name-search.js';
+import {useCompleteNameSearch} from '../connections/useCompleteNameSearch.js';
 
 function errorMessage(error: unknown) {
   if (!(error instanceof ApiClientError))
@@ -27,6 +29,8 @@ export function ConnectionsPage() {
   const { session, tenantRevision } = useSession();
   const [items, setItems] = useState<Instance[]>([]);
   const [search, setSearch] = useState("");
+  const [searchVersion,setSearchVersion]=useState(0);
+  const nameInput=useRef<HTMLInputElement>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -38,10 +42,18 @@ export function ConnectionsPage() {
   } | null>(null);
   const loadGeneration = useRef(0);
   const tenantId = session?.activeOrganization.id ?? "";
+  const searchActive=Boolean(search.trim());
+  const loadSearch=useCallback((signal:AbortSignal)=>collectNameSearchPages(async(cursor,abort)=>{
+    const page=await listConnections(client,cursor,{limit:100,signal:abort});
+    if(page.pageInfo.hasNextPage&&!page.pageInfo.nextCursor)throw new Error('Invalid pagination');
+    return {data:page.data,nextCursor:page.pageInfo.hasNextPage?page.pageInfo.nextCursor:null};
+  },signal),[client]);
+  const nameSearch=useCompleteNameSearch(searchActive&&!loading,`${tenantId}:${tenantRevision}:${searchVersion}`,loadSearch);
 
   const load = useCallback(
     async (cursor?: string, generation = loadGeneration.current) => {
       cursor ? setLoadingMore(true) : setLoading(true);
+      if(!cursor)setSearchVersion(value=>value+1);
       setError(null);
       try {
         const page = await listConnections(client, cursor);
@@ -94,11 +106,10 @@ export function ConnectionsPage() {
   }, [client, load, tenantId, tenantRevision]);
 
   const canMutate = session?.activeOrganization.role !== "VIEWER";
-  const filtered = items.filter(
+  const visibleItems=searchActive?nameSearch.items:items;
+  const filtered = visibleItems.filter(
     (item) =>
-      item.name
-        .toLocaleLowerCase("pt-BR")
-        .includes(search.trim().toLocaleLowerCase("pt-BR")) &&
+      matchesConnectionName(item.name,search) &&
       (!statusFilter || item.status === statusFilter),
   );
   return (
@@ -110,7 +121,7 @@ export function ConnectionsPage() {
           <p>Gerencie as conexões WhatsApp da organização ativa.</p>
         </div>
         <div className="heading-actions">
-          {items.length ? (
+          {visibleItems.length ? (
             <button
               className="button button--ghost"
               onClick={() =>
@@ -168,25 +179,25 @@ export function ConnectionsPage() {
           </button>
         </div>
       ) : null}
-      {!loading && !error && items.length === 0 ? (
+      {!searchActive&&!loading && !error && items.length === 0 ? (
         <div className="state-card">
           <h2>Nenhuma conexão criada</h2>
           <p>Quando uma conexão for criada, ela aparecerá aqui.</p>
         </div>
       ) : null}
-      {items.length > 0 ? (
+      {visibleItems.length > 0 ? (
         <div className="metric-grid metric-grid--four">
           <Metric
             label="Conexões carregadas"
-            value={String(items.length)}
+            value={String(visibleItems.length)}
             note={
-              hasNextPage ? "Lista parcial · há mais páginas" : "Lista completa"
+              !searchActive&&hasNextPage ? "Lista parcial · há mais páginas" : "Lista completa"
             }
             icon="connections"
           />
           <Metric
             label="Conectadas"
-            value={String(items.filter((i) => i.status === "CONNECTED").length)}
+            value={String(visibleItems.filter((i) => i.status === "CONNECTED").length)}
             note="Nesta lista"
             tone="green"
             icon="check"
@@ -194,7 +205,7 @@ export function ConnectionsPage() {
           <Metric
             label="Precisam de atenção"
             value={String(
-              items.filter((i) =>
+              visibleItems.filter((i) =>
                 ["ERROR", "PROVISIONING_FAILED", "AWAITING_ACTION"].includes(
                   i.status,
                 ),
@@ -207,7 +218,7 @@ export function ConnectionsPage() {
           <Metric
             label="Desconectadas"
             value={String(
-              items.filter((i) => i.status === "DISCONNECTED").length,
+              visibleItems.filter((i) => i.status === "DISCONNECTED").length,
             )}
             note="Nesta lista"
             tone="red"
@@ -215,17 +226,20 @@ export function ConnectionsPage() {
           />
         </div>
       ) : null}
-      {items.length > 0 ? (
+      {(
         <div className="connection-filters">
           <label>
             Buscar conexão
             <input
+              ref={nameInput}
               type="search"
+              maxLength={100}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Nome da conexão"
             />
           </label>
+          {search&&<button type="button" className="button button--secondary" onClick={()=>{setSearch('');nameInput.current?.focus();}}>Limpar busca de conexões</button>}
           <label>
             Filtrar por status
             <select
@@ -252,14 +266,17 @@ export function ConnectionsPage() {
               ))}
             </select>
           </label>
-          <p>
+          {!searchActive&&<p>
             Filtros aplicados às conexões carregadas: {filtered.length} de{" "}
             {items.length}.
             {hasNextPage ? " Carregue mais para ampliar os resultados." : ""}
-          </p>
+          </p>}
+          {searchActive&&nameSearch.status!=='READY'&&nameSearch.status!=='ERROR'&&<p role="status">Buscando por nome em todas as páginas…</p>}
+          {searchActive&&nameSearch.status==='READY'&&<p role="status" aria-label="Resultados da busca">{filtered.length} de {visibleItems.length} conexões · busca completa por nome e status.</p>}
+          {searchActive&&nameSearch.status==='ERROR'&&<div role="alert" aria-label="Erro da busca"><p>Não foi possível concluir a busca em todas as páginas. Os resultados não estão completos.</p><button type="button" className="button button--secondary" onClick={nameSearch.retry}>Tentar busca novamente</button></div>}
         </div>
-      ) : null}
-      {items.length > 0 && filtered.length === 0 ? (
+      )}
+      {(searchActive?nameSearch.status==='READY':items.length>0) && filtered.length === 0 ? (
         <p className="state-card">Nenhuma conexão corresponde aos filtros.</p>
       ) : null}
       {filtered.length > 0 ? (
@@ -313,7 +330,7 @@ export function ConnectionsPage() {
           </table>
         </div>
       ) : null}
-      {hasNextPage && nextCursor ? (
+      {!searchActive&&hasNextPage && nextCursor ? (
         <button
           className="button button--ghost"
           type="button"

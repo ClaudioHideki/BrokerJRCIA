@@ -5,6 +5,8 @@ import { ApiClientError } from '../api/client.js';
 import { useApiClient, useSession } from '../auth/SessionProvider.js';
 import { listChannels } from '../channels/api.js';
 import { ChannelDeletion } from '../channels/ChannelDeletion.js';
+import {collectNameSearchPages,matchesConnectionName} from '../connections/name-search.js';
+import {useCompleteNameSearch} from '../connections/useCompleteNameSearch.js';
 
 const labels = { QR: 'WhatsApp por QR Code', META: 'WhatsApp oficial Meta',CENTRAL:'WhatsApp conectado na central' } as const;
 const statusLabel: Record<string, string> = {
@@ -22,9 +24,18 @@ export function ChannelsPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');const [showArchived,setShowArchived]=useState(false);
+  const [nameQuery,setNameQuery]=useState(''),[searchVersion,setSearchVersion]=useState(0);
+  const nameInput=useRef<HTMLInputElement>(null),searchActive=Boolean(nameQuery.trim());
+  const loadSearch=useCallback((signal:AbortSignal)=>collectNameSearchPages(async(cursor,abort)=>{
+    const page=await listChannels(client,showArchived,{pageSize:100,...(cursor?{cursor}:{})},abort);
+    return {data:page.data,nextCursor:page.nextCursor??null};
+  },signal),[client,showArchived]);
+  const search=useCompleteNameSearch(searchActive&&!loading,`${session?.activeOrganization.id}:${tenantRevision}:${showArchived}:${searchVersion}`,loadSearch);
+  useLayoutEffect(()=>setNameQuery(''),[session?.activeOrganization.id,tenantRevision]);
   const generation = useRef(0);
   const load = useCallback(async (signal?: AbortSignal) => {
     const current = ++generation.current;
+    setSearchVersion(value=>value+1);
     setLoading(true); setLoadingMore(false); setError('');setItems([]);setNextCursor(null);
     try { const result=await listChannels(client,showArchived,{pageSize:PAGE_SIZE});if(!signal?.aborted&&current===generation.current){setItems(result.data);setNextCursor(result.nextCursor??null);} }
     catch (caught) { if (!signal?.aborted&&current===generation.current) setError(caught instanceof ApiClientError
@@ -55,6 +66,7 @@ export function ChannelsPage() {
   }
   const canManage = session?.activeOrganization.role !== 'VIEWER';
   const canDelete = Boolean(session && ['OWNER', 'ADMIN'].includes(session.activeOrganization.role));
+  const visibleItems=searchActive?search.items.filter(item=>matchesConnectionName(item.identity.displayName,nameQuery)):items;
   return <section aria-labelledby="channels-title">
     <div className="page-heading"><div><p className="eyebrow">WhatsApp da sua empresa</p><h1 id="channels-title">Caixas de entrada</h1>
       <p>Conecte seu WhatsApp, escolha onde a equipe atende e ative um chatbot JRC.</p></div>
@@ -63,9 +75,16 @@ export function ChannelsPage() {
       {!loading && items.length === 0 && <p><button type="button" className="button button--secondary" onClick={()=>void load()}>Tentar carregar caixas novamente</button></p>}
     </div> : null}
     {loading ? <div className="state-card" aria-busy="true">Carregando canais…</div> : null}
-    {!loading && !error && items.length === 0 ? <div className="state-card"><h2>Nenhum canal configurado</h2><p>Crie um canal por QR Code ou conecte uma conta oficial da Meta.</p></div> : null}
+    <div className="connection-filters"><label>Buscar caixa por nome<input ref={nameInput} type="search" value={nameQuery} maxLength={160} onChange={event=>setNameQuery(event.target.value)} placeholder="Nome da caixa ou conexão"/></label>
+      {nameQuery&&<button type="button" className="button button--secondary" onClick={()=>{setNameQuery('');nameInput.current?.focus();}}>Limpar busca de caixas</button>}
+      {searchActive&&search.status!=='READY'&&search.status!=='ERROR'&&<p role="status">Buscando por nome em todas as páginas…</p>}
+      {searchActive&&search.status==='READY'&&<p role="status" aria-label="Resultados da busca">{visibleItems.length} de {search.items.length} caixas · busca completa por nome.</p>}
+      {searchActive&&search.status==='ERROR'&&<div role="alert" aria-label="Erro da busca"><p>Não foi possível concluir a busca em todas as páginas. Os resultados não estão completos.</p><button type="button" className="button button--secondary" onClick={search.retry}>Tentar busca novamente</button></div>}
+    </div>
+    {!searchActive&&!loading && !error && items.length === 0 ? <div className="state-card"><h2>Nenhum canal configurado</h2><p>Crie um canal por QR Code ou conecte uma conta oficial da Meta.</p></div> : null}
+    {searchActive&&search.status==='READY'&&visibleItems.length===0&&<p className="state-card">Nenhuma caixa corresponde ao nome informado.</p>}
     <label><input type="checkbox" checked={showArchived} onChange={event=>setShowArchived(event.target.checked)}/> Mostrar arquivadas</label><div className="channel-cards">
-      {items.map(item => <article className="panel" key={item.id}>
+      {visibleItems.map(item => <article className="panel" key={item.id}>
         <div className="page-heading"><div><p className="eyebrow">{labels[item.provider]}</p><h2>{item.identity.displayName ?? 'Canal sem nome'}</h2></div>
           <Link className="button button--secondary" to={`/channels/${item.id}`}>{item.transportStatus==='CONNECTED'?'Gerenciar caixa':'Conectar e gerenciar'}</Link></div>
         {item.archivedAt&&<p className="notice">Arquivada</p>}<p>Número: {item.identity.maskedAddress??'Ainda não identificado'}</p>
@@ -80,7 +99,7 @@ export function ChannelsPage() {
           request={(path, method = 'GET', body) => client.request(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })} />}
       </article>)}
     </div>
-    {nextCursor&&!loading?<button className="button button--secondary" type="button" disabled={loadingMore} onClick={()=>void loadMore()}>
+    {!searchActive&&nextCursor&&!loading?<button className="button button--secondary" type="button" disabled={loadingMore} onClick={()=>void loadMore()}>
       {loadingMore?'Carregando…':'Carregar mais caixas'}</button>:null}
   </section>;
 }
