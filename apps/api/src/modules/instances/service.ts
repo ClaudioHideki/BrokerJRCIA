@@ -649,11 +649,30 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
       const staleResult = async (): Promise<ConnectionResult> => {
         const current = await dependencies.runInOrganizationTransaction(
           context.organizationId,
-          (transaction) => dependencies.repository.findById(
-            transaction,
-            context.organizationId,
-            initial.instance.id,
-          ),
+          async (transaction) => {
+            const observed = await dependencies.repository.findByIdForUpdate(
+              transaction, context.organizationId, initial.instance.id,
+            );
+            // Keep the authenticated callback's state, but settle this attempt so
+            // initial identity enrollment can verify its durable completion.
+            if (observed?.status === 'CONNECTED') {
+              const latest = await dependencies.repository.findLatestConnectOperationForUpdate(
+                transaction, context.organizationId, initial.instance.id,
+              );
+              if (latest?.id === initial.operation.id && latest.status === 'PENDING') {
+                await dependencies.guardOperation?.(transaction, context.organizationId, initial.operation.id, true);
+                const fenced = await dependencies.repository.updatePendingConnectOperation(transaction, {
+                  organizationId: context.organizationId, instanceId: initial.instance.id, operationId: initial.operation.id,
+                  status: 'SUCCEEDED', canonicalErrorCode: null, reconciliationRequired: false, updatedAt: now(), incrementAttempt: true,
+                });
+                if (fenced) await dependencies.repository.completeIdempotency(transaction, {
+                  organizationId: context.organizationId, recordId: initial.idempotencyRecordId, status: 'COMPLETED',
+                  responseMetadata: { instanceId: observed.id, status: 'CONNECTED', actionType: 'NONE' },
+                });
+              }
+            }
+            return observed;
+          },
         );
         if (!current) throw new InstanceServiceError('INSTANCE_NOT_FOUND', 404);
         return {

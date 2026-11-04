@@ -770,6 +770,12 @@ describe('serviço de instâncias', () => {
     expect(result).toMatchObject({ instance: { status: 'CONNECTED' }, pending: false, action: { type: 'NONE', reason: 'ALREADY_CONNECTED' } });
     expect(harness.rows.get(INSTANCE_ID)?.status).toBe('CONNECTED');
     expect(harness.audits).not.toContainEqual(expect.objectContaining({ type: 'INSTANCE_CONNECT_FAILED' }));
+    expect([...harness.operations.values()]).toContainEqual(expect.objectContaining({
+      id: result.operationId, operationType: 'CONNECT', status: 'SUCCEEDED', reconciliationRequired: false,
+    }));
+    expect([...harness.idempotency.values()]).toContainEqual(expect.objectContaining({
+      status: 'COMPLETED', responseMetadata: { instanceId: INSTANCE_ID, status: 'CONNECTED', actionType: 'NONE' },
+    }));
   });
 
   it.each(['watermark', 'binding'] as const)('does not release a late QR when only its authenticated %s changed', async (changed) => {
