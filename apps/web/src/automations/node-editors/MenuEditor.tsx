@@ -28,13 +28,14 @@ export function MenuEditor({ node, edges, editable, onChange, allowAttemptLimit 
   const options: unknown[] = Array.isArray(node.data.options) ? node.data.options : [];
   const values = options.map(option => text(record(option).value).trim());
   const bounded = node.data.menuConfigVersion !== undefined;
-  const limitInvalid = node.data.menuConfigVersion !== 1 || !Number.isInteger(node.data.maxAttempts) || Number(node.data.maxAttempts) < 1 || Number(node.data.maxAttempts) > 100;
+  const extended = node.data.menuConfigVersion === 2;
+  const limitInvalid = ![1,2].includes(Number(node.data.menuConfigVersion)) || !Number.isInteger(node.data.maxAttempts) || Number(node.data.maxAttempts) < 1 || Number(node.data.maxAttempts) > 100;
   function toggleLimit(enabled: boolean) {
     if (!editable || !allowAttemptLimit) return;
     if (enabled) onChange({ ...node.data, menuConfigVersion: 1, maxAttempts: 3 }, edges);
     else {
-      const data = { ...node.data }; delete data.menuConfigVersion; delete data.maxAttempts;
-      onChange(data, edges.filter(edge => edge.source !== node.id || edge.port !== 'exhausted'));
+      const data = { ...node.data }; delete data.menuConfigVersion; delete data.maxAttempts; delete data.errorMessage; delete data.timeoutSeconds;
+      onChange(data, edges.filter(edge => edge.source !== node.id || !['exhausted','timeout'].includes(edge.port)));
     }
   }
   const invalid = options.some((raw, index) => !validNumber(values[index]!) ||
@@ -80,7 +81,21 @@ export function MenuEditor({ node, edges, editable, onChange, allowAttemptLimit 
       {bounded && <>
         <label>Tentativas de resposta inválida<input type="number" min={1} max={100} step={1} required
           value={text(node.data.maxAttempts)} aria-invalid={limitInvalid}
-          onChange={event => { if (editable) onChange({ ...node.data, menuConfigVersion: 1, maxAttempts: event.target.value === '' ? '' : Number(event.target.value) }, edges); }}/></label>
+          onChange={event => { if (editable) onChange({ ...node.data, maxAttempts: event.target.value === '' ? '' : Number(event.target.value) }, edges); }}/></label>
+        <label><input type="checkbox" checked={extended} onChange={event=>{
+          if(!editable)return;
+          if(event.target.checked)onChange({...node.data,menuConfigVersion:2,errorMessage:'Opção inválida. Tente novamente.',timeoutSeconds:300},edges);
+          else{const data:FlowNode['data']={...node.data,menuConfigVersion:1};delete data.errorMessage;delete data.timeoutSeconds;
+            onChange(data,edges.filter(edge=>edge.source!==node.id||edge.port!=='timeout'));}
+        }}/>Mensagem de erro e prazo do menu</label>
+        {extended&&<>
+          <label>Mensagem de opção inválida<textarea required maxLength={4096} value={text(node.data.errorMessage)} onChange={event=>{if(editable)onChange({...node.data,errorMessage:event.target.value},edges);}}/></label>
+          <label>Prazo em segundos<input type="number" min={1} max={604800} step={1} value={text(node.data.timeoutSeconds)} onChange={event=>{
+            if(!editable)return;const data={...node.data};
+            if(event.target.value==='')delete data.timeoutSeconds;else data.timeoutSeconds=Number(event.target.value);
+            onChange(data,event.target.value===''?edges.filter(edge=>edge.source!==node.id||edge.port!=='timeout'):edges);
+          }}/></label><p>O prazo começa ao entrar no menu e continua após uma resposta inválida. Conecte a saída Prazo esgotado. Deixe vazio para não usar prazo.</p>
+        </>}
         <p>Ao atingir o limite, o fluxo segue por Sem tentativas. Conecte essa saída a um bloco de destino.</p>
         {limitInvalid && <p role="alert">Configure uma versão suportada e um número inteiro de 1 a 100 tentativas.</p>}
       </>}

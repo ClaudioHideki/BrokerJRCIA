@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { welcomeFlow, AutomationPublishedVersionV1Schema, type AutomationPublishedVersionV1, type AutomationDefinitionV1, type AutomationGraphV1 } from '@jrc/contracts';
+import { welcomeFlow,oiaVisualReconstructionFlow, AutomationPublishedVersionV1Schema, type AutomationPublishedVersionV1, type AutomationDefinitionV1, type AutomationGraphV1 } from '@jrc/contracts';
 import type { ApiClient } from '../api/client.js';
 import { ImportReview, type ImportReport } from '../automations/ImportReview.js';
 import { AutomationAvailabilityNotice, type AutomationAvailability } from '../automations/AvailabilityNotice.js';
@@ -39,6 +39,7 @@ export function NativeWorkspace({ client, canEdit }: { client: ApiClient; canEdi
 type Preview = { name: string; graph: AutomationGraphV1; report: ImportReport };
 export function NativeNewFlow({ client, canEdit }: { client: ApiClient; canEdit: boolean }) {
   const navigate = useNavigate(), [name, setName] = useState(''), [preview, setPreview] = useState<Preview | null>(null);
+  const [template,setTemplate]=useState('WELCOME');
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), key = useRef(crypto.randomUUID());
   const controller = useRef(new AbortController()), mutation = useRef(false), generation = useRef(0);
   useEffect(() => () => { generation.current++; controller.current.abort(); }, []);
@@ -60,7 +61,7 @@ export function NativeNewFlow({ client, canEdit }: { client: ApiClient; canEdit:
     try {
       const item = await client.request<AutomationDefinitionV1>('/v1/automations', { method: 'POST',
         signal: controller.current.signal, headers: { 'Idempotency-Key': key.current },
-        body: JSON.stringify({ name, graph: preview?.graph ?? welcomeFlow() }) });
+        body: JSON.stringify({ name, graph: preview?.graph ?? (template==='OIA_VISUAL_HML'?oiaVisualReconstructionFlow():welcomeFlow()) }) });
       if (current === generation.current) navigate(`/automations/${item.id}/edit`, { state: preview ? { importReport: preview.report } : null });
     } catch (reason) { if (current === generation.current) setError(message(reason)); }
     finally { if (current === generation.current) { mutation.current = false; setBusy(false); } }
@@ -69,6 +70,8 @@ export function NativeNewFlow({ client, canEdit }: { client: ApiClient; canEdit:
     {error && <p role="alert">{error}</p>}<form onSubmit={event => { event.preventDefault(); void create(); }}>
       <label>Nome<input disabled={!canEdit || busy} required maxLength={160} value={name} onChange={event => { setName(event.target.value); key.current = crypto.randomUUID(); }} /></label>
       <label>Importar arquivo JSON<input type="file" accept="application/json,.json" disabled={!canEdit || busy} onChange={event => { const file = event.target.files?.[0]; if (file) void read(file); event.target.value = ''; }} /></label>
+      {!preview&&<label>Modelo inicial<select disabled={!canEdit||busy} value={template} onChange={event=>{setTemplate(event.target.value);key.current=crypto.randomUUID();}}><option value="WELCOME">Boas-vindas simples</option><option value="OIA_VISUAL_HML">OIA — RECONSTRUÇÃO VISUAL HML — PARIDADE PARCIAL</option></select></label>}
+      {!preview&&template==='OIA_VISUAL_HML'&&<p>Português e inglês, quatro departamentos e 26 caminhos. Horários e nomes iniciais são dados de teste: confirme o expediente e selecione os 13 destinos no catálogo da HML antes de publicar. Tentativas: 3; prazo de cada menu: 300 segundos. Paridade integral depende dos exports e configurações originais.</p>}
       {preview && <ImportReview report={preview.report} />}<button disabled={!canEdit || busy || !name.trim()}>Criar rascunho e abrir editor</button>
     </form></section>;
 }

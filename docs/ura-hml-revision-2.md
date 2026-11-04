@@ -1,0 +1,15 @@
+# OIA visual reconstruction — HML revision 2
+
+The Broker remains the only Flow executor. The Conversas delivery repository is `ClaudioHideki/jrc-conversas-nico-v12-2-7-comercial-integrado`; LAB2 supplies the existing native modules. Original customer captures, exports, staff identities, credentials and telephone numbers are excluded from this source tree.
+
+Both creation interfaces offer **OIA — RECONSTRUÇÃO VISUAL HML — PARIDADE PARCIAL**. The model creates an unbound draft: two languages, four canonical departments, 13 shared attendant positions, 26 routes and eight returns. Targets must be selected from the authorized HML catalog before publication. Agent names and IDs are not inferred from screenshots. The default schedule (weekdays 08:00–18:00 São Paulo), three attempts and 300-second menu deadline are explicit editable test fixtures, not certified customer configuration.
+
+Menu configuration version 2 adds localized invalid-option text and durable event waits. The wait retains its original deadline and attempt count across retries; an obsolete wait cannot consume a reply. V2 menus explicitly permit return cycles because each menu waits for input. Unversioned and V1 menus retain their previous validation and retry behavior. A return never traverses the greeting.
+
+Native CSAT invitations are a distinct transport kind. Only public `message_created` / `template` (or numeric 3) / `input_csat` without sender, media or Broker echo qualify. A survey update is neither a bot trigger nor a second invitation. Attendance observations, queue, worker and scoped proof support this kind without human takeover, automatic reopening or bot resumption. An existing conversation map is required. Migration **0084_native_csat_transport** adds the bounded transport constraint without changing migration 0039 or rewriting saved human replies. Runtime readiness requires the new validated constraint before workers become ready.
+
+Verification includes focused menu/OIA/editor tests; 10 PostgreSQL CSAT transport/upgrade/proof cases; runtime baseline regressions; and a separate parameterized PostgreSQL test of 26 OIA routes through event routing, worker replacement, message receipts, canonical assignment and bot pause. Its provider receipts are synthetic. They do not demonstrate delivery through WhatsApp. The Conversas repository separately validates atomic survey creation, response scoping and Rails/Sidekiq timezone.
+
+The broad local suite was executed during development. Failures collected while CSAT/baseline work was in progress and Windows Git/Docker/PDF prerequisites require focused reruns and final Linux CI. Do not treat this note as proof that every release gate or the 26 persistent cases has already completed; use the release receipt and actual run results.
+
+The user authorized a dedicated Broker test account. Live provisioning still requires the exact Broker origin, isolated HML resources, a designated number and an authorized recipient. No production resource, active number, legacy webhook or uncertain effect is a substitute. Full OIA, CRF and Íris parity remains blocked by their specific exports/configuration and live evidence.

@@ -119,6 +119,40 @@ export async function executeAutomation(
         }else{variables[string(waiting.data.variable)]=runtimeJson(input.text);current=next(published.graph,waiting.id)??null;}
       }else return pending();
       if(config.inputConfigVersion!==1&&!current)throw new Error('AUTOMATION_INPUT_CONNECTION_MISSING');
+    }else if(waiting.type==='menu'&&waiting.data.menuConfigVersion===2){
+      const config=MenuAttemptConfigSchema.parse(waiting.data),saved=state.waiting;
+      if(config.menuConfigVersion!==2||!saved.waitId||!Number.isInteger(saved.invalidAttempts)||saved.invalidAttempts!<0||
+        saved.invalidAttempts!>=config.maxAttempts||saved.deadlineAt!==undefined&&!Number.isFinite(saved.deadlineAt)||
+        (config.timeoutSeconds!==undefined)!==(saved.deadlineAt!==undefined))throw new Error('AUTOMATION_MENU_WAIT_INVALID');
+      const pending=()=>finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:waiting.id,waitId:state.waiting!.waitId!,
+        ...(saved.deadlineAt===undefined?{}:{deadlineAt:new Date(saved.deadlineAt)})}} as RuntimeResult);
+      if(input.inputWait?.waitId!==saved.waitId)return pending();
+      if(input.eventType==='TIMER'){
+        if(saved.deadlineAt===undefined||input.now.getTime()<saved.deadlineAt)return pending();
+        current=next(published.graph,waiting.id,'timeout')??null;
+      }else if(input.eventType==='MESSAGE'&&Number.isFinite(input.inputWait.admittedAt)){
+        if(saved.deadlineAt!==undefined&&input.inputWait.admittedAt!>saved.deadlineAt)current=next(published.graph,waiting.id,'timeout')??null;
+        else{
+          const selected=input.text.trim(),option=menuOptions(waiting).find(item=>item.value===selected);
+          if(option){
+            const variable=string(waiting.data.variable)||'menu.choice';if(safeKey(variable))variables[variable]=selected;
+            current=next(published.graph,waiting.id,`option-${option.value}`)??null;
+          }else{
+            const invalidAttempts=saved.invalidAttempts!+1;
+            trace.push({nodeId:waiting.id,type:waiting.type,label:waiting.label,input:{},output:{invalidAttempts,maxAttempts:config.maxAttempts,
+              port:invalidAttempts===config.maxAttempts?'exhausted':'retry'}});
+            if(invalidAttempts===config.maxAttempts)current=next(published.graph,waiting.id,'exhausted')??null;
+            else{
+              state.waiting={...saved,waitId:randomUUID(),invalidAttempts};
+              const prompt=renderFlowText(waiting.data.text,variables),list=menuOptions(waiting).map(item=>`${item.value} - ${item.label}`).join('\n');
+              effects.push({nodeId:waiting.id,ordinal:effects.length,kind:'SEND_TEXT',
+                payload:{text:[renderFlowText(config.errorMessage,variables),prompt,list].filter(Boolean).join('\n')}});
+              return pending();
+            }
+          }
+        }
+      }else return pending();
+      if(!current)throw new Error('AUTOMATION_MENU_CONNECTION_MISSING');
     }else if(waiting.type==='menu'&&waiting.data.menuConfigVersion!==undefined){
       const config=MenuAttemptConfigSchema.parse(waiting.data),saved=state.waiting;
       const attempts=saved.invalidAttempts;
@@ -195,7 +229,15 @@ export async function executeAutomation(
         return finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:node.id,waitId,...(deadlineAt===undefined?{}:{deadlineAt:new Date(deadlineAt)})}});
       }
       const boundedMenu=node.type==='menu'&&node.data.menuConfigVersion!==undefined;
-      if(boundedMenu)MenuAttemptConfigSchema.parse(node.data);
+      if(boundedMenu){
+        const config=MenuAttemptConfigSchema.parse(node.data);
+        if(config.menuConfigVersion===2){
+          const deadlineAt=config.timeoutSeconds===undefined?undefined:input.now.getTime()+config.timeoutSeconds*1000,waitId=randomUUID();
+          state.nodeId=node.id;state.waiting={kind:'EVENT',nodeId:node.id,waitId,invalidAttempts:0,...(deadlineAt===undefined?{}:{deadlineAt})};
+          return finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:node.id,waitId,
+            ...(deadlineAt===undefined?{}:{deadlineAt:new Date(deadlineAt)})}});
+        }
+      }
       state.nodeId=node.id;state.waiting={kind:'EVENT',nodeId:node.id,...(boundedMenu?{invalidAttempts:0}:{})};return finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:node.id}});
     }
     if(node.type==='delay'){

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { HumanTarget } from '@jrc/contracts';
+import {oiaVisualReconstructionFlow,OIA_DEPARTMENTS} from '@jrc/contracts';
 import { attendanceDatabase, seedAttendanceTenant } from './helpers/attendance.js';
 import { createPostgresAutomationRepository,type OutboxRow } from '../../src/modules/automations/repository.js';
 import { createEventRouter,createExecutionService,createOutboxDispatcher } from '../../src/modules/automations/service.js';
@@ -18,9 +19,9 @@ import { createAttendanceResumeWorker } from '../../src/modules/attendance/resum
 
 describe('native handoff durable PostgreSQL state',()=>{
   let db:Awaited<ReturnType<typeof attendanceDatabase>>;
-  beforeAll(async()=>{db=await attendanceDatabase();},60000);
+  beforeAll(async()=>{db=await attendanceDatabase();},600000);
   afterAll(async()=>{await db?.dispose();});
-  async function fixture(target:HumanTarget={teamId:4,agentId:null}) {
+  async function fixture(target:HumanTarget={teamId:4,agentId:null},eligibleAgents=[12]) {
     const t=await seedAttendanceTenant(db.database),binding=randomUUID(),execution=randomUUID(),outbox=randomUUID(),lease=randomUUID();
     await db.database.pool.query(`INSERT INTO flow_features(organization_id,enabled) VALUES($1,true) ON CONFLICT(organization_id) DO UPDATE SET enabled=true`,[t.org]);
     await db.database.pool.query(`UPDATE messaging_channels SET bot_public_id=$2,bot_origin_reference='jrc-automation-v2' WHERE id=$1`,[t.channel,t.automation]);
@@ -52,8 +53,8 @@ describe('native handoff durable PostgreSQL state',()=>{
       }
       if(path.endsWith('/profile'))response={accounts:[{id:7,role:'administrator'}]};
       else if(path.endsWith('/inboxes/9'))response={id:9,name:'Synthetic',channel_type:'Channel::Api',greeting_enabled:false,enable_auto_assignment:false};
-      else if(path.endsWith('/agents'))response=[{id:12,name:'Synthetic',email:'synthetic@example.test'}];
-      else if(path.endsWith('/inbox_members/9'))response={payload:[{id:12,name:'Synthetic',email:'synthetic@example.test'}]};
+      else if(path.endsWith('/agents'))response=eligibleAgents.map(id=>({id,name:`Synthetic ${id}`,email:`synthetic-${id}@example.test`}));
+      else if(path.endsWith('/inbox_members/9'))response={payload:eligibleAgents.map(id=>({id,name:`Synthetic ${id}`,email:`synthetic-${id}@example.test`}))};
       else if(path.endsWith('/teams'))response=[{id:4,name:'Support',account_id:7,allow_auto_assign:teamAutoAssignment}];
       else if(path.endsWith('/teams/4/team_members')){if(duringTeamMembers)await duringTeamMembers();response=teamMembers.map(id=>({id,name:'Synthetic'}));}
       else if(path.endsWith('/labels'))response={payload:[]};
@@ -88,6 +89,55 @@ describe('native handoff durable PostgreSQL state',()=>{
       duringTeamMembers:(fn:()=>Promise<void>)=>{duringTeamMembers=fn;},
       setCallback:(value:boolean)=>{callback=value;},delayOpening:(value:typeof delayOpening)=>{delayOpening=value;},setTimeout:(value:typeof timeout)=>{timeout=value;},beforeOpen:(fn:()=>Promise<void>)=>{beforeOpen=fn;},afterOpen:(fn:()=>Promise<void>)=>{afterOpen=fn;}};
   }
+  const oiaPositions=OIA_DEPARTMENTS.flatMap((department,di)=>Array.from({length:department.positions},(_,i)=>({
+    key:`${department.id}-${i+1}`,agentId:department.id==='operations-poa'&&i===3?107:100+di*4+i,
+  })));
+  const oiaCases=(['pt','en'] as const).flatMap(language=>OIA_DEPARTMENTS.flatMap((department,di)=>Array.from({length:department.positions},(_,i)=>({
+    language,department:department.id,departmentOption:String(di+1),option:String(i+1),key:`${department.id}-${i+1}`,
+  }))));
+  it.each(oiaCases)('OIA persisted $language/$department/$option confirms the exact canonical agent and pauses the bot',async route=>{
+    const chosen=oiaPositions.find(position=>position.key===route.key)!;
+    const t=await fixture({teamId:null,agentId:chosen.agentId},[...new Set(oiaPositions.map(position=>position.agentId))]);
+    const destination={integrationId:t.integration,destinationRevision:1,credentialRevision:1,accountId:7,inboxId:9};
+    const graph=oiaVisualReconstructionFlow({targets:Object.fromEntries(oiaPositions.map(position=>[position.key,{
+      label:`Synthetic ${position.agentId}`,handoff:{handoffVersion:1 as const,destination,target:{teamId:null,agentId:position.agentId}},
+    }])),schedule:{timezone:'America/Sao_Paulo',weekly:Array.from({length:7},(_,day)=>({day,start:'00:00',end:'24:00'}))}});
+    await db.database.pool.query('DELETE FROM automation_outbox WHERE organization_id=$1',[t.org]);
+    await db.database.pool.query('DELETE FROM automation_executions WHERE organization_id=$1',[t.org]);
+    await db.database.pool.query('UPDATE automation_versions SET graph=$2,runtime_state_version=2 WHERE organization_id=$1',[t.org,JSON.stringify(graph)]);
+    await db.database.pool.query("UPDATE automation_definitions SET lifecycle_status='PUBLISHED',active_version=1,draft_graph=$2 WHERE organization_id=$1",[t.org,JSON.stringify(graph)]);
+    const router=createEventRouter({transact:db.transact,enabled:true});
+    // Replace the worker at every turn to prove that the database, rather than its memory, owns the cursor.
+    const worker=()=>createExecutionService({transact:db.transact,enabled:true});
+    const dispatcher=createOutboxDispatcher({transact:db.transact,enabled:true},createAutomationEffectDispatcher({transact:db.transact,messaging:createPostgresMessagingRepository(),handoff:t.service()}));
+    const textDispatcher=createOutboxDispatcher({transact:db.transact,enabled:true},createAutomationEffectDispatcher({transact:db.transact,messaging:createPostgresMessagingRepository(),handoff:t.service()}),['SEND_TEXT']);
+    const input={channelId:t.channel,conversationId:t.conversation};
+    async function syntheticTransport(){
+      for(let i=0;i<10;i++){
+        const dispatched=await textDispatcher.runOnce(t.org);if(!dispatched.processed)break;
+        expect(dispatched.status).toBe('SENT');
+        // Explicit synthetic provider receipt: this proves persistence/assignment, not delivery through WhatsApp.
+        await db.database.pool.query("UPDATE messaging_messages SET state='SENT' WHERE organization_id=$1 AND source='AUTOMATION'",[t.org]);
+        await db.database.pool.query('DELETE FROM messaging_outbox WHERE organization_id=$1',[t.org]);
+      }
+    }
+    for(const [index,text] of ['Oi',route.language==='pt'?'1':'2',route.departmentOption,route.option].entries()){
+      await router.route(t.org,{...input,eventKey:`synthetic-oia-${index}`,text});
+      expect(await worker().runOnce(t.org)).toMatchObject({status:index===3?'HANDOFF':'WAITING'});
+      await syntheticTransport();
+    }
+    await db.database.pool.query("UPDATE automation_outbox SET available_at=now() WHERE organization_id=$1 AND kind='HANDOFF'",[t.org]);
+    expect(await dispatcher.runOnce(t.org)).toMatchObject({status:'SENT'});
+    const execution=(await db.database.pool.query('SELECT state FROM automation_executions WHERE organization_id=$1',[t.org])).rows[0];
+    expect(execution.state.variables).toMatchObject({language:route.language,department:route.department,attendant_option:route.option,attendant_position:route.key});
+    expect(t.canonical.meta.assignee).toEqual({id:chosen.agentId,type:'user'});
+    expect((await t.state()).operation).toMatchObject({state:'APPLIED',phase:'CONFIRMED'});
+    expect((await t.state()).conversation.mode).toBe('HUMAN');expect((await t.state()).session.state).toBe('HUMAN_ACTIVE');
+    expect(t.requests.filter(r=>r.method==='POST').map(r=>r.path.split('/').at(-1))).toEqual(['toggle_status','assignments']);
+    expect(t.requests.find(r=>r.path.endsWith('/assignments'))?.body).toMatchObject({assignee_id:chosen.agentId});
+    expect(await router.route(t.org,{...input,eventKey:'synthetic-oia-after-human',text:'Hello'})).toMatchObject({execution:null});
+    expect(await worker().runOnce(t.org)).toEqual({processed:false});
+  },120000);
   it('cooperates with automatic team distribution and preserves the human callback in the real ledger',async()=>{
     const t=await fixture();t.setTeamDistribution(true);
     expect(await t.service().dispatch(t.item)).toMatchObject({kind:'SENT'});

@@ -43,7 +43,7 @@ const replySchema = z
   .object({
     attendanceObservationId:z.string().uuid().optional(),
     campaignIntentId:z.uuid().optional(),
-    attendanceKind:z.enum(['HUMAN_PUBLIC','EXTERNAL_BOT','AUTOMATED_REPLY']).optional(),
+    attendanceKind:z.enum(['HUMAN_PUBLIC','EXTERNAL_BOT','AUTOMATED_REPLY','NATIVE_CSAT']).optional(),
     destinationRevision:z.number().int().positive().optional(),
     messageId: z.number().int().positive(),
     conversationId: z.number().int().positive(),
@@ -223,6 +223,9 @@ export function createChatwootWorker(options: ChatwootOptions) {
   async function receiveReply(job: Job): Promise<void> {
     if(await groups.receiveReply(job))return;
     const data = replySchema.parse(job.payload);
+    const nativeCsat=data.attendanceKind==='NATIVE_CSAT';
+    if(nativeCsat&&(!data.attendanceObservationId||!data.destinationRevision||data.campaignIntentId||!data.content||data.attachments))
+      throw new IntegrationError('CHATWOOT_CSAT_PROOF_REQUIRED',409);
     const binding = await tx(job.organization_id, async (t) => ({
       account: await readChatwootAccount(t, job.organization_id),
       connection: await readChatwootConnection(
@@ -237,6 +240,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
         )
       ).rowCount,
     }));
+    if(nativeCsat&&!binding.mapped)throw new IntegrationError('CHATWOOT_CONVERSATION_NOT_BOUND',409);
     let campaignCanonical:unknown;
     if(data.campaignIntentId){
       if(!binding.account||!binding.connection?.inbox_id)throw new IntegrationError('INTEGRATION_PAUSED',409);
@@ -379,12 +383,15 @@ export function createChatwootWorker(options: ChatwootOptions) {
         const scope:ChatwootObservationScope={organizationId:job.organization_id,channelId:connection.channel_id,integrationId:job.integration_id,
           destinationRevision:currentAccount.destination.revision,credentialRevision:currentAccount.credential_version,accountId:Number(currentAccount.account_id),inboxId:Number(connection.inbox_id)};
         if(canonical)await initializeChatwootAttendanceMap(t,scope,{conversationId:map.conversation_id,remoteConversationId:data.conversationId,canonical});
-        const observation=(await t.query<{disposition:string;event:ChatwootAttendanceEvent}>(`SELECT disposition,event FROM chatwoot_attendance_observations
+        const observation=(await t.query<{disposition:string;event:ChatwootAttendanceEvent;credential_revision:number;channel_id:string}>(`SELECT disposition,event,credential_revision,channel_id FROM chatwoot_attendance_observations
           WHERE organization_id=$1 AND id=$2 AND integration_id=$3 AND destination_revision=$4 AND remote_conversation_id=$5 AND conversation_id=$6
             AND account_id=$7 AND inbox_id=$8`,
           [job.organization_id,data.attendanceObservationId,job.integration_id,scope.destinationRevision,data.conversationId,map.conversation_id,scope.accountId,scope.inboxId])).rows[0];
         if(!observation||observation.disposition!=='APPLIED'||observation.event.kind!==data.attendanceKind||!await mayForwardChatwootAttendanceReply(t,scope,observation.event))
           throw new IntegrationError('ATTENDANCE_CONTROL_RECONCILIATION_REQUIRED',409);
+        if(nativeCsat&&(observation.credential_revision!==scope.credentialRevision||observation.channel_id!==scope.channelId||
+          !('remoteMessageId' in observation.event)||observation.event.remoteMessageId!==data.messageId||observation.event.remoteConversationId!==data.conversationId))
+          throw new IntegrationError('CHATWOOT_CSAT_PROOF_REQUIRED',409);
       } else {
         // Backward-compatible jobs admitted before attendance observations existed.
         await repo.setConversationMode(t,{organizationId:job.organization_id,conversationId:map.conversation_id,mode:'HUMAN'});

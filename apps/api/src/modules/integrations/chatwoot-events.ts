@@ -9,6 +9,8 @@ const event = z.object({
     inbox_id: z.number().int().positive().optional(),
   }),
   message_type: z.union([z.string(), z.number()]),
+  content_type: z.string().max(100).optional(),
+  sender: z.unknown().optional(),
   private: z.boolean(),
   content: z.string().nullable().optional(),
   content_attributes: z.record(z.string(), z.unknown()).optional(),
@@ -26,9 +28,12 @@ export function parseChatwootReply(
       message.conversation.inbox_id !== binding.inboxId)
   )
     throw new Error("CHATWOOT_BINDING_MISMATCH");
+  const nativeCsat = ["template", 3].includes(message.message_type) &&
+    message.content_type === "input_csat" && message.sender == null &&
+    !message.attachments?.length;
   if (
     message.event !== "message_created" ||
-    !["outgoing", 1].includes(message.message_type) ||
+    (!["outgoing", 1].includes(message.message_type) && !nativeCsat) ||
     message.private ||
     message.content_attributes?.jrc_broker_message_id
   )

@@ -46,6 +46,7 @@ async function controlForRemote(tx:TenantTransaction,s:ChatwootObservationScope,
 }
 export async function mayForwardChatwootAttendanceReply(tx:TenantTransaction,s:ChatwootObservationScope,event:ChatwootAttendanceEvent) {
   if(!event.mayForwardReply)return false;
+  if(event.kind==='NATIVE_CSAT')return !event.interruptsBot&&event.senderId===undefined;
   if(event.kind==='AUTOMATED_REPLY'&&event.campaignIntentId){
     try{await requireCampaignIntent(tx,s.organizationId,event.campaignIntentId,s.integrationId,event.remoteConversationId,event.remoteMessageId,event.senderId);return true;}
     catch(error){if(error instanceof IntegrationError)return false;throw error;}
@@ -95,7 +96,7 @@ async function applyObservation(tx:TenantTransaction,s:ChatwootObservationScope,
       WHERE organization_id=$1 AND conversation_id=$2`,[s.organizationId,control.conversation_id,human,observation.id,e.kind==='CONVERSATION_CONTROL'?e.remoteUpdatedAt:null]);
   }
   await tx.query(`UPDATE chatwoot_attendance_observations SET conversation_id=$3,cycle=$4,disposition=$5,applied_at=now()
-    WHERE organization_id=$1 AND id=$2`,[s.organizationId,observation.id,control.conversation_id,control.cycle,hasControl&&!stale||selectedExecutor?'APPLIED':'IGNORED']);
+    WHERE organization_id=$1 AND id=$2`,[s.organizationId,observation.id,control.conversation_id,control.cycle,hasControl&&!stale||selectedExecutor||e.kind==='NATIVE_CSAT'&&e.mayForwardReply?'APPLIED':'IGNORED']);
   await queueReply(tx,s,observation);
 }
 
@@ -149,7 +150,8 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
     if(map){await createControl(tx,s,map.conversation_id,event.remoteConversationId);control=await controlForRemote(tx,s,event.remoteConversationId);}
   }
   const selectedAutomation=(event.kind==='AUTOMATED_REPLY'||event.kind==='EXTERNAL_BOT')&&await mayForwardChatwootAttendanceReply(tx,s,event);
-  const disposition:Disposition=candidate||effectCandidate&&!effectCandidate.confirmed?'ECHO_PENDING':event.kind==='BROKER_ECHO'||!event.interruptsBot&&event.kind!=='CONVERSATION_CONTROL'&&!selectedAutomation?'IGNORED':control?'APPLIED':'WAITING_MAP';
+  const nativeCsat=event.kind==='NATIVE_CSAT'&&event.mayForwardReply;
+  const disposition:Disposition=candidate||effectCandidate&&!effectCandidate.confirmed?'ECHO_PENDING':event.kind==='BROKER_ECHO'||!event.interruptsBot&&event.kind!=='CONVERSATION_CONTROL'&&!selectedAutomation&&!nativeCsat?'IGNORED':control?'APPLIED':'WAITING_MAP';
   const observation=(await tx.query<Observation>(`INSERT INTO chatwoot_attendance_observations(organization_id,id,integration_id,channel_id,destination_revision,credential_revision,
     account_id,inbox_id,remote_conversation_id,event_key,event,disposition,mirror_attempt_id,reply_payload,conversation_id,cycle,effect_outbox_id)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id,event,disposition,reply_payload,conversation_id,cycle`,
@@ -162,7 +164,9 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
     if(control&&effectId)await recordEffectControlStep(tx,s.organizationId,effectId,control.conversation_id,observation.id,'PENDING');
     else if(control)await tx.query('UPDATE chatwoot_attendance_controls SET revision=revision+1,updated_at=now() WHERE organization_id=$1 AND conversation_id=$2',[s.organizationId,control.conversation_id]);
   } else if(control&&disposition!=='IGNORED')await applyObservation(tx,s,observation,control);
-  else if(disposition==='WAITING_MAP')await queueReply(tx,s,observation);
+  // Unlike human replies, a survey cannot create a map or a new physical cycle.
+  // Mapping initialization may deliver it later, without changing attendance.
+  else if(disposition==='WAITING_MAP'&&!nativeCsat)await queueReply(tx,s,observation);
   return {observationId:observation.id,duplicate:false,disposition};
 }
 
