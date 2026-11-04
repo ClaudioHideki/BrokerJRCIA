@@ -196,13 +196,17 @@ function replayConnectionAction(status: InstanceStatus): ConnectionAction {
     : { type: 'NONE', reason: 'CONNECTION_PENDING' };
 }
 
-function isSameInstanceSnapshot(current: InstanceRow, observed: InstanceRow): boolean {
+function isSameInstanceConnectionState(current: InstanceRow, observed: InstanceRow): boolean {
   return current.status === observed.status
-    && current.updatedAt.getTime() === observed.updatedAt.getTime()
     && isSameConnectionClock(
       { observedAt: observed.connectionObservedAt, fingerprint: observed.connectionBindingFingerprint },
       { observedAt: current.connectionObservedAt, fingerprint: current.connectionBindingFingerprint },
     );
+}
+
+function isSameInstanceSnapshot(current: InstanceRow, observed: InstanceRow): boolean {
+  return isSameInstanceConnectionState(current, observed)
+    && current.updatedAt.getTime() === observed.updatedAt.getTime();
 }
 
 function encodeCursor(row: InstanceRow): string {
@@ -681,7 +685,8 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
               context.organizationId,
               initial.instance.id,
             );
-            if (!locked) return false;
+            // An authenticated callback may have advanced the state while provider I/O was in flight.
+            if (!locked || !isSameInstanceConnectionState(locked, initial.instance)) return false;
             const fenced = await dependencies.repository.updatePendingConnectOperation(transaction, {
               organizationId: context.organizationId,
               instanceId: initial.instance.id,
@@ -732,7 +737,7 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
             context.organizationId,
             initial.instance.id,
           );
-          if (!locked) return null;
+          if (!locked || !isSameInstanceConnectionState(locked, initial.instance)) return null;
           await dependencies.guardOperation?.(transaction,context.organizationId,initial.operation.id,true);
           const connectionPending = action.type === 'NONE' && action.reason === 'CONNECTION_PENDING';
           const fenced = await dependencies.repository.updatePendingConnectOperation(transaction, {
@@ -757,7 +762,8 @@ export function createInstanceService(dependencies: InstanceServiceDependencies)
             status: 'COMPLETED',
             responseMetadata: { instanceId: updated.id, status: updated.status, actionType: action.type },
           });
-          if (!connectionPending) {
+          // Returning a QR/code completes this provider call, but does not authenticate WhatsApp.
+          if (updated.status === 'CONNECTED') {
             await dependencies.writeAudit(transaction, {
               type: 'INSTANCE_CONNECTED',
               organizationId: context.organizationId,
