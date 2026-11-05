@@ -44,6 +44,10 @@ interface CatalogRow {
 }
 interface ChannelRow { instance_id: string; upstream_instance_key: string; connected: boolean }
 const errors = new Set(['PROVIDER_ABORTED', 'PROVIDER_TIMEOUT', 'PROVIDER_REQUEST_FAILED', 'PROVIDER_INVALID_RESPONSE']);
+// Durable backoff for central discovery only, not a provider recovery guarantee.
+const centralRetryDelay = (column:'last_error_code'|'k.last_error_code') =>
+  `CASE WHEN ${column} IN ('PROVIDER_ABORTED','PROVIDER_TIMEOUT','PROVIDER_REQUEST_FAILED','PROVIDER_INVALID_RESPONSE')
+    THEN interval '5 minutes' ELSE interval '30 seconds' END`;
 const diagnosticCodes = new Set([...errors, 'GROUP_ACCESS_DENIED', 'GROUP_CHANNEL_NOT_FOUND',
   'GROUP_CHANNEL_DISCONNECTED', 'GROUP_IDENTITY_CHANGED', 'GROUP_REFRESH_LEASE_LOST']);
 // Read-only discovery is independent of selection and the optional bot. Reuse
@@ -151,10 +155,11 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
         const current = await access(tx, principal, channel, true);
         if (!current.connected) throw new GroupCatalogError('GROUP_CHANNEL_DISCONNECTED');
         const initialized = (await tx.query('INSERT INTO whatsapp_group_catalogs(organization_id,channel_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING channel_id', [org, channel])).rowCount === 1;
+        const retryDelay=isWorker(principal)&&principal[workerAuthority]==='CENTRAL'?centralRetryDelay('last_error_code'):"interval '30 seconds'";
         const claimed = await tx.query(`UPDATE whatsapp_group_catalogs SET lease_token=$3,lease_expires_at=clock_timestamp()+interval '60 seconds',
           last_attempt_at=clock_timestamp(),updated_at=clock_timestamp() WHERE organization_id=$1 AND channel_id=$2
           AND (lease_token IS NULL OR lease_expires_at<=clock_timestamp())
-          ${isWorker(principal)?"AND (valid_until IS NULL OR valid_until<clock_timestamp()+interval '2 minutes') AND ($4::boolean OR last_attempt_at<clock_timestamp()-interval '30 seconds')":''}
+          ${isWorker(principal)?`AND (valid_until IS NULL OR valid_until<clock_timestamp()+interval '2 minutes') AND ($4::boolean OR last_attempt_at<clock_timestamp()-${retryDelay})`:''}
           RETURNING channel_id`, [org, channel, lease,...(isWorker(principal)?[initialized]:[])]);
         if (!claimed.rowCount) throw new GroupCatalogError('GROUP_CATALOG_REFRESHING');
         return current;
@@ -277,7 +282,7 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
         WHERE c.organization_id=$1 AND t.status='ACTIVE' AND c.provider='BAILEYS'
           AND c.deleting_at IS NULL AND i.archived_at IS NULL AND i.status='CONNECTED'
           AND (k.valid_until IS NULL OR k.valid_until<clock_timestamp()+interval '2 minutes')
-          AND (k.last_attempt_at IS NULL OR k.last_attempt_at<clock_timestamp()-interval '30 seconds')
+          AND (k.last_attempt_at IS NULL OR k.last_attempt_at<clock_timestamp()-${centralRetryDelay('k.last_error_code')})
           AND (k.lease_token IS NULL OR k.lease_expires_at<=clock_timestamp())
           AND ${centralCatalogAuthority}
         ORDER BY k.last_attempt_at NULLS FIRST,c.id LIMIT 1`,[org])).rows[0]);

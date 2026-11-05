@@ -48,18 +48,43 @@ it('preserves explicit selected and unselected choices when renewing without a b
  await f.expire();expect(await f.service.refreshDueForCentral(f.org)).toMatchObject({status:'CURRENT'});
  expect((await db.transact(f.org,tx=>tx.query('SELECT selected FROM whatsapp_group_catalog_items WHERE organization_id=$1 AND channel_id=$2 ORDER BY group_jid',[f.org,f.channel]))).rows).toEqual([{selected:true},{selected:false}]);
 });
-it('retains a failed initial attempt and retries only after the existing cooldown',async()=>{
+it('retains a durable provider failure for five minutes before retrying, then restores normal admission',async()=>{
  const f=await fixture();f.readGroups.mockRejectedValueOnce(Object.assign(new Error('Synthetic timeout'),{code:'PROVIDER_TIMEOUT'}));
  expect(await f.service.refreshDueForCentral(f.org)).toMatchObject({status:'FAILED',code:'PROVIDER_TIMEOUT'});
  expect((await db.transact(f.org,tx=>tx.query('SELECT snapshot_id,lease_token,last_error_code FROM whatsapp_group_catalogs WHERE organization_id=$1 AND channel_id=$2',[f.org,f.channel]))).rows[0]).toEqual({snapshot_id:null,lease_token:null,last_error_code:'PROVIDER_TIMEOUT'});
  expect(await f.service.refreshDueForCentral(f.org)).toEqual({processed:false});expect(f.readGroups).toHaveBeenCalledOnce();
- await db.database.pool.query("UPDATE whatsapp_group_catalogs SET last_attempt_at=clock_timestamp()-interval '1 minute' WHERE organization_id=$1",[f.org]);
+ for(const age of ['31 seconds','4 minutes']){
+  await db.database.pool.query('UPDATE whatsapp_group_catalogs SET last_attempt_at=clock_timestamp()-$2::interval WHERE organization_id=$1',[f.org,age]);
+  expect(await f.service.refreshDueForCentral(f.org)).toEqual({processed:false});
+ }
+ expect(f.readGroups).toHaveBeenCalledOnce();
+ await db.database.pool.query("UPDATE whatsapp_group_catalogs SET last_attempt_at=clock_timestamp()-interval '301 seconds' WHERE organization_id=$1",[f.org]);
  expect(await f.service.refreshDueForCentral(f.org)).toMatchObject({status:'CURRENT'});
+ expect((await db.transact(f.org,tx=>tx.query('SELECT lease_token,last_error_code FROM whatsapp_group_catalogs WHERE organization_id=$1',[f.org]))).rows[0]).toEqual({lease_token:null,last_error_code:null});
+ await f.expire();
+ await db.database.pool.query("UPDATE whatsapp_group_catalogs SET last_attempt_at=clock_timestamp()-interval '31 seconds' WHERE organization_id=$1",[f.org]);
+ expect(await f.service.refreshDueForCentral(f.org)).toMatchObject({status:'CURRENT'});
+ expect((await db.transact(f.org,tx=>tx.query('SELECT count(*)::int AS n FROM whatsapp_group_catalog_items WHERE organization_id=$1 AND selected',[f.org]))).rows[0].n).toBe(0);
 });
 it('rejects discovery when the destination is revoked during provider I/O',async()=>{
  const f=await fixture();f.readGroups.mockImplementationOnce(async()=>{await db.database.pool.query("UPDATE chatwoot_destinations SET approval_status='REVOKED' WHERE organization_id=$1",[f.org]);return groups;});
  expect(await f.service.refreshDueForCentral(f.org)).toMatchObject({status:'FAILED',code:'GROUP_ACCESS_DENIED'});
  expect((await db.transact(f.org,tx=>tx.query('SELECT snapshot_id FROM whatsapp_group_catalogs WHERE organization_id=$1',[f.org]))).rows[0].snapshot_id).toBeNull();
+});
+it('preserves selected choices and active leases while backing off a failed existing catalog',async()=>{
+ const f=await fixture();await f.service.refreshDueForCentral(f.org);
+ await db.database.pool.query('UPDATE whatsapp_group_catalog_items SET selected=true WHERE organization_id=$1 AND channel_id=$2 AND group_jid=$3',[f.org,f.channel,groups[0]!.groupJid]);
+ const choices=()=>db.transact(f.org,async tx=>(await tx.query('SELECT selected FROM whatsapp_group_catalog_items WHERE organization_id=$1 AND channel_id=$2 ORDER BY group_jid',[f.org,f.channel])).rows);
+ await f.expire();f.readGroups.mockRejectedValueOnce(Object.assign(new Error('Synthetic provider rejection'),{code:'PROVIDER_REQUEST_FAILED'}));
+ expect(await f.service.refreshDueForCentral(f.org)).toMatchObject({status:'FAILED',code:'PROVIDER_REQUEST_FAILED'});
+ await db.database.pool.query("UPDATE whatsapp_group_catalogs SET last_attempt_at=clock_timestamp()-interval '31 seconds' WHERE organization_id=$1",[f.org]);
+ expect(await f.service.refreshDueForCentral(f.org)).toEqual({processed:false});expect(await choices()).toEqual([{selected:true},{selected:false}]);
+ await db.database.pool.query("UPDATE whatsapp_group_catalogs SET last_attempt_at=clock_timestamp()-interval '301 seconds',lease_token=$2,lease_expires_at=clock_timestamp()+interval '1 minute' WHERE organization_id=$1",[f.org,randomUUID()]);
+ expect(await f.service.refreshDueForCentral(f.org)).toEqual({processed:false});expect(f.readGroups).toHaveBeenCalledTimes(2);
+ await db.database.pool.query("UPDATE whatsapp_group_catalogs SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE organization_id=$1",[f.org]);
+ expect(await f.service.refreshDueForCentral(f.org)).toMatchObject({status:'CURRENT'});
+ expect(await choices()).toEqual([{selected:true},{selected:false}]);
+ expect((await db.transact(f.org,tx=>tx.query('SELECT lease_token FROM whatsapp_group_catalogs WHERE organization_id=$1',[f.org]))).rows[0].lease_token).toBeNull();
 });
 it('does not discover while an enforced identity has not been approved',async()=>{
  const f=await fixture();await db.database.pool.query('UPDATE chatwoot_connection_health SET approved_fingerprint=NULL WHERE organization_id=$1',[f.org]);

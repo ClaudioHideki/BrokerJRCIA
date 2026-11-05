@@ -1,5 +1,13 @@
 # Continuação ativa — conexões e histórico, 04/11/2026
 
+## Fechamento do incremento de consultas e pool
+
+Sobre `2312ae8`, a descoberta automática CENTRAL aplica espera durável de cinco minutos aos quatro erros de provider, usando `last_error_code`/`last_attempt_at` no due e no claim. Refresh manual e worker de automação preservados; sem migration. RED 5 falhas/9 aprovações; GREEN 44/44 e typecheck API. PostgreSQL do novo SHA ainda deve passar na CI. A imagem de `2312ae8` passou gates (4.080 unitários, 1.671 integrações PG/Redis e demais contratos), mas não deve substituir essa verificação nova.
+
+No LAB2, a candidata posterior a `efa3d0b4` libera conexão SQL ociosa antes das duas leituras HTTP de contexto. Transação aberta é preservada. Harness Ruby com classes reais/pool e HTTP simulados passou; novo spec Rails/WebMock exige o banco descartável exato do CI. Não chamar esse harness de teste Rails.
+
+Revisão independente não encontrou P1/P2 concreto nestes dois diffs. As candidatas anteriores publicadas estão retidas, sem deploy; aguardar gates e imagens dos novos SHAs. As leituras atuais confirmaram inbox 51 do Thiago usando Evolution direta, sem binding Broker, e vínculo Broker antigo apontando para inbox 13 excluída. Não remapear automaticamente. Catálogo Welton retornou `rate-overlimit`; cessar probes repetidos. Cinco minutos não garantem recuperação do provider. Histórico completo do celular continua fora da cobertura destas correções.
+
 Os registros anteriores abaixo são históricos e permanecem preservados. Neste incremento o usuário autorizou correções, publicação de imagens e atualização dos dois produtos; não autorizou novo envio, pareamento, reinício de sessão ou replay de mensagens para teste. Backup/dump/restore continuam fora do escopo.
 
 ## Candidata atual e verificações
