@@ -1,4 +1,31 @@
-# Continuação ativa — 03/11/2026
+# Continuação ativa — conexões e histórico, 04/11/2026
+
+Os registros anteriores abaixo são históricos e permanecem preservados. Neste incremento o usuário autorizou correções, publicação de imagens e atualização dos dois produtos; não autorizou novo envio, pareamento, reinício de sessão ou replay de mensagens para teste. Backup/dump/restore continuam fora do escopo.
+
+## Candidata atual e verificações
+
+- Branch Broker: `codex/broker-ura-search-candidate-20261104`. A merge `352b25a` preserva integralmente a URA/CSAT de `2d30a5a`, atualmente na main e implantada, junto à busca por nome. Não substituir por uma candidata antiga que omita URA.
+- `dd3d65a`: cronologia das conversas após importação histórica; 40 testes PostgreSQL e 117 focais passaram.
+- `67dd0e3`: contexto de roteamento Control, somente leitura, por conta/tenant/revisão. Contrato: `docs/api/shared-inbox-routing.md`. Regressões incluem chave restrita, ausência canônica sem owner row e referência de bot retida após detach falho.
+- `0f0754a`: bootstrap de catálogo de grupos sem exigir seleção anterior. Preserva identidade, engine fencing, leases, cooldown, seleção manual e bloqueio por erro. 103 focais passaram; os 5 novos PostgreSQL ainda aguardam a suíte da candidata.
+- `f3a430f`: diagnóstico sanitizado por fase e HTTP status não enumerável. 131 focais e compilação API passaram. Sem mudança de retry, envios ou contrato público de erro.
+- `835946f`: OpenAPI e PDF sincronizados; 54 testes de documentação e build web passaram. A suíte ampla desse SHA encontrou falta da política explícita da nova rota no inventário de segurança. A entrada e a regressão foram incluídas em seguida; 31 focais passaram. Exigir nova CI do HEAD, não reaproveitar o resultado parcial de `835946f`.
+- LAB2: branch `codex/shared-inbox-history-20261104`, candidata `efa3d0b4a3dbaa41c132f13bfb72ac65e34f49da`; CI `41949308893` passou com 327 exemplos Rails, 156 testes JS, 12 jornadas de navegador e build. Inclui visibilidade compartilhada apenas onde não há roteamento comprovado, paginação cronológica retroativa e filtro de abertas/pendentes/todo histórico persistido. Uma conversa continua tendo um agente individual; a visibilidade não altera atribuição.
+- As novas imagens e a implantação deste conjunto ainda precisam ser verificadas separadamente. Nenhuma nova migration foi criada. Não alterar a engine nem confundir testes de catálogo com homologação de histórico completo do telefone.
+
+## Diagnóstico operacional e limites
+
+Leituras autorizadas no servidor encontraram inboxes obsoletas em um vínculo Broker e uma caixa de nome semelhante que usa Evolution **direta**. Não remapear nem sobrescrever webhook por semelhança de nome. No JRC, grupos já espelhados estavam `pending`, ocultos pela consulta anterior exclusivamente `open`.
+
+Consultas locais, sem envio ou reinício, confirmaram Evolution 2.3.7/Baileys 7.0.0-rc.9 e falhas atuais na leitura de catálogo: HTTP 500 em uma sessão e timeout em outra. O novo diagnóstico permite separar captura, identidade, catálogo, revalidação de engine e commit; ele não resolve sozinho a causa interna da engine.
+
+Sincronização inicial completa de histórico individual, grupos e mídias permanece pendente. Não habilitar `MESSAGES_SET` indiscriminadamente: o contrato existente é limitado e rejeita lotes mistos/grupos. Preservar `availableFrom`, identidade por geração, KEEP e deduplicação. Não prometer cópia integral do celular nem reprocessar UNKNOWN/FAILED cegamente.
+
+Os recibos locais e a conferência sanitizada ficam em `output/shared-inbox-history-20261104` na raiz do workspace. O código e os testes versionados, a CI exata, os digests e a verificação dos containers são níveis distintos de evidência.
+
+---
+
+# Registro anterior — 03/11/2026
 
 Atualização de publicação, 16h29: primeira candidata `4a6981d` publicada na branch; a pipeline de imagem `41701702769` parou ANTES do build/publicação por timeout de 30 segundos em layout/canários de auditoria. Nenhuma mudança produtiva. As verificações agora compartilham duas gerações reais do mesmo fixture imutável, sob o orçamento de 90 segundos já usado para duas gerações; histórico Git/scans/PDF, HIGH aberto, NOT_APPLICABLE e canários permanecem cobertos. 6/6 passaram localmente em `output/campaign-release-security-shared-20261103.json`. Só testes/checkpoint mudaram após `4a6981d`; correção de imagem e binário compilado permanecem iguais. Nova CI e publicação ainda precisam terminar.
 
