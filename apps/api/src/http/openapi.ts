@@ -392,7 +392,6 @@ function normalizeDocument(document: JsonObject): JsonObject {
       if(path.startsWith('/v1/flow-delegations/native-installations/'))operation.security=[{flowInstallationGrantAuth:[]}];
       if (path.startsWith('/v1/attendance/'))operation.security=[{bearerAuth:[]}];
       if (path === '/v1/integrations/chatwoot/control/routing-context') {
-        operation.security = [{ jrcApiKeyAuth: [] }];
         operation.description = 'Leitura de automação para a central com a credencial Control existente e escopo chatwoot:read. ' +
           'Aceita 1 a 100 integrationIds distintos da mesma organização, conta e revisão de destino. ' +
           'Retorna um snapshot fresco NONE, ROUTED ou UNKNOWN; não consulta provedores, grava health nem configura atribuição.';
@@ -442,7 +441,8 @@ function normalizeDocument(document: JsonObject): JsonObject {
           }
         }
       }
-      if (method === 'post' && path === '/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents')
+      if (path === '/v1/integrations/chatwoot/control/routing-context' ||
+          method === 'post' && path === '/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents')
         operation.security = [{ jrcApiKeyAuth: [] }];
       if (path.startsWith('/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/'))
         operation.security = [{ jrcApiKeyAuth: [] }];

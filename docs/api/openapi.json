@@ -51538,9 +51538,6 @@
         },
         "security": [
           {
-            "bearerAuth": []
-          },
-          {
             "jrcApiKeyAuth": []
           }
         ]
