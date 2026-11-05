@@ -1,5 +1,19 @@
 # Continuação ativa — conexões e histórico, 04/11/2026
 
+## Incremento posterior — sessão humana e visibilidade, 05/11/2026
+
+O conjunto `48dd406` foi publicado e implantado no Broker; API/worker saudáveis e três fingerprints compilados conferidos. LAB2 `200b4f1ddd7459ec924e314cfe34cb93f11c5d5e` consolida a main `a92f9bf8`, está implantado no Grupo JRC, Rails e Sidekiq imprimiram o mesmo SHA e init terminou com exit0. Os gates exatos de ambos passaram; os detalhes e recibos sanitizados estão em `output/shared-inbox-history-20261104` na raiz do workspace. Não fazer merge na main por inferência.
+
+Após autorização explícita do usuário, o vínculo do AgentBot1 `Teste robo` foi desativado **somente** na inbox1, pela interface normal do JRC. Não reativá-lo para reproduzir o defeito. Não houve desconexão WhatsApp, nova credencial, atribuição em lote ou replay.
+
+A leitura READ ONLY confirmou owner `NONE` revisão5, ponteiros de bot nulos, nenhum binding ativo/remoto, nenhuma execução/job/outbox de automação em risco; uma sessão `HUMAN_ACTIVE` e uma `RESOLVED`. O predicado anterior `state <> RESOLVED` produzia `ROUTED` incorretamente. Há também quatro tentativas mirror incertas e 118 observações de entrega pendentes; seus estados permanecem preservados. Elas não são prova isolada de URA ativa e não autorizam reenvio.
+
+O novo incremento muda **uma linha SELECT**: exclui `RESOLVED`, `HUMAN_ACTIVE` e `ADMIN_PAUSED` do indicador de sessão de bot. Todos os demais guards atuais de configuração, ownership, binding e trabalho de automação permanecem idênticos; nenhum guard de takeover/resume/dispatch foi alterado. `NONE` destina-se à visibilidade já autorizada por permissões/membros, nunca a liberar mutações. Ver `docs/api/shared-inbox-routing.md`.
+
+RED focal reproduzido (6 falhas/23 aprovações); GREEN 34/34, typecheck API e diffcheck passaram. Há 14 casos PostgreSQL preparados (13 novos) com comparação de ledgers antes/depois de leituras. **CI, imagem e implantação desse último incremento ainda precisam de comprovação no novo SHA**. Não usar a CI de `48dd406` para aprová-lo. PostgreSQL local não foi iniciado devido à janela de RAM (~479MiB livre), não por indisponibilidade genérica de Docker.
+
+Pendências distintas continuam: histórico completo individual/grupos/mídia, catálogo limitado pelo provider e vínculo Broker antigo da inbox13 excluída. Inbox51 Thiago é Evolution direta, sem binding Broker e sem membros; não migrar automaticamente. Backup/dump/restore e envios reais continuam fora do escopo.
+
 ## Fechamento do incremento de consultas e pool
 
 Sobre `2312ae8`, a descoberta automática CENTRAL aplica espera durável de cinco minutos aos quatro erros de provider, usando `last_error_code`/`last_attempt_at` no due e no claim. Refresh manual e worker de automação preservados; sem migration. RED 5 falhas/9 aprovações; GREEN 44/44 e typecheck API. PostgreSQL do novo SHA ainda deve passar na CI. A imagem de `2312ae8` passou gates (4.080 unitários, 1.671 integrações PG/Redis e demais contratos), mas não deve substituir essa verificação nova.

@@ -10,6 +10,8 @@ import { createIntegrationSecrets } from '../../src/modules/integrations/secrets
 import { createAutomationService } from '../../src/modules/automations/service.js';
 import { createFlowChatwootService } from '../../src/modules/flows/chatwoot-service.js';
 import { transitionChannelOwner } from '../../src/modules/attendance/transition.js';
+import { createChatwootRoutingContext } from '../../src/modules/integrations/chatwoot-routing-context.js';
+import type { ChatwootControlPrincipal } from '../../src/modules/integrations/chatwoot-control-auth.js';
 
 let db: Awaited<ReturnType<typeof attendanceDatabase>>;
 let app: ReturnType<typeof buildApp>;
@@ -103,4 +105,112 @@ it('uses canonical creation defaults to prove no automation, then detects a real
   expect(routed.json().data[0]).toMatchObject({ state: 'ROUTED', integrationId: integration });
   expect((await db.database.pool.query('SELECT * FROM chatwoot_connection_health WHERE organization_id=$1 ORDER BY integration_id', [org])).rows).toEqual(healthBefore);
   expect(remote).toHaveBeenCalledTimes(1);
+});
+
+async function humanRoutingFixture(state = 'HUMAN_ACTIVE') {
+  const t = await seedAttendanceTenant(db.database), session = randomUUID();
+  await db.database.pool.query(`INSERT INTO attendance_owners(organization_id,channel_id,integration_id,revision,executor)
+    VALUES($1,$2,$3,5,'NONE')`, [t.org,t.channel,t.integration]);
+  await db.database.pool.query(`INSERT INTO attendance_sessions(organization_id,id,channel_id,conversation_id,cycle,state,owner_revision)
+    VALUES($1,$2,$3,$4,1,$5,4)`, [t.org,session,t.channel,t.conversation,state]);
+  const principal = { organizationId:t.org,accountId:7,destinationRevision:1,chatwootOrigin:`https://${t.org}.example.test`,
+    authentication:{kind:'API_KEY',organizationId:t.org} } as ChatwootControlPrincipal;
+  const read = createChatwootRoutingContext({transact:db.transact,auth:{revalidate:vi.fn(async()=>principal)} as never});
+  const actor = (await db.database.pool.query('SELECT user_id FROM memberships WHERE organization_id=$1',[t.org])).rows[0].user_id as string;
+  return {...t,session,actor,read:async()=> (await read(principal,[t.integration])).data[0]!.state};
+}
+
+type HumanRoutingFixture = Awaited<ReturnType<typeof humanRoutingFixture>>;
+async function addSettledExecution(t:HumanRoutingFixture) {
+  const binding=randomUUID(),execution=randomUUID(),outbox=randomUUID();
+  await db.database.pool.query(`INSERT INTO automation_bindings(organization_id,id,automation_id,version,channel_id,status)
+    VALUES($1,$2,$3,1,$4,'DISABLED')`,[t.org,binding,t.automation,t.channel]);
+  await db.database.pool.query(`INSERT INTO automation_executions(organization_id,id,automation_id,version,binding_id,channel_id,conversation_id,
+    trigger_event_key,correlation_id,status) VALUES($1,$2,$3,1,$4,$5,$6,$7,$8,'CANCELED')`,
+  [t.org,execution,t.automation,binding,t.channel,t.conversation,randomUUID(),randomUUID()]);
+  await db.database.pool.query(`INSERT INTO automation_outbox(organization_id,id,execution_id,node_id,ordinal,kind,status)
+    VALUES($1,$2,$3,'synthetic',0,'HANDOFF','SENT')`,[t.org,outbox,execution]);
+  return {execution,outbox,binding};
+}
+async function deliveryLedgerSnapshot(t:HumanRoutingFixture) {
+  const tables=['chatwoot_mirror_attempts','chatwoot_attendance_observations','integration_jobs','messaging_messages','attendance_sessions'];
+  return Object.fromEntries(await Promise.all(tables.map(async table=>[table,
+    (await db.database.pool.query(`SELECT * FROM ${table} WHERE organization_id=$1 ORDER BY id`,[t.org])).rows])));
+}
+async function addUnknownDelivery(t:HumanRoutingFixture) {
+  const message=randomUUID(),job=randomUUID();
+  // The local transport outcome is known; only its Chatwoot mirror receipt is uncertain.
+  await db.database.pool.query(`INSERT INTO messaging_messages(id,organization_id,channel_id,conversation_id,direction,source,content,state,idempotency_key,idempotency_body_hash)
+    VALUES($1::uuid,$2,$3,$4,'OUTGOING','AUTOMATION','{"type":"TEXT","text":"Synthetic delivered message"}','SENT',$1::text,$5)`,[message,t.org,t.channel,t.conversation,'a'.repeat(64)]);
+  await db.database.pool.query(`INSERT INTO integration_jobs(id,organization_id,integration_id,kind,dedupe_key,message_id,status)
+    VALUES($1::uuid,$2,$3,'MIRROR_MESSAGE',$1::text,$4,'UNKNOWN')`,[job,t.org,t.integration,message]);
+  await db.database.pool.query(`INSERT INTO chatwoot_mirror_attempts(organization_id,channel_id,integration_id,destination_revision,account_id,inbox_id,
+    conversation_id,remote_conversation_id,cycle,message_id,job_id,lease_token,state)
+    VALUES($1,$2,$3,1,7,9,$4,11,1,$5,$6,$7,'UNKNOWN')`,[t.org,t.channel,t.integration,t.conversation,message,job,randomUUID()]);
+  for(const disposition of ['ECHO_PENDING','RECONCILE']) {
+    await db.database.pool.query(`INSERT INTO chatwoot_attendance_observations(organization_id,integration_id,channel_id,destination_revision,
+      credential_revision,account_id,inbox_id,remote_conversation_id,conversation_id,cycle,event_key,event,disposition)
+      VALUES($1,$2,$3,1,1,7,9,11,$4,1,$5,'{}',$6)`,[t.org,t.integration,t.channel,t.conversation,randomUUID(),disposition]);
+  }
+}
+
+it.each(['HUMAN_ACTIVE','ADMIN_PAUSED','RESOLVED'])('proves NONE for an isolated %s session without modifying its state',async state=>{
+  const t=await humanRoutingFixture(state),before=await deliveryLedgerSnapshot(t);
+  expect(await t.read()).toBe('NONE');
+  expect(await deliveryLedgerSnapshot(t)).toEqual(before);
+});
+
+it.each(['HUMAN_ACTIVE','ADMIN_PAUSED'])('permits reading %s with mirror UNKNOWN and echo/reconcile observations without settling or replaying them',async state=>{
+  const t=await humanRoutingFixture(state);await addUnknownDelivery(t);
+  const before=await deliveryLedgerSnapshot(t);
+  expect(await t.read()).toBe('NONE');
+  expect(await t.read()).toBe('NONE');
+  expect(await deliveryLedgerSnapshot(t)).toEqual(before);
+});
+
+it('uses the actual NONE transition to leave a prior bot session paused while proving automation absence',async()=>{
+  const t=await humanRoutingFixture('BOT_ACTIVE');
+  await db.database.pool.query("UPDATE messaging_channels SET bot_public_id='synthetic-bot',bot_origin_reference='synthetic' WHERE id=$1",[t.channel]);
+  await db.database.pool.query("UPDATE attendance_owners SET executor='EXTERNAL' WHERE organization_id=$1 AND channel_id=$2",[t.org,t.channel]);
+  expect(await t.read()).toBe('ROUTED');
+  await db.transact(t.org,tx=>transitionChannelOwner(tx,t.org,{channelId:t.channel,botPublicId:null,botOriginReference:null,executor:'NONE',expectedOwnerRevision:5}));
+  expect((await db.database.pool.query('SELECT state FROM attendance_sessions WHERE organization_id=$1',[t.org])).rows[0].state).toBe('ADMIN_PAUSED');
+  expect(await t.read()).toBe('NONE');
+});
+
+it.each(['BOT_ACTIVE','WAITING_INPUT','HANDOFF_PENDING','WAITING_HUMAN'])('keeps %s session evidence closed without a configured bot',async state=>{
+  expect(await (await humanRoutingFixture(state)).read()).toBe('ROUTED');
+});
+
+it('keeps the existing automation outbox UNKNOWN guard with a human session',async()=>{
+  const t=await humanRoutingFixture(),e=await addSettledExecution(t);
+  await db.database.pool.query("UPDATE automation_outbox SET status='UNKNOWN' WHERE organization_id=$1 AND id=$2",[t.org,e.outbox]);
+  const before=(await db.database.pool.query('SELECT * FROM automation_outbox WHERE organization_id=$1',[t.org])).rows;
+  expect(await t.read()).toBe('ROUTED');
+  expect((await db.database.pool.query('SELECT * FROM automation_outbox WHERE organization_id=$1',[t.org])).rows).toEqual(before);
+});
+
+it('keeps unknown canonical ownership, active bot pointers and paused routing bindings closed',async()=>{
+  const t=await humanRoutingFixture();
+  // A non-ready canonical mapping cannot establish absence.
+  await db.database.pool.query("UPDATE chatwoot_connections SET status='FAILED' WHERE organization_id=$1",[t.org]);
+  expect(await t.read()).toBe('UNKNOWN');
+  await db.database.pool.query("UPDATE chatwoot_connections SET status='READY' WHERE organization_id=$1",[t.org]);
+  await db.database.pool.query("UPDATE messaging_channels SET bot_public_id='synthetic-bot',bot_origin_reference='synthetic' WHERE id=$1",[t.channel]);
+  expect(await t.read()).toBe('ROUTED');
+  await db.database.pool.query('UPDATE messaging_channels SET bot_public_id=NULL,bot_origin_reference=NULL WHERE id=$1',[t.channel]);
+  const e=await addSettledExecution(t);
+  await db.database.pool.query("UPDATE automation_bindings SET status='PAUSED' WHERE organization_id=$1 AND id=$2",[t.org,e.binding]);
+  expect(await t.read()).toBe('ROUTED');
+});
+
+it('preserves an UNKNOWN remote routing binding operation even after its bot pointer was locally cleared',async()=>{
+  const t=await humanRoutingFixture(),flow=randomUUID();
+  await db.database.pool.query("INSERT INTO flows(id,organization_id,name,graph) VALUES($1,$2,'Synthetic uncertain route','{}')",[flow,t.org]);
+  await db.database.pool.query(`INSERT INTO flow_chatwoot_bindings(organization_id,flow_id,inbox_id,account_id,destination_revision,
+    credential_version,feature_revision,name,channel_type,status,operation_state)
+    VALUES($1,$2,9,7,1,1,1,'Synthetic uncertain route','Channel::Api','DISABLED','UNKNOWN')`,[t.org,flow]);
+  const before=(await db.database.pool.query('SELECT * FROM flow_chatwoot_bindings WHERE organization_id=$1',[t.org])).rows;
+  expect(await t.read()).toBe('ROUTED');
+  expect((await db.database.pool.query('SELECT * FROM flow_chatwoot_bindings WHERE organization_id=$1',[t.org])).rows).toEqual(before);
 });

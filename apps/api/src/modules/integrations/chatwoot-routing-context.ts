@@ -34,7 +34,7 @@ export function createChatwootRoutingContext(options: Pick<ChatwootControlOption
             WHERE b.organization_id=c.organization_id AND b.channel_id=c.channel_id AND b.integration_id=c.id AND b.inbox_id=c.inbox_id
              AND b.account_id=a.account_id AND b.origin=a.base_url AND b.credential_version=a.credential_version AND b.destination_revision=d.revision AND b.status='READY')))) AS complete_snapshot,
         (EXISTS(SELECT 1 FROM automation_executions e WHERE e.organization_id=c.organization_id AND e.channel_id=c.channel_id AND e.status IN('QUEUED','RUNNING','WAITING','UNKNOWN')) OR
-         EXISTS(SELECT 1 FROM attendance_sessions s WHERE s.organization_id=c.organization_id AND s.channel_id=c.channel_id AND s.state<>'RESOLVED') OR
+         EXISTS(SELECT 1 FROM attendance_sessions s WHERE s.organization_id=c.organization_id AND s.channel_id=c.channel_id AND s.state NOT IN('RESOLVED','HUMAN_ACTIVE','ADMIN_PAUSED')) OR
          EXISTS(SELECT 1 FROM automation_outbox o JOIN automation_executions e ON e.organization_id=o.organization_id AND e.id=o.execution_id WHERE e.organization_id=c.organization_id AND e.channel_id=c.channel_id AND o.status IN('PENDING','SENDING','UNKNOWN')) OR
          EXISTS(SELECT 1 FROM automation_waits w JOIN automation_executions e ON e.organization_id=w.organization_id AND e.id=w.execution_id WHERE e.organization_id=c.organization_id AND e.channel_id=c.channel_id AND w.status='WAITING') OR
          EXISTS(SELECT 1 FROM messaging_bot_jobs j JOIN messaging_conversations mc ON mc.organization_id=j.organization_id AND mc.id=j.conversation_id WHERE mc.organization_id=c.organization_id AND mc.channel_id=c.channel_id AND j.status IN('PENDING','RUNNING','UNKNOWN')) OR
