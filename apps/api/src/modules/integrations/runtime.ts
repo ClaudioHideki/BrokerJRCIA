@@ -1,4 +1,5 @@
 import {createEvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
+import { createRedactedLogger } from '@jrc/security';
 import type { Pool } from "pg";
 import {createCentralCutoverService} from '../channels/central-cutover-service.js';
 import { z } from "zod";
@@ -131,8 +132,10 @@ export function createIntegrationRuntime(
     encryptionKey:environment.INTEGRATION_ENCRYPTION_KEY,
     configurationScope:fleet!.configurationScope(config.qr.webhookOrigin),
   }:undefined;
+  const groupCatalogLogger=groupPolicy&&config.qr?createRedactedLogger():undefined;
   const groupCatalog=groupPolicy&&config.qr?createWhatsAppGroupCatalog({
     encryptionKey:groupPolicy.encryptionKey,transact,captureBinding:fleet!.capture,assertBinding:fleet!.assert,
+    onRefreshFailure:diagnostic=>groupCatalogLogger!.warn(diagnostic,'WHATSAPP_GROUP_CATALOG_REFRESH_FAILED'),
     async readIdentity(context,key){const snapshot=await fleet!.workspace.read(context,key);
       return{connected:snapshot.profile.state==='open',phone:snapshot.profile.phone};},
     readGroups:(context,key)=>fleet!.groups.list(context,key),

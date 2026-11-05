@@ -15,6 +15,16 @@ const workerAuthority=Symbol('group-catalog-worker');
 type WorkerPrincipal={organizationId:string;[workerAuthority]:true|'CENTRAL'};
 type CatalogPrincipal=GroupCatalogPrincipal|WorkerPrincipal;
 const isWorker=(principal:CatalogPrincipal):principal is WorkerPrincipal=>workerAuthority in principal;
+export type GroupCatalogFailurePhase = 'CAPTURE' | 'IDENTITY_BEFORE' | 'CATALOG' | 'IDENTITY_AFTER' | 'ENGINE_REVALIDATION' | 'COMMIT';
+export interface GroupCatalogFailureDiagnostic {
+  phase: GroupCatalogFailurePhase;
+  safeCode: string;
+  httpStatus: number | null;
+  elapsedMs: number;
+  requestId: string;
+  organizationId: string;
+  channelId: string;
+}
 export interface GroupCatalogOptions {
   captureBinding?:EvolutionFleetRuntime['capture'];assertBinding?:EvolutionFleetRuntime['assert'];
   encryptionKey: string;
@@ -22,6 +32,7 @@ export interface GroupCatalogOptions {
   readIdentity(context: ProviderContext, instanceKey: string): Promise<{ connected: boolean; phone: string | null }>;
   readGroups(context: ProviderContext, instanceKey: string): Promise<EvolutionGroupCatalogItem[]>;
   ensureEventsConfiguration?(principal:GroupCatalogPrincipal,channel:string):Promise<void>;
+  onRefreshFailure?(diagnostic: GroupCatalogFailureDiagnostic): void | Promise<void>;
 }
 export class GroupCatalogError extends Error {
   constructor(readonly code: string, readonly status = 409) { super(code); }
@@ -33,6 +44,8 @@ interface CatalogRow {
 }
 interface ChannelRow { instance_id: string; upstream_instance_key: string; connected: boolean }
 const errors = new Set(['PROVIDER_ABORTED', 'PROVIDER_TIMEOUT', 'PROVIDER_REQUEST_FAILED', 'PROVIDER_INVALID_RESPONSE']);
+const diagnosticCodes = new Set([...errors, 'GROUP_ACCESS_DENIED', 'GROUP_CHANNEL_NOT_FOUND',
+  'GROUP_CHANNEL_DISCONNECTED', 'GROUP_IDENTITY_CHANGED', 'GROUP_REFRESH_LEASE_LOST']);
 // Read-only discovery is independent of selection and the optional bot. Reuse
 // this predicate after provider I/O; discovery never grants mirroring or sending.
 const centralCatalogAuthority=`c.transport='BROKER_TRANSPORT'
@@ -47,6 +60,12 @@ function providerCode(error: unknown) {
   const value = error as { code?: unknown; canonicalErrorCode?: unknown } | null;
   const code = value?.code ?? value?.canonicalErrorCode;
   return typeof code === 'string' && errors.has(code) ? code : 'PROVIDER_REQUEST_FAILED';
+}
+function diagnosticHttpStatus(error: unknown): number | null {
+  if (!error || typeof error !== 'object') return null;
+  // Read only an own data property; arbitrary provider getters are not diagnostic input.
+  const value: unknown = Object.getOwnPropertyDescriptor(error, 'httpStatus')?.value;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599 ? value : null;
 }
 export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
   const key = Buffer.from(options.encryptionKey, 'base64');
@@ -140,23 +159,33 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
         if (!claimed.rowCount) throw new GroupCatalogError('GROUP_CATALOG_REFRESHING');
         return current;
       });
+      const startedAt = performance.now();
+      let phase: GroupCatalogFailurePhase = 'CAPTURE';
       try {
         // All provider I/O owns a deadline outside every database transaction.
         // Before/after observations bind the catalog to an actually observed
         // number even for standalone channels with no Chatwoot health record.
         const context: ProviderContext = { organizationId: org, requestId: lease, deadline: new Date(Date.now() + 45000), signal: AbortSignal.timeout(45000) };
         const engine=await options.captureBinding?.(org,captured.upstream_instance_key);
+        phase = 'IDENTITY_BEFORE';
         const before = await options.readIdentity(context, captured.upstream_instance_key);
         if (!before.connected || !before.phone || !/^[1-9]\d{6,14}$/.test(before.phone)) throw new GroupCatalogError('GROUP_IDENTITY_CHANGED');
+        phase = 'CATALOG';
         const raw = await options.readGroups(context, captured.upstream_instance_key);
         const parsed = z.array(WhatsAppGroupCatalogItemSchema).max(2000).safeParse(raw);
         if (!parsed.success || new Set(raw.map(item => item.groupJid)).size !== raw.length) throw new GroupCatalogError('PROVIDER_INVALID_RESPONSE');
+        phase = 'IDENTITY_AFTER';
         const after = await options.readIdentity(context, captured.upstream_instance_key);
         if (!after.connected || after.phone !== before.phone) throw new GroupCatalogError('GROUP_IDENTITY_CHANGED');
         const fingerprint = createHmac('sha256', key).update(`whatsapp-group-identity:v1:${org}:${channel}:${before.phone}`).digest('hex');
+        phase = 'COMMIT';
         return await options.transact(org, async tx => {
           const current = await access(tx, principal, channel, true), previous = await catalog(tx, org, channel);
-          if(engine)await options.assertBinding!(engine,tx,true);
+          if(engine) {
+            phase = 'ENGINE_REVALIDATION';
+            await options.assertBinding!(engine,tx,true);
+            phase = 'COMMIT';
+          }
           if (!current.connected || current.instance_id !== captured.instance_id || current.upstream_instance_key !== captured.upstream_instance_key) throw new GroupCatalogError('GROUP_IDENTITY_CHANGED');
           const completed = await tx.query(`UPDATE whatsapp_group_catalogs SET snapshot_id=$4,observed_at=clock_timestamp(),valid_until=clock_timestamp()+interval '5 minutes',
             identity_revision=identity_revision+CASE WHEN identity_fingerprint IS NOT NULL AND identity_fingerprint<>$5 THEN 1 ELSE 0 END,
@@ -178,6 +207,15 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
         const code = error instanceof GroupCatalogError ? error.code
           : error instanceof TenantOperationalError ? 'GROUP_ACCESS_DENIED' : providerCode(error);
         const recorded = code === 'GROUP_IDENTITY_CHANGED' ? 'IDENTITY_CHANGED' : code.startsWith('GROUP_') ? 'LEASE_LOST' : code;
+        // Observability cannot delay lease cleanup or replace the original settlement.
+        // No raw error value crosses this boundary, including unknown error codes.
+        try {
+          void Promise.resolve(options.onRefreshFailure?.({ phase,
+            safeCode: diagnosticCodes.has(code) ? code : 'GROUP_CATALOG_UNAVAILABLE',
+            httpStatus: diagnosticHttpStatus(error),
+            elapsedMs: Math.max(0, Math.floor(performance.now() - startedAt)),
+            requestId: lease, organizationId: org, channelId: channel })).catch(() => {});
+        } catch { /* A failed observer is never a refresh failure. */ }
         await fail(org, channel, lease, recorded);
         throw error instanceof GroupCatalogError || error instanceof TenantOperationalError
           ? error : new GroupCatalogError(code, 502);
