@@ -33,11 +33,10 @@ interface CatalogRow {
 }
 interface ChannelRow { instance_id: string; upstream_instance_key: string; connected: boolean }
 const errors = new Set(['PROVIDER_ABORTED', 'PROVIDER_TIMEOUT', 'PROVIDER_REQUEST_FAILED', 'PROVIDER_INVALID_RESPONSE']);
-// Mirroring is independent of the optional bot. Reuse this predicate both when
-// claiming work and after provider I/O; a paused/revoked central cannot refresh.
+// Read-only discovery is independent of selection and the optional bot. Reuse
+// this predicate after provider I/O; discovery never grants mirroring or sending.
 const centralCatalogAuthority=`c.transport='BROKER_TRANSPORT'
-  AND EXISTS(SELECT 1 FROM whatsapp_group_catalog_items item
-    WHERE item.organization_id=c.organization_id AND item.channel_id=c.id AND item.selected)
+  AND chatwoot_channel_identity_ready(c.organization_id,c.id)
   AND EXISTS(SELECT 1 FROM chatwoot_connections x
     JOIN chatwoot_accounts a ON a.organization_id=x.organization_id
     JOIN chatwoot_destinations d ON d.organization_id=a.organization_id AND d.base_url=a.base_url
@@ -132,12 +131,12 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
       const captured = await options.transact(org, async tx => {
         const current = await access(tx, principal, channel, true);
         if (!current.connected) throw new GroupCatalogError('GROUP_CHANNEL_DISCONNECTED');
-        await tx.query('INSERT INTO whatsapp_group_catalogs(organization_id,channel_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [org, channel]);
+        const initialized = (await tx.query('INSERT INTO whatsapp_group_catalogs(organization_id,channel_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING channel_id', [org, channel])).rowCount === 1;
         const claimed = await tx.query(`UPDATE whatsapp_group_catalogs SET lease_token=$3,lease_expires_at=clock_timestamp()+interval '60 seconds',
           last_attempt_at=clock_timestamp(),updated_at=clock_timestamp() WHERE organization_id=$1 AND channel_id=$2
           AND (lease_token IS NULL OR lease_expires_at<=clock_timestamp())
-          ${isWorker(principal)?"AND (valid_until IS NULL OR valid_until<clock_timestamp()+interval '2 minutes') AND last_attempt_at<clock_timestamp()-interval '30 seconds'":''}
-          RETURNING channel_id`, [org, channel, lease]);
+          ${isWorker(principal)?"AND (valid_until IS NULL OR valid_until<clock_timestamp()+interval '2 minutes') AND ($4::boolean OR last_attempt_at<clock_timestamp()-interval '30 seconds')":''}
+          RETURNING channel_id`, [org, channel, lease,...(isWorker(principal)?[initialized]:[])]);
         if (!claimed.rowCount) throw new GroupCatalogError('GROUP_CATALOG_REFRESHING');
         return current;
       });
@@ -233,17 +232,17 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
     async refreshDueForCentral(org:string):Promise<{processed:boolean;channelId?:string;status?:'CURRENT'|'FAILED';code?:string}>{
       z.uuid().parse(org);
       const due=await options.transact(org,async tx=>(await tx.query<{channel_id:string}>(`/* GROUP_CENTRAL_CATALOG_DUE */
-        SELECT k.channel_id FROM whatsapp_group_catalogs k
-        JOIN messaging_channels c ON c.organization_id=k.organization_id AND c.id=k.channel_id
+        SELECT c.id AS channel_id FROM messaging_channels c
+        LEFT JOIN whatsapp_group_catalogs k ON k.organization_id=c.organization_id AND k.channel_id=c.id
         JOIN instances i ON i.organization_id=c.organization_id AND i.id=c.instance_id
-        JOIN organizations t ON t.id=k.organization_id
-        WHERE k.organization_id=$1 AND t.status='ACTIVE' AND c.provider='BAILEYS'
+        JOIN organizations t ON t.id=c.organization_id
+        WHERE c.organization_id=$1 AND t.status='ACTIVE' AND c.provider='BAILEYS'
           AND c.deleting_at IS NULL AND i.archived_at IS NULL AND i.status='CONNECTED'
           AND (k.valid_until IS NULL OR k.valid_until<clock_timestamp()+interval '2 minutes')
-          AND k.last_attempt_at<clock_timestamp()-interval '30 seconds'
+          AND (k.last_attempt_at IS NULL OR k.last_attempt_at<clock_timestamp()-interval '30 seconds')
           AND (k.lease_token IS NULL OR k.lease_expires_at<=clock_timestamp())
           AND ${centralCatalogAuthority}
-        ORDER BY k.last_attempt_at,k.channel_id LIMIT 1`,[org])).rows[0]);
+        ORDER BY k.last_attempt_at NULLS FIRST,c.id LIMIT 1`,[org])).rows[0]);
       if(!due)return{processed:false};
       try{await service.refresh({organizationId:org,[workerAuthority]:'CENTRAL'},due.channel_id);return{processed:true,channelId:due.channel_id,status:'CURRENT'};}
       catch(error){return{processed:true,channelId:due.channel_id,status:'FAILED',code:error instanceof GroupCatalogError?error.code:'GROUP_CATALOG_UNAVAILABLE'};}
