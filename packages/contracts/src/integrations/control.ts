@@ -17,6 +17,21 @@ export const IssuedControlCredentialSchema = z.strictObject({
 export const ControlContextSchema = ControlBindingSchema.extend({
   chatwootOrigin: z.url(), capabilities: z.record(z.string(), z.enum(['SUPPORTED', 'UNSUPPORTED', 'UNVERIFIED'])),
 });
+export const ControlRoutingQuerySchema = z.strictObject({
+  integrationIds: z.string().max(3699).refine(value => {
+    const ids = value.split(',');
+    return ids.length <= 100 && new Set(ids).size === ids.length && ids.every(id => z.uuid().safeParse(id).success);
+  }),
+});
+export const ControlRoutingContextSchema = ControlBindingSchema.extend({
+  schemaVersion: z.literal(1), checkedAt: z.iso.datetime(),
+  data: z.array(z.strictObject({
+    integrationId: z.uuid(), channelId: z.uuid(), inboxId: z.number().int().positive(),
+    state: z.enum(['NONE', 'ROUTED', 'UNKNOWN']),
+    ownerRevision: z.number().int().nonnegative().nullable(),
+    bindingRevision: z.number().int().positive().nullable(),
+  })).max(100),
+});
 export const OperatorGrantsSchema = z.strictObject({
   grants: z.array(z.strictObject({ userId: z.uuid(), canPair: z.boolean() })).max(100),
 }).refine(v => new Set(v.grants.map(x => x.userId)).size === v.grants.length, 'Duplicate user');
