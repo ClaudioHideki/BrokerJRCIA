@@ -67,13 +67,13 @@ jobs:
       - name: Run tests within the approved release scope
         run: |
           if [ "$RECOVERY_ROUTINES_IN_SCOPE" = "true" ]; then
-            npm test -- --exclude tests/security-audit-artifacts.test.mjs
+            npm test -- --exclude tests/security-audit-artifacts.test.mjs --exclude tests/security-audit-pdf-verification.test.mjs
           else
             echo 'Backup/dump/restore excluded by the approved candidate scope. Recovery is NOT validated by this run.' >> "$GITHUB_STEP_SUMMARY"
-            npm test -- --exclude tests/security-audit-artifacts.test.mjs --exclude tests/backup.test.mjs --exclude tests/recovery.test.mjs
+            npm test -- --exclude tests/security-audit-artifacts.test.mjs --exclude tests/security-audit-pdf-verification.test.mjs --exclude tests/backup.test.mjs --exclude tests/recovery.test.mjs
           fi
       - name: Verify PDF audit artifacts without competing test workers
-        run: npm test -- tests/security-audit-artifacts.test.mjs --maxWorkers=1
+        run: npm test -- tests/security-audit-artifacts.test.mjs tests/security-audit-pdf-verification.test.mjs --maxWorkers=1
       - run: npm run test:web:bundle && npm run security:submodule && npm audit --audit-level=high
       - name: Verify the native Flow editor uses the same committed source
         run: npm run build:native-flow-editor -- --out .sessions/native-flow-editor-images
