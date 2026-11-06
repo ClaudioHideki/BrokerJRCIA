@@ -13,10 +13,11 @@ const shared={conversationEffectVersion:z.literal(2),operation:z.literal('domain
 const text=(maximum:number)=>z.string().min(1).max(maximum).refine(value=>!value.includes('\0'));
 const code=z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/u);
 const intakeInput=z.strictObject({system:code,location:code,reason:code,subject:code,profile:code.optional(),
- severity:z.enum(['low','medium','high','critical']).optional(),identifier:text(30),email:text(254),
+ severity:z.enum(['low','medium','high','critical']).optional(),impact:text(1000).optional(),urgency:text(1000).optional(),identifier:text(30),email:text(254),
  description:text(5000).refine(value=>new TextEncoder().encode(value).byteLength<=6000)});
 const intakeInputTemplate=z.strictObject({system:text(200),location:text(200),reason:text(200),subject:text(200),
- profile:text(200).optional(),severity:text(200).optional(),identifier:text(200),email:text(300),description:text(6000)});
+ profile:text(200).optional(),severity:text(200).optional(),impact:text(1000).optional(),urgency:text(1000).optional(),
+ identifier:text(200),email:text(300),description:text(6000)});
 export const DomainCommandConfigSchema=z.discriminatedUnion('command',[
  z.strictObject({...shared,command:z.literal('create_lead')}),
  z.strictObject({...shared,command:z.literal('create_task'),ownerId:owner,title,dueAt}),

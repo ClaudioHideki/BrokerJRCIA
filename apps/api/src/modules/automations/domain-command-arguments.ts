@@ -8,7 +8,7 @@ export function renderDomainCommandArguments(config:DomainCommandConfig,variable
  if(config.command==='service_desk_intake')return DomainCommandArgumentsSchema.parse({command:config.command,
   configuration_id:config.configurationId,configuration_revision:config.configurationRevision,episode_key:episode,phase:config.phase,
   input:Object.fromEntries(Object.entries(config.input).map(([key,value])=>[key,renderRuntimeText(value,variables)])
-   .filter(([key,value])=>!['profile','severity'].includes(key!)||value!==''))});
+   .filter(([key,value])=>!['profile','severity','impact','urgency'].includes(key!)||value!==''))});
  return DomainCommandArgumentsSchema.parse(config.command==='create_lead'?{command:config.command}:{command:config.command,
   owner_id:config.ownerId,title:renderRuntimeText(config.title,variables),
   due_at:config.dueAt.kind==='LITERAL'?config.dueAt.value:variables[config.dueAt.variable]});

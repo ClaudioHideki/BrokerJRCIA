@@ -35,6 +35,9 @@ describe('scoped conversation action editor', () => {
     await waitFor(()=>expect(screen.queryByRole('option',{name:'Criar tarefa'})).not.toBeInTheDocument());
     fireEvent.change(screen.getByLabelText('Revisão da configuração'),{target:{value:'3'}});
     expect(change).toHaveBeenCalledWith(expect.objectContaining({configurationRevision:3}));
+    fireEvent.change(screen.getByLabelText('Impacto informado'),{target:{value:'{{impact}}'}});
+    expect(change).toHaveBeenCalledWith(expect.objectContaining({input:expect.objectContaining({impact:'{{impact}}'})}));
+    expect(screen.getByLabelText('Urgência informada')).toBeVisible();
   });
   it('configures a native task by owner name and keeps public sending separate',async()=>{
     const api=transport(),change=vi.fn();

@@ -28,7 +28,8 @@ export function DomainCommandFields({data,owners,commands=['create_lead','create
    <label>Revisão da configuração<input type="number" min={1} value={Number(data.configurationRevision??1)} onChange={event=>change({configurationRevision:Number(event.target.value)})}/></label>
    <label>Momento da triagem<select value={String(data.phase??'qualified')} onChange={event=>change({phase:event.target.value})}>
     <option value="qualified">Dados conferidos</option><option value="handoff">Solicitou atendente</option></select></label>
-   {Object.entries({system:'Sistema',location:'Localidade',reason:'Motivo',subject:'Assunto',profile:'Perfil declarado',severity:'Severidade',
+   {Object.entries({system:'Sistema',location:'Localidade',reason:'Motivo',subject:'Assunto',profile:'Perfil declarado',severity:'Criticidade declarada (opcional)',
+    impact:'Impacto informado',urgency:'Urgência informada',
     identifier:'CPF ou CNPJ',email:'E-mail informado',description:'Descrição da demanda'}).map(([key,label])=>{
      const input=(data.input??{}) as Record<string,unknown>;
      return <label key={key}>{label}<input value={String(input[key]??'')} onChange={event=>{
