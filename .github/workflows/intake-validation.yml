@@ -1,6 +1,8 @@
 name: Service Desk intake isolated validation
 on:
   workflow_dispatch:
+  push:
+    branches: ['codex/branef-ura-documentos-*']
 permissions:
   contents: read
 jobs:
