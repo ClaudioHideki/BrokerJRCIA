@@ -31,8 +31,12 @@ export async function assertConversationResourcePolicies(tx:TenantTransaction,or
   if(node.type==='domain'&&!scope)throw new AutomationError('AUTOMATION_EFFECT_CAPABILITY_UNAVAILABLE',409);
   if(scope){const catalogue=(await tx.query<{scope:unknown;credentialRevision:number;capabilities:ActionCatalogPage['capabilities'];live:boolean}>(`select scope,credential_revision as "credentialRevision",capabilities,expires_at>clock_timestamp() as live from automation_action_catalogs where organization_id=$1 and channel_id=$2 for share`,[org,config.channelId])).rows[0];
    if(!catalogue?.live||catalogue.credentialRevision!==(await readChatwootAccount(tx,org))?.credential_version||!sameConversationScope(catalogue.scope,scope)||catalogue.capabilities[node.type as keyof ActionCatalogPage['capabilities']]?.state!=='SUPPORTED')throw new AutomationError('AUTOMATION_EFFECT_CAPABILITY_UNAVAILABLE',409);
-   if('operation' in config&&config.operation==='domain'&&config.command!=='create_lead'&&!catalogue.capabilities.domain?.owners.some(owner=>owner.id===config.ownerId))
-    throw new AutomationError('AUTOMATION_RESOURCE_UNAVAILABLE',409);
+   if('operation' in config&&config.operation==='domain'){
+    const domain=catalogue.capabilities.domain,commands=domain?.commands??['create_lead','create_task','create_meeting'];
+    if(!commands.includes(config.command))throw new AutomationError('AUTOMATION_EFFECT_CAPABILITY_UNAVAILABLE',409);
+    if((config.command==='create_task'||config.command==='create_meeting')&&!domain?.owners.some(owner=>owner.id===config.ownerId))
+     throw new AutomationError('AUTOMATION_RESOURCE_UNAVAILABLE',409);
+   }
   }
   if(node.type==='media'){
    const mediaConfig=MediaEffectConfigSchema.parse(config),asset=assertMediaAsset(org,root,config.channelId,mediaConfig,await readMediaAsset(tx,org,mediaConfig.mediaId,true));

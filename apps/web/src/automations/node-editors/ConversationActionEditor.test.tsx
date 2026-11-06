@@ -23,6 +23,19 @@ const node = (type = 'tag', data: Record<string, unknown> = {}): FlowNode => ({ 
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 
 describe('scoped conversation action editor', () => {
+  it('collects Service Desk intake without a CRM owner and shows only advertised actions',async()=>{
+    const api=transport(),change=vi.fn();
+    vi.mocked(api.actionCatalog).mockResolvedValue({...catalog,profile:'CENTRAL',capabilities:{...catalog.capabilities,
+      domain:{...supported,owners:[],commands:['service_desk_intake','service_desk_status']}}});
+    render(<ConversationActionEditor node={node('domain',{command:'service_desk_intake',configurationId:7,configurationRevision:2,
+      phase:'qualified',input:{system:'example',location:'south',reason:'request',subject:'access',identifier:'{{identifier}}',
+        email:'{{email}}',description:'{{description}}'}})} editable transport={api} onChange={change}/>);
+    expect(await screen.findByLabelText('Configuração de atendimento')).toHaveValue(7);
+    expect(screen.queryByLabelText('Responsável')).not.toBeInTheDocument();
+    await waitFor(()=>expect(screen.queryByRole('option',{name:'Criar tarefa'})).not.toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Revisão da configuração'),{target:{value:'3'}});
+    expect(change).toHaveBeenCalledWith(expect.objectContaining({configurationRevision:3}));
+  });
   it('configures a native task by owner name and keeps public sending separate',async()=>{
     const api=transport(),change=vi.fn();
     vi.mocked(api.actionCatalog).mockResolvedValue({...catalog,profile:'CENTRAL',capabilities:{...catalog.capabilities,

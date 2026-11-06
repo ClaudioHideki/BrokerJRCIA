@@ -9,7 +9,7 @@ import {initializeChatwootAttendanceMap,recordChatwootAttendanceEvent} from '../
 
 let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();});afterAll(async()=>{await db?.dispose();});
-async function fixture(supported=true){
+async function fixture(supported=true,intake=false){
  const t=await seedAttendanceTenant(db.database,false),origin=`https://${t.org}.example.test`;
  await db.database.pool.query('insert into flow_features(organization_id,enabled) values($1,true)',[t.org]);
  await db.database.pool.query("insert into chatwoot_destinations(organization_id,base_url,mode,approval_status) values($1,$2,'EXTERNAL','APPROVED')",[t.org,origin]);
@@ -20,22 +20,29 @@ async function fixture(supported=true){
  const context=()=>({protocol:'jrc-conversation-effects/2',account_id:7,inbox_id:9,conversation_id:11,remote_contact_id:13,
   contact_inbox_id:15,actor_user_id:17,routing_source_hash:'b'.repeat(64),control_revision:10,status:'pending',assignee_id:null,assignee_agent_bot_id:null,team_id:null});
  const calls:Array<{path:string;method:string}>=[];
+ const posted:Array<Record<string,unknown>>=[];
+ const intakeInput={system:'example',location:'south',reason:'request',subject:'access',profile:'requester',
+  identifier:'12345678901',email:'synthetic@example.invalid',description:'Synthetic request'};
  const client=new ChatwootClient({baseUrl:origin,token:'synthetic',fetch:async(url,options)=>{
   const path=new URL(String(url)).pathname;calls.push({path,method:options?.method??'GET'});
   if(path.endsWith('/jrc_domain_commands/capabilities'))return Response.json({protocol:'jrc-domain-commands/1',account_id:7,inbox_id:9,
-   organization_id:t.org,integration_id:t.integration,commands:supported?['create_lead','create_task','create_meeting']:[],owners:[{id:17,name:'Synthetic operator'}]});
+   organization_id:t.org,integration_id:t.integration,commands:supported?(intake?['service_desk_intake','service_desk_status']:['create_lead','create_task','create_meeting']):[],owners:intake?[]:[{id:17,name:'Synthetic operator'}]});
   if(path.endsWith('/capabilities'))return Response.json({protocol:'jrc-conversation-effects/2',account_id:7,inbox_id:9,control_revision_supported:true,operations:['tag','attribute','note','resolve'],resources:[]});
   if(path.endsWith('/context'))return Response.json(context());
   if(options?.method==='POST'){
    expect(path).toBe('/api/v1/accounts/7/conversations/11/jrc_domain_commands');posts++;
    const request=JSON.parse(String(options.body)) as ConversationEffectRequest;
    expect(request).toMatchObject({operation:'domain',integration_id:t.integration});
-   expect(JSON.parse(request.value_json)).toEqual({command:'create_lead'});
+   const args=JSON.parse(request.value_json) as Record<string,unknown>;posted.push(args);
+   expect(args).toEqual(intake?{command:'service_desk_intake',configuration_id:7,configuration_revision:2,
+    episode_key:expect.any(String),phase:'qualified',input:intakeInput}:{command:'create_lead'});
    const {control_revision:_revision,status:_status,assignee_id:_a,assignee_agent_bot_id:_b,team_id:_team,...pins}=context();
    receipt={...pins,state:'CONFIRMED',organization_id:t.org,operation_id:outbox,operation:'domain',resource_id:null,resource_revision:null,message_id:null,
     control_revision_before:10,control_revision_after:10,request_hash:conversationEffectRequestHash({accountId:7,remoteConversationId:11},request),
-    dispatch_proof_hash:createHash('sha256').update(request.dispatch_proof).digest('hex'),domain_result:{command:'create_lead',resource_type:'JrcCrm::Lead',resource_id:71,created:true,
-     delivery:'NOT_APPLICABLE',event:{id:outbox,causation_id:malformed?randomUUID():outbox,type:'crm.lead.ready'}}};
+    dispatch_proof_hash:createHash('sha256').update(request.dispatch_proof).digest('hex'),domain_result:{
+     command:intake?'service_desk_intake':'create_lead',resource_type:intake?'JrcServiceDesk::IntakeDemand':'JrcCrm::Lead',resource_id:71,created:true,
+     delivery:'NOT_APPLICABLE',event:{id:outbox,causation_id:malformed?randomUUID():outbox,type:intake?'service_desk.intake.recorded':'crm.lead.ready'},
+     ...(intake?{intake:{id:'71',episode_key:args.episode_key,configuration_id:'7',state:'test_only',created:true,remote_id:null,error_code:null,stages:{}}}:{})}};
    await hook?.();if(lost)throw Error('synthetic lost domain ACK');return Response.json(receipt);
   }
   expect(path).toContain('/jrc_domain_commands/');lookups++;return Response.json(receipt);
@@ -43,7 +50,8 @@ async function fixture(supported=true){
  const runtime=createConversationEffectRuntime({client:()=>client,transact:db.transact});
  const node=(id:string,type:string,data:Record<string,unknown>={})=>({id,type,label:id,position:{x:0,y:0},data});
  const graph={nodes:[node('start','start'),node('domain','domain',{conversationEffectVersion:2,operation:'domain',channelId:t.channel,
-  command:'create_lead',target:'native.result',timeoutMs:1000}),node('end','end')],edges:[{id:'start',source:'start',target:'domain',port:'next'},
+  command:intake?'service_desk_intake':'create_lead',target:'native.result',timeoutMs:1000,
+  ...(intake?{configurationId:7,configurationRevision:2,phase:'qualified',input:intakeInput}:{})}),node('end','end')],edges:[{id:'start',source:'start',target:'domain',port:'next'},
   ...['success','error','timeout'].map(port=>({id:port,source:'domain',target:'end',port}))]};
  const service=createAutomationService({transact:db.transact,enabled:true,conversationCatalog:runtime.catalog});
  const draft=await service.create(t.org,{name:'Synthetic domain command',graph});
@@ -57,9 +65,9 @@ async function fixture(supported=true){
   await createExecutionService({transact:db.transact,enabled:true}).runOnce(t.org);
   outbox=(await db.database.pool.query('select id from automation_outbox where organization_id=$1',[t.org])).rows[0].id;
  };
- return{...t,start,publish,runtime,calls,counts:()=>({posts,lookups}),loseAck:()=>{lost=true;},malformed:()=>{malformed=true;},hook:(callback:()=>Promise<void>)=>{hook=callback;},
+ return{...t,start,publish,runtime,calls,posted,counts:()=>({posts,lookups}),loseAck:()=>{lost=true;},malformed:()=>{malformed=true;},hook:(callback:()=>Promise<void>)=>{hook=callback;},
   dispatch:()=>createOutboxDispatcher({transact:db.transact,enabled:true},runtime.dispatcher,['IO_CONVERSATION']).runOnce(t.org),
-  state:async()=>(await db.database.pool.query('select e.status,r.state,r.confirmed_receipt from automation_executions e join automation_conversation_effects r on r.organization_id=e.organization_id and r.execution_id=e.id where e.organization_id=$1',[t.org])).rows[0],
+  state:async()=>(await db.database.pool.query('select e.id,e.status,r.state,r.confirmed_receipt from automation_executions e join automation_conversation_effects r on r.organization_id=e.organization_id and r.execution_id=e.id where e.organization_id=$1',[t.org])).rows[0],
   expire:()=>db.database.pool.query("update automation_outbox set lease_expires_at=now()-interval '1 second' where organization_id=$1",[t.org])};
 }
 it('confirms a typed native resource and causal event without a public message',async()=>{
@@ -82,4 +90,14 @@ it('preserves a remote fact after human interruption without reviving the bot',a
 it('keeps a malformed causal result uncertain rather than accepting a self-declared success',async()=>{
  const t=await fixture();await t.start();t.malformed();expect(await t.dispatch()).toMatchObject({status:'UNKNOWN'});
  expect(await t.state()).toMatchObject({status:'WAITING',state:'UNKNOWN'});expect(t.counts().posts).toBe(1);
+});
+it.each([false,true])('delivers intake independently of CRM and recovers ACK loss=%s without a new episode',async(lost)=>{
+ const t=await fixture(true,true);await t.start();if(lost)t.loseAck();
+ expect(await t.dispatch()).toMatchObject({status:lost?'UNKNOWN':'SENT'});
+ if(lost){await t.expire();await t.runtime.reconcileOnce(t.org);}
+ const state=await t.state();
+ expect(state).toMatchObject({status:'QUEUED',state:'CONFIRMED',confirmed_receipt:{domain_result:{
+  resource_type:'JrcServiceDesk::IntakeDemand',intake:{state:'test_only',remote_id:null,episode_key:state.id}}}});
+ expect(t.posted[0]?.episode_key).toBe(state.id);expect(t.counts().posts).toBe(1);
+ expect(t.calls.filter(call=>call.path.endsWith('/messages'))).toEqual([]);
 });

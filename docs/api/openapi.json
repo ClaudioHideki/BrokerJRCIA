@@ -4045,6 +4045,20 @@
                         "domain": {
                           "additionalProperties": false,
                           "properties": {
+                            "commands": {
+                              "items": {
+                                "enum": [
+                                  "create_lead",
+                                  "create_task",
+                                  "create_meeting",
+                                  "service_desk_intake",
+                                  "service_desk_status"
+                                ],
+                                "type": "string"
+                              },
+                              "maxItems": 5,
+                              "type": "array"
+                            },
                             "owners": {
                               "default": [],
                               "items": {
@@ -28690,6 +28704,20 @@
                         "domain": {
                           "additionalProperties": false,
                           "properties": {
+                            "commands": {
+                              "items": {
+                                "enum": [
+                                  "create_lead",
+                                  "create_task",
+                                  "create_meeting",
+                                  "service_desk_intake",
+                                  "service_desk_status"
+                                ],
+                                "type": "string"
+                              },
+                              "maxItems": 5,
+                              "type": "array"
+                            },
                             "owners": {
                               "default": [],
                               "items": {

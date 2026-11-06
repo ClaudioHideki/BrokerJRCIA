@@ -1,0 +1,9 @@
+# Service Desk intake domain extension
+
+The existing domain effect now accepts `service_desk_intake` and `service_desk_status` alongside the three CRM commands. The transport receipt confirms a durable JRC operation; its nested intake state separately reports GLPI delivery. `test_only`, `queued`, `partial`, and `indeterminate` must never be rendered as a confirmed ticket and queue.
+
+The client negotiates `intake_protocol=1`. A backend that returns only the original CRM commands remains compatible. Publication and dispatch both verify the selected command against the bound inbox catalogue. An intake action has no CRM owner requirement. Configuration ID/revision and business codes select an immutable server-side configuration; the Flow cannot submit GLPI entity, user, group, token, URL, or arbitrary method parameters.
+
+The persisted root execution UUID is the episode key for qualification, handoff, and polling. An active session retains its execution/version on republish and resume. A new, explicitly admitted session starts another episode. An incompatible retry requires reconciliation; it does not silently open a second ticket. Receipt matching also pins the episode and selected configuration, in addition to the existing integration, actor, routing, request hash, and causal event proof.
+
+Validation so far: 43 focused contract/client/renderer/editor/proof cases and strict TypeScript passed. The broader local run passed 4,021 tests and found one stale OpenAPI artifact; after regeneration, all eight OpenAPI cases passed. PostgreSQL dispatcher and acknowledgement-loss integration cases are committed for Linux CI; they have not yet been observed passing on this revision. Physical WhatsApp delivery and customer GLPI writes are separate checks and are not proved by these tests.

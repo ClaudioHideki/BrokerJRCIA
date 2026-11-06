@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {DomainCommandArgumentsSchema,type ConversationEffectConfig,type ActionCatalogPage} from '@jrc/contracts';
+import {type ConversationEffectConfig,type ActionCatalogPage} from '@jrc/contracts';
 import type {OrganizationTransaction,TenantTransaction} from '../../db/tenant-transaction.js';
 import {readChatwootAccount,type AccountRow} from '../integrations/chatwoot-context.js';
 import {ChatwootClient,ChatwootError} from '../integrations/chatwoot-client.js';
@@ -11,7 +11,7 @@ import type {OutboxDispatchResult} from './service.js';
 import {ConversationEffectContextSchema,ConversationEffectRequestSchema,conversationEffectRequestHash,
  matchConversationEffectReceipt,type ConversationEffectContext,type ConversationEffectRequest,type ConversationEffectReceipt} from './conversation-effect-protocol.js';
 import {remoteInteger,confirmEffectObservations,effectRevisionMatches} from './conversation-effect-proof.js';
-import {renderRuntimeText} from './runtime-state.js';
+import {renderDomainCommandArguments} from './domain-command-arguments.js';
 import type {RuntimeJson} from './types.js';
 
 type Options={transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;client(account:AccountRow):ChatwootClient};
@@ -48,8 +48,8 @@ export function createConversationCentralAdapter(options:Options){
   capabilities.domain={state:'UNAVAILABLE',reason:'CENTRAL_DOMAIN_EXTENSION_REQUIRED',owners:[]};
   try{
    const domain=await client.flowDomainCapabilities(initial.scope.accountId,initial.scope.inboxId,{organizationId:org,integrationId:initial.scope.integrationId});
-   if(['create_lead','create_task','create_meeting'].every(command=>domain.commands.includes(command as typeof domain.commands[number])))
-    capabilities.domain={state:'SUPPORTED',reason:null,owners:domain.owners};
+   if(domain.commands.length)
+    capabilities.domain={state:'SUPPORTED',reason:null,owners:domain.owners,commands:domain.commands};
   }catch{/* Domain availability is independent of the existing conversation-effect capability. */}
   await options.transact(org,async tx=>{
    await lockAttendanceChannel(tx,org,channel);await assertContext(tx,org,channel,initial);
@@ -142,9 +142,7 @@ export function createConversationCentralAdapter(options:Options){
     resourceId=resource.remoteId;resourceRevision=resource.revision;
     if(config.operation==='attribute')value=readConversationActionValue(config,item.payload.variables as Record<string,unknown>,resource);
    }else if(config.operation==='domain'){
-    value=DomainCommandArgumentsSchema.parse(config.command==='create_lead'?{command:config.command}:{command:config.command,
-     owner_id:config.ownerId,title:renderRuntimeText(config.title,item.payload.variables as Record<string,RuntimeJson>),
-     due_at:config.dueAt.kind==='LITERAL'?config.dueAt.value:(item.payload.variables as Record<string,RuntimeJson>)[config.dueAt.variable]});
+    value=renderDomainCommandArguments(config,item.payload.variables as Record<string,RuntimeJson>,item.executionId);
    }else value=config.operation==='note'?config.text:'RESOLVED';
    const request=ConversationEffectRequestSchema.parse({organization_id:item.organizationId,operation_id:item.id,dispatch_proof:randomUUID(),
     inbox_id:String(scope.inboxId),remote_contact_id:String(remote.remote_contact_id),expected_control_revision:String(remote.control_revision),

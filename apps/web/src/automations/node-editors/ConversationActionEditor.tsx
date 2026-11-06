@@ -152,7 +152,8 @@ export function ConversationActionEditor({ node, editable, transport, onChange }
                 maxLength={definition.maxLength} value={String(source?.value ?? '')} onChange={event => literal(definition.valueType === 'number' && event.target.value !== '' ? Number(event.target.value) : event.target.value)} /></label>}
       </>}
       {node.type === 'note' && <><p>Nota privada do atendimento. Ela não é enviada ao WhatsApp.</p><label>Nota interna<textarea maxLength={4096} value={String(node.data.text ?? '')} onChange={event => change({ text: event.target.value })} /></label></>}
-      {node.type==='domain'&&<DomainCommandFields data={node.data} owners={catalog?.capabilities.domain?.owners??[]} onChange={data=>{if(editable)onChange(data);}}/>}
+      {node.type==='domain'&&<DomainCommandFields data={node.data} owners={catalog?.capabilities.domain?.owners??[]}
+        commands={catalog?.capabilities.domain?.commands} onChange={data=>{if(editable)onChange(data);}}/>}
       {node.type === 'resolve' && <p>Resolver e encerrar termina o ciclo do bot após a confirmação. Nenhuma próxima mensagem é enviada por este ciclo.</p>}
       {node.type === 'media' && <>
         <label>Arquivo privado<select value={typeof node.data.mediaId === 'string' ? node.data.mediaId : ''} disabled={!supported} onChange={event => {

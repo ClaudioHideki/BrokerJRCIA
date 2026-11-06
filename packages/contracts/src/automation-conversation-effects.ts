@@ -84,7 +84,9 @@ export const ActionCatalogPageSchema = z.strictObject({ schemaVersion: z.literal
   profile: z.enum(['STANDALONE', 'CENTRAL']), capabilities: z.strictObject({
     tag: capability, attribute: capability, note: capability, resolve: capability, media: capability,
     domain: z.object({state:z.enum(['SUPPORTED','UNAVAILABLE','UNVERIFIED']),reason:z.string().nullable(),
-      owners:z.array(z.strictObject({id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),name:z.string().min(1).max(160)})).max(200).default([])})
+      owners:z.array(z.strictObject({id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),name:z.string().min(1).max(160)})).max(200).default([]),
+      commands:z.array(z.enum(['create_lead','create_task','create_meeting','service_desk_intake','service_desk_status'])).max(5)
+       .refine(values=>new Set(values).size===values.length).optional()})
       .refine(value=>value.state==='SUPPORTED'?value.reason===null:value.reason!==null).optional(),
   }), data: z.array(ActionResourceSchema).max(200), nextCursor: cursor });
 export type ActionCatalogPage = z.infer<typeof ActionCatalogPageSchema>;

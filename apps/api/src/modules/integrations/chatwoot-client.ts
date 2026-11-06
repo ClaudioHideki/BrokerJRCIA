@@ -253,9 +253,9 @@ export class ChatwootClient {
     return data;
   }
   async flowDomainCapabilities(accountId:number,inboxId:number,scope:{organizationId:string;integrationId:string}){
-    const query=new URLSearchParams({inbox_id:String(integer.parse(inboxId)),organization_id:effectIdentity.parse(scope.organizationId),integration_id:effectIdentity.parse(scope.integrationId)});
+    const query=new URLSearchParams({inbox_id:String(integer.parse(inboxId)),organization_id:effectIdentity.parse(scope.organizationId),integration_id:effectIdentity.parse(scope.integrationId),intake_protocol:'1'});
     const data=parseEffect(z.strictObject({protocol:z.literal('jrc-domain-commands/1'),account_id:integer,inbox_id:integer,
-      organization_id:effectIdentity,integration_id:effectIdentity,commands:z.array(z.enum(['create_lead','create_task','create_meeting'])).max(3),
+      organization_id:effectIdentity,integration_id:effectIdentity,commands:z.array(z.enum(['create_lead','create_task','create_meeting','service_desk_intake','service_desk_status'])).max(5),
       owners:z.array(z.strictObject({id:integer,name:z.string().min(1).max(160)})).max(200)})
       .refine(value=>new Set(value.commands).size===value.commands.length&&new Set(value.owners.map(owner=>owner.id)).size===value.owners.length),
       await this.request('GET',`${this.account(accountId)}/jrc_domain_commands/capabilities?${query}`));

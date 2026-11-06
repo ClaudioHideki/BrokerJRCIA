@@ -1,6 +1,13 @@
 import {expect,it,vi} from 'vitest';
 import {ChatwootClient} from '../../src/modules/integrations/chatwoot-client.js';
 const id='11111111-1111-4111-8111-111111111111';
+it('negotiates intake explicitly and accepts an independent Service Desk capability',async()=>{
+ const fetch=vi.fn(async(_url:unknown)=>Response.json({protocol:'jrc-domain-commands/1',account_id:1,inbox_id:2,organization_id:id,
+  integration_id:id,commands:['service_desk_intake','service_desk_status'],owners:[]}));
+ const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch});
+ expect((await client.flowDomainCapabilities(1,2,{organizationId:id,integrationId:id})).commands).toEqual(['service_desk_intake','service_desk_status']);
+ expect(new URL(String(fetch.mock.calls[0]?.[0])).searchParams.get('intake_protocol')).toBe('1');
+});
 it('pins domain capabilities to company, integration and inbox and rejects duplicate directory identities',async()=>{
  const body={protocol:'jrc-domain-commands/1',account_id:1,inbox_id:2,organization_id:id,integration_id:id,
   commands:['create_lead','create_task','create_meeting'],owners:[{id:7,name:'Synthetic operator'}]};

@@ -127,6 +127,10 @@ export function matchConversationEffectReceipt(raw: unknown, expected: {
   if(request.operation==='domain'){
     const args=DomainCommandArgumentsSchema.parse(JSON.parse(request.value_json)),result=receipt.domain_result;
     if(!result||result.command!==args.command||result.event.id!==request.operation_id||result.event.causation_id!==request.operation_id)return {matched:false};
+    if('episode_key' in args){
+      if(!('intake' in result)||result.intake.episode_key!==args.episode_key)return {matched:false};
+      if(args.command==='service_desk_intake'&&result.intake.configuration_id!==String(args.configuration_id))return {matched:false};
+    }
   }
   return { matched: true, receipt };
 }

@@ -136,3 +136,20 @@ it('returns only a confirmed fact and never grants execution after a newer human
   expect(result).not.toHaveProperty('mayContinue');
   expect(result).not.toHaveProperty('allowed');
 });
+it('rejects an intake receipt with a different episode or configuration despite matching transport proof',()=>{
+ const episode='11111111-1111-4111-8111-111111111111';
+ const args={command:'service_desk_intake',configuration_id:7,configuration_revision:2,episode_key:episode,phase:'qualified',
+  input:{system:'example',location:'south',reason:'request',subject:'access',identifier:'12345678901',
+   email:'synthetic@example.invalid',description:'Synthetic request'}};
+ const request={...note,operation:'domain' as const,integration_id:organization_id,value_json:JSON.stringify(args)};
+ const domain={command:'service_desk_intake',resource_type:'JrcServiceDesk::IntakeDemand',resource_id:9,created:true,delivery:'NOT_APPLICABLE',
+  event:{id:operation_id,causation_id:operation_id,type:'service_desk.intake.recorded'},
+  intake:{id:'9',episode_key:episode,configuration_id:'7',state:'test_only',created:true,remote_id:null,error_code:null,stages:{}}};
+ const fact={...confirmed,operation:'domain',message_id:null,domain_result:domain,
+  request_hash:conversationEffectRequestHash({accountId:1,remoteConversationId:3},request)};
+ expect(matchConversationEffectReceipt(fact,{context:admitted,request}).matched).toBe(true);
+ for(const changed of [{episode_key:dispatch_proof},{configuration_id:'8'}]){
+  expect(matchConversationEffectReceipt({...fact,domain_result:{...domain,intake:{...domain.intake,...changed}}},
+   {context:admitted,request}).matched).toBe(false);
+ }
+});
