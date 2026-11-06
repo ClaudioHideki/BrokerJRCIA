@@ -714,7 +714,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
              SELECT created_at FROM messaging_messages message
               WHERE message.organization_id = conversation.organization_id
                 AND message.conversation_id = conversation.id
-              ORDER BY sequence_number DESC LIMIT 1
+              ORDER BY created_at DESC, sequence_number DESC, id DESC LIMIT 1
            ) latest ON true
           WHERE conversation.organization_id = $1 AND conversation.channel_id = $2
           ORDER BY latest.created_at DESC NULLS LAST, conversation.updated_at DESC, conversation.id DESC
@@ -736,9 +736,9 @@ export function createPostgresMessagingRepository(): MessagingRepository {
            FROM (
              SELECT * FROM messaging_messages
               WHERE organization_id = $1 AND conversation_id = $2
-              ORDER BY sequence_number DESC LIMIT $3
+              ORDER BY created_at DESC, sequence_number DESC, id DESC LIMIT $3
            ) message_page
-          ORDER BY sequence_number`,
+          ORDER BY created_at, sequence_number, id`,
           [organizationId, conversationId, limit],
         )
       ).rows.map(asMessage);

@@ -391,6 +391,11 @@ function normalizeDocument(document: JsonObject): JsonObject {
       if((path.startsWith('/v1/flow-delegations/native-sessions')||path.startsWith('/v1/flow-delegations/native-cutovers/'))||path==='/v1/flow-delegations/native-context'||method==='get'&&path==='/v1/flow-delegations/native-registration-challenges/{id}'||method==='post'&&path==='/v1/flow-delegations/native-registrations'||path.endsWith('/claim'))operation.security=[{flowCredentialAuth:[]}];
       if(path.startsWith('/v1/flow-delegations/native-installations/'))operation.security=[{flowInstallationGrantAuth:[]}];
       if (path.startsWith('/v1/attendance/'))operation.security=[{bearerAuth:[]}];
+      if (path === '/v1/integrations/chatwoot/control/routing-context') {
+        operation.description = 'Leitura de automação para a central com a credencial Control existente e escopo chatwoot:read. ' +
+          'Aceita 1 a 100 integrationIds distintos da mesma organização, conta e revisão de destino. ' +
+          'Retorna um snapshot fresco NONE, ROUTED ou UNKNOWN; não consulta provedores, grava health nem configura atribuição.';
+      }
       if (['/v1/channels', '/v1/credentials', '/v1/automations', '/v1/automation-nodes', '/v1/automation-imports', '/v1/executions', '/v1/operations', '/v1/webhooks', '/v1/support']
         .some(prefix => path === prefix || path.startsWith(`${prefix}/`)))
         operation.security = [{ bearerAuth: [] }];
@@ -436,7 +441,8 @@ function normalizeDocument(document: JsonObject): JsonObject {
           }
         }
       }
-      if (method === 'post' && path === '/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents')
+      if (path === '/v1/integrations/chatwoot/control/routing-context' ||
+          method === 'post' && path === '/v1/integrations/chatwoot/control/connections/{integrationId}/campaign-intents')
         operation.security = [{ jrcApiKeyAuth: [] }];
       if (path.startsWith('/v1/integrations/chatwoot/control/connections/{integrationId}/conversations/{remoteConversationId}/'))
         operation.security = [{ jrcApiKeyAuth: [] }];

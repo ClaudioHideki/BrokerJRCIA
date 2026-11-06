@@ -10,6 +10,7 @@ export type EvolutionProviderErrorCode =
 
 export interface EvolutionProviderError extends Error {
   code: EvolutionProviderErrorCode;
+  readonly httpStatus?: number;
 }
 
 export type EvolutionFetch = (
@@ -35,11 +36,15 @@ export type EvolutionResponse =
   | { found: false }
   | { found: true; body: unknown };
 
-export function evolutionProviderError(code: EvolutionProviderErrorCode): EvolutionProviderError {
-  return Object.assign(new Error(code), {
+export function evolutionProviderError(code: EvolutionProviderErrorCode, httpStatus?: number): EvolutionProviderError {
+  const error = Object.assign(new Error(code), {
     name: 'EvolutionProviderError',
     code,
   });
+  // Internal diagnostic metadata; keep serialized errors and public problem contracts unchanged.
+  if (Number.isInteger(httpStatus) && httpStatus! >= 100 && httpStatus! <= 599)
+    Object.defineProperty(error, 'httpStatus', { value: httpStatus });
+  return error;
 }
 
 function normalizeBaseUrl(value: string): URL {
@@ -164,7 +169,7 @@ export class EvolutionOperation {
       return { found: false };
     }
     if (!response.ok) {
-      throw evolutionProviderError('PROVIDER_REQUEST_FAILED');
+      throw evolutionProviderError('PROVIDER_REQUEST_FAILED', response.status);
     }
 
     let text: string;

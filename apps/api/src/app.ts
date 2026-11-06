@@ -513,6 +513,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...(configuration?{configuration}:{}),
         service:createWhatsAppGroupCatalog({
           encryptionKey:messagingEnvironment.INTEGRATION_ENCRYPTION_KEY,
+          onRefreshFailure:diagnostic=>app.log.warn(diagnostic,'WHATSAPP_GROUP_CATALOG_REFRESH_FAILED'),
           transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work),
           readIdentity,
           captureBinding:evolutionFleet.capture,assertBinding:evolutionFleet.assert,

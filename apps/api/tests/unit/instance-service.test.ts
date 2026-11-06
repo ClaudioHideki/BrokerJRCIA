@@ -392,6 +392,36 @@ describe('serviço de instâncias', () => {
     expect(JSON.stringify([...harness.idempotency.values()])).not.toContain('secret-qr-value');
   });
 
+  it.each([
+    { action: { type: 'QR_CODE', encoding: 'BASE64', value: 'synthetic-qr', expiresAt: '2030-01-01T00:01:00.000Z' }, status: 'AWAITING_ACTION' },
+    { action: { type: 'PAIRING_CODE', code: 'synthetic-code', expiresAt: '2030-01-01T00:01:00.000Z' }, status: 'AWAITING_ACTION' },
+    { action: { type: 'NONE', reason: 'NO_USER_ACTION_REQUIRED' }, status: 'CONNECTING' },
+  ] satisfies { action: ConnectionAction; status: InstanceRow['status'] }[])('does not audit INSTANCE_CONNECTED while the provider returns $action.type / $status', async ({ action, status }) => {
+    const provider = new FakeProviderAdapter({ now: () => NOW, responses: { beginConnection: action } });
+    const harness = createHarness({ provider });
+
+    const result = await harness.service.connectInstance(context(), {
+      instanceId: INSTANCE_ID, idempotencyKey: 'await-authenticated-state',
+    });
+
+    expect(result).toMatchObject({ instance: { status }, action, pending: true });
+    // Completion means the provider returned a challenge, not that WhatsApp authenticated it.
+    expect([...harness.operations.values()]).toContainEqual(expect.objectContaining({ operationType: 'CONNECT', status: 'SUCCEEDED' }));
+    expect(harness.audits).not.toContainEqual(expect.objectContaining({ type: 'INSTANCE_CONNECTED' }));
+  });
+
+  it('audits INSTANCE_CONNECTED only when the provider confirms an authenticated connection', async () => {
+    const provider = new FakeProviderAdapter({ now: () => NOW, responses: { beginConnection: { type: 'NONE', reason: 'ALREADY_CONNECTED' } } });
+    const harness = createHarness({ provider });
+
+    const result = await harness.service.connectInstance(context(), {
+      instanceId: INSTANCE_ID, idempotencyKey: 'authenticated-connection',
+    });
+
+    expect(result).toMatchObject({ instance: { status: 'CONNECTED' }, pending: false });
+    expect(harness.audits).toContainEqual(expect.objectContaining({ type: 'INSTANCE_CONNECTED', resourceId: INSTANCE_ID }));
+  });
+
   it('rejeita chave idempotente com payload diferente', async () => {
     const harness = createHarness({ visible: false });
     await harness.service.createInstance(context(), {
@@ -718,6 +748,55 @@ describe('serviço de instâncias', () => {
     expect(result.action).toEqual({ type: 'NONE', reason: 'CONNECTION_PENDING' });
     expect(result.instance.status).toBe('CONNECTING');
     expect(JSON.stringify(test.idempotency)).not.toContain('late-secret-qr');
+  });
+
+  it.each(['QR_CODE', 'FAILED'] as const)('preserves an authenticated callback arriving before late %s connection completion', async (outcome) => {
+    const provider = new FakeProviderAdapter({ now: () => NOW });
+    const harness = createHarness({ provider });
+    provider.beginConnection = async () => {
+      // An authenticated callback commits while the provider HTTP request remains in flight.
+      harness.rows.set(INSTANCE_ID, {
+        ...harness.rows.get(INSTANCE_ID)!, status: 'CONNECTED',
+        connectionObservedAt: new Date(NOW.getTime() + 1000), connectionBindingFingerprint: 'binding-a',
+      });
+      if (outcome === 'FAILED') throw Object.assign(new Error('late-failure-canary'), { code: 'PROVIDER_REQUEST_FAILED' });
+      return { type: 'QR_CODE', encoding: 'BASE64', value: 'late-obsolete-qr', expiresAt: '2030-01-01T00:01:00.000Z' };
+    };
+
+    const result = await harness.service.connectInstance(context(), {
+      instanceId: INSTANCE_ID, idempotencyKey: 'callback-before-connect-response',
+    });
+
+    expect(result).toMatchObject({ instance: { status: 'CONNECTED' }, pending: false, action: { type: 'NONE', reason: 'ALREADY_CONNECTED' } });
+    expect(harness.rows.get(INSTANCE_ID)?.status).toBe('CONNECTED');
+    expect(harness.audits).not.toContainEqual(expect.objectContaining({ type: 'INSTANCE_CONNECT_FAILED' }));
+    expect([...harness.operations.values()]).toContainEqual(expect.objectContaining({
+      id: result.operationId, operationType: 'CONNECT', status: 'SUCCEEDED', reconciliationRequired: false,
+    }));
+    expect([...harness.idempotency.values()]).toContainEqual(expect.objectContaining({
+      status: 'COMPLETED', responseMetadata: { instanceId: INSTANCE_ID, status: 'CONNECTED', actionType: 'NONE' },
+    }));
+  });
+
+  it.each(['watermark', 'binding'] as const)('does not release a late QR when only its authenticated %s changed', async (changed) => {
+    const provider = new FakeProviderAdapter({ now: () => NOW });
+    const harness = createHarness({ provider });
+    harness.rows.set(INSTANCE_ID, {
+      ...harness.rows.get(INSTANCE_ID)!, connectionObservedAt: NOW, connectionBindingFingerprint: 'binding-a',
+    });
+    provider.beginConnection = async () => {
+      harness.rows.set(INSTANCE_ID, {
+        ...harness.rows.get(INSTANCE_ID)!,
+        connectionObservedAt: changed === 'watermark' ? new Date(NOW.getTime() + 1000) : NOW,
+        connectionBindingFingerprint: changed === 'binding' ? 'binding-b' : 'binding-a',
+      });
+      return { type: 'QR_CODE', encoding: 'BASE64', value: 'late-obsolete-qr', expiresAt: '2030-01-01T00:01:00.000Z' };
+    };
+
+    await expect(harness.service.connectInstance(context(), {
+      instanceId: INSTANCE_ID, idempotencyKey: 'source-changed-before-connect-response',
+    })).resolves.toMatchObject({ instance: { status: 'CONNECTING' }, action: { type: 'NONE', reason: 'CONNECTION_PENDING' } });
+    expect([...harness.operations.values()]).toContainEqual(expect.objectContaining({ operationType: 'CONNECT', status: 'PENDING' }));
   });
 
   it.each(['CREATED', 'DISCONNECTED', 'ERROR', 'AWAITING_ACTION'] as const)(

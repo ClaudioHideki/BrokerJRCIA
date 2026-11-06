@@ -5,6 +5,7 @@ import type { ChatwootControlAuth } from '../../src/modules/integrations/chatwoo
 import type { InstanceService } from '../../src/modules/instances/service.js';
 import type { ChatwootService } from '../../src/modules/integrations/chatwoot-service.js';
 import type { OnboardingService } from '../../src/modules/integrations/chatwoot-onboarding.js';
+import type { ChatwootControlService } from '../../src/modules/integrations/chatwoot-control-service.js';
 import { InstanceServiceError } from '../../src/modules/instances/service.js';
 const org = '4f2491a2-6853-4ac2-a7ef-c997813a9182', keyId = '81555d45-b1a2-4a3f-ab95-c1459b0df0d0';
 const secret = 'synthetic-control-jwt-secret-at-least-32';
@@ -21,15 +22,29 @@ function harness(enabled = true) {
   const resources = vi.fn().mockResolvedValue({ instances: [], providers: [], connections: [] });
   if (enabled) Object.assign(service, { resources });
   const list = vi.fn().mockResolvedValue({ data: [operation] });
+  const routingContext = vi.fn().mockResolvedValue({ schemaVersion: 1, organizationId: org, accountId: 1,
+    destinationRevision: 1, checkedAt: '2030-01-01T00:00:00.000Z', data: [] });
   const instance = vi.fn();
   const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ async verifyPasswordOrDummy() { return false; } }),
-    chatwootControl: { jwtSecret: secret, authenticateApiKey, service, onboarding: { start, get, recover, list } as unknown as OnboardingService },
+    chatwootControl: { jwtSecret: secret, authenticateApiKey, service, facade: { routingContext } as unknown as ChatwootControlService, onboarding: { start, get, recover, list } as unknown as OnboardingService },
     integrations: { jwtSecret: secret, authenticateApiKey, resolveCurrentRole: async () => null, service: new Proxy({}, { get: () => instance }) as ChatwootService },
     instances: { jwtSecret: secret, authenticateApiKey, service: new Proxy({}, { get: () => instance }) as InstanceService } });
   apps.push(app);
-  return { app, context, instance, authorize, start, get, recover, operation, resources, list, headers: { 'x-jrc-api-key': 'synthetic-control' } };
+  return { app, context, instance, authorize, start, get, recover, operation, resources, list, routingContext, headers: { 'x-jrc-api-key': 'synthetic-control' } };
 }
 afterEach(async () => { await Promise.all(apps.splice(0).map(a => a.close())); });
+it('offers a bounded fresh read-only routing snapshot through the existing control credential', async () => {
+  const h = harness();
+  const id = '519b77a6-a4e5-409a-85c8-d78fc155c525';
+  const response = await h.app.inject({ method: 'GET', url: `/v1/integrations/chatwoot/control/routing-context?integrationIds=${id}`, headers: h.headers });
+  expect(response.statusCode).toBe(200);
+  expect(response.headers['cache-control']).toBe('no-store');
+  expect(h.authorize).toHaveBeenCalledWith(expect.objectContaining({ kind: 'API_KEY' }), 'chatwoot:read');
+  expect(h.routingContext).toHaveBeenCalledWith(expect.objectContaining({ accountId: 1 }), [id]);
+  const invalid = await h.app.inject({ method: 'GET', url: '/v1/integrations/chatwoot/control/routing-context?integrationIds=invalid', headers: h.headers });
+  expect(invalid.statusCode).toBe(400);
+  expect((await h.app.inject({ method: 'GET', url: `/v1/integrations/chatwoot/control/routing-context?integrationIds=${id}` })).statusCode).toBe(401);
+});
 it('offers native onboarding resource selection and operation recovery through the restricted facade', async () => {
   const h = harness();
   const resources = await h.app.inject({ method: 'GET', url: '/v1/integrations/chatwoot/control/resources', headers: h.headers });

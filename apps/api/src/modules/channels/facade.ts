@@ -14,6 +14,7 @@ import { readAutomationAccess } from '../automations/availability.js';
 import {createChannelOperationProfile} from './operation-profile.js';
 import type {createCentralCutoverService} from './central-cutover-service.js';
 import {readCentralTransportBinding} from '../messaging/central-transport.js';
+import { channelAutomationStatus } from './automation-status.js';
 
 export class ChannelFacadeError extends Error {
   constructor(readonly code: string, readonly status: 400 | 403 | 404 | 409 | 503) { super(code); }
@@ -56,14 +57,6 @@ const qrTransport = (status: string | null): ChannelV1['transportStatus'] => {
   if (status === 'PROVISIONING' || status === 'CREATED') return 'CREATED';
   return 'UNKNOWN';
 };
-const automationStatus = (row: ChannelRow): ChannelV1['automationStatus'] => {
-  if (!row.bot_public_id) return 'UNBOUND';
-  if (row.bot_origin_reference === AUTOMATION_ORIGIN) return row.automation_binding_status === 'ACTIVE' ? 'ACTIVE'
-    : row.automation_binding_status === 'PAUSED' ? 'PAUSED' : 'UNBOUND';
-  if (row.bot_origin_reference !== 'jrc-flows-native') return 'ACTIVE';
-  if (!row.flow_published_version) return 'DRAFT';
-  return row.flow_enabled === false ? 'PAUSED' : 'ACTIVE';
-};
 const humanStatus = (status: string | null): ChannelV1['humanStatus'] => {
   if (!status) return 'UNBOUND';
   if (status === 'READY') return 'READY';
@@ -82,7 +75,7 @@ export function channelView(row: ChannelRow): ChannelV1 {
     messagingChannelId:row.messaging_channel_id??null,
     automationName:row.automation_name??null,
     destination:row.integration_id?{integrationId:row.integration_id,inboxId:row.inbox_id?Number(row.inbox_id):null,name:row.inbox_name??'Caixa de atendimento'}:null,
-    automationStatus: automationStatus(row),
+    automationStatus: channelAutomationStatus(row),
     humanStatus: humanStatus(row.human_status),
     revision: 1,
     ownerRevision:row.owner_revision??0,

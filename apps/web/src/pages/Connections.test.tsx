@@ -81,15 +81,20 @@ const first = {
 };
 
 describe('ConnectionsPage', () => {
-  it('filters loaded connections by name and status without claiming a global search', async () => {
-    const request = vi.fn(async () => ({ data: [first, { ...first, id: INSTANCE_B, name: 'Comercial', status: 'DISCONNECTED' }], pageInfo: { hasNextPage: true, nextCursor: 'next' } })) as ApiClient['request'];
+  it('completes name search while preserving status and the normal partial page after clear', async () => {
+    const request = vi.fn(async (path:string) => ({ data: [first, { ...first, id: INSTANCE_B, name: 'Comercial', status: 'DISCONNECTED' }],
+      pageInfo: path.includes('limit=100')?{hasNextPage:false,nextCursor:null}:{ hasNextPage: true, nextCursor: 'next' } })) as ApiClient['request'];
     render(<App client={appClient(request)} initialEntries={['/legacy/conexoes']} />);
     await screen.findByRole('link', { name: /Atendimento/ });
     fireEvent.change(screen.getByLabelText('Buscar conexão'), { target: { value: 'Comercial' } });
     expect(screen.queryByRole('link', { name: /Atendimento/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Comercial/ })).toBeVisible();
+    expect(await screen.findByRole('link', { name: /Comercial/ })).toBeVisible();
     fireEvent.change(screen.getByLabelText('Filtrar por status'), { target: { value: 'CONNECTED' } });
     expect(screen.getByText('Nenhuma conexão corresponde aos filtros.')).toBeVisible();
+    expect(screen.getByRole('status',{name:'Resultados da busca'})).toHaveTextContent('0 de 2');
+    expect(screen.queryByRole('button',{name:'Carregar mais'})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'Limpar busca de conexões'}));
+    expect(screen.getByLabelText('Filtrar por status')).toHaveValue('CONNECTED');
     expect(screen.getByText(/Filtros aplicados às conexões carregadas/)).toBeVisible();
     expect(screen.getByRole('button', { name: 'Carregar mais' })).toBeVisible();
   });

@@ -15,6 +15,7 @@ import { NativeJrcSetup } from './NativeJrcSetup.js';
 import { ChatwootOnboarding } from './ChatwootOnboarding.js';
 import {DeliveryDiagnostics} from './DeliveryDiagnostics.js';
 import {JobFailureDetails} from './JobFailureDetails.js';
+import {matchesConnectionName} from '../connections/name-search.js';
 
 export type IntegrationRequest = (
   path: string,
@@ -161,6 +162,8 @@ export function ChatwootPanel({
     [reason, setReason] = useState("Correção verificada pelo administrador");
   const [inboxSelectionUnavailable, setInboxSelectionUnavailable] = useState(false);
   const [search, setSearch] = useState("");
+  const [connectionSearch,setConnectionSearch]=useState('');
+  const connectionSearchInput=useRef<HTMLInputElement>(null);
   const blocked = busy || disabled;
   useEffect(() => {
     if (selectedInbox && !inboxes.some((inbox) => String(inbox.id) === selectedInbox)) {
@@ -691,9 +694,15 @@ export function ChatwootPanel({
             {!data.connections.length && (
               <p>Nenhuma caixa vinculada nesta empresa.</p>
             )}
+            {data.connections.length>0&&<div className="connection-filters">
+              <label>Buscar caixa vinculada por nome<input ref={connectionSearchInput} type="search" value={connectionSearch} maxLength={160} onChange={event=>setConnectionSearch(event.target.value)}/></label>
+              {connectionSearch&&<button type="button" className="button button--secondary" onClick={()=>{setConnectionSearch('');connectionSearchInput.current?.focus();}}>Limpar busca de caixas vinculadas</button>}
+              <p role="status" aria-label="Caixas vinculadas encontradas">{data.connections.filter(item=>matchesConnectionName(item.name,connectionSearch)).length} de {data.connections.length} caixas vinculadas.</p>
+              {connectionSearch.trim()&&!data.connections.some(item=>matchesConnectionName(item.name,connectionSearch))&&<p>Nenhuma caixa vinculada corresponde ao nome informado.</p>}
+            </div>}
             <div className="integration-connections">
               {data.connections.map((c) => (
-                <article key={c.id}>
+                <article key={c.id} hidden={!matchesConnectionName(c.name,connectionSearch)}>
                   <header>
                     <div>
                       <strong>{c.name}</strong>

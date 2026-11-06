@@ -14,6 +14,7 @@ import type { ChatwootControlService } from '../../modules/integrations/chatwoot
 import { InstanceServiceError } from '../../modules/instances/service.js';
 import { OperatorGrantViewSchema } from '@jrc/contracts';
 import { registerNicoTakeoverRoutes } from './nico-takeovers.js';
+import { ControlRoutingQuerySchema, ControlRoutingContextSchema } from '@jrc/contracts';
 import type { NicoTakeovers } from '../../modules/integrations/nico-takeover-types.js';
 
 export interface ChatwootControlRouteOptions extends AuthenticationOptions { service: ChatwootControlAuth; onboarding?: OnboardingService | undefined; facade?: ChatwootControlService | undefined; takeovers?: NicoTakeovers | undefined }
@@ -50,6 +51,13 @@ export async function registerChatwootControlRoutes(app: FastifyInstance, option
   }, async req => onboarding().list(await options.service.authorize(req.authentication!, 'chatwoot:manage')));
   const attributedActor = (req: FastifyRequest) => req.headers['x-jrc-external-actor'] === undefined ? undefined : z.string().regex(/^[A-Za-z0-9:_-]{1,80}$/).parse(req.headers['x-jrc-external-actor']);
   const facade = () => { if (!options.facade) throw new IntegrationError('CHATWOOT_CONTROL_NOT_CONFIGURED', 503); return options.facade; };
+  app.get('/v1/integrations/chatwoot/control/routing-context', {
+    preHandler: read, schema: { querystring: ControlRoutingQuerySchema, response: { 200: ControlRoutingContextSchema } },
+  }, async req => {
+    if (req.authentication?.kind !== 'API_KEY') throw new IntegrationError('CHATWOOT_CONTROL_FORBIDDEN', 403);
+    const input = ControlRoutingQuerySchema.parse(req.query);
+    return facade().routingContext(await options.service.authorize(req.authentication, 'chatwoot:read'), input.integrationIds.split(','));
+  });
   const connectionParams = z.strictObject({ integrationId: z.uuid() });
   const integrationId = (req: FastifyRequest) => (req.params as { integrationId: string }).integrationId;
   app.get('/v1/integrations/chatwoot/control/connections/:integrationId/campaign-transport', {

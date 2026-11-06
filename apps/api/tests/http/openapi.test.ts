@@ -203,7 +203,7 @@ const EXPECTED_OPERATIONS = [
   'PUT /v1/integrations/chatwoot/control/connections/{integrationId}/agents',
   'POST /v1/integrations/chatwoot/control/onboarding', 'GET /v1/integrations/chatwoot/control/onboarding/{operationId}',
   'POST /v1/integrations/chatwoot/control/onboarding/{operationId}/recover',
-  'GET /v1/integrations/chatwoot/control/context', 'POST /v1/integrations/chatwoot/control-credentials',
+  'GET /v1/integrations/chatwoot/control/context', 'GET /v1/integrations/chatwoot/control/routing-context', 'POST /v1/integrations/chatwoot/control-credentials',
   'PUT /v1/integrations/chatwoot/connections/{id}/operator-grants',
   'GET /v1/integrations/chatwoot/destination', 'PUT /v1/integrations/chatwoot/destination',
   'POST /v1/platform/organizations/{id}/chatwoot/destination/approve',
@@ -425,6 +425,7 @@ describe('OpenAPI público da JRC', () => {
   it('documents the scoped control key without broadening legacy integration authentication', async () => {
     const document = await createOpenApiDocument();
     expect(document.paths['/v1/integrations/chatwoot/control/context']?.get?.security).toEqual([{ bearerAuth: [] }, { jrcApiKeyAuth: [] }]);
+    expect(document.paths['/v1/integrations/chatwoot/control/routing-context']?.get?.security).toEqual([{ jrcApiKeyAuth: [] }]);
     expect(document.paths['/v1/integrations/chatwoot/control-credentials']?.post?.security).toEqual([{ bearerAuth: [] }]);
     expect(document.paths['/v1/integrations/chatwoot']?.get?.security).toEqual([{ bearerAuth: [] }]);
   });

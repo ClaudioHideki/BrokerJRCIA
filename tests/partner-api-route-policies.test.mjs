@@ -3,6 +3,42 @@ import {resolve} from 'node:path';
 import {expect,it} from 'vitest';
 import {buildRouteInventory} from '../scripts/security/inventory-routes.mjs';
 const root=resolve(import.meta.dirname,'..');
+it('classifies the fresh routing snapshot as scoped Control-key-only metadata and verifies its source boundary',async()=>{
+ const path='/v1/integrations/chatwoot/control/routing-context';
+ const openapi=JSON.parse(await readFile(resolve(root,'docs/api/openapi.json'),'utf8'));
+ const inventory=await buildRouteInventory({rootDirectory:root,openapi});
+ const route=inventory.find(item=>item.method==='GET'&&item.path===path);
+ expect(route).toMatchObject({authentication:'BOUND_CHATWOOT_CONTROL_KEY',permission:'CHATWOOT_READ',tenantRls:true,
+  idempotency:'READ_ONLY_FRESH_BATCH_SNAPSHOT',challengeExposure:'NO_STORE_METADATA_ONLY',
+  handlerFile:'apps/api/src/http/routes/chatwoot-control.ts',requestSchemas:['query:integrationIds'],
+  ownershipCheck:'RLS_CURRENT_CONTROL_KEY_ACCOUNT_DESTINATION_REVISION_AND_EXACT_INTEGRATION_BINDINGS_RECHECK_BEFORE_AFTER_READ_NO_PROVIDER_IO_NO_WRITES'});
+ expect(route.cacheHeaders).toContain('Cache-Control');
+ expect(openapi.paths[path].get.security).toEqual([{jrcApiKeyAuth:[]}]);
+ const handlerSource=await readFile(resolve(root,route.handlerFile),'utf8');
+ expect(handlerSource.split(/\r?\n/u)[route.handlerLine-1]).toContain(`app.get('${path}'`);
+ const start=handlerSource.indexOf(`app.get('${path}'`);
+ const handler=handlerSource.slice(start,handlerSource.indexOf('\n  });',start));
+ expect(handler).toContain("req.authentication?.kind !== 'API_KEY'");
+ expect(handler).toContain("options.service.authorize(req.authentication, 'chatwoot:read')");
+ expect(handler).toContain('facade().routingContext(');
+ const service=await readFile(resolve(root,'apps/api/src/modules/integrations/chatwoot-routing-context.ts'),'utf8');
+ expect(service).toContain("p.authentication.kind !== 'API_KEY' || p.restriction");
+ const recheck="options.auth.revalidate(tx, p, 'chatwoot:read')";
+ expect(service.split(recheck)).toHaveLength(3);
+ expect(service.indexOf(recheck)).toBeLessThan(service.indexOf('tx.query<RoutingRow>'));
+ expect(service.lastIndexOf(recheck)).toBeGreaterThan(service.indexOf('tx.query<RoutingRow>'));
+ expect(service).toContain('WHERE c.organization_id=$1 AND c.id=ANY($2::uuid[])');
+ expect(service).toContain('[p.organizationId, ids]');
+ expect(service).toContain('rows.length !== ids.length');
+ expect(service).toContain('accountId: p.accountId');
+ expect(service).toContain('destinationRevision: p.destinationRevision');
+ expect(service).not.toMatch(/\b(?:INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|fetch\s*\(|readIdentity\s*\(|getStatus\s*\()/iu);
+ const authorization=await readFile(resolve(root,'apps/api/src/modules/integrations/chatwoot-control-auth.ts'),'utf8');
+ expect(authorization).toContain('Number(row.account_id) !== Number(account.account_id)');
+ expect(authorization).toContain('row.destination_revision !== destination.revision');
+ expect(authorization).toContain('current.accountId !== principal.accountId');
+ expect(authorization).toContain('current.destinationRevision !== principal.destinationRevision');
+});
 it('classifies all generic partner operations with exact scopes, tenant and source handlers',async()=>{
  const openapi=JSON.parse(await readFile(resolve(root,'docs/api/openapi.json'),'utf8'));
  const inventory=await buildRouteInventory({rootDirectory:root,openapi});

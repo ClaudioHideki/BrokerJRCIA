@@ -1,0 +1,31 @@
+# Evidencias de conexao WhatsApp
+
+Correcao local sobre `13e8525`, sem operacao em producao.
+
+- `INSTANCE_CONNECTED` so pode ser emitido pelo comando de conexao quando o resultado persistido esta `CONNECTED`. Gerar QR/code ou continuar autenticacao nao comprova conexao. O contrato HTTP e o estado da operacao de provider permanecem compativeis: `SUCCEEDED` pode indicar que a chamada devolveu um desafio, com instancia `AWAITING_ACTION` e `pending: true`.
+- `ConnectionHealth.connectedAt` permanece `null`. O ledger de saude guarda a ultima observacao, nao o inicio da sessao autenticada. `instances.connection_observed_at` e um watermark da origem para ordenar callbacks, pode mudar em observacoes repetidas e nao deve ser apresentado como inicio da conexao. Eventos `INSTANCE_CONNECTED` anteriores a esta correcao tambem podem representar apenas emissao de QR, portanto nao constituem uma fonte retroativa confiavel.
+- `checkedAt` e o horario da consulta. `lastSyncAt` e a ultima entrega de entrada `MIRROR_MESSAGE` bem sucedida apos aprovacao de identidade; nao representa sincronizacao integral do historico do WhatsApp. Os campos de origem/ultima observacao nao sao publicados pelo contrato de saude atual.
+- O controle de ordenacao existente recusa callbacks com watermark antigo e descarta polling se o watermark ou binding autenticado mudou durante o I/O, inclusive no mesmo milissegundo. A revisao de identidade tambem e revalidada antes de publicar numero ou liberar desafio.
+- A conclusao tardia do comando de conexao agora tambem compara estado e watermark/binding capturados antes do I/O. Um callback autenticado mais recente prevalece sobre QR ou erro tardio, sem liberar o desafio obsoleto. Se a instancia ja esta `CONNECTED`, a mesma operacao CONNECT mais recente ainda pendente e sua idempotencia sao liquidadas sob lock, com a guarda de binding do provider. Outras operacoes pendentes continuam sujeitas a reconciliacao pelo polling existente; o comando nao inicia outra chamada de conexao.
+
+Pendencias de contrato/produto: diferenciar expiracao de QR de desafio consumido/indisponivel; preservar motivo normalizado de logout/credencial invalida; criar historico funcional paginado, com eventos de autenticacao real, expiracao, divergencia e desconexao tecnica; disponibilizar listagem por permissao e timestamps da origem. Esta correcao nao reclassifica eventos antigos nem adiciona um estado publico `EXPIRED`.
+
+Os indicadores atuais de saude sao verificacao de callback, ultimos sucessos de entrada/saida, falhas e estado de identidade/transporte. Metricas de atendimento (30 dias, primeira resposta, duracao, agentes) dependem do JRC Conversas e nao existem neste contrato do Broker.
+
+## Validacao local
+
+- RED: tres casos reproduziram a auditoria incorreta de conexao; outros dois reproduziram callback `CONNECTED` sobrescrito por QR ou erro tardio.
+- GREEN: 59 testes em seis arquivos passaram com `npm test -- --maxWorkers=1 apps/api/tests/unit/instance-service.test.ts apps/api/tests/unit/chatwoot-health.test.ts apps/api/tests/unit/chatwoot-pair-operation.test.ts apps/api/tests/unit/chatwoot-pair-revocation.test.ts apps/api/tests/unit/qr-connection-order.test.ts apps/api/tests/http/chatwoot-pair.test.ts`.
+- `npm run typecheck` passou com dependencias instaladas localmente por `npm ci --ignore-scripts --no-audit --no-fund --cache .npm-cache`. Uma primeira tentativa com junctions de dependencias falhou em `app.ts` com TS2883, por inferencia de `Logger` apontando ao caminho do checkout original; a instalacao local corrigiu o ambiente sem alterar o codigo da aplicacao.
+- A tentativa de suite ampla usou `npm test -- --maxWorkers=1 --exclude tests/backup.test.mjs --exclude tests/recovery.test.mjs`. As exclusoes respeitam a proibicao de executar rotinas de backup/restore. O processo foi interrompido pela sua propria sessao apos falhas em `security-audit-pdf-verification`, `security-audit-artifacts`, `security-audit-data` e `database-pool-compose`; nao houve resultado completo nem alegacao de suite ampla aprovada.
+- Nao existe comando/configuracao de lint no pacote raiz ou API; foi usado `git diff --check` para verificar os arquivos alterados. A primeira correcao nao incluiu banco de integracao; a validacao posterior esta descrita abaixo. Sem verificacao de producao, envio real ou publicacao.
+
+## Regressao do enrollment inicial encontrada no gate da imagem
+
+Sobre `a2206cd`, o caso existente `survives a connection callback arriving before the authorized pair response`, em `apps/api/tests/integration/chatwoot-initial-identity.test.ts:260` (assertiva na linha 263), foi reproduzido em PostgreSQL 16.4 descartavel: `identityApproved=false` e `identityStatus=CONFIRMATION_REQUIRED`. A guarda preservava o callback `CONNECTED`, mas deixava a operacao CONNECT em `PENDING`; o enrollment corretamente exige a mesma operacao mais recente em `SUCCEEDED`.
+
+A correcao liquida essa operacao e a idempotencia quando o callback ja confirmou `CONNECTED`, sem sobrescrever a instancia ou liberar QR obsoleto. Mantem a verificacao do binding e nao altera aprovacao, fingerprint esperado, escopo do administrador, expiracao ou protecoes contra logout/troca de numero do enrollment. A regressao unitaria `preserves an authenticated callback arriving before late %s connection completion`, em `apps/api/tests/unit/instance-service.test.ts:753`, agora verifica tambem a liquidacao duravel em ambos os resultados tardios (QR e erro), com RED de dois casos antes da correcao.
+
+- GREEN: os mesmos 59 testes focados passaram (74,16 s), incluindo as novas assercoes de operacao/idempotencia.
+- Integracao real: todos os 45 testes de `apps/api/tests/integration/chatwoot-initial-identity.test.ts` passaram (113,39 s) com `npm run test:integration -- --maxWorkers=1 apps/api/tests/integration/chatwoot-initial-identity.test.ts`. O PostgreSQL 16.4 foi criado exclusivamente para esta execucao em container local com dados em tmpfs, porta em loopback e bancos `jrc_test_*` criados/descartados pelo helper. Nenhum banco existente foi reutilizado.
+- `npm run typecheck` e `git diff --check` passaram na correcao final. O container descartavel foi removido apos verificacao da sua label exclusiva; nenhum container existente foi parado/removido. Sem push, merge, deploy, conexao ou envio real nesta execucao.

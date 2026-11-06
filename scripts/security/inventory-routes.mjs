@@ -434,6 +434,11 @@ const ROUTE_POLICIES = Object.freeze({
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
     true, 'NOT_APPLICABLE', 'NONE', 'RLS_ACTIVE_ORGANIZATION_ACCOUNT_AND_DESTINATION_REVISION',
   ),
+  'GET /v1/integrations/chatwoot/control/routing-context': policy(
+    'apps/api/src/http/routes/chatwoot-control.ts', 'BOUND_CHATWOOT_CONTROL_KEY', 'CHATWOOT_READ',
+    true, 'READ_ONLY_FRESH_BATCH_SNAPSHOT', 'NO_STORE_METADATA_ONLY',
+    'RLS_CURRENT_CONTROL_KEY_ACCOUNT_DESTINATION_REVISION_AND_EXACT_INTEGRATION_BINDINGS_RECHECK_BEFORE_AFTER_READ_NO_PROVIDER_IO_NO_WRITES',
+  ),
   'GET /v1/integrations/chatwoot/control/resources': policy(
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_MANAGE',
     true, 'NOT_APPLICABLE', 'NONE', 'RLS_SANITIZED_AVAILABLE_QR_RESOURCES',

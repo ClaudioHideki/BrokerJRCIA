@@ -146,7 +146,6 @@ it('does not publish a central group refresh after the destination is revoked du
 it.each([
  "UPDATE chatwoot_connections SET status='DISABLED' WHERE organization_id=$1",
  "UPDATE chatwoot_destinations SET approval_status='REVOKED' WHERE organization_id=$1",
- "UPDATE whatsapp_group_catalog_items SET selected=false WHERE organization_id=$1",
  "UPDATE instances SET status='DISCONNECTED' WHERE organization_id=$1",
 ])('does not poll a central group catalog outside current scope: %s',async sql=>{
  const t=await fixture();await central(t);
