@@ -19,6 +19,12 @@ function Editor({type='data-set',data,editable=true}:{type?:string;data:Record<s
 const base={configVersion:2,target:'result',errorVariable:'failure'};
 const select=()=>fireEvent.click(screen.getByRole('button',{name:'Configurar Transformar'}));
 describe('P3 typed data inspector in canonical canvas',()=>{
+ it('selects an explicit safe field in a structured receipt',()=>{
+  render(<Editor type="expression" data={{...base,source:'message',operation:'REFERENCE'}}/>);select();
+  fireEvent.change(screen.getByRole('combobox',{name:'Operação'}),{target:{value:'FIELD'}});
+  fireEvent.change(screen.getByRole('textbox',{name:'Caminho do campo'}),{target:{value:'domain.intake.state'}});
+  expect(JSON.parse(screen.getByLabelText('Configuração preservada').textContent!)).toMatchObject({operation:'FIELD',field:'domain.intake.state'});
+ });
  it('builds an object with typed values using fields, without a JSON textarea',()=>{
   render(<Editor data={{...base,valueSource:{kind:'LITERAL',value:{name:'A',active:true}}}}/>);select();
   expect(screen.getByRole('combobox',{name:'Tipo do valor'})).toHaveValue('object');

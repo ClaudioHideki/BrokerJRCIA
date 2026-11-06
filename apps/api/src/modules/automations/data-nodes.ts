@@ -78,6 +78,7 @@ function executeTypedDataNode(type:string,data:Record<string,unknown>,variables:
  else if(type==='expression'){
   const source=reference(data.source as string);
   if(data.operation==='REFERENCE')output=source;
+  else if(data.operation==='FIELD')output=field(source,data.field as string);
   else if(data.operation==='LENGTH'){
    if(typeof source!=='string'&&(source===null||typeof source!=='object'))throw new Error('AUTOMATION_DATA_LENGTH_REQUIRED');
    output=typeof source==='string'||Array.isArray(source)?source.length:Object.keys(source as object).length;

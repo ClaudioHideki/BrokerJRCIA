@@ -15,3 +15,13 @@ it('pins qualification, handoff and status to the persisted execution episode',(
  expect(status).toEqual({command:'service_desk_status',episode_key:episode});
  expect(()=>renderDomainCommandArguments(config,{},episode)).toThrow();
 });
+it('omits blank optional profile and severity while keeping required input validation',()=>{
+ const config={...base,command:'service_desk_intake' as const,configurationId:7,configurationRevision:2,phase:'qualified' as const,
+  input:{...input,profile:'{{profile}}',severity:'{{severity}}'}};
+ const value=renderDomainCommandArguments(config,{identifier:'12345678901',email:'synthetic@example.invalid',description:'Synthetic'},episode);
+ expect(value.command).toBe('service_desk_intake');
+ if(value.command==='service_desk_intake'){
+  expect(value.input).not.toHaveProperty('profile');expect(value.input).not.toHaveProperty('severity');
+ }
+ expect(()=>renderDomainCommandArguments(config,{},episode)).toThrow();
+});

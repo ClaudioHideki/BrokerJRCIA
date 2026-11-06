@@ -52,7 +52,8 @@ const definitions={
   operator:z.enum(['equals','not_equals','contains']),valueSource:DataValueSourceSchema}),
  'json-parse':z.strictObject({...common,source:DataVariableKeySchema}),
  'json-stringify':z.strictObject({...common,source:DataVariableKeySchema}),
- 'expression':z.strictObject({...common,source:DataVariableKeySchema,operation:z.enum(['REFERENCE','LOWER','UPPER','TRIM','LENGTH'])}),
+ 'expression':z.strictObject({...common,source:DataVariableKeySchema,operation:z.enum(['REFERENCE','LOWER','UPPER','TRIM','LENGTH','FIELD']),field:DataFieldPathSchema.optional()})
+  .refine(value=>(value.operation==='FIELD')===(value.field!==undefined),{path:['field'],message:'Informe um caminho somente na operação Campo.'}),
 };
 export function getDataNodeV2Schema(type:DataNodeType):z.ZodType<Record<string,unknown>> {
  const schema:z.ZodType<Record<string,unknown>>=definitions[type];

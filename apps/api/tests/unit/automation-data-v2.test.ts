@@ -12,6 +12,16 @@ const graph=(type:string,data:Record<string,unknown>):PublishedAutomation=>({aut
  edges:[{id:'a',source:'start',target:'transform',port:'next'},{id:'b',source:'transform',target:'yes',port:'success'},
  {id:'c',source:'transform',target:'no',port:'error'},{id:'d',source:'yes',target:'end',port:'next'},{id:'e',source:'no',target:'end',port:'next'}]}});
 describe('P3 local data execution',()=>{
+ it('reads one explicit typed field without evaluating code or replacing dotted variable semantics',()=>{
+  const variables:Record<string,RuntimeJson>={receipt:{domain:{intake:{state:'confirmed',remote_id:'501'}}},'receipt.domain':'kept',result:'previous'};
+  executeDataNode('expression',typed({source:'receipt',operation:'FIELD',field:'domain.intake.remote_id'}),variables,'json');
+  expect(variables.result).toBe('501');
+  expect(()=>executeDataNode('expression',typed({source:'receipt',operation:'FIELD',field:'domain.intake.absent'}),variables,'json')).toThrow('AUTOMATION_DATA_FIELD_MISSING');
+  expect(variables.result).toBe('501');
+  expect(()=>executeDataNode('expression',typed({source:'receipt',operation:'FIELD',field:'__proto__.secret'}),variables,'json')).toThrow('AUTOMATION_DATA_CONFIG_INVALID');
+  executeDataNode('expression',typed({source:'receipt.domain',operation:'REFERENCE'}),variables,'json');
+  expect(variables.result).toBe('kept');
+ });
  it('stores typed objects and literal template text without coercion',()=>{
   const variables:Record<string,RuntimeJson>={name:'Ana'};
   executeDataNode('data-set',typed({valueSource:{kind:'LITERAL',value:{template:'{{name}}',active:true,rows:[1,null]}}}),variables,'json');

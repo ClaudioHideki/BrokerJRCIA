@@ -7,7 +7,7 @@ type Props={node:FlowNode;nodes:readonly FlowNode[];editable:boolean;onChange:(d
 export function DataNodeEditor({node,nodes,editable,onChange}:Props){
  const id=useId(),config=node.data;
  if(!isDataNodeType(node.type))return null;
- const change=(field:string,value:unknown)=>{if(editable)onChange({...config,[field]:value});};
+ const change=(field:string,value:unknown)=>{if(!editable)return;const next={...config,[field]:value};if(field==='operation'&&value!=='FIELD')delete next.field;onChange(next);};
  if(config.configVersion!==2)return <><p role="note">Configuração histórica preservada. Para usar campos tipados e saídas de sucesso/erro, adicione um novo bloco e revise suas conexões.</p><label>Variável de destino<input disabled={!editable} value={String(config.target??'')} onChange={event=>change('target',event.target.value)}/></label></>;
  const parsed=getDataNodeV2Schema(node.type).safeParse(config);
  const error=(field:string)=>parsed.success?undefined:parsed.error.issues.find(issue=>issue.path[0]===field)?.message;
@@ -30,7 +30,8 @@ export function DataNodeEditor({node,nodes,editable,onChange}:Props){
   {node.type==='data-merge'&&list('sources','Objetos de origem',16)}
   {['data-map','data-filter'].includes(node.type)&&field('field','Caminho do campo')}
   {node.type==='data-filter'&&<><label>Comparação<select disabled={!editable} value={String(config.operator??'equals')} onChange={event=>change('operator',event.target.value)}><option value="equals">Igual a</option><option value="not_equals">Diferente de</option><option value="contains">Contém texto</option></select></label>{valueSource()}</>}
-  {node.type==='expression'&&<label>Operação<select disabled={!editable} value={String(config.operation??'REFERENCE')} {...attrs('operation')} onChange={event=>change('operation',event.target.value)}><option value="REFERENCE">Copiar valor</option><option value="LOWER">Texto em minúsculas</option><option value="UPPER">Texto em maiúsculas</option><option value="TRIM">Remover espaços nas pontas</option><option value="LENGTH">Tamanho do texto, objeto ou lista</option></select></label>}
+  {node.type==='expression'&&config.operation==='FIELD'&&field('field','Caminho do campo')}
+  {node.type==='expression'&&<label>Operação<select disabled={!editable} value={String(config.operation??'REFERENCE')} {...attrs('operation')} onChange={event=>change('operation',event.target.value)}><option value="REFERENCE">Copiar valor</option><option value="LOWER">Texto em minúsculas</option><option value="UPPER">Texto em maiúsculas</option><option value="TRIM">Remover espaços nas pontas</option><option value="LENGTH">Tamanho do texto, objeto ou lista</option><option value="FIELD">Campo de objeto</option></select></label>}
   <p>Sucesso grava o resultado no destino. Erro mantém o destino e grava um código na variável de erro.</p>
  </div>;
 }
