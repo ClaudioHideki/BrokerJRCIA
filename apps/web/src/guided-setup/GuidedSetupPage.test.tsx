@@ -32,6 +32,21 @@ it('creates a tenant-scoped setup and presents the complete reusable journey', a
     expect(screen.getByRole('button', { name: label })).toBeVisible();
   expect(screen.getByText('Empresa A', { exact: true })).toBeVisible();
 });
+it('selects Meta by the transport accessible role and sends the selected transport', async () => {
+  const { GuidedSetupSurface } = await implementation();
+  const request = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path.endsWith('/availability')) return { enabled: true };
+    if (init?.method === 'POST') return { ...setup(), selection: { transport: 'META' } };
+    return { data: [] };
+  });
+  render(<MemoryRouter><GuidedSetupSurface client={{ request } as unknown as ApiClient} organizationId={org} organizationName="Empresa B" /></MemoryRouter>);
+  fireEvent.change(await screen.findByLabelText('Nome da configuração'), { target: { value: 'Atendimento Meta' } });
+  // Use the same accessible role as the real-browser journey.
+  fireEvent.change(screen.getByRole('combobox', { name: 'Conexão WhatsApp', exact: true }), { target: { value: 'META' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Iniciar configuração' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/v1/guided-setups', expect.objectContaining({ method: 'POST',
+    body: JSON.stringify({ name: 'Atendimento Meta', transport: 'META' }) })));
+});
 it('allows correcting the form after a known validation rejection', async () => {
   const { GuidedSetupSurface } = await implementation();
   const request = vi.fn(async (path: string, init?: RequestInit) => {

@@ -26,7 +26,7 @@ test('persists guided setup, imports a private package and isolates the next com
   await page.getByLabel('Organização ativa').selectOption({ label: 'JRC E2E Filial' });
   await expect(page.getByRole('heading', { name: `Suporte sintético ${info.project.name}` })).not.toBeVisible();
   await page.goto('/configuracao-guiada'); await page.getByLabel('Nome da configuração').fill(`Meta sintética ${info.project.name}`);
-  await page.getByLabel('Conexão WhatsApp', { exact: true }).selectOption('META');
+  await page.getByRole('combobox', { name: 'Conexão WhatsApp', exact: true }).selectOption('META');
   await page.getByRole('button', { name: 'Iniciar configuração' }).click();
   await expect(page.getByRole('navigation', { name: 'Etapas da configuração guiada' })).toBeVisible();
   expect(page.url()).not.toBe(firstUrl); await page.reload();
