@@ -404,7 +404,8 @@ describe('migrations PostgreSQL', () => {
     // not lifecycle_migrator. Keep the rest of the historical inventory strict.
     const lifecycleManaged=catalogue.filter(table=>!['support_tickets','support_messages',
       'commercial_plans','commercial_plan_versions','organization_commercial_plans',
-      'evolution_instance_bindings','evolution_io_leases','evolution_io_backoff'].includes(table)).length+1;
+      'evolution_instance_bindings','evolution_io_leases','evolution_io_backoff',
+      'automation_box_profile_heads','automation_box_profile_versions'].includes(table)).length+1;
     const result = await database.pool.query<{
       policyname: string;
       roles: string[];
@@ -462,6 +463,9 @@ describe('migrations PostgreSQL', () => {
       ...Array.from({length:2},()=>({policyname:'automation_migration_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'automation_packages_tenant',roles:['jrc_app'],cmd:'ALL'},
       ...Array.from({length:8},()=>({policyname:'automation_tenant',roles:['jrc_app'],cmd:'ALL'})),
+      // 0086 uses its explicit migrator policy rather than lifecycle_migrator.
+      ...Array.from({length:2},()=>({policyname:'box_profile_migrator',roles:['jrc_migrator'],cmd:'ALL'})),
+      ...Array.from({length:2},()=>({policyname:'box_profile_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'guided_setup_tenant',roles:['jrc_app'],cmd:'ALL'},
       ...Array.from({length:2},()=>({policyname:'operational_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'legacy_flow_discovery',roles:['jrc_migrator'],cmd:'SELECT'},

@@ -189,11 +189,11 @@ it('rejects a stale scope revision before canonical mutation',async()=>{
  await expect(t.service.publish(t.access,draft.id,{revision:1,expectedScopeRevision:1})).rejects.toMatchObject({code:'FLOW_SCOPE_CHANGED'});
  expect((await db.database.pool.query('SELECT count(*)::int n FROM automation_versions WHERE automation_id=$1',[draft.id])).rows[0].n).toBe(0);
 });
-async function secondInbox(t:Awaited<ReturnType<typeof fixture>>){
+async function secondInbox(t:Awaited<ReturnType<typeof fixture>>,inboxId=19){
  const channel=randomUUID(),integration=randomUUID();
  const provider=(await db.database.pool.query('SELECT provider_account_id FROM messaging_channels WHERE id=$1',[t.channel])).rows[0].provider_account_id;
  await db.database.pool.query("INSERT INTO messaging_channels(id,organization_id,provider_account_id,phone_number_id,waba_id,credential_reference) VALUES($1,$2,$3,$4,'synthetic','vault://synthetic')",[channel,t.org,provider,`synthetic-${channel}`]);
- await db.database.pool.query("INSERT INTO chatwoot_connections(id,organization_id,channel_id,inbox_id,name,status) VALUES($1,$2,$3,19,'Synthetic second','READY')",[integration,t.org,channel]);
+ await db.database.pool.query("INSERT INTO chatwoot_connections(id,organization_id,channel_id,inbox_id,name,status) VALUES($1,$2,$3,$4,'Synthetic second','READY')",[integration,t.org,channel,inboxId]);
  return {channel,integration};
 }
 it('requires all persisted inboxes for a shared draft and filters before pagination',async()=>{
@@ -786,7 +786,7 @@ it('native execution capability confines history to current root channels and re
 
 
 it('box-routing delegation saves and activates a published profile with CAS and rejects another inbox before remote IO',async()=>{
- const t=await fixture(),qr=await qrInbox(t),other=await secondInbox(t),remote=remoteClient(t);
+ const t=await fixture(),qr=await qrInbox(t),other=await secondInbox(t,20),remote=remoteClient(t);
  const scope={...t.scope,channelId:qr.channel,integrationId:qr.integration,inboxId:19};
  const catalog=vi.fn(async()=>({...boxCatalog(),scope}));
  const boxRouting=createBoxRoutingService({transact:db.transact,integration:async()=>qr.integration,catalog,teamMembers:async()=>[],readiness:{prepare:async()=>({assertCurrent:async()=>{}})}});
