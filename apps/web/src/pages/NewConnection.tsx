@@ -10,7 +10,7 @@ import { createConnection, listBaileysProviderAccounts } from '../connections/ap
 import { createChannel } from '../channels/api.js';
 import { useVolatileIntent } from '../connections/use-volatile-intent.js';
 
-export function NewConnectionPage({ canonical = false }: { canonical?: boolean }) {
+export function NewConnectionPage({ canonical = false, onCreated }: { canonical?: boolean; onCreated?(id: string): void | Promise<void> }) {
   const client = useApiClient();
   const { session, tenantRevision } = useSession();
   const navigate = useNavigate();
@@ -84,7 +84,8 @@ export function NewConnectionPage({ canonical = false }: { canonical?: boolean }
       setRetrying(false);
       if (canonical) {
         if (!('provider' in result) || result.provider !== 'QR') throw new Error('INVALID_CHANNEL_PROVIDER');
-        navigate(`/channels/${result.channel.id}`, { replace: true });
+        if (onCreated) await onCreated(result.channel.id);
+        else navigate(`/channels/${result.channel.id}`, { replace: true });
       } else {
         if (!('instance' in result)) throw new Error('INVALID_INSTANCE_RESPONSE');
         navigate(`/legacy/conexoes/${result.instance.id}`, { replace: true });

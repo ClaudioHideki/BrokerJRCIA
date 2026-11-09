@@ -7,6 +7,7 @@ import { listChannels } from '../channels/api.js';
 import { ChannelDeletion } from '../channels/ChannelDeletion.js';
 import {collectNameSearchPages,matchesConnectionName} from '../connections/name-search.js';
 import {useCompleteNameSearch} from '../connections/useCompleteNameSearch.js';
+import { GuidedSetupLink } from '../guided-setup/GuidedSetupLink.js';
 
 const labels = { QR: 'WhatsApp por QR Code', META: 'WhatsApp oficial Meta',CENTRAL:'WhatsApp conectado na central' } as const;
 const statusLabel: Record<string, string> = {
@@ -71,6 +72,7 @@ export function ChannelsPage() {
     <div className="page-heading"><div><p className="eyebrow">WhatsApp da sua empresa</p><h1 id="channels-title">Caixas de entrada</h1>
       <p>Conecte seu WhatsApp, escolha onde a equipe atende e ative um chatbot JRC.</p></div>
       {canManage ? <Link className="button button--primary" to="/channels/new">+ Conectar WhatsApp</Link> : null}</div>
+    <GuidedSetupLink client={client} organizationId={session?.activeOrganization.id} canManage={canManage} />
     {error ? <div className="notice notice--error" role="alert">{error}
       {!loading && items.length === 0 && <p><button type="button" className="button button--secondary" onClick={()=>void load()}>Tentar carregar caixas novamente</button></p>}
     </div> : null}

@@ -8,6 +8,7 @@ import { publicChatwootCapabilities } from './chatwoot-compatibility.js';
 import { readChatwootAccount,type AccountRow } from './chatwoot-context.js';
 import { IntegrationError } from './integration-error.js';
 import {classificationScope} from './chatwoot-attendance-store.js';
+import { eligibleTeamAgentIds } from '../guided-setup/team-eligibility.js';
 
 type Options={transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;client(account:AccountRow):ChatwootClient};
 /** The type permits probing; support still requires the actual authenticated catalog endpoints. */
@@ -80,9 +81,7 @@ export function createChatwootAttendanceService(options:Options) {
           signatures:publicChatwootCapabilities(account).signatures,controlEvents:'UNVERIFIED',initialPending:'UNVERIFIED'},
       });
   }
-  return {
-    catalog,
-    async validateTarget(expected:AttendanceScope,value:HumanTarget) {
+  async function validateTarget(expected:AttendanceScope,value:HumanTarget) {
       const parsedScope=attendanceScopeSchema.safeParse(expected),parsedTarget=humanTargetSchema.safeParse(value);
       if(!parsedScope.success)throw new IntegrationError('ATTENDANCE_SCOPE_INVALID',422);
       if(!parsedTarget.success)throw new IntegrationError('ATTENDANCE_HUMAN_TARGET_REQUIRED',422);
@@ -103,6 +102,24 @@ export function createChatwootAttendanceService(options:Options) {
       const current=await snapshot(scope.organizationId,scope.integrationId);
       if(!sameScope(current.scope,scope)||current.account.credential_version!==initial.account.credential_version)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
       return {scope,target,observedAt:new Date().toISOString(),credentialRevision:current.account.credential_version};
+  }
+  return {
+    catalog, validateTarget,
+    async validateGuidedTarget(expected: AttendanceScope, value: HumanTarget) {
+      const verified = await validateTarget(expected, value);
+      if (value.teamId === null) return verified;
+      const initial = await snapshot(expected.organizationId, expected.integrationId);
+      if (!sameScope(initial.scope, expected) || initial.account.credential_version !== verified.credentialRevision)
+        throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
+      const members = await options.client(initial.account).teamAgents(expected.accountId, value.teamId);
+      const observed = await catalog(expected.organizationId, expected.integrationId);
+      if (!sameScope(observed.scope, expected) || observed.credentialRevision !== verified.credentialRevision)
+        throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
+      if (!eligibleTeamAgentIds(members, observed.agents).length) throw new IntegrationError('ATTENDANCE_TEAM_WITHOUT_INBOX_AGENTS', 409);
+      const current = await snapshot(expected.organizationId, expected.integrationId);
+      if (!sameScope(current.scope, expected) || current.account.credential_version !== verified.credentialRevision)
+        throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
+      return verified;
     },
   };
 }

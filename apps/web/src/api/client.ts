@@ -187,6 +187,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       document.cookie = serializedCookie;
     });
   let accessToken: string | null = null;
+  let browserScope: { userId: string; organizationId: string } | null = null;
   let accessTokenVersion = 0;
   let restoreFlight: {
     tokenVersion: number;
@@ -201,6 +202,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const expirationListeners = new Set<() => void>();
 
   function expireSession(): void {
+    browserScope = null;
     if (accessToken === null) return;
     accessToken = null;
     accessTokenVersion += 1;
@@ -208,12 +210,14 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   }
 
   function discardAccessToken(): void {
+    browserScope = null;
     if (accessToken === null) return;
     accessToken = null;
     accessTokenVersion += 1;
   }
 
-  function publishAccessToken(token: string): void {
+  function publishAccessToken(token: string, session: BrowserSession): void {
+    browserScope = { userId: session.user.id, organizationId: session.activeOrganization.id };
     accessToken = token;
     accessTokenVersion += 1;
   }
@@ -362,7 +366,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         throw new StaleTenantResponseError();
       }
     }
-    publishAccessToken(parsed.data.accessToken);
+    publishAccessToken(parsed.data.accessToken, browserSession(parsed.data));
     return browserSession(parsed.data);
   }
 
@@ -395,6 +399,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   ): Promise<T> {
     const generation = tenantGeneration;
     const requestTokenVersion = accessTokenVersion;
+    const requestScope = browserScope;
     let response = await fetchOnce(path, init, {
       bearer: true,
       trackTenant: true,
@@ -415,6 +420,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     try {
       if (requestTokenVersion === accessTokenVersion) {
         await singleFlightRestore(requestTokenVersion, generation);
+      }
+      assertCurrentTenantGeneration(generation);
+      // Another tab may have replaced the refresh cookie. An automatic retry
+      // cannot replay this screen's action as a different person or company.
+      if (requestScope && browserScope && (requestScope.userId !== browserScope.userId || requestScope.organizationId !== browserScope.organizationId)) {
+        purgeTenant(); expireSession(); throw new StaleTenantResponseError();
       }
     } catch (error) {
       if (error instanceof StaleTenantResponseError) throw error;
@@ -539,7 +550,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           502,
         );
       assertCurrentTenantGeneration(options.generation);
-      publishAccessToken(parsed.data.accessToken);
+      publishAccessToken(parsed.data.accessToken, browserSession(parsed.data));
       return browserSession(parsed.data);
     } catch (error) {
       if (options.expireOnUncertain) expireSession();

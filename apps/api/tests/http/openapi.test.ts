@@ -10,6 +10,25 @@ import {
 } from '../../src/http/openapi.js';
 
 const EXPECTED_OPERATIONS = [
+  'GET /v1/guided-setups/availability',
+  'GET /v1/guided-setups',
+  'POST /v1/guided-setups',
+  'GET /v1/guided-setups/{id}',
+  'PUT /v1/guided-setups/{id}',
+  'POST /v1/guided-setups/{id}/cancel',
+  'POST /v1/guided-setups/{id}/check',
+  'POST /v1/guided-setups/{id}/package-bindings',
+  'POST /v1/guided-setups/{id}/test',
+  'POST /v1/guided-setups/{id}/proof',
+  'POST /v1/guided-setups/{id}/activate',
+  'POST /v1/guided-setups/{id}/reconcile',
+  'POST /v1/guided-setups/{id}/deactivate',
+  'POST /v1/automation-packages/preview',
+  'POST /v1/automation-packages',
+  'GET /v1/automation-packages/{id}',
+  'POST /v1/automation-packages/{id}/publish',
+  'GET /v1/automations/{id}/package',
+
   'GET /v1/executions/{id}/playground',
   'POST /v1/executions/{id}/simulate',
   'GET /v1/delegated-flows/{id}/executions',

@@ -4,6 +4,21 @@ import { pathToFileURL } from "node:url";
 import { parse } from "@babel/parser";
 
 const ROUTE_POLICIES = Object.freeze({
+  ...Object.fromEntries([
+    'GET /v1/guided-setups/availability', 'GET /v1/guided-setups', 'POST /v1/guided-setups',
+    'GET /v1/guided-setups/{id}', 'PUT /v1/guided-setups/{id}',
+    ...['cancel','check','package-bindings','test','proof','activate','reconcile','deactivate'].map(action => `POST /v1/guided-setups/{id}/${action}`),
+  ].map(route => [route, policy('apps/api/src/http/routes/guided-setup.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    route.startsWith('GET ') ? 'READ_ONLY' : 'EXPECTED_SETUP_REVISION_DURABLE_ACTION_INTENT_AND_NATIVE_OWNER_CAS',
+    'NO_STORE_PROGRESS_AND_RECEIPT_METADATA_NO_CREDENTIALS',
+    'RLS_CURRENT_ORGANIZATION_ROLLOUT_NATIVE_RESOURCE_SCOPE_REVISIONS_LEASE_AND_PHYSICAL_PROOF_BEFORE_ACTIVATION')])),
+  ...Object.fromEntries([
+    'POST /v1/automation-packages/preview','POST /v1/automation-packages','GET /v1/automation-packages/{id}',
+    'POST /v1/automation-packages/{id}/publish','GET /v1/automations/{id}/package',
+  ].map(route => [route, policy('apps/api/src/http/routes/automation-packages.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
+    route.startsWith('GET ') || route.endsWith('/preview') ? 'READ_ONLY_NO_EXTERNAL_EFFECT' : 'TENANT_IDEMPOTENCY_HASH_ATOMIC_DRAFT_IMPORT_OR_REVISION_LEASED_PUBLICATION',
+    'NO_STORE_GRAPH_METADATA_LOCAL_EXECUTABLE_REFERENCES_STRIPPED_ON_EXPORT',
+    'RLS_CURRENT_ORGANIZATION_DRAFT_ACCESS_BOUNDED_DEPENDENCIES_NATIVE_PUBLICATION_NO_IMPLICIT_BINDING')])),
   'POST /v1/webhooks/whatsapp/{id}': policy(
     'apps/api/src/http/routes/integrations.ts','CHANNEL_DERIVED_BEARER','BOUND_INSTANCE_AND_CURRENT_FLEET',true,
     'PROVIDER_ID_DEDUPE_OPTIONAL_ORIGIN_UUID_CANONICAL_HASH_IMMUTABLE_RECEIPT','NO_STORE_RECEIPT_METADATA',

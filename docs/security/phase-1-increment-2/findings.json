@@ -45,8 +45,8 @@
       "title": "Troca de tenant invalida requests e estado local",
       "description": "O cliente incrementa a geração, aborta requests e executa os purges registrados antes de publicar a organização seguinte.",
       "file": "apps/web/src/api/client.ts",
-      "lineStart": 222,
-      "lineEnd": 606,
+      "lineStart": 236,
+      "lineEnd": 630,
       "evidencePaths": [
         "apps/web/src/api/client.ts",
         "apps/web/tests/e2e/console.spec.ts"

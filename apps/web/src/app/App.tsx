@@ -29,6 +29,7 @@ import {
 import { PlatformPage } from '../pages/Platform.js';
 import { SupportPage } from '../pages/Support.js';
 import { MetaConnectPage } from '../pages/MetaConnect.js';
+import { GuidedSetupPage } from '../guided-setup/GuidedSetupPage.js';
 import { CompanyPage } from '../pages/Company.js';
 import { SettingsPage } from '../pages/Settings.js';
 import { ApiWebhooksPage } from '../pages/ApiWebhooks.js';
@@ -78,6 +79,8 @@ function AppRoutes() {
         <Route path="/uso-custos" element={<UsagePage />} />
         <Route path="/brain" element={<BrainPage />} />
         <Route path="/channels" element={<ChannelsPage />} />
+        <Route path="/configuracao-guiada" element={<GuidedSetupPage />} />
+        <Route path="/configuracao-guiada/:id" element={<GuidedSetupPage />} />
         <Route path="/channels/new" element={<NewChannelPage />} />
         <Route path="/channels/meta/connect" element={<MetaConnectPage />} />
         <Route path="/channels/:id" element={<ChannelDetailPage />} />

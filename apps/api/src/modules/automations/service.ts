@@ -194,13 +194,15 @@ export function createAutomationService(options:AutomationServiceOptions){
     });},
     versions:(org:string,id:string)=>options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listVersions(tx,org,id)).map(version)};}),
     bindings:(org:string,id:string)=>options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listBindings(tx,org,id)).map(row=>({...row,createdAt:iso(row.createdAt),updatedAt:iso(row.updatedAt),schemaVersion:1}))};}),
-    bind:async(org:string,id:string,input:{channelId:string;version?:number;humanDestinationId?:string|null;expectedOwnerRevision?:number})=>{await available(org);
+    bind:async(org:string,id:string,input:{channelId:string;version?:number;humanDestinationId?:string|null;expectedOwnerRevision?:number;assertScope?:(tx:TenantTransaction)=>Promise<void>})=>{await available(org);
       const prepared=await options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);const selected=input.version??row.activeVersion;if(!selected)throw new AutomationError('AUTOMATION_NOT_PUBLISHED',409);const version=await repository.getVersion(tx,org,id,selected);if(!version)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return version;});
       const resourceSnapshot=await options.transact(org,tx=>prepareSubflowSnapshot(tx,org,{automationId:id,version:prepared.version,graph:prepared.graph,runtimeStateVersion:prepared.runtimeStateVersion??1},repository,'HISTORICAL'));
       await resources.refreshGraphs(org,resourceSnapshot.versions.map(value=>value.graph));
       const readiness=await prepareHandoffs(org,prepared.graph,input.channelId,resourceSnapshot);
       return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);const selected=input.version??row.activeVersion;if(selected!==prepared.version)throw new AutomationError('AUTOMATION_CHANGED',409);if(!await repository.getVersion(tx,org,id,selected))throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);
       await readiness.assertCurrent(tx);
+      // Internal callers can fence a prepared setup scope; no HTTP schema accepts this callback.
+      if(input.assertScope){await lockAttendanceChannel(tx,org,input.channelId);await input.assertScope(tx);}
       for(const value of resourceSnapshot.versions)await assertConversationResourcePolicies(tx,org,value.automationId,[value.graph]);
       const channel=await messaging.findChannel(tx,org,input.channelId);if(!channel)throw new AutomationError('CHANNEL_NOT_FOUND',404);
       const result=await transitionChannelOwner(tx,org,{...input,botPublicId:id,botOriginReference:AUTOMATION_ORIGIN,version:selected});const binding=result.binding!;

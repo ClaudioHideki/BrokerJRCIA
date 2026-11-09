@@ -61,6 +61,12 @@ describe('Dokploy Compose interpolation', () => {
     expect(config.services.evolution.environment.CONFIG_SESSION_PHONE_CLIENT).toBe('Broker Example');
     expect(config.services.evolution.environment.CONFIG_SESSION_PHONE_NAME).toBe('Chrome');
   });
+
+  it('keeps guided setup disabled by default and forwards only the explicit tenant allowlist to the API', () => {
+    expect(renderCompose().services.api.environment.GUIDED_SETUP_TENANTS).toBe('');
+    const tenant = '11111111-1111-4111-8111-111111111111';
+    expect(renderCompose({ GUIDED_SETUP_TENANTS: tenant }).services.api.environment.GUIDED_SETUP_TENANTS).toBe(tenant);
+  });
   it('allows an external-only Chatwoot installation while keeping the existing broker host', () => {
     const config = renderCompose();
     const labels = config.services.web.labels;
