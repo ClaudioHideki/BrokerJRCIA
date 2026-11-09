@@ -82,6 +82,15 @@ export function createChatwootAttendanceService(options:Options) {
   }
   return {
     catalog,
+    async teamMembers(org:string,id:string,teamId:number){
+      const initial=await snapshot(org,id),observed=await catalog(org,id);
+      if(!sameScope(initial.scope,observed.scope)||initial.account.credential_version!==observed.credentialRevision)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
+      if(!observed.teams.some(team=>team.id===teamId))throw new IntegrationError('ATTENDANCE_TEAM_NOT_FOUND',409);
+      const members=await options.client(initial.account).teamAgents(initial.scope.accountId,teamId);
+      const current=await snapshot(org,id);
+      if(!sameScope(initial.scope,current.scope)||initial.account.credential_version!==current.account.credential_version)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
+      return members.map(member=>({id:member.id,name:member.name}));
+    },
     async validateTarget(expected:AttendanceScope,value:HumanTarget) {
       const parsedScope=attendanceScopeSchema.safeParse(expected),parsedTarget=humanTargetSchema.safeParse(value);
       if(!parsedScope.success)throw new IntegrationError('ATTENDANCE_SCOPE_INVALID',422);

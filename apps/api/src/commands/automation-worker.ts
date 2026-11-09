@@ -75,7 +75,7 @@ export async function runAutomationWorker(environment:NodeJS.ProcessEnv=process.
   const enabled=automationRuntimeEnabled(environment),repository=createPostgresAutomationRepository(integrations.groupPolicy),transact=<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pool,org,work);
   // GROUP delegates to the canonical executor, with its physical authority policy.
   // Claim once per tenant; never run a second engine beside this wrapper.
-  const execution=integrations.groupAutomation?{runOnce:integrations.groupAutomation.executeOnce}:createExecutionService({transact,repository,enabled});
+  const execution=integrations.groupAutomation?{runOnce:integrations.groupAutomation.executeOnce}:createExecutionService({transact,repository,enabled,...(integrations.boxRouting?{boxRouting:integrations.boxRouting}:{})});
   const resume=createAttendanceResumeWorker({transact,...(integrations.dashboardClient?{client:integrations.dashboardClient}:{})});
   const handoff=integrations.dashboardClient&&integrations.chatwoot?createNativeHandoffService({transact,client:integrations.dashboardClient,
     attendanceService:{validateTarget:integrations.chatwoot.validateHumanDestination,catalog:integrations.chatwoot.attendanceCatalog}}):undefined;

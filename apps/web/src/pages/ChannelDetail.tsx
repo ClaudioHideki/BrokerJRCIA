@@ -58,7 +58,7 @@ function ChannelDetail(){
   }}).finally(()=>{if(live)setInitialLoading(false);});return()=>{live=false;};},[client,id,loadRevision]);
  useEffect(()=>{if(!flowRequested)return;let live=true;setCatalogState('LOADING');
  void getChannelAutomation(client,id).then(value=>{if(live){setBinding(value.binding);setOwnerRevision(value.ownerRevision);if(!selectionEdited.current)setAutomationId(value.binding?.automationId??'');setBindingLoaded(true);}}).catch(()=>{if(live)setError('Não foi possível conferir o vínculo atual. Atualize a página antes de vincular uma automação.');});
- void listAutomations(client).then(value=>{if(live){setAutomations(value.filter(item=>item.activeVersion!==null&&item.lifecycleStatus!=='ARCHIVED'));setCatalogState('LOADED');}}).catch(()=>{if(live)setCatalogState('ERROR');});return()=>{live=false;};},[client,id,flowRequested]);
+ void listAutomations(client).then(value=>{if(live){setAutomations(value.filter(item=>item.activeVersion!==null&&item.lifecycleStatus!=='ARCHIVED'&&!item.draft.graph.nodes.some(n=>n.type==='start'&&n.data.boxRoutes!==undefined)));setCatalogState('LOADED');}}).catch(()=>{if(live)setCatalogState('ERROR');});return()=>{live=false;};},[client,id,flowRequested]);
  useEffect(()=>{if(!action||action.type==='NONE')return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[action]);
  const expiresAt=action&&'expiresAt' in action?new Date(action.expiresAt).getTime():0,expired=Boolean(expiresAt&&expiresAt<=now);
  const polling=Boolean(channel?.provider==='QR'&&!archived&&!busy&&!challengeBlocked&&channel.transportStatus!=='CONNECTED'
@@ -103,7 +103,7 @@ function ChannelDetail(){
  async function refreshSetup(){await run(async()=>{
   setBindingLoaded(false);setCatalogState('LOADING');
   const [current,catalog]=await Promise.allSettled([load(true),listAutomations(client)]);
-  if(catalog.status==='fulfilled'){setAutomations(catalog.value.filter(item=>item.activeVersion!==null&&item.lifecycleStatus!=='ARCHIVED'));setCatalogState('LOADED');}
+  if(catalog.status==='fulfilled'){setAutomations(catalog.value.filter(item=>item.activeVersion!==null&&item.lifecycleStatus!=='ARCHIVED'&&!item.draft.graph.nodes.some(n=>n.type==='start'&&n.data.boxRoutes!==undefined)));setCatalogState('LOADED');}
   else setCatalogState('ERROR');
   if(current.status==='rejected')throw current.reason;
   if(catalog.status==='rejected')throw catalog.reason;
@@ -200,12 +200,13 @@ function ChannelDetail(){
      {canManage&&session&&<ChannelOperationSetup client={client} organizationId={session.activeOrganization.id} channelId={id} tenantRevision={tenantRevision}/>}
     </>}
     {visibleArea==='flow'&&!archived&&<>
+     {canManage&&<section className="panel"><h2>Flow por caixa</h2><p>Configure departamentos, times e atendentes na página Flow. Os modelos reutilizáveis usam os membros autorizados desta caixa.</p><Link className="button button--primary" to={'/automations?channel='+id}>Configurar departamentos e ativar Flow</Link></section>}
      <section className="panel" id="channel-flow"><h2>Criar ou publicar o fluxo</h2>
       <p>Abra uma automação existente ou crie seu fluxo. Configure menu, captura de dados e transferência humana; salve, valide e publique a versão.</p>
       <p>O teste do editor é uma simulação. Depois da publicação, volte a esta caixa para vincular e testar no WhatsApp.</p>
       {canManage?<Link className="button button--secondary" to={'/automations?channel='+id}>Criar ou publicar fluxo</Link>:<p>Um administrador da empresa deve publicar e vincular o fluxo. Você pode conferir os estados e acompanhar as conversas conforme seu acesso.</p>}
      </section>
-     <section className="panel" id="channel-bot-binding"><h2>Vincular bot à caixa</h2>
+     <section className="panel" id="channel-bot-binding"><h2>Vincular bot à caixa</h2><p>Modo avançado para versões antigas com destinos fixos. Para modelos reutilizáveis, use Flow por caixa acima.</p>
       <p>Selecione a versão publicada que receberá novas entradas desta caixa.</p>
       <p>Vincular permite novas entradas. Conversas em atendimento humano continuam com o bot pausado. Publicar, vincular ou retomar novas entradas não retoma essas conversas.</p>
       <Link to="/mensagens">Retomar uma conversa em atendimento humano</Link>

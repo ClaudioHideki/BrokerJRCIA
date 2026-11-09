@@ -1,0 +1,116 @@
+FLOW POR CAIXA — BROKER JRC + JRC CONVERSAS
+Roteiro operacional do incremento de 09/11/2026
+
+ESTADO DESTA ENTREGA
+Este roteiro descreve o código implementado no worktree isolado. O novo painel NÃO foi implantado no servidor nesta etapa. Sua utilização depende da consolidação com a base atual do Broker, registro da migration, CI do SHA final e release aprovada. Não substituir a imagem instalada por uma imagem feita somente da base antiga deste worktree.
+
+RESPONSABILIDADES
+Broker JRC: conexão e identidade do WhatsApp, integração da caixa, modelos/versões Flow, perfis de atendimento por caixa, execução da URA, escolha do destino e protocolo de transferência.
+JRC Conversas: conta da empresa, caixa de atendimento, usuários, times, membros da caixa, atendimento humano e configuração da pesquisa de satisfação.
+Cada empresa mantém seus números, agentes, times, horários, permissões e credenciais. A funcionalidade é genérica; essas configurações não são copiadas de outra empresa. Os IDs da antiga HML não são padrões de produção.
+Núcleo do produto: JRC Conversas LAB2 / Grupo JRC. BrokerJRCIA é o serviço compartilhado. GoPure não foi alterado. GLPI/intake específicos da Branef não pertencem a este incremento.
+
+1. PREPARAR A EMPRESA E OS ACESSOS
+1.1 Acesse como administrador da empresa correta no Broker. Confira o nome da empresa antes de criar canais ou configurar destinos.
+1.2 Prepare a conta da empresa no JRC Conversas, usando a release comum validada e a identidade visual desse cliente.
+1.3 Confira o domínio e o ID da conta JRC. O domínio do JRC Conversas é diferente do domínio do Broker.
+1.4 Habilite o módulo Flow para essa empresa no controle administrativo, com workers e contratos da mesma release. WhatsApp conectado, por si só, não habilita nem comprova o bot.
+1.5 Use credenciais somente nos campos protegidos de integração. Não copie tokens para o modelo, JSON do bot, Git, relatório ou conversa com agentes.
+
+2. CADASTRAR OS TIMES E AGENTES NO JRC CONVERSAS
+2.1 Cadastre/convide os agentes reais da empresa em Configurações → Agentes, conforme as permissões administrativas disponíveis.
+2.2 Em Configurações → Equipes/Times, crie os times correspondentes aos departamentos da URA e associe os agentes reais.
+2.3 Na caixa de entrada utilizada pela integração, em Colaboradores/Agentes, selecione também esses agentes.
+2.4 Para aparecer no menu de um departamento, a pessoa precisa pertencer AO TIME E À CAIXA. Estar cadastrada na conta não basta.
+2.5 A configuração Flow não adiciona usuários silenciosamente à caixa ou ao time.
+2.6 Use nomes de exibição claros e distintos. O novo modo bloqueia nomes iguais no mesmo departamento para evitar escolhas ambíguas.
+
+3. CRIAR A CAIXA WHATSAPP NO BROKER
+3.1 Acesse Conexões e caixas e crie a conexão da empresa pelo transporte autorizado: QR Code ou Meta oficial.
+3.2 Dê um nome claro à caixa. Confira a empresa, o número mascarado e a identidade da conexão.
+3.3 No modo QR Code, faça o pareamento autorizado do aparelho da empresa. No modo Meta, conclua o cadastro/autorização oficial aplicável.
+3.4 Aguarde o estado conectado e confirme a identidade do número. Não use número, sessão ou recurso de outra empresa para suprir ausência de configuração.
+3.5 Conectado significa que o transporte está disponível. Ainda faltam o vínculo JRC, a publicação, o perfil e a ativação do Flow.
+
+4. INTEGRAR A CAIXA COM O JRC CONVERSAS
+4.1 Na integração JRC/Chatwoot do Broker, configure o endereço autorizado do JRC, a conta da empresa e a credencial administrativa apropriada, usando os campos protegidos.
+4.2 No atendimento da caixa, selecione/crie o destino JRC autorizado. Confira o nome e o ID da caixa API que receberá as conversas. Reutilize o destino correto quando ele já existir.
+4.3 Confirme a integração pronta, o webhook correspondente e o recebimento das conversas no destino correto.
+4.4 Volte ao JRC e confira os colaboradores dessa caixa específica; uma caixa recriada possui outro ID e pode ter outros membros.
+4.5 O perfil Flow usa o contexto canônico atual de integração/conta/caixa/credencial. Não corrige um vínculo antigo removendo validações ou copiando IDs no banco.
+
+5. EVITAR EXECUTORES E REGRAS CONCORRENTES
+5.1 Confira a saudação automática e a atribuição automática da caixa JRC. Para o transporte direto usado nesta URA, elas devem estar desativadas conforme o diagnóstico de ativação.
+5.2 Confira regras automáticas da central que enviem mensagens, alterem status ou atribuam atendentes nesta caixa. O painel marca regras adicionais como NÃO VERIFICADAS quando não há evidência de consulta.
+5.3 Um AgentBot é um recurso do JRC/Chatwoot que encaminha eventos para um executor externo, como um bot anterior. Ele é diferente de um usuário humano.
+5.4 No transporte direto, um AgentBot concorrente pode disputar a conversa com o Flow do Broker e impedir a ativação. Revise apenas a caixa correta; não remova bots ou regras de toda a conta.
+5.5 Alguns transportes suportam um AgentBot Broker reconhecido pelo próprio contrato. Não trate qualquer AgentBot como dispensável: siga o diagnóstico do transporte configurado.
+
+6. CRIAR OU IMPORTAR A AUTOMAÇÃO NA ÁREA FLOW
+6.1 Abra Flow/Automações. Use Nova automação para criar um modelo ou importar um JSON suportado.
+6.2 O modelo “URA por caixa — Português e English” parte da estrutura OIA com quatro departamentos. Antes de publicar, revise a identidade da empresa, os textos, o expediente e as políticas de tentativas/inatividade. Os horários iniciais não comprovam o expediente real do cliente.
+6.3 O editor cuida da conversa, das decisões e dos horários. No modo reutilizável, não é necessário selecionar a integração e o agente em cada bloco de transferência.
+6.4 JSON arbitrário não é executado automaticamente. A importação mantém os diagnósticos de formatos/recursos suportados; não há Typebot ou Bot Bridge como dependência operacional deste modo.
+6.5 Para uma OIA nativa já existente, use “Usar configuração da caixa” no cartão da automação, inclusive quando ela ainda é rascunho. Uma versão publicada também oferece a conversão no painel de caixas. A conversão cria outro rascunho e preserva o original.
+6.6 O conversor aceita o padrão nativo OIA reconhecido por estrutura. Grafos alterados, subflows opacos ou importações que não correspondam ao padrão recebem pendência de revisão. Não é declarada paridade de outros bots a partir deste exemplo.
+6.7 Revise o novo rascunho e publique a versão na página Flow ou no editor. Publicar cria uma versão imutável do modelo; isso ainda não ativa uma caixa.
+6.8 No editor, o bloco “directory-menu” permite escolher/criar o departamento lógico, idioma, texto, opção de retorno, aviso inválido, tentativas e tempo limite. A transferência lógica referencia esse departamento; o time e as pessoas são configurados no painel Flow da caixa.
+6.9 A simulação do editor usa nomes fictícios identificados como SIMULATION_ONLY. Ela verifica a conversa do modelo, não os agentes, o vínculo real nem a entrega WhatsApp.
+
+7. CONFIGURAR O ATENDIMENTO E ATIVAR NA CAIXA
+7.1 Na página Flow, abra “Caixas vinculadas e operação”. No detalhe do canal, o acesso “Configurar departamentos e ativar Flow” abre o painel com a caixa já indicada.
+7.2 Selecione a automação publicada e a caixa WhatsApp. Confira nome, número mascarado e destino JRC. Caixas sem integração mostram a etapa que falta.
+7.3 Para cada departamento declarado pelo modelo, selecione o time correspondente do JRC. Os membros são consultados sob demanda.
+7.4 Escolha “Todos os membros elegíveis” ou “Escolher e ordenar atendentes”. No primeiro modo, novos membros elegíveis podem aparecer em novas sessões. No segundo, somente os agentes selecionados aparecem, na ordem aprovada.
+7.5 A prévia mostra os nomes reais. Cada menu aceita até nove atendentes mais Voltar/Return; listas maiores exigem selecionar um subconjunto ou reorganizar os departamentos. Ninguém é cortado silenciosamente.
+7.6 Resolva as pendências indicadas. Uma rota sem destino válido não é ativada. A transferência direta de departamento, quando declarada pelo modelo, aponta para um time; a seleção individual aponta para um agente.
+7.7 Clique “Salvar atendimento da caixa”. A configuração recebe uma revisão própria. Salvar não muda o perfil ativo nem reinicia conversas; Operação mostra separadamente a revisão salva e a revisão ativa.
+7.8 Clique “Ativar nesta caixa”. O servidor confere novamente o perfil, o proprietário da automação, o destino e as políticas da central antes de gravar o vínculo e o perfil ativo na mesma transação.
+7.9 Se houver alteração concorrente, atualize os destinos e o vínculo. Uma falha de atualização invalida a revisão anterior para novas ativações.
+7.10 Confira em Operação a admissão de novas entradas e consulte as execuções. Não confunda admissão ativa com prova de entrega no aparelho.
+7.11 “Retomar novas entradas” reutiliza o perfil ativo; não promove silenciosamente uma revisão apenas salva. Para aplicar uma alteração, salve, confira a prévia e ative explicitamente. Isso continua sem retomar conversas humanas.
+
+8. USAR O MESMO MODELO EM OUTRA CAIXA
+8.1 Reutilize a versão publicada; selecione a outra caixa no painel Flow.
+8.2 Associe os departamentos aos times dessa caixa e revise seus agentes elegíveis.
+8.3 Salve o perfil e ative com as revisões atuais.
+8.4 O modelo não precisa carregar os IDs humanos da primeira caixa. Cada nova sessão captura o perfil e a ordem oferecida para seu contexto.
+8.5 Uma resposta “2” mantém a pessoa exibida como opção 2 mesmo se o administrador reordenar o perfil enquanto o cliente espera.
+8.6 Antes da atribuição, a participação no time e na caixa é revalidada. Um agente removido não é substituído por outra pessoa por conveniência.
+8.7 Quando a remoção é conhecida antes de qualquer alteração remota, a recuperação protegida pode enfileirar o mesmo menu com os agentes anteriormente oferecidos que continuam autorizados. Preserva os números originais: se a opção 1 saiu, a antiga opção 2 continua 2. Sem candidatos, só retorna a um menu anterior explicitamente seguro.
+8.8 Essa recuperação não retoma atendimento humano real, não repete resultado remoto incerto e não reexecuta ações intermediárias. Fora dessas condições, o atendimento permanece protegido e exige revisão. A mensagem de diagnóstico indica enfileiramento; a entrega deve ser conferida separadamente.
+
+9. ATENDIMENTO HUMANO, RETOMADA E CSAT
+9.1 A transferência usa o protocolo canônico de atribuição e confirmação. O bot é pausado para o atendimento humano; o destino não é considerado confirmado apenas por um HTTP aceito.
+9.2 Alterar ou ativar o perfil não reabre conversas humanas. Pausar novas entradas é diferente de retomar uma conversa específica.
+9.3 Para reiniciar uma conversa em atendimento humano, use os controles explícitos autorizados dessa conversa. A evolução desses controles no JRC é uma entrega separada deste painel.
+9.4 Configure a pesquisa de satisfação/CSAT no JRC para a caixa e o encerramento utilizados. Este incremento não prova por si só a configuração e a entrega real da pesquisa de cada empresa.
+
+10. VALIDAÇÃO OPERACIONAL APÓS A RELEASE
+10.1 Use uma conversa e contato autorizados. Confira idioma, departamento, nomes do menu, retorno e opção inválida.
+10.2 Escolha um agente e confirme a atribuição efetiva na caixa correta do JRC.
+10.3 Envie outra mensagem durante o atendimento humano e confira que o bot permanece pausado.
+10.4 Responda como agente e confirme a entrega uma única vez no aparelho.
+10.5 Encerre e confira o CSAT configurado. Faça a retomada explícita conforme o procedimento da conversa.
+10.6 Repita conforme a matriz operacional aprovada do cliente. Os 26 caminhos verificados no motor local não equivalem a 26 entregas físicas de WhatsApp.
+
+11. DIAGNÓSTICOS PRINCIPAIS
+ATTENDANCE_HANDOFF_CONTEXT_CHANGED: versão antiga aponta para outra caixa/credencial. Preserve-a; crie um novo modelo por caixa ou reconfigure o destino estático no modo avançado.
+FLOW_BOX_PROFILE_REQUIRED: falta salvar o perfil de atendimento dessa versão nessa caixa.
+FLOW_BOX_PROFILE_CHANGED: outro administrador alterou o perfil; atualize antes de salvar/ativar.
+FLOW_BOX_SCOPE_CHANGED: integração, conta, caixa ou credencial mudou; confira o vínculo e atualize os destinos.
+FLOW_BOX_AGENT_UNAVAILABLE: agente não pertence mais ao time e à caixa; corrija os membros autorizados e revise o encaminhamento.
+FLOW_BOX_AGENT_UNAVAILABLE_REOFFERED: recuperação protegida enfileirou aviso e menu atualizado, preservando a numeração anterior. Confira a execução e a entrega; não é confirmação de mensagem recebida.
+FLOW_BOX_AGENT_LIMIT: selecione até nove atendentes para esse menu.
+FLOW_BOX_SCHEMA_PENDING: a atualização do servidor ainda não inclui o schema necessário; implante a release consolidada e compatível, sem contornar a validação.
+AgentBot concorrente: revise o executor atribuído à caixa e siga o diagnóstico do transporte; não desligue recursos de outras caixas.
+Regras adicionais não verificadas: confira as regras no JRC. Ausência de evidência não significa configuração aprovada.
+
+12. O QUE AINDA IMPEDE PROMOVER ESTA IMPLEMENTAÇÃO
+Consolidar sobre a base funcional atual do Broker, preservando incrementos, marca e configuração guiada das demais frentes.
+Registrar o SQL pendente no próximo número livre; 0085 já está ocupado em outra candidata.
+Executar os testes PostgreSQL de isolamento, concorrência e imutabilidade com TEST_DATABASE_ADMIN_URL de banco descartável.
+Validar a recuperação protegida contra o PostgreSQL/outbox real e suas barreiras de atendimento humano; testes unitários não comprovam atomicidade no banco.
+Conferir os contratos e o bundle nativo no LAB2 atual, sem substituir a base atual pela main antiga.
+Rodar CI do SHA final, preparar imagens imutáveis e obter a aprovação concreta da release compartilhada.
+Implantar apenas no alvo autorizado e registrar separadamente a validação real por empresa/caixa/número.

@@ -26,10 +26,35 @@ function fixture() {
     next:vi.fn(async()=>operation.state==='UNKNOWN'||operation.state==='PENDING'?structuredClone(operation):null)};
   const attendanceService={validateTarget:vi.fn(async()=>{network('target');return {credentialRevision:4};}),catalog:vi.fn(async()=>{network('catalog');return {scope:operation.snapshot!.scope,credentialRevision:4,inboxPolicy:{greetingEnabled:false,autoAssignmentEnabled:false},remoteBot:null,capabilities:{agentBot:'SUPPORTED'},teams:[{id:3,autoAssignment:false}]} as AttendanceCatalog;})};
   const options={transact:async<T>(_org:string,work:(tx:TenantTransaction)=>Promise<T>)=>{expect(locked).toBe(false);locked=true;try{return await work({} as TenantTransaction);}finally{locked=false;}},client:()=>client as unknown as ChatwootClient,attendanceService,repository};
-  return {operation,item,client,repository,events,attendanceService,service:()=>createNativeHandoffService(options),deny:()=>{allowed=false;},restart:()=>{fresh=false;},canonical};
+  return {operation,item,client,repository,events,attendanceService,service:(extra:Record<string,unknown>={})=>createNativeHandoffService({...options,...extra}),deny:()=>{allowed=false;},restart:()=>{fresh=false;},canonical};
 }
 
 describe('durable native handoff',()=>{
+  it('offers guarded recovery only for a proven membership failure before any remote mutation',async()=>{
+    const f=fixture();f.operation.snapshot!.target={teamId:null,agentId:4};f.operation.snapshot!.routeTeamId=3;
+    f.attendanceService.validateTarget.mockRejectedValueOnce(Error('ATTENDANCE_AGENT_NOT_IN_TEAM'));
+    const commit=vi.fn(async()=>{}),recovery={prepare:vi.fn(async()=>({commit}))};
+    const result=await f.service({recovery}).dispatch(f.item);
+    expect(result).toMatchObject({kind:'FAILED',error:'FLOW_BOX_AGENT_UNAVAILABLE_REOFFERED',commit});
+    expect(recovery.prepare).toHaveBeenCalledOnce();expect(f.client.handoffFlowConversation).not.toHaveBeenCalled();expect(f.client.assignAttendanceConversation).not.toHaveBeenCalled();
+  });
+  it('never automatically recovers uncertain or human-owned remote outcomes',async()=>{
+    const f=fixture(),recovery={prepare:vi.fn()};f.operation.snapshot!.routeTeamId=3;
+    f.client.handoffFlowConversation.mockRejectedValueOnce(Error('TIMEOUT'));
+    await expect(f.service({recovery}).dispatch(f.item)).rejects.toThrow('HANDOFF_REMOTE_OUTCOME_UNKNOWN');expect(recovery.prepare).not.toHaveBeenCalled();
+    const human=fixture();human.operation.snapshot!.routeTeamId=3;human.operation.snapshot!.target={teamId:null,agentId:4};human.canonical.meta.assignee={id:9,type:'user'};
+    human.attendanceService.validateTarget.mockRejectedValueOnce(Error('ATTENDANCE_AGENT_NOT_IN_TEAM'));
+    expect(await human.service({recovery}).dispatch(human.item)).toMatchObject({kind:'FAILED'});expect(recovery.prepare).not.toHaveBeenCalled();
+  });
+  it('revalidates directory team membership again before assigning an individual agent',async()=>{
+    const f=fixture();f.operation.snapshot!.target={teamId:null,agentId:4};f.operation.snapshot!.routeTeamId=3;
+    const observed=await f.attendanceService.catalog();
+    f.attendanceService.catalog.mockResolvedValue({...observed,agents:[{id:4,name:'Ana',inboxMember:true}]} as AttendanceCatalog);
+    f.attendanceService.validateTarget.mockResolvedValueOnce({credentialRevision:4}).mockRejectedValueOnce(new Error('ATTENDANCE_AGENT_NOT_IN_TEAM'));
+    await expect(f.service().dispatch(f.item)).rejects.toThrow('HANDOFF_REMOTE_OUTCOME_UNKNOWN');
+    expect(f.client.assignAttendanceConversation).not.toHaveBeenCalled();
+    expect(f.attendanceService.validateTarget).toHaveBeenLastCalledWith(f.operation.snapshot!.scope,{teamId:3,agentId:4});
+  });
   it('confirms a distributing team only after validating the actual human in that team and inbox',async()=>{
     const f=fixture(),catalog=await f.attendanceService.catalog();
     f.attendanceService.catalog.mockResolvedValue({...catalog,teams:[{id:3,name:'Synthetic',autoAssignment:true}]} as AttendanceCatalog);

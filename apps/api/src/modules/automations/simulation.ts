@@ -5,6 +5,7 @@ import {automationEntryConfig,matchesAutomationEntry,AUTOMATION_SIMULATION_MAX_E
   ActionSimulationResponseSchema,ConversationEffectWaitSchema,AutomationMediaSimulationEventSchema,type ConversationEffectWait} from '@jrc/contracts';
 import { executeAutomation } from './engine.js';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
+import {simulationBoxDirectory} from './box-simulation-directory.js';
 
 export const SimulationEventSchema=z.union([
   z.strictObject({type:z.literal('MESSAGE'),text:z.string().max(4096)}),
@@ -35,7 +36,7 @@ function actionWait(result:RuntimeResult,effects:RuntimeResult['effects']):Conve
 
 /** Pure conversation reconstruction: no transport, scheduler or credential adapter is injected. */
 export async function simulateConversation(root:PublishedAutomation,input:SimulationInput,
-  resolve:(automationId:string,version:number)=>Promise<PublishedAutomation>):Promise<RuntimeResult&{httpWaitNodeId?:string;aiWait?:AiSimulationWait;actionWait?:ConversationEffectWait}>{
+  resolve:(automationId:string,version:number)=>Promise<PublishedAutomation>):Promise<RuntimeResult&{routingFixture?:{kind:'SIMULATION_ONLY';syntheticNames:true};httpWaitNodeId?:string;aiWait?:AiSimulationWait;actionWait?:ConversationEffectWait}>{
   const parsed=SimulationInputSchema.parse(input);
   if(!matchesAutomationEntry(automationEntryConfig(root.graph),parsed.text))throw new Error('AUTOMATION_SIMULATION_TRIGGER_NOT_MATCHED');
   let now=new Date(parsed.clock??Date.now());
@@ -45,7 +46,8 @@ export async function simulateConversation(root:PublishedAutomation,input:Simula
     return `${hash.slice(0,8)}-${hash.slice(8,12)}-8${hash.slice(13,16)}-${((parseInt(hash[16]!,16)&3)|8).toString(16)}${hash.slice(17,20)}-${hash.slice(20,32)}`;
   };
   const run=(input:Omit<RuntimeInput,'effectWaitId'>,state?:RuntimeState)=>executeAutomation(root,{...input,effectWaitId},resolve,state);
-  let result=await run({text:parsed.text,eventType:'MESSAGE',now});
+  const boxDirectory=simulationBoxDirectory(root.graph);
+  let result=await run({text:parsed.text,eventType:'MESSAGE',now,...(boxDirectory?{boxDirectory}:{})});
   const effects:RuntimeResult['effects']=[],trace:RuntimeResult['trace']=[];
   let outputBytes=0;
   const append=(turn:RuntimeResult)=>{
@@ -115,5 +117,5 @@ export async function simulateConversation(root:PublishedAutomation,input:Simula
   const aiConfig=aiEffect?AiNodeConfigSchema.parse(Object.fromEntries(Object.entries(aiEffect.payload).filter(([key])=>!['nodeType','variables','runtimeStateVersion'].includes(key)))):undefined;
   const aiWait:AiSimulationWait|undefined=aiConfig&&aiEffect?{nodeId:aiEffect.nodeId,operation:aiConfig.operation,maxResponseBytes:aiConfig.maxResponseBytes,...(aiConfig.operation==='classify'?{categories:aiConfig.categories}:aiConfig.operation==='extract'?{fields:aiConfig.fields}:{})}:undefined;
   const effectWait=actionWait(result,effects);
-  return {...result,effects,trace,...(httpWaitNodeId?{httpWaitNodeId}:{}),...(aiWait?{aiWait}:{}),...(effectWait?{actionWait:effectWait}:{})};
+  return {...result,effects,trace,...(boxDirectory?{routingFixture:{kind:'SIMULATION_ONLY' as const,syntheticNames:true as const}}:{}),...(httpWaitNodeId?{httpWaitNodeId}:{}),...(aiWait?{aiWait}:{}),...(effectWait?{actionWait:effectWait}:{})};
 }

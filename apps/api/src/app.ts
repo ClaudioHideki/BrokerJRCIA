@@ -664,6 +664,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     const schemaObjectsReady = () => probeRequiredRuntimeSchema(sql => pools.appPool.query(sql));
     const automationRepository=createPostgresAutomationRepository();
     const automationOptions={transact:<T>(org:string,work:Parameters<typeof withOrganizationTransaction<T>>[2])=>withOrganizationTransaction(pools.appPool,org,work),repository:automationRepository,enabled:config.automationRuntimeV2Enabled,
+      ...(integrationRuntime.boxRouting?{boxRouting:integrationRuntime.boxRouting}:{}),
       ...(integrationRuntime.media?{media:integrationRuntime.media}:{}),...(integrationRuntime.conversationCatalog?{conversationCatalog:integrationRuntime.conversationCatalog}:{})};
     const automationRuntimeReady=createAutomationRuntimeReadiness({transact:automationOptions.transact,schemaCurrent:schemaObjectsReady,probeRedis:async()=>redisClient.isReady&&(await redisClient.ping())==='PONG'});
     attendanceResume={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),service:createAttendanceResumeService(automationOptions)};
