@@ -24,6 +24,9 @@ test('persists guided setup, imports a private package and isolates the next com
   await expect(page.getByRole('link', { name: 'Voltar à configuração guiada' })).toBeVisible();
   await page.getByRole('link', { name: 'Voltar à configuração guiada' }).click(); await expect(page).toHaveURL(firstUrl);
   await page.getByLabel('Organização ativa').selectOption({ label: 'JRC E2E Filial' });
+  // Hiding the previous tenant surface is the start of the switch, not its ACK.
+  // A full navigation before the positive session response aborts that request.
+  await expect(page.getByText('Organização ativa: JRC E2E Filial', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: `Suporte sintético ${info.project.name}` })).not.toBeVisible();
   await page.goto('/configuracao-guiada'); await page.getByLabel('Nome da configuração').fill(`Meta sintética ${info.project.name}`);
   await page.getByRole('combobox', { name: 'Conexão WhatsApp', exact: true }).selectOption('META');
