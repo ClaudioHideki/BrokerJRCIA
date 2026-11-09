@@ -563,6 +563,8 @@ services:
     environment:
       SERVER_TYPE: http
       SERVER_PORT: "8080"
+      CONFIG_SESSION_PHONE_CLIENT: ${CONFIG_SESSION_PHONE_CLIENT:-Broker JRC}
+      CONFIG_SESSION_PHONE_NAME: ${CONFIG_SESSION_PHONE_NAME:-Chrome}
 
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://jrc_evolution:${EVOLUTION_DB_PASSWORD:?required}@postgres:5432/jrc_evolution?schema=public
