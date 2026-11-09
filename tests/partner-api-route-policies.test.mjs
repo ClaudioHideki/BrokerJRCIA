@@ -79,3 +79,13 @@ it('records messaging:read on every existing literal GET guard, including privat
  for(const route of reads)expect(route).toMatchObject({authentication:'JWT_CURRENT_MEMBERSHIP_OR_CURRENT_ORGANIZATION_API_KEY',permission:'CURRENT_MEMBER_OR_MESSAGING_READ_SCOPE',tenantRls:true,handlerFile:'apps/api/src/http/routes/messaging.ts'});
  expect(reads.find(route=>route.path==='/v1/messaging/media/{id}').ownershipCheck).toContain('RECHECK_AFTER_PRIVATE_MEDIA_READ');
 });
+
+it('classifies delegated box profiles as opaque-session read/edit operations with root and channel isolation',async()=>{
+ const openapi=JSON.parse(await readFile(resolve(root,'docs/api/openapi.json'),'utf8'));
+ const inventory=await buildRouteInventory({rootDirectory:root,openapi});
+ for(const [method,permission]of [['GET','CURRENT_ACTOR_EXPLICIT_FLOW_READ_SCOPE'],['PUT','CURRENT_ACTOR_EXPLICIT_FLOW_EDIT_SCOPE']]){
+  const route=inventory.find(r=>r.method===method&&r.path==='/v1/delegated-flows/{id}/channels/{channelId}/box-routing');
+  expect(route).toMatchObject({authentication:'OPAQUE_DELEGATED_SESSION_HASH_LOOKUP',permission,tenantRls:true,handlerFile:'apps/api/src/http/routes/flow-delegation.ts'});
+  expect(route.ownershipCheck).toContain('ROOT_CHANNEL');expect(route.challengeExposure).toContain('NO_EMAIL_OR_SECRETS');
+ }
+});

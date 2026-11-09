@@ -66,6 +66,8 @@ const EXPECTED_OPERATIONS = [
   'POST /v1/automations/{id}/channels/{channelId}/media',
   'POST /v1/automations/{id}/channels/{channelId}/media/{mediaId}/revoke',
   'GET /v1/delegated-flows/{id}/resource-channels',
+  'GET /v1/delegated-flows/{id}/channels/{channelId}/box-routing',
+  'PUT /v1/delegated-flows/{id}/channels/{channelId}/box-routing',
   'GET /v1/delegated-flows/{id}/channels/{channelId}/action-catalog',
   'POST /v1/delegated-flows/{id}/channels/{channelId}/action-resources',
   'GET /v1/delegated-flows/{id}/channels/{channelId}/media',
