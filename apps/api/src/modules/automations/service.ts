@@ -23,9 +23,11 @@ import {createConversationResourceService,assertConversationResourcePolicies,typ
 import type {MediaStore} from '../messaging/media-store.js';
 import type {AutomationExecutionQuery} from '@jrc/contracts';
 import {prepareExecutionSearch,readExecutionPage} from './execution-inspection.js';
+import {boxTemplateRoutes,type BoxDirectorySnapshot} from '@jrc/contracts';
+import {createBoxRoutingService,type BoxRoutingService} from './box-routing-service.js';
 
 export {AutomationError} from './errors.js';
-export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean;runtimeReady?(org:string):Promise<boolean>;handoffReadiness?:HandoffReadiness;media?:Pick<MediaStore,'writeUpload'|'read'>;conversationCatalog?:ConversationCatalogPort;resourceAuthorization?:(tx:TenantTransaction,org:string,root:string,channel:string)=>Promise<void>}
+export interface AutomationServiceOptions {transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;repository?:AutomationRepository;messaging?:MessagingRepository;enabled?:boolean;runtimeReady?(org:string):Promise<boolean>;handoffReadiness?:HandoffReadiness;boxRouting?:BoxRoutingService|undefined;media?:Pick<MediaStore,'writeUpload'|'read'>;conversationCatalog?:ConversationCatalogPort;resourceAuthorization?:(tx:TenantTransaction,org:string,root:string,channel:string)=>Promise<void>}
 export async function requireAutomationDraftAccess(tx:TenantTransaction,org:string){
  const access=await readAutomationAccess(tx,org);
  if(access?.status!=='ACTIVE')throw new AutomationError('ORGANIZATION_NOT_ACTIVE',403);
@@ -62,6 +64,7 @@ const readSubflowCursor=(value:string)=>{
 
 export function createAutomationService(options:AutomationServiceOptions){
   const repository=options.repository??createPostgresAutomationRepository(),messaging=options.messaging??createPostgresMessagingRepository(),enabled=options.enabled??true;
+  const boxRouting=options.boxRouting?createBoxRoutingService({...options.boxRouting._options,transact:options.transact}):undefined;
   const resources=createConversationResourceService(options);
   const available=async(org:string)=>{if(!enabled)throw new AutomationError('AUTOMATION_RUNTIME_DISABLED',409);if(options.runtimeReady&&!await options.runtimeReady(org))throw new AutomationError('AUTOMATION_DEPENDENCY_UNAVAILABLE',503);};
   const getDefinition=async(tx:TenantTransaction,org:string,id:string,lock=false)=>{
@@ -75,12 +78,16 @@ export function createAutomationService(options:AutomationServiceOptions){
   };
   // Remote checks run before the committing transaction. Published dependencies
   // are immutable; draft revision and local destination snapshots are checked again.
-  const prepareHandoffs=async(org:string,graph:AutomationGraphV1,channelId?:string,dependencies?:SubflowSnapshot):Promise<PreparedHandoffReadiness>=>{
+  const prepareHandoffs=async(org:string,graph:AutomationGraphV1,channelId?:string,dependencies?:SubflowSnapshot,routing?:{automationId:string;version:number;expectedRevision?:number;source?:'LATEST'|'ACTIVE'}):Promise<PreparedHandoffReadiness>=>{
     const checks:PreparedHandoffReadiness[]=[],seen=new Set<string>();
+    if(boxTemplateRoutes(graph).length&&channelId){
+      if(!boxRouting||!routing)throw new AutomationError('FLOW_BOX_PROFILE_REQUIRED',409);
+      checks.push(await boxRouting.prepareBinding(org,routing.automationId,routing.version,channelId,routing.expectedRevision,routing.source));
+    }
     const visit=async(current:AutomationGraphV1)=>{
       if(!AutomationGraphV1Schema.safeParse(current).success)throw new AutomationError('AUTOMATION_PUBLISHED_GRAPH_INVALID',409);
-      if(current.nodes.some(node=>node.type==='handoff')){
-        const missing=current.nodes.find(node=>node.type==='handoff'&&!AutomationHandoffConfigSchema.safeParse(node.data).success);
+      if(current.nodes.some(node=>node.type==='handoff'&&node.data.handoffVersion!==3)){
+        const missing=current.nodes.find(node=>node.type==='handoff'&&node.data.handoffVersion!==3&&!AutomationHandoffConfigSchema.safeParse(node.data).success);
         if(missing)throw new AutomationError('AUTOMATION_HANDOFF_DESTINATION_REQUIRED',422,[{nodeId:missing.id,field:'data.destination',code:'HANDOFF_DESTINATION_REQUIRED',message:`${missing.label}: selecione uma caixa e um time ou atendente antes de publicar.`}]);
         if(!options.handoffReadiness)throw new AutomationError('AUTOMATION_HANDOFF_UNAVAILABLE',409);
         try{checks.push(await options.handoffReadiness.prepare(org,current,channelId));}
@@ -97,9 +104,17 @@ export function createAutomationService(options:AutomationServiceOptions){
         await visit(child.graph);
       }
     };await visit(graph);
-    return {async assertCurrent(tx){for(const check of checks)await check.assertCurrent(tx);}};
+    return {async assertCurrent(tx){for(const check of checks)await check.assertCurrent(tx);},async activateProfile(tx){for(const check of checks)await check.activateProfile?.(tx);}};
   };
   return {
+    boxRoutingCatalog:async(org:string,id:string,channel:string,v:number,teamId?:number)=>{
+      await options.transact(org,tx=>requireAutomationDraftAccess(tx,org));if(!boxRouting)throw new AutomationError('FLOW_BOX_INTEGRATION_REQUIRED',409);
+      return boxRouting.get(org,id,v,channel,teamId);
+    },
+    saveBoxRouting:async(org:string,id:string,channel:string,input:{version:number;expectedRevision:number;config:import('@jrc/contracts').BoxRoutingConfig},actorId:string)=>{
+      await options.transact(org,tx=>requireAutomationDraftAccess(tx,org));if(!boxRouting)throw new AutomationError('FLOW_BOX_INTEGRATION_REQUIRED',409);
+      return boxRouting.save(org,id,channel,input,actorId);
+    },
     resourceChannels:(org:string,id:string,input:{pageSize?:number;cursor?:string}={})=>resources.resourceChannels(org,id,input),
     actionCatalog:(org:string,id:string,channel:string,input:{pageSize?:number;cursor?:string}={})=>resources.actionCatalog(org,id,channel,input),
     saveActionResource:(org:string,id:string,channel:string,input:ActionResourceWrite)=>resources.saveResource(org,id,channel,input),
@@ -194,20 +209,21 @@ export function createAutomationService(options:AutomationServiceOptions){
     });},
     versions:(org:string,id:string)=>options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listVersions(tx,org,id)).map(version)};}),
     bindings:(org:string,id:string)=>options.transact(org,async tx=>{await getDefinition(tx,org,id);return {data:(await repository.listBindings(tx,org,id)).map(row=>({...row,createdAt:iso(row.createdAt),updatedAt:iso(row.updatedAt),schemaVersion:1}))};}),
-    bind:async(org:string,id:string,input:{channelId:string;version?:number;humanDestinationId?:string|null;expectedOwnerRevision?:number;assertScope?:(tx:TenantTransaction)=>Promise<void>})=>{await available(org);
+    bind:async(org:string,id:string,input:{channelId:string;version?:number;humanDestinationId?:string|null;expectedOwnerRevision?:number;expectedProfileRevision?:number;assertScope?:(tx:TenantTransaction)=>Promise<void>})=>{await available(org);
       const prepared=await options.transact(org,async tx=>{await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id);const selected=input.version??row.activeVersion;if(!selected)throw new AutomationError('AUTOMATION_NOT_PUBLISHED',409);const version=await repository.getVersion(tx,org,id,selected);if(!version)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return version;});
       const resourceSnapshot=await options.transact(org,tx=>prepareSubflowSnapshot(tx,org,{automationId:id,version:prepared.version,graph:prepared.graph,runtimeStateVersion:prepared.runtimeStateVersion??1},repository,'HISTORICAL'));
       await resources.refreshGraphs(org,resourceSnapshot.versions.map(value=>value.graph));
-      const readiness=await prepareHandoffs(org,prepared.graph,input.channelId,resourceSnapshot);
+      const readiness=await prepareHandoffs(org,prepared.graph,input.channelId,resourceSnapshot,{automationId:id,version:prepared.version,...(input.expectedProfileRevision===undefined?{}:{expectedRevision:input.expectedProfileRevision})});
       return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);await requireAutomationDraftAccess(tx,org);const row=await getDefinition(tx,org,id,true);if(row.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);const selected=input.version??row.activeVersion;if(selected!==prepared.version)throw new AutomationError('AUTOMATION_CHANGED',409);if(!await repository.getVersion(tx,org,id,selected))throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);
       await readiness.assertCurrent(tx);
       // Internal callers can fence a prepared setup scope; no HTTP schema accepts this callback.
       if(input.assertScope){await lockAttendanceChannel(tx,org,input.channelId);await input.assertScope(tx);}
       for(const value of resourceSnapshot.versions)await assertConversationResourcePolicies(tx,org,value.automationId,[value.graph]);
       const channel=await messaging.findChannel(tx,org,input.channelId);if(!channel)throw new AutomationError('CHANNEL_NOT_FOUND',404);
+      await readiness.activateProfile?.(tx);
       const result=await transitionChannelOwner(tx,org,{...input,botPublicId:id,botOriginReference:AUTOMATION_ORIGIN,version:selected});const binding=result.binding!;
       return {...binding,ownerRevision:result.ownerRevision,createdAt:iso(binding.createdAt),updatedAt:iso(binding.updatedAt),schemaVersion:1};});},
-    setBindingStatus:async(org:string,bindingId:string,input:{status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number;expectedOwnerRevision?:number},automationId:string)=>{
+    setBindingStatus:async(org:string,bindingId:string,input:{status:'ACTIVE'|'PAUSED'|'DISABLED';revision:number;expectedOwnerRevision?:number;expectedProfileRevision?:number|undefined},automationId:string)=>{
       let readiness:PreparedHandoffReadiness|undefined;
       let resourceSnapshot:SubflowSnapshot|undefined;
       if(input.status==='ACTIVE'){
@@ -215,7 +231,7 @@ export function createAutomationService(options:AutomationServiceOptions){
         const snapshot=await options.transact(org,async tx=>{const binding=(await repository.listBindings(tx,org,automationId)).find(item=>item.id===bindingId);if(!binding)throw new AutomationError('AUTOMATION_BINDING_NOT_FOUND',404);if(binding.revision!==input.revision)throw new AutomationError('AUTOMATION_BINDING_CHANGED',409);const version=await repository.getVersion(tx,org,automationId,binding.version);if(!version)throw new AutomationError('AUTOMATION_VERSION_NOT_FOUND',404);return {binding,version};});
         resourceSnapshot=await options.transact(org,tx=>prepareSubflowSnapshot(tx,org,{automationId,version:snapshot.version.version,graph:snapshot.version.graph,runtimeStateVersion:snapshot.version.runtimeStateVersion??1},repository,'HISTORICAL'));
         await resources.refreshGraphs(org,resourceSnapshot.versions.map(value=>value.graph));
-        readiness=await prepareHandoffs(org,snapshot.version.graph,snapshot.binding.channelId,resourceSnapshot);
+        readiness=await prepareHandoffs(org,snapshot.version.graph,snapshot.binding.channelId,resourceSnapshot,{automationId,version:snapshot.version.version,source:'ACTIVE',...(input.expectedProfileRevision===undefined?{}:{expectedRevision:input.expectedProfileRevision})});
       }
       return options.transact(org,async tx=>{await lockOwnershipMutations(tx,org);if(input.status==='ACTIVE')await requireAutomationDraftAccess(tx,org);
       const automation=await getDefinition(tx,org,automationId,true);if(automation.lifecycleStatus==='ARCHIVED')throw new AutomationError('AUTOMATION_ARCHIVED',409);
@@ -283,8 +299,25 @@ export function createExecutionService(options:AutomationServiceOptions){
       return options.transact(org,tx=>readExecutionPage(tx,search));
     },
     get:(org:string,id:string)=>options.transact(org,async tx=>{const row=await repository.getExecution(tx,org,id);if(!row)throw new AutomationError('AUTOMATION_EXECUTION_NOT_FOUND',404);const nodes=await repository.listNodeExecutions(tx,org,id),outbox=await repository.listExecutionOutbox(tx,org,id),context=await repository.getExecutionContext(tx,org,id);const diagnostic=context.conversationId?await readAttendanceDiagnostic(tx,{organizationId:org,channelId:row.channelId,conversationId:context.conversationId}):undefined;return {...execution(row),...(diagnostic?{attendanceDiagnostic:diagnostic}:{}),conversationRef:context.conversationId,contactRef:context.contactId,state:redact(row.state),errorCode:row.errorCode,input:redact(row.input),durationMs:(row.completedAt?new Date(row.completedAt):new Date()).getTime()-new Date(row.startedAt).getTime(),nodes:nodes.map(node=>({...node,attempt:Math.floor(node.ordinal/1000)+1,durationMs:node.completedAt?Math.max(0,new Date(node.completedAt).getTime()-new Date(node.startedAt).getTime()):null,input:redact(node.input),output:redact(node.output),startedAt:iso(node.startedAt),completedAt:node.completedAt?iso(node.completedAt):null})),outbox:outbox.map(item=>({...item,lastError:item.lastError,createdAt:iso(item.createdAt),updatedAt:iso(item.updatedAt)}))};}),
-    runOnce:(org:string)=>options.enabled===false?Promise.resolve({processed:false}):options.transact(org,async tx=>{const leaseToken=randomUUID(),claimed=await repository.claimExecution(tx,org,leaseToken,120000);if(!claimed)return {processed:false};
+    runOnce:async(org:string)=>{
+      if(options.enabled===false)return {processed:false};
+      const separate=options.boxRouting!==undefined,token=randomUUID();
+      const outside=separate?await options.transact(org,tx=>repository.claimExecution(tx,org,token,120000)):null;
+      if(separate&&!outside)return {processed:false};
+      let boxDirectory:BoxDirectorySnapshot|undefined;
+      if(outside&&(Object.keys(outside.state??{}).length===0||!outside.state.boxDirectory&&outside.state.steps===0&&!outside.state.waiting&&outside.state.stack?.length===0)){
+        try{boxDirectory=await options.boxRouting!.prepareSession(org,outside.automationId,outside.version,outside.channelId);}
+        catch(error){await options.transact(org,tx=>repository.failExecution(tx,org,outside.id,token,error instanceof Error?error.message.slice(0,120):'FLOW_BOX_DIRECTORY_FAILED',false));return {processed:true,executionId:outside.id,status:'FAILED' as const};}
+      }
+      return options.transact(org,async tx=>{const leaseToken=token,claimed=outside??await repository.claimExecution(tx,org,leaseToken,120000);if(!claimed)return {processed:false};
+      if(outside){
+        await lockAttendanceChannel(tx,org,claimed.channelId);
+        const held=await tx.query(`SELECT id FROM automation_executions WHERE organization_id=$1 AND id=$2 AND status='RUNNING'
+          AND lease_token=$3 AND lease_expires_at>clock_timestamp() FOR NO KEY UPDATE`,[org,claimed.id,token]);
+        if(!held.rowCount)return {processed:false};
+      }
       try{const root=await resolve(tx,org,claimed.automationId,claimed.version),kind=String(claimed.input.eventType??'MESSAGE') as 'MESSAGE'|'RESUME'|'TIMER';
+        if(boxDirectory)await options.boxRouting!.assertSession(tx,org,claimed.automationId,claimed.version,claimed.channelId,boxDirectory);
         const dependencies=publishedDependencyPolicy(root.graph)===1?await prepareSubflowSnapshot(tx,org,root,repository,'HISTORICAL'):undefined;
         const rawWait=claimed.input.inputWait;
         const inputWait=rawWait&&typeof rawWait==='object'&&!Array.isArray(rawWait)&&typeof (rawWait as Record<string,unknown>).waitId==='string'
@@ -293,9 +326,10 @@ export function createExecutionService(options:AutomationServiceOptions){
           ?Object.hasOwn(claimed.input,'centralMediaReferenceId')
             ?await readCanonicalCentralInputMedia(tx,org,claimed.channelId,claimed.conversationId,{type:'MEDIA',referenceId:claimed.input.centralMediaReferenceId})
             :await readCanonicalInputMedia(tx,org,claimed.channelId,claimed.conversationId,String(claimed.input.messageId??'')):undefined;
-        const result=await executeAutomation(dependencies?.root??root,{text:String(claimed.input.text??''),eventType:kind,now:new Date(),payload:claimed.input,...(media?{media}:{}),...(inputWait?{inputWait}:{})},dependencies?.resolve??((id,v)=>resolve(tx,org,id,v)),Object.keys(claimed.state??{}).length?claimed.state as RuntimeState:undefined);
+        const result=await executeAutomation(dependencies?.root??root,{text:String(claimed.input.text??''),eventType:kind,now:new Date(),payload:claimed.input,...(boxDirectory?{boxDirectory}:{}),...(media?{media}:{}),...(inputWait?{inputWait}:{})},dependencies?.resolve??((id,v)=>resolve(tx,org,id,v)),Object.keys(claimed.state??{}).length?claimed.state as RuntimeState:undefined);
         await repository.saveExecutionResult(tx,claimed,result);return {processed:true,executionId:claimed.id,status:result.status};
-      }catch(error){await repository.failExecution(tx,org,claimed.id,leaseToken,error instanceof Error?error.message.slice(0,120):'AUTOMATION_EXECUTION_FAILED',false);return {processed:true,executionId:claimed.id,status:'FAILED' as const};}}),
+      }catch(error){await repository.failExecution(tx,org,claimed.id,leaseToken,error instanceof Error?error.message.slice(0,120):'AUTOMATION_EXECUTION_FAILED',false);return {processed:true,executionId:claimed.id,status:'FAILED' as const};}});
+    },
     cancel:(org:string,id:string)=>options.transact(org,async tx=>{if(!await repository.cancelExecution(tx,org,id))throw new AutomationError('AUTOMATION_EXECUTION_NOT_CANCELABLE',409);return {ok:true};}),
     retry:(org:string,id:string)=>options.transact(org,async tx=>{const row=await repository.getExecution(tx,org,id);if(!row)throw new AutomationError('AUTOMATION_EXECUTION_NOT_FOUND',404);if(row.status==='UNKNOWN')throw new AutomationError('AUTOMATION_EXECUTION_RECONCILIATION_REQUIRED',409);if(!await repository.retryExecution(tx,org,id))throw new AutomationError('AUTOMATION_EXECUTION_NOT_RETRYABLE',409);return {ok:true};}),
     reconcile:(org:string,id:string,actorId:string,input:{outboxId:string;outcome:'CONFIRMED_SENT'|'CONFIRMED_NOT_SENT'|'UNRESOLVED';evidenceCode:string;providerReference?:string})=>options.transact(org,async tx=>{const row=await repository.getExecution(tx,org,id);if(!row)throw new AutomationError('AUTOMATION_EXECUTION_NOT_FOUND',404);if(!await repository.reconcileUnknownOutbox(tx,{org,executionId:id,actorId,...input}))throw new AutomationError('AUTOMATION_EFFECT_NOT_RECONCILABLE',409);return {ok:true,outcome:input.outcome,automaticResend:false};}),

@@ -10,6 +10,7 @@ export interface HandoffSnapshot {
   scope:AttendanceScope; origin:string; credentialRevision:number; bindingId:string; bindingRevision:number;
   automationId:string; version:number; ownerRevision:number; controlRevision:number;
   sessionId:string; sessionRevision:number; cycle:number; remoteConversationId:number; target:HumanTarget;
+  routeTeamId?:number;
 }
 export interface HandoffOperation {
   id:string; organizationId:string; outboxId:string; executionId:string; channelId:string; conversationId:string;

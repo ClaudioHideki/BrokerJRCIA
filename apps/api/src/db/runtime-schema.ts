@@ -16,7 +16,8 @@ import {integrationDiagnosticsRuntimeSql} from './integration-diagnostics-runtim
 import {flowInspectionRuntimeSql} from './flow-inspection-runtime-schema.js';
 import {centralMediaRuntimeSql} from './central-media-runtime-schema.js';
 import {guidedSetupRuntimeSql} from './guided-setup-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0085_guided_setup';
+import {boxRoutingRuntimeSql} from './box-routing-runtime-schema.js';
+export const RUNTIME_SCHEMA_BASELINE = '0086_automation_box_routing';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -440,7 +441,7 @@ const requiredObjectsSql = `SELECT
         FROM unnest(i.indkey) WITH ORDINALITY k(attnum,ordinality)
         JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum)
         =ARRAY['organization_id','channel_id','contact_id','id'])
-   AND (${flowDelegationRuntimeSql}) AND (${nativeFlowGuardCoverageRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AND (${consolidatedRuntimeSql}) AND (${inputTimeoutRuntimeSql}) AND (${nicoTakeoverRuntimeSql}) AND (${conversationEffectsRuntimeSql}) AND (${qrIdentityRuntimeSql}) AND (${historyImportRuntimeSql}) AND (${flowDomainRuntimeSql}) AND (${metaOnboardingRuntimeSql}) AND (${partnerApiRuntimeSql}) AND (${campaignRuntimeSql}) AND (${initialIdentityRuntimeSql}) AND (${auditCorrectionsRuntimeSql}) AND (${integrationDiagnosticsRuntimeSql}) AND (${flowInspectionRuntimeSql}) AND (${centralMediaRuntimeSql}) AND (${guidedSetupRuntimeSql})
+   AND (${flowDelegationRuntimeSql}) AND (${nativeFlowGuardCoverageRuntimeSql}) AND (${whatsappGroupRuntimeSql}) AND (${consolidatedRuntimeSql}) AND (${inputTimeoutRuntimeSql}) AND (${nicoTakeoverRuntimeSql}) AND (${conversationEffectsRuntimeSql}) AND (${qrIdentityRuntimeSql}) AND (${historyImportRuntimeSql}) AND (${flowDomainRuntimeSql}) AND (${metaOnboardingRuntimeSql}) AND (${partnerApiRuntimeSql}) AND (${campaignRuntimeSql}) AND (${initialIdentityRuntimeSql}) AND (${auditCorrectionsRuntimeSql}) AND (${integrationDiagnosticsRuntimeSql}) AND (${flowInspectionRuntimeSql}) AND (${centralMediaRuntimeSql}) AND (${guidedSetupRuntimeSql}) AND (${boxRoutingRuntimeSql})
    AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c
     WHERE c.conrelid=pg_catalog.to_regclass('public.chatwoot_attendance_observations')
      AND c.conname='chatwoot_attendance_reply_transport_v2' AND c.contype='c' AND c.convalidated

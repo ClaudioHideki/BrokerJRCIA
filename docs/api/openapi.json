@@ -4318,6 +4318,12 @@
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "expectedProfileRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "humanDestinationId": {
                     "format": "uuid",
                     "nullable": true,
@@ -4395,6 +4401,12 @@
                 "additionalProperties": false,
                 "properties": {
                   "expectedOwnerRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedProfileRevision": {
+                    "exclusiveMinimum": true,
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
@@ -4950,6 +4962,217 @@
                   "kind",
                   "definition",
                   "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/automations/{id}/channels/{channelId}/box-routing": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "teamId",
+            "required": false,
+            "schema": {
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "channelId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "channelId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "routes": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "agentIds": {
+                              "items": {
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "maxItems": 9,
+                              "type": "array"
+                            },
+                            "membership": {
+                              "enum": [
+                                "ALL",
+                                "SELECTED"
+                              ],
+                              "type": "string"
+                            },
+                            "mode": {
+                              "enum": [
+                                "AGENT",
+                                "TEAM"
+                              ],
+                              "type": "string"
+                            },
+                            "routeKey": {
+                              "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                              "type": "string"
+                            },
+                            "teamId": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "routeKey",
+                            "teamId",
+                            "mode",
+                            "membership",
+                            "agentIds"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 20,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "schemaVersion": {
+                        "enum": [
+                          1
+                        ],
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "schemaVersion",
+                      "routes"
+                    ],
+                    "type": "object"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "version",
+                  "expectedRevision",
+                  "config"
                 ],
                 "type": "object"
               }
@@ -29009,6 +29232,12 @@
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "expectedProfileRevision": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "expectedScopeRevision": {
                     "exclusiveMinimum": true,
                     "maximum": 9007199254740991,
@@ -29666,6 +29895,1338 @@
         },
         "responses": {
           "200": {
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "flowSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/delegated-flows/{id}/channels/{channelId}/box-routing": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "teamId",
+            "required": false,
+            "schema": {
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "channelId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "catalog": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "agents": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "inboxMember": {
+                                "type": "boolean"
+                              },
+                              "name": {
+                                "maxLength": 1000,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "inboxMember"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 10000,
+                          "type": "array"
+                        },
+                        "attributes": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "displayType": {
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "id": {
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "key": {
+                                "maxLength": 1000,
+                                "type": "string"
+                              },
+                              "model": {
+                                "maxLength": 100,
+                                "type": "string"
+                              },
+                              "name": {
+                                "maxLength": 1000,
+                                "type": "string"
+                              },
+                              "values": {
+                                "items": {
+                                  "maxLength": 1000,
+                                  "type": "string"
+                                },
+                                "maxItems": 1000,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "key",
+                              "name",
+                              "displayType",
+                              "model",
+                              "values"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 10000,
+                          "type": "array"
+                        },
+                        "brokerBotId": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "nullable": true,
+                          "type": "integer"
+                        },
+                        "capabilities": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "agentBot": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNSUPPORTED",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            },
+                            "agents": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNSUPPORTED",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            },
+                            "attributes": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNSUPPORTED",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            },
+                            "controlEvents": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNSUPPORTED",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            },
+                            "hours": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNSUPPORTED",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            },
+                            "inboxMembership": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNSUPPORTED",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            },
+                            "initialPending": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNSUPPORTED",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            },
+                            "labels": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNSUPPORTED",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            },
+                            "signatures": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNSUPPORTED",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            },
+                            "teams": {
+                              "enum": [
+                                "SUPPORTED",
+                                "UNSUPPORTED",
+                                "UNVERIFIED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "teams",
+                            "agents",
+                            "inboxMembership",
+                            "labels",
+                            "attributes",
+                            "hours",
+                            "agentBot",
+                            "signatures",
+                            "controlEvents",
+                            "initialPending"
+                          ],
+                          "type": "object"
+                        },
+                        "credentialRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "hours": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "days": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "allDay": {
+                                    "type": "boolean"
+                                  },
+                                  "closed": {
+                                    "type": "boolean"
+                                  },
+                                  "closeHour": {
+                                    "maximum": 23,
+                                    "minimum": 0,
+                                    "nullable": true,
+                                    "type": "integer"
+                                  },
+                                  "closeMinute": {
+                                    "maximum": 59,
+                                    "minimum": 0,
+                                    "nullable": true,
+                                    "type": "integer"
+                                  },
+                                  "day": {
+                                    "maximum": 6,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "openHour": {
+                                    "maximum": 23,
+                                    "minimum": 0,
+                                    "nullable": true,
+                                    "type": "integer"
+                                  },
+                                  "openMinute": {
+                                    "maximum": 59,
+                                    "minimum": 0,
+                                    "nullable": true,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "day",
+                                  "closed",
+                                  "allDay",
+                                  "openHour",
+                                  "openMinute",
+                                  "closeHour",
+                                  "closeMinute"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 7,
+                              "type": "array"
+                            },
+                            "enabled": {
+                              "nullable": true,
+                              "type": "boolean"
+                            },
+                            "timezone": {
+                              "maxLength": 200,
+                              "nullable": true,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "timezone",
+                            "days"
+                          ],
+                          "type": "object"
+                        },
+                        "inboxPolicy": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "autoAssignmentEnabled": {
+                              "nullable": true,
+                              "type": "boolean"
+                            },
+                            "greetingEnabled": {
+                              "nullable": true,
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "greetingEnabled",
+                            "autoAssignmentEnabled"
+                          ],
+                          "type": "object"
+                        },
+                        "labels": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "name": {
+                                "maxLength": 1000,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 10000,
+                          "type": "array"
+                        },
+                        "observedAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "remoteBot": {
+                          "additionalProperties": false,
+                          "nullable": true,
+                          "properties": {
+                            "id": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "name": {
+                              "maxLength": 1000,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "scope": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "accountId": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "channelId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "destinationRevision": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "inboxId": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "integrationId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "organizationId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "organizationId",
+                            "channelId",
+                            "integrationId",
+                            "destinationRevision",
+                            "accountId",
+                            "inboxId"
+                          ],
+                          "type": "object"
+                        },
+                        "teams": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "autoAssignment": {
+                                "nullable": true,
+                                "type": "boolean"
+                              },
+                              "id": {
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "name": {
+                                "maxLength": 1000,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "autoAssignment"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 10000,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "scope",
+                        "observedAt",
+                        "credentialRevision",
+                        "teams",
+                        "agents",
+                        "labels",
+                        "attributes",
+                        "hours",
+                        "remoteBot",
+                        "inboxPolicy",
+                        "capabilities"
+                      ],
+                      "type": "object"
+                    },
+                    "profile": {
+                      "additionalProperties": false,
+                      "nullable": true,
+                      "properties": {
+                        "activeRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "nullable": true,
+                          "type": "integer"
+                        },
+                        "automationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "channelId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "config": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "routes": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "agentIds": {
+                                    "items": {
+                                      "exclusiveMinimum": true,
+                                      "maximum": 9007199254740991,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "maxItems": 9,
+                                    "type": "array"
+                                  },
+                                  "membership": {
+                                    "enum": [
+                                      "ALL",
+                                      "SELECTED"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "mode": {
+                                    "enum": [
+                                      "AGENT",
+                                      "TEAM"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "routeKey": {
+                                    "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                                    "type": "string"
+                                  },
+                                  "teamId": {
+                                    "exclusiveMinimum": true,
+                                    "maximum": 9007199254740991,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "routeKey",
+                                  "teamId",
+                                  "mode",
+                                  "membership",
+                                  "agentIds"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 20,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "schemaVersion": {
+                              "enum": [
+                                1
+                              ],
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "routes"
+                          ],
+                          "type": "object"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "revision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "snapshot": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "credentialRevision": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "profileRevision": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "routes": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "agents": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "id": {
+                                          "exclusiveMinimum": true,
+                                          "maximum": 9007199254740991,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "name": {
+                                          "maxLength": 120,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "optionValue": {
+                                          "pattern": "^(?:[1-9]|10)$",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "id",
+                                        "name"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 9,
+                                    "type": "array"
+                                  },
+                                  "backValue": {
+                                    "pattern": "^(?:[1-9]|10)$",
+                                    "type": "string"
+                                  },
+                                  "mode": {
+                                    "enum": [
+                                      "AGENT",
+                                      "TEAM"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "routeKey": {
+                                    "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                                    "type": "string"
+                                  },
+                                  "teamId": {
+                                    "exclusiveMinimum": true,
+                                    "maximum": 9007199254740991,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "teamName": {
+                                    "maxLength": 120,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "routeKey",
+                                  "teamId",
+                                  "teamName",
+                                  "mode",
+                                  "agents"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 20,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "schemaVersion": {
+                              "enum": [
+                                1
+                              ],
+                              "type": "number"
+                            },
+                            "scope": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "accountId": {
+                                  "exclusiveMinimum": true,
+                                  "maximum": 9007199254740991,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "channelId": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "destinationRevision": {
+                                  "exclusiveMinimum": true,
+                                  "maximum": 9007199254740991,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "inboxId": {
+                                  "exclusiveMinimum": true,
+                                  "maximum": 9007199254740991,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "integrationId": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                },
+                                "organizationId": {
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "organizationId",
+                                "channelId",
+                                "integrationId",
+                                "destinationRevision",
+                                "accountId",
+                                "inboxId"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "profileRevision",
+                            "scope",
+                            "credentialRevision",
+                            "routes"
+                          ],
+                          "type": "object"
+                        },
+                        "version": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "automationId",
+                        "version",
+                        "channelId",
+                        "revision",
+                        "activeRevision",
+                        "config",
+                        "snapshot"
+                      ],
+                      "type": "object"
+                    },
+                    "routes": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "labels": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "en": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "pt": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pt",
+                              "en"
+                            ],
+                            "type": "object"
+                          },
+                          "mode": {
+                            "enum": [
+                              "AGENT",
+                              "TEAM"
+                            ],
+                            "type": "string"
+                          },
+                          "routeKey": {
+                            "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "routeKey",
+                          "labels",
+                          "mode"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 20,
+                      "type": "array"
+                    },
+                    "rulesCheck": {
+                      "enum": [
+                        "UNVERIFIED"
+                      ],
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "enum": [
+                        1
+                      ],
+                      "type": "number"
+                    },
+                    "scope": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "automationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "channelId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "version": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "automationId",
+                        "version",
+                        "channelId"
+                      ],
+                      "type": "object"
+                    },
+                    "teamMembers": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "agents": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "exclusiveMinimum": true,
+                                  "maximum": 9007199254740991,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "name": {
+                                  "maxLength": 1000,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 10000,
+                            "type": "array"
+                          },
+                          "teamId": {
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "teamId",
+                          "agents"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 10000,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "scope",
+                    "routes",
+                    "catalog",
+                    "teamMembers",
+                    "profile",
+                    "rulesCheck"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Default Response",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Pragma": {
+                "$ref": "#/components/headers/Pragma"
+              },
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "flowSessionAuth": []
+          }
+        ]
+      },
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "channelId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "routes": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "agentIds": {
+                              "items": {
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "maxItems": 9,
+                              "type": "array"
+                            },
+                            "membership": {
+                              "enum": [
+                                "ALL",
+                                "SELECTED"
+                              ],
+                              "type": "string"
+                            },
+                            "mode": {
+                              "enum": [
+                                "AGENT",
+                                "TEAM"
+                              ],
+                              "type": "string"
+                            },
+                            "routeKey": {
+                              "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                              "type": "string"
+                            },
+                            "teamId": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "routeKey",
+                            "teamId",
+                            "mode",
+                            "membership",
+                            "agentIds"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 20,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "schemaVersion": {
+                        "enum": [
+                          1
+                        ],
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "schemaVersion",
+                      "routes"
+                    ],
+                    "type": "object"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "version": {
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "version",
+                  "expectedRevision",
+                  "config"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "activeRevision": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "nullable": true,
+                      "type": "integer"
+                    },
+                    "automationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "config": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "routes": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "agentIds": {
+                                "items": {
+                                  "exclusiveMinimum": true,
+                                  "maximum": 9007199254740991,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "maxItems": 9,
+                                "type": "array"
+                              },
+                              "membership": {
+                                "enum": [
+                                  "ALL",
+                                  "SELECTED"
+                                ],
+                                "type": "string"
+                              },
+                              "mode": {
+                                "enum": [
+                                  "AGENT",
+                                  "TEAM"
+                                ],
+                                "type": "string"
+                              },
+                              "routeKey": {
+                                "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                                "type": "string"
+                              },
+                              "teamId": {
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "routeKey",
+                              "teamId",
+                              "mode",
+                              "membership",
+                              "agentIds"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 20,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "schemaVersion": {
+                          "enum": [
+                            1
+                          ],
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "routes"
+                      ],
+                      "type": "object"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "revision": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "snapshot": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "credentialRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "profileRevision": {
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "routes": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "agents": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "id": {
+                                      "exclusiveMinimum": true,
+                                      "maximum": 9007199254740991,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "name": {
+                                      "maxLength": 120,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "optionValue": {
+                                      "pattern": "^(?:[1-9]|10)$",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 9,
+                                "type": "array"
+                              },
+                              "backValue": {
+                                "pattern": "^(?:[1-9]|10)$",
+                                "type": "string"
+                              },
+                              "mode": {
+                                "enum": [
+                                  "AGENT",
+                                  "TEAM"
+                                ],
+                                "type": "string"
+                              },
+                              "routeKey": {
+                                "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                                "type": "string"
+                              },
+                              "teamId": {
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "teamName": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "routeKey",
+                              "teamId",
+                              "teamName",
+                              "mode",
+                              "agents"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 20,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "schemaVersion": {
+                          "enum": [
+                            1
+                          ],
+                          "type": "number"
+                        },
+                        "scope": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "accountId": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "channelId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "destinationRevision": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "inboxId": {
+                              "exclusiveMinimum": true,
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "integrationId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "organizationId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "organizationId",
+                            "channelId",
+                            "integrationId",
+                            "destinationRevision",
+                            "accountId",
+                            "inboxId"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "profileRevision",
+                        "scope",
+                        "credentialRevision",
+                        "routes"
+                      ],
+                      "type": "object"
+                    },
+                    "version": {
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "organizationId",
+                    "automationId",
+                    "version",
+                    "channelId",
+                    "revision",
+                    "activeRevision",
+                    "config",
+                    "snapshot"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
             "description": "Default Response",
             "headers": {
               "Cache-Control": {

@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { AUTOMATION_NODE_CATALOG_V1, FLOW_NODE_CATALOG, automationNodePorts, type FlowGraph, type FlowNode } from '@jrc/contracts';
 import { MenuEditor } from '../automations/node-editors/MenuEditor.js';
+import {BoxRoutesSchema,BoxRouteSchema} from '@jrc/contracts';
+import {DirectoryMenuEditor,directoryMenuDefaults} from '../automations/node-editors/DirectoryMenuEditor.js';
 import { HandoffEditor } from '../automations/node-editors/HandoffEditor.js';
 import type { ApiClient } from '../api/client.js';
 import { InputEditor } from '../automations/node-editors/InputEditor.js';
@@ -16,7 +18,7 @@ import {HttpQueryEditor} from '../automations/node-editors/HttpQueryEditor.js';
 import { ConversationActionEditor } from '../automations/node-editors/ConversationActionEditor.js';
 import type { ConversationActionTransport } from '../automations/conversation-api.js';
 
-const portName=(port:string,node?:FlowNode)=>node?.type==='switch'?(port==='default'?'Saída padrão':String((Array.isArray(node.data.cases)?node.data.cases:[]).find((item:unknown)=>item!==null&&typeof item==='object'&&'id' in item&&'case-'+item.id===port)?.label??port)):port==='success'?'Sucesso':port==='error'?'Erro':port==='client_error'?'Erro do cliente':port==='server_error'?'Erro do servidor':port==='exhausted'?'Sem tentativas':port==='timeout'?'Tempo limite':port==='unknown'?'Resultado desconhecido':port==='yes'?'Sim':port==='no'?'Não':port==='open'?'Dentro do horário':port==='closed'?'Fora do horário':port.startsWith('option-')?'Opção '+port.slice(7):'Continuar';
+const portName=(port:string,node?:FlowNode)=>node?.type==='switch'?(port==='default'?'Saída padrão':String((Array.isArray(node.data.cases)?node.data.cases:[]).find((item:unknown)=>item!==null&&typeof item==='object'&&'id' in item&&'case-'+item.id===port)?.label??port)):port==='selected'?'Atendente escolhido':port==='back'?'Voltar':port==='success'?'Sucesso':port==='error'?'Erro':port==='client_error'?'Erro do cliente':port==='server_error'?'Erro do servidor':port==='exhausted'?'Sem tentativas':port==='timeout'?'Tempo limite':port==='unknown'?'Resultado desconhecido':port==='yes'?'Sim':port==='no'?'Não':port==='open'?'Dentro do horário':port==='closed'?'Fora do horário':port.startsWith('option-')?'Opção '+port.slice(7):'Continuar';
 const ioTypes=['http','sql','code','ai-generate','ai-classify','ai-extract','ai-summarize','ai-agent'];
 type CatalogItem={type:string;label:string;description:string;category?:string;version?:number};
 export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as readonly CatalogItem[],errorNodeIds=[],focusRequest,trackExternalChanges=false,handoffContext,subflowContext,httpContext,aiContext,actionContext}:{graph:FlowGraph;onChange:(graph:FlowGraph)=>void;editable:boolean;catalog?:readonly CatalogItem[];errorNodeIds?:readonly string[];focusRequest?:{nodeId:string;sequence:number}|undefined;trackExternalChanges?:boolean;handoffContext?:{client:ApiClient;organizationId:string}|undefined;subflowContext?:{client:ApiClient;organizationId:string;rootAutomationId:string}|undefined;aiContext?:{client:ApiClient;organizationId:string;rootAutomationId:string}|undefined;httpContext?:{client:ApiClient;organizationId:string;rootAutomationId:string}|undefined;actionContext?:{transport:ConversationActionTransport}|undefined}){
@@ -69,6 +71,7 @@ export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as
  const drag=useRef<{id:string;x:number;y:number;originX:number;originY:number;moved:boolean}|null>(null);
  const node=graph.nodes.find(n=>n.id===selected);
  const patch=(value:Partial<FlowNode>)=>{if(node)emitGraph({...graph,nodes:graph.nodes.map(n=>n.id===node.id?{...n,...value}:n)});};
+ const start=graph.nodes.find(n=>n.type==='start'),declared=BoxRoutesSchema.safeParse(start?.data.boxRoutes),boxRoutes=declared.success?declared.data:[];
  const data=(key:string,value:string)=>{if(node)patch({data:{...node.data,[key]:value}});};
  const connect=(source:string,port:string,target:string)=>{
   const edges=graph.edges.filter(e=>!(e.source===source&&e.port===port));
@@ -81,6 +84,8 @@ export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as
   const id=crypto.randomUUID();
   const defaults:Record<string,unknown>=type==='switch'?{switchVersion:1,variable:'message',cases:[{id:'first',label:'Primeira opção',value:'1'},{id:'second',label:'Segunda opção',value:'2'}]}:type==='message'?{text:'Nova mensagem'}:type==='input'?{inputConfigVersion:1,text:'Qual é sua resposta?',variable:'resposta'}:type==='menu'?{text:'Escolha uma opção:',variable:'menu.choice',options:[{value:'1',label:'Comercial'},{value:'2',label:'Suporte'}]}:type==='variable'?{variable:'variavel',value:''}:type==='condition'?{field:'message',operator:'equals',value:''}:type==='handoff'?{handoffVersion:1}:type==='delay'?{seconds:60}:type==='subflow'?{automationId:'',timeoutMs:10000}:type==='http'?{httpConfigVersion:1,method:'GET',url:'',credentialId:'',queryParameters:{},target:'http.result',timeoutMs:15000,maxResponseBytes:32768,retryAttempts:0}:type==='sql'?{credentialId:'',query:'SELECT 1',parameters:[],target:'sql.result',timeoutMs:5000,maxRows:100}:type==='code'?{code:'return input;',input:{},target:'code.result'}:type.startsWith('ai-')?{aiConfigVersion:1,operation:type.replace('ai-',''),credentialId:'',model:'',content:'{{message}}',target:'ai.result',timeoutMs:15000,maxOutputTokens:256,maxResponseBytes:32768,maxCostMicros:100000,...(type==='ai-classify'?{categories:['Comercial','Suporte']}:type==='ai-extract'?{fields:[{name:'nome',type:'string'}]}:{})}:isDataNodeType(type)?{configVersion:2,target:'resultado',errorVariable:'erro',...(type==='data-set'?{valueSource:{kind:'LITERAL',value:''}}:type==='data-merge'?{sources:['','']}:type==='data-pick'?{source:'',keys:['']}:type==='data-map'?{source:'',field:''}:type==='data-filter'?{source:'',field:'',operator:'equals',valueSource:{kind:'LITERAL',value:''}}:type==='expression'?{source:'',operation:'REFERENCE'}:{source:''})}:{};
   if(type==='schedule')Object.assign(defaults,{timezone:'America/Sao_Paulo',weekly:[{day:1,start:'09:00',end:'18:00'}],exceptions:[]});
+  if(type==='directory-menu')Object.assign(defaults,directoryMenuDefaults(boxRoutes));
+  if(type==='handoff'&&boxRoutes.length)Object.assign(defaults,{handoffVersion:3,routeKey:boxRoutes[0]!.routeKey});
   if(type==='media')Object.assign(defaults,{mediaEffectVersion:2,channelId:'',mediaId:'',mediaRevision:1,caption:'',target:'media.result',timeoutMs:15000});
   if(type==='domain')Object.assign(defaults,{conversationEffectVersion:2,operation:'domain',channelId:'',command:'create_lead',target:'domain.result',timeoutMs:15000});
   if(['tag','attribute','note','resolve'].includes(type))Object.assign(defaults,{conversationEffectVersion:2,operation:type,channelId:'',target:'action.result',timeoutMs:15000,...(type==='note'?{text:''}:type==='resolve'?{status:'RESOLVED'}:{resourceId:'',resourceRevision:'',...(type==='attribute'?{valueSource:{kind:'LITERAL',value:''}}:{})})});
@@ -131,6 +136,13 @@ export function FlowCanvas({graph,onChange,editable,catalog=FLOW_NODE_CATALOG as
   <aside className="flows-inspector"><h3>Configurar bloco</h3>{node?<fieldset disabled={!editable}>
    <label>Nome do bloco<input value={node.label} maxLength={160} onChange={e=>patch({label:e.target.value})}/></label>
    {node.type==='start'&&catalog.some(item=>item.type==='start'&&item.version===1)&&<EntryEditor node={node} editable={editable} onChange={next=>patch({data:next})}/>}
+   {node.type==='directory-menu'&&<DirectoryMenuEditor key={node.id} node={node} routes={boxRoutes} editable={editable} canCreateRoute={Boolean(start&&(start.data.boxRoutes===undefined||declared.success))} onChange={next=>patch({data:next})} onCreateRoute={(pt,en)=>{
+    if(!start)return;let base=pt.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,55)||'department';
+    if(!/^[a-z]/.test(base)||['constructor','prototype'].includes(base))base='department';let key=base,n=2;while(boxRoutes.some(r=>r.routeKey===key))key=`${base}-${n++}`;
+    const route=BoxRouteSchema.parse({routeKey:key,labels:{pt,en},mode:'AGENT'}),routes=BoxRoutesSchema.parse([...boxRoutes,route]);
+    emitGraph({...graph,nodes:graph.nodes.map(current=>current.id===start.id?{...current,data:{...current.data,boxRoutes:routes}}:current.id===node.id?{...current,data:{...current.data,routeKey:key}}:current)});
+   }}/>}
+   {node.type==='handoff'&&node.data.handoffVersion===3&&<label>Departamento deste encaminhamento<select value={String(node.data.routeKey??'')} onChange={e=>patch({data:{handoffVersion:3,routeKey:e.target.value}})}><option value="">Selecione o departamento</option>{boxRoutes.map(r=><option key={r.routeKey} value={r.routeKey}>{r.labels.pt} / {r.labels.en}</option>)}</select></label>}
    {['message','menu'].includes(node.type)&&<label>{node.type==='message'?'Mensagem':'Mensagem do menu'}<textarea rows={5} maxLength={4096} value={String(node.data.text??'')} onChange={e=>data('text',e.target.value)}/></label>}
    {['variable','menu'].includes(node.type)&&<label>Variável<input value={String(node.data.variable??'')} maxLength={100} onChange={e=>data('variable',e.target.value)}/></label>}
    {node.type==='input'&&<InputEditor node={node} editable={editable} allowTypedCapture={catalog.some(item=>item.type==='input'&&item.version===1)} onChange={next=>patch({data:next})}/>}

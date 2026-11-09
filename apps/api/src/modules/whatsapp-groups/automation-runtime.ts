@@ -5,6 +5,7 @@ import type {ProviderContext} from '@jrc/providers';
 import {createHash,createHmac,randomUUID} from 'node:crypto';
 import {lockAttendanceChannel} from '../attendance/repository.js';
 import {createEventRouter,createExecutionService} from '../automations/service.js';
+import type {BoxRoutingService} from '../automations/box-routing-service.js';
 import {createPostgresAutomationRepository} from '../automations/repository.js';
 import {createPostgresMessagingRepository} from '../messaging/repository.js';
 import {beginQrDispatchAttempt,recordQrOutboundObservation,recoverQrOutboundObservations,listQrDispatchAttempts,listQrOutboundObservations,abandonQrDispatchAttempt,abandonQrOutboundObservation} from '../messaging/qr-outbound-observation.js';
@@ -19,6 +20,7 @@ export interface GroupPrincipal {organizationId:string;actorId:string}
 export interface GroupControlInput {groupJid:string;triggerText:string;expectedOwnerRevision:number;expectedBindingId:string;
   expectedBindingRevision:number;expectedIdentityRevision:number;expectedIdentityFingerprint:string;expectedRevision?:number|undefined}
 export interface GroupRuntimeOptions {
+  boxRouting?:BoxRoutingService|undefined;
   captureBinding?:EvolutionFleetRuntime['capture'];assertBinding?:EvolutionFleetRuntime['assert'];
   encryptionKey:string;configurationScope:string;requestTimeoutMs?:number;enabled?:boolean;runtimeReady?(organizationId:string):Promise<boolean>;
   refreshCatalogs?(organizationId:string):Promise<unknown>;
@@ -39,7 +41,7 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
   const key=Buffer.from(options.encryptionKey,'base64');
   if(key.length!==32||key.toString('base64')!==options.encryptionKey||!options.configurationScope)throw new Error('INVALID_INTEGRATION_ENCRYPTION_KEY');
   const automation=createPostgresAutomationRepository(options),messaging=createPostgresMessagingRepository();
-  const serviceOptions={transact:options.transact,repository:automation,messaging,enabled:options.enabled??true};
+  const serviceOptions={transact:options.transact,repository:automation,messaging,enabled:options.enabled??true,get boxRouting(){return options.boxRouting;}};
   const router=createEventRouter(serviceOptions),executor=createExecutionService(serviceOptions);
   const fingerprint=(org:string,channel:string,phone:string)=>createHmac('sha256',key).update(`whatsapp-group-identity:v1:${org}:${channel}:${phone}`).digest('hex');
   const ready=async(org:string)=>options.enabled!==false&&(!options.runtimeReady||await options.runtimeReady(org));

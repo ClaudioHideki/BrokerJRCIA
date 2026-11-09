@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AUTOMATION_ORIGIN, type AutomationBindingV1, type BindChannelAutomationV1,
   type BindChannelDestinationV1, type ChannelV1, type CreateChannelV1, type Instance,
   type PatchChannelV1 } from '@jrc/contracts';
-import type { OrganizationTransaction } from '../../db/tenant-transaction.js';
+import type { TenantTransaction, OrganizationTransaction } from '../../db/tenant-transaction.js';
 import type { InstanceActorContext, InstanceService } from '../instances/service.js';
 import type { createMetaOnboardingService } from '../meta-onboarding/service.js';
 import type { ChatwootService } from '../integrations/chatwoot-service.js';
@@ -116,6 +116,7 @@ function bindingView(row: AutomationBindingRow): AutomationBindingV1 {
 export interface ChannelFacadeOptions {
   managedOrigin?:string;
   externalDestinationsEnabled?:boolean;
+  beforeAutomationBind?(tx:TenantTransaction):Promise<void>;
   automationStatus?(org:string):Promise<{canPublish:boolean;reasons:string[]}>;
   central?:ReturnType<typeof createCentralCutoverService>;
   instances: InstanceService;
@@ -340,6 +341,7 @@ export function createChannelFacade(options: ChannelFacadeOptions) {
             AND capabilities_observed_at IS NOT NULL AND callback_verified_at IS NOT NULL AND callback_credential_version=credential_version AND callback_destination_revision=destination_revision`,[org,channelId])).rowCount;
           if(!evidence)throw new ChannelFacadeError('CENTRAL_CALLBACK_TEST_REQUIRED',409);
         }
+        await options.beforeAutomationBind?.(tx);
         const result=await transitionChannelOwner(tx,org,{...input,channelId,botPublicId:input.automationId,botOriginReference:AUTOMATION_ORIGIN});
         return {binding:bindingView(result.binding!),ownerRevision:result.ownerRevision};
       });

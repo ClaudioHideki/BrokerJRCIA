@@ -87,3 +87,9 @@ describe('runtime schema probe', () => {
     }
   });
 });
+
+it('requires immutable tenant-private box routing profiles before serving the new release', async () => {
+ const query=vi.fn(async (_sql:string)=>({rows:[{ready:false}]}));
+ await probeRequiredRuntimeSchema(query);
+ for(const marker of ['automation_box_profile_versions','automation_box_profile_heads','box_profile_tenant','automation_box_profile_immutable','lifecycle_box_profile_head_block']) expect(query.mock.calls[0]?.[0]).toContain(marker);
+});

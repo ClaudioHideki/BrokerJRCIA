@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { AUTOMATION_NODE_DEFINITIONS, automationNodePorts, type AutomationGraphV1 } from '@jrc/contracts';
 import { executeAutomation, validateAutomationGraph } from '../../src/modules/automations/engine.js';
+import {oiaBoxTemplateFlow} from '@jrc/contracts';
+import {simulateConversation} from '../../src/modules/automations/simulation.js';
 
 const handoffConfig={handoffVersion:1,destination:{integrationId:'22222222-2222-4222-8222-222222222222',destinationRevision:2,accountId:4,inboxId:8,credentialRevision:3},target:{teamId:7,agentId:null}};
 const node=(id:string,type:string,data:Record<string,unknown>={})=>({id,type,label:id,position:{x:0,y:0},data});
@@ -17,6 +19,14 @@ describe('automation runtime v2 engine',()=>{
     }
   });
   it.each(AUTOMATION_NODE_DEFINITIONS.filter(definition=>definition.availability==='AVAILABLE').map(definition=>definition.type))('executes and simulates available %s without external IO',async type=>{
+    if(type==='directory-menu'){
+      // A logical menu requires a whole declared template plus an internal directory; never fabricate production authority.
+      const graph=oiaBoxTemplateFlow();expect(validateAutomationGraph(graph)).toEqual([]);
+      const result=await simulateConversation({automationId:'11111111-1111-4111-8111-111111111111',version:1,runtimeStateVersion:2,graph},
+        {text:'oi',clock:'2030-01-01T12:00:00Z',replies:['1','1']},async()=>{throw Error('Unexpected external dependency');});
+      expect(result).toMatchObject({status:'WAITING',wait:{kind:'EVENT'},routingFixture:{kind:'SIMULATION_ONLY'}});
+      expect(result.effects.every(e=>e.kind==='SEND_TEXT')).toBe(true);return;
+    }
     const configs:Record<string,Record<string,unknown>>={handoff:handoffConfig,message:{text:'Olá'},input:{variable:'answer',text:'Nome?'},menu:{text:'Escolha',options:[{value:'1',label:'A'},{value:'2',label:'B'}]},condition:{field:'message',operator:'equals',value:'oi'},switch:{switchVersion:1,variable:'message',cases:[{id:'first',label:'Primeiro',value:'oi'}]},variable:{variable:'name',value:'Ana'},delay:{seconds:5}};
     const common={configVersion:2,target:'result',errorVariable:'failure'};
     Object.assign(configs,{'data-set':{...common,valueSource:{kind:'LITERAL',value:{active:false}}},'data-rename':{...common,source:'message'},'data-pick':{...common,source:'message',keys:['name']},'data-merge':{...common,sources:['message','second']},'data-map':{...common,source:'message',field:'name'},'data-filter':{...common,source:'message',field:'name',operator:'equals',valueSource:{kind:'LITERAL',value:'A'}},'json-parse':{...common,source:'message'},'json-stringify':{...common,source:'message'},expression:{...common,source:'message',operation:'UPPER'}});

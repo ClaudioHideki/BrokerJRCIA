@@ -21,6 +21,7 @@ export const FlowDraftSaveSchema = z.strictObject({
 });
 export const FlowPublishSchema = z.strictObject({ revision, expectedScopeRevision: revision });
 export const FlowBindSchema = z.strictObject({
+  expectedProfileRevision: z.number().int().positive().optional(),
   integrationId: z.uuid(), cutoverId: z.uuid(), version: revision, expectedScopeRevision: revision,
   expectedOwnerRevision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
 });

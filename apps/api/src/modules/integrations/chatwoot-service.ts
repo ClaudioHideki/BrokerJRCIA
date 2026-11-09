@@ -238,6 +238,7 @@ export function createChatwootService(options: ChatwootOptions) {
   return {
     destinations,
     attendanceCatalog:attendance.catalog,
+    attendanceTeamMembers:attendance.teamMembers,
     validateHumanDestination:attendance.validateTarget,
     validateGuidedHumanDestination:attendance.validateGuidedTarget,
     async status(org: string) {

@@ -1,3 +1,5 @@
+import {createBoxRoutingService} from '../../src/modules/automations/box-routing-service.js';
+import {catalog as boxCatalog} from '../unit/fixtures/box-routing.js';
 import {createHmac,randomUUID} from 'node:crypto';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
@@ -340,7 +342,7 @@ it('blocks a historical STOCK registry for a now positively known native origin 
  await expect(other.serviceWith({knownNativeOrigins:new Set([origin])}).configureExecutorProfile(other.principal,{integrationId:other.integration,expectedRevision:0})).rejects.toMatchObject({code:'FLOW_ORIGIN_NATIVE_EVIDENCE_REQUIRED'});
  expect((await db.database.pool.query('SELECT count(*)::int n FROM automation_bindings WHERE organization_id=$1',[t.org])).rows[0].n).toBe(0);expect(remote.posts()).toBe(0);
 });
-it('binds stock CENTRAL only after the existing durable bot cutover completes',async()=>{
+it.each(['legacy','box'])('binds stock CENTRAL %s only after durable cutover, with atomic profile activation',async(kind)=>{
  const t=await fixture(),remote=remoteClient(t),central=createCentralCutoverService({transact:db.transact,client:()=>remote.client,vault,callback:id=>`https://broker.example.test/v1/integrations/chatwoot/${id}/events`});
  const command={provider:'CENTRAL',name:'Synthetic central',inboxId:19,...await central.preview(t.org,t.actor,19),replaceExistingBot:false};
  let operation=await central.prepare(t.org,t.actor,command,randomUUID());
@@ -349,13 +351,30 @@ it('binds stock CENTRAL only after the existing durable bot cutover completes',a
  const ingress=createChatwootRuntimeIngress({transact:db.transact,secrets:vault,resolveIntegration:async()=>t.org});
  const raw=Buffer.from(JSON.stringify({event:'message_created',id:201,account:{id:7},inbox:{id:19},conversation:{id:101,inbox_id:19,contact_inbox:{contact_id:301}},private:false,message_type:'incoming',content:'Synthetic signed callback',sender:{id:301,type:'contact'}})),timestamp=String(Math.floor(Date.now()/1000));
  await ingress.receive({integrationId:operation.integrationId,raw,timestamp,signature:'sha256='+createHmac('sha256','synthetic-bot').update(timestamp+'.').update(raw).digest('hex')});
- const service=t.serviceWith({client:()=>remote.client});
+ const profileConfig={schemaVersion:1 as const,routes:[{routeKey:'sales',teamId:10,mode:'TEAM' as const,membership:'ALL' as const,agentIds:[]}]};
+ const template={nodes:[{...graph.nodes[0]!,data:{boxRoutes:[{routeKey:'sales',labels:{pt:'Comercial',en:'Sales'},mode:'TEAM'}]}},
+  {id:'h',type:'handoff',label:'Atendimento',position:{x:1,y:0},data:{handoffVersion:3,routeKey:'sales'}}],edges:[{id:'next',source:'s',target:'h',port:'next'}]};
+ const boxRouting=createBoxRoutingService({transact:db.transact,integration:async()=>operation.integrationId!,catalog:async()=>({...boxCatalog(),scope:{...t.scope,channelId:operation.channelId!,integrationId:operation.integrationId!,inboxId:19}}),teamMembers:async()=>[],readiness:{prepare:async()=>({assertCurrent:async()=>{}})}});
+ const service=t.serviceWith({client:()=>remote.client,...(kind==='box'?{automation:{enabled:true,boxRouting}}:{})});
  await approveOriginFixture(db.database,t.org,'STOCK');await service.configureExecutorProfile(t.principal,{integrationId:operation.integrationId,expectedRevision:0});
  const session=await service.issueBrokerSession(t.principal,{integrationIds:[operation.integrationId],scopes:full}),access={organizationId:t.org,token:session.token};
- const draft=await service.create(access,{name:'Central scoped',graph,integrationIds:[operation.integrationId]});await service.publish(access,draft.id,{revision:1,expectedScopeRevision:1});
+ const draft=await service.create(access,{name:'Central scoped',graph:kind==='box'?template:graph,integrationIds:[operation.integrationId]});await service.publish(access,draft.id,{revision:1,expectedScopeRevision:1});
  const cutover=await service.prepareCutover(access,operation.integrationId,{expectedOwnerRevision:0});
  const before=remote.posts();
- const bound=await service.bind(access,draft.id,{integrationId:operation.integrationId,cutoverId:cutover.id,version:1,expectedScopeRevision:1,expectedOwnerRevision:0});
+ if(kind==='box'){
+  await service.saveBoxRouting(access,draft.id,operation.channelId!,{version:1,expectedRevision:0,config:profileConfig});
+  await expect(service.bind(access,draft.id,{integrationId:operation.integrationId,cutoverId:cutover.id,version:1,expectedScopeRevision:1,expectedOwnerRevision:0,expectedProfileRevision:2})).rejects.toMatchObject({code:'FLOW_BOX_PROFILE_CHANGED'});
+  const marker='synthetic_profile_rollback_'+randomUUID().replaceAll('-','');
+  await db.database.pool.query('CREATE FUNCTION public.'+marker+"() RETURNS trigger LANGUAGE plpgsql AS $jrc_test$ BEGIN IF NEW.integration_id='"+operation.integrationId+"'::uuid THEN RAISE EXCEPTION 'SYNTHETIC_OWNER_COMMIT'; END IF; RETURN NEW; END; $jrc_test$");
+  await db.database.pool.query('CREATE TRIGGER '+marker+' BEFORE UPDATE OF owner_revision ON central_transport_bindings FOR EACH ROW EXECUTE FUNCTION public.'+marker+'()');
+  try{
+   await expect(service.bind(access,draft.id,{integrationId:operation.integrationId,cutoverId:cutover.id,version:1,expectedScopeRevision:1,expectedOwnerRevision:0,expectedProfileRevision:1})).rejects.toMatchObject({code:'P0001'});
+   expect((await db.database.pool.query('SELECT active_revision FROM automation_box_profile_heads WHERE organization_id=$1',[t.org])).rows[0].active_revision).toBeNull();
+   expect((await db.database.pool.query('SELECT owner_revision FROM central_transport_bindings WHERE integration_id=$1',[operation.integrationId])).rows[0].owner_revision).toBe(0);
+  }finally{await db.database.pool.query('DROP TRIGGER '+marker+' ON central_transport_bindings');await db.database.pool.query('DROP FUNCTION public.'+marker+'()');}
+ }
+ const bound=await service.bind(access,draft.id,{integrationId:operation.integrationId,cutoverId:cutover.id,version:1,expectedScopeRevision:1,expectedOwnerRevision:0,...(kind==='box'?{expectedProfileRevision:1}:{})});
+ if(kind==='box')expect((await db.database.pool.query('SELECT active_revision FROM automation_box_profile_heads WHERE organization_id=$1',[t.org])).rows[0].active_revision).toBe(1);
  expect(bound).toMatchObject({channelId:operation.channelId,ownerRevision:1});expect(remote.posts()).toBe(before);
  expect((await db.database.pool.query('SELECT owner_revision FROM central_transport_bindings WHERE integration_id=$1',[operation.integrationId])).rows[0].owner_revision).toBe(1);
 });
@@ -763,4 +782,41 @@ it('native execution capability confines history to current root channels and re
  const foreign=await fixture();await expect(t.service.execution({organizationId:foreign.org,token:session.token},draft.id,ids[0]!)).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
  await db.database.pool.query("UPDATE memberships SET role='VIEWER' WHERE organization_id=$1 AND user_id=$2",[t.org,t.actor]);
  await expect(t.service.executions(access,draft.id,period)).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+});
+
+
+it('box-routing delegation saves and activates a published profile with CAS and rejects another inbox before remote IO',async()=>{
+ const t=await fixture(),qr=await qrInbox(t),other=await secondInbox(t),remote=remoteClient(t);
+ const scope={...t.scope,channelId:qr.channel,integrationId:qr.integration};
+ const catalog=vi.fn(async()=>({...boxCatalog(),scope}));
+ const boxRouting=createBoxRoutingService({transact:db.transact,integration:async()=>qr.integration,catalog,teamMembers:async()=>[],readiness:{prepare:async()=>({assertCurrent:async()=>{}})}});
+ const service=t.serviceWith({automation:{enabled:true,boxRouting},client:()=>remote.client,identity:qr.health});
+ await approveOriginFixture(db.database,t.org,'STOCK');await service.configureExecutorProfile(t.principal,{integrationId:qr.integration,expectedRevision:0});
+ const session=await service.issueBrokerSession(t.principal,{integrationIds:[qr.integration],scopes:full});
+ const access={organizationId:t.org,token:session.token};
+ const template={nodes:[{...graph.nodes[0]!,data:{boxRoutes:[{routeKey:'sales',labels:{pt:'Comercial',en:'Sales'},mode:'TEAM'}]}},
+  {id:'h',type:'handoff',label:'Atendimento',position:{x:1,y:0},data:{handoffVersion:3,routeKey:'sales'}}],edges:[{id:'next',source:'s',target:'h',port:'next'}]};
+ const draft=await service.create(access,{name:'Box profile scope',graph:template,integrationIds:[qr.integration]});
+ await service.publish(access,draft.id,{revision:1,expectedScopeRevision:1});
+ const value=await service.boxRoutingCatalog(access,draft.id,qr.channel,1);
+ expect(value.scope).toMatchObject({organizationId:t.org,automationId:draft.id,channelId:qr.channel});
+ const saved=await service.saveBoxRouting(access,draft.id,qr.channel,{version:1,expectedRevision:0,config:{schemaVersion:1,routes:[{routeKey:'sales',teamId:10,mode:'TEAM',membership:'ALL',agentIds:[]}]}});
+ expect(saved).toMatchObject({revision:1,activeRevision:null});
+ const readSession=await service.issueBrokerSession(t.principal,{integrationIds:[qr.integration],scopes:['flow:read','flow:bind']});
+ const reader={organizationId:t.org,token:readSession.token};
+ expect((await service.boxRoutingCatalog(reader,draft.id,qr.channel,1)).profile?.revision).toBe(1);
+ await expect(service.saveBoxRouting(reader,draft.id,qr.channel,{version:1,expectedRevision:1,config:saved.config})).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ expect((await db.database.pool.query('SELECT actor_id FROM automation_box_profile_versions WHERE organization_id=$1',[t.org])).rows[0].actor_id).toBe(t.actor);
+ catalog.mockClear();
+ await expect(service.boxRoutingCatalog(access,draft.id,other.channel,1)).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ expect(catalog).not.toHaveBeenCalled();
+ const cutover=await service.prepareCutover(access,qr.integration,{expectedOwnerRevision:0});
+ const bind={integrationId:qr.integration,cutoverId:cutover.id,version:1,expectedScopeRevision:1,expectedOwnerRevision:0,expectedProfileRevision:2};
+ await expect(service.bind(access,draft.id,bind)).rejects.toMatchObject({code:'FLOW_BOX_PROFILE_CHANGED'});
+ expect((await db.database.pool.query('SELECT active_revision FROM automation_box_profile_heads WHERE organization_id=$1',[t.org])).rows[0].active_revision).toBeNull();
+ expect(await service.bind(access,draft.id,{...bind,expectedProfileRevision:1})).toMatchObject({ownerRevision:1,channelId:qr.channel});
+ expect((await db.database.pool.query('SELECT active_revision FROM automation_box_profile_heads WHERE organization_id=$1',[t.org])).rows[0].active_revision).toBe(1);
+ await db.database.pool.query('UPDATE flow_delegation_sessions SET revoked_at=clock_timestamp() WHERE id=$1',[session.id]);
+ await expect(service.saveBoxRouting(access,draft.id,qr.channel,{version:1,expectedRevision:1,config:saved.config})).rejects.toMatchObject({code:'FLOW_ACCESS_DENIED'});
+ expect(Number((await db.database.pool.query('SELECT count(*) FROM automation_box_profile_versions WHERE organization_id=$1',[t.org])).rows[0].count)).toBe(1);
 });

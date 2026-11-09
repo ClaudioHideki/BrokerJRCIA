@@ -85,3 +85,11 @@ it('exposes bounded native history through the opaque session and propagates den
  expect((await h.app.inject({url:url+'?'+query,headers:h.jwt})).statusCode).toBe(401);
  expect((await h.app.inject({method:'POST',url:url+'/'+id+'/simulate',headers:h.flow,payload:{}})).statusCode).toBe(404);
 });
+
+it('preserves the expected box-profile revision on delegated bind without accepting client actor authority',async()=>{
+ const h=await harness(),bind={integrationId:integration,cutoverId:id,version:1,expectedScopeRevision:1,expectedOwnerRevision:0,expectedProfileRevision:3};
+ const url='/v1/delegated-flows/'+id+'/bindings';
+ expect((await h.app.inject({method:'POST',url,headers:h.flow,payload:bind})).statusCode).toBe(201);
+ expect(h.service.bind).toHaveBeenCalledWith({organizationId:org,token},id,bind);
+ expect((await h.app.inject({method:'POST',url,headers:h.flow,payload:{...bind,actorId:actor}})).statusCode).toBe(400);
+});

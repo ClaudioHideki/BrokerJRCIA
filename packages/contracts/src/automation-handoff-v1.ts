@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { humanTargetSchema } from './attendance-v1.js';
 import { AutomationLocalHandoffConfigV2Schema } from './attendance-destination-v2.js';
+import {RouteHandoffV3Schema} from './automation-box-routing.js';
 
 const revision = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const remoteId = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -24,6 +25,6 @@ export function hasNativeHandoffConfig(data: Record<string, unknown>): boolean {
 /** Keep unversioned historical nodes readable; partial upgrades must never fall back to legacy. */
 export const CompatibleAutomationHandoffConfigSchema = z.record(z.string(), z.unknown()).superRefine((data, context) => {
   if (!hasNativeHandoffConfig(data)) return;
-  const parsed = (data.handoffVersion===2?AutomationLocalHandoffConfigV2Schema:AutomationHandoffConfigV1Schema).safeParse(data);
+  const parsed = (data.handoffVersion===3?RouteHandoffV3Schema:data.handoffVersion===2?AutomationLocalHandoffConfigV2Schema:AutomationHandoffConfigV1Schema).safeParse(data);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({code:'custom',path:issue.path,message:issue.message});
 });

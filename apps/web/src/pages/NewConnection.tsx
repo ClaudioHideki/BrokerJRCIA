@@ -36,6 +36,7 @@ export function NewConnectionPage({ canonical = false, onCreated }: { canonical?
     setSubmitting(false);
     setRetrying(false);
     intent.clear();
+    if (!tenantId) return;
     void listBaileysProviderAccounts(client).then((page) => {
       if (!active || generation !== tenantGeneration.current) return;
       setAccounts(page.data);
@@ -118,7 +119,7 @@ export function NewConnectionPage({ canonical = false, onCreated }: { canonical?
           <option value="">Selecione</option>
           {accounts.map((account) => <option key={account.id} value={account.id}>{connectionAccountLabel(account.name)}</option>)}
         </select>
-        <button className="button button--primary" type="submit" disabled={submitting || accounts.length === 0 || !name.trim()}>
+        <button className="button button--primary" type="submit" disabled={loading || submitting || !providerAccountId || accounts.length === 0 || !name.trim()}>
           {submitting ? 'Criando…' : retrying ? 'Tentar criação novamente' : 'Criar conexão'}
         </button>
       </form>

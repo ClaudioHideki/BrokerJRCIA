@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import { SessionProvider } from '../auth/SessionProvider.js';
@@ -23,4 +23,16 @@ it('returns a newly created QR channel to the guide without navigating away', as
   fireEvent.change(screen.getByLabelText('Nome da conexão'), { target: { value: 'Support' } });
   fireEvent.click(screen.getByRole('button', { name: 'Criar conexão' }));
   await waitFor(() => expect(onCreated).toHaveBeenCalledWith(id));
+});
+
+it('does not load provider accounts before the tenant session is restored', async () => {
+  let restore!: (value: unknown) => void;
+  const request = vi.fn(async () => ({ data: [], pageInfo: { hasNextPage: false, nextCursor: null } }));
+  const client = { request, restore: () => new Promise(resolve => { restore = resolve; }),
+    registerTenantPurge: () => () => {}, subscribeToSessionExpiration: () => () => {} } as unknown as ApiClient;
+  render(<MemoryRouter><SessionProvider client={client}><NewConnectionPage canonical /></SessionProvider></MemoryRouter>);
+  expect(request).not.toHaveBeenCalled();
+  const activeOrganization = { id: '11111111-1111-4111-8111-111111111111', name: 'Example', slug: 'example', role: 'OWNER' as const };
+  await act(async () => restore({ activeOrganization, organizations: [activeOrganization], user: { id: activeOrganization.id, email: 'owner@example.test' } }));
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
 });

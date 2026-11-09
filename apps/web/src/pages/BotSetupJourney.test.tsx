@@ -21,6 +21,11 @@ function mount(options:{role?:'OWNER'|'ADMIN'|'OPERATOR'|'VIEWER';items?:unknown
  render(<App client={client} initialEntries={[options.entry??`/channels/${id}`]}/>);return request;
 }
 async function openFlow(){fireEvent.click(await screen.findByRole('tab',{name:'Flow'}));return screen.getByRole('tabpanel',{name:'Flow'});}
+it('opens reusable routing in the centralized Flow panel with the selected box',async()=>{
+ const request=mount();const flow=await openFlow();
+ expect(within(flow).getByRole('link',{name:'Configurar departamentos e ativar Flow'})).toHaveAttribute('href',`/automations?channel=${id}`);
+ expect((request as ReturnType<typeof vi.fn>).mock.calls.some(call=>call[1]?.method&&call[1].method!=='GET')).toBe(false);
+});
 it('provides keyboard-accessible areas and keeps publication, binding and the real test in order',async()=>{
  const request=mount();await screen.findByRole('heading',{name:'Caixa sintética'});
  const tabs=screen.getByRole('tablist',{name:'Áreas da conexão'});

@@ -4,6 +4,8 @@ import { readChatwootAccount } from '../integrations/chatwoot-context.js';
 import { resolveAttendanceScope } from './repository.js';
 import { AttendanceError } from './types.js';
 import { assertLocalHumanTarget } from './local-directory.js';
+import {boxTemplateRoutes} from '@jrc/contracts';
+import {postgresBoxProfileStore} from '../automations/box-routing-service.js';
 
 /** Common local admission for every native owner path. Remote policy/target
  * readiness belongs to asynchronous publication and, decisively, dispatch. */
@@ -15,6 +17,11 @@ export async function assertHandoffBinding(tx:TenantTransaction,org:string,chann
     if(!row)throw new AttendanceError('AUTOMATION_VERSION_NOT_FOUND',404);
     const parsed=AutomationGraphV1Schema.safeParse(row.graph);if(!parsed.success)throw new AttendanceError('AUTOMATION_PUBLISHED_GRAPH_INVALID',409);
     const graph=parsed.data,reachable=new Set<string>(),walk=(nodeId:string)=>{if(reachable.has(nodeId))return;reachable.add(nodeId);for(const edge of graph.edges.filter(e=>e.source===nodeId))walk(edge.target);};
+    if(boxTemplateRoutes(graph).length){
+      const store=postgresBoxProfileStore(),profile=await store.read(tx,org,automationId,version,channelId,'ACTIVE');
+      if(!profile)throw new AttendanceError('FLOW_BOX_PROFILE_REQUIRED',409);
+      await store.assertScope(tx,org,channelId,profile.snapshot);
+    }
     for(const node of graph.nodes.filter(n=>n.type==='start'))walk(node.id);
     for(const node of graph.nodes.filter(n=>reachable.has(n.id))){
       if(node.type==='input'&&node.data.inputConfigVersion===3&&!mediaTransportChecked){
@@ -23,6 +30,7 @@ export async function assertHandoffBinding(tx:TenantTransaction,org:string,chann
         mediaTransportChecked=true;
       }
       if(node.type==='handoff'){
+        if(node.data.handoffVersion===3)continue;
         const configured=AutomationHandoffConfigSchema.safeParse(node.data);
         if(!configured.success)throw new AttendanceError('ATTENDANCE_HANDOFF_DESTINATION_REQUIRED',409);
         if(configured.data.handoffVersion===2){

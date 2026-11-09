@@ -20,6 +20,7 @@ import type {ChatwootHealth} from '../../integrations/chatwoot-health.js';
 import {claimIdempotency,completeIdempotencyRecord,hashIdempotencyRequest} from '../../instances/idempotency.js';
 import {FlowDraftCreateSchema,FlowDraftSaveSchema,FlowPublishSchema,FlowBindSchema,FlowSessionCreateSchema,FlowIntrospectionDecisionSchema} from '@jrc/contracts';
 import {createDelegatedCutovers,type CutoverRequest,type NativeBindReceipt} from './cutover.js';
+import {createBoxRoutingService} from '../../automations/box-routing-service.js';
 import {createChannelFacade} from '../../channels/facade.js';
 import {remoteDeadline} from './remote.js';
 import {NativeContextQuerySchema,NativeContextResponseSchema} from './native-context.js';
@@ -516,6 +517,15 @@ export function createFlowDelegationService(options:FlowDelegationOptions){
    return common.aiCredentialCatalog(access.organizationId,id,input);
   },
   resourceChannels:(access:FlowAccess,id:string,input:{pageSize?:number;cursor?:string}={})=>scoped(access,{action:'flow:read',id}).resourceChannels(access.organizationId,id,input),
+  boxRoutingCatalog:async(access:FlowAccess,id:string,channelId:string,version:number,teamId?:number)=>(await resourceScoped(access,id,channelId,'flow:read')).boxRoutingCatalog(access.organizationId,id,channelId,version,teamId),
+  async saveBoxRouting(access:FlowAccess,id:string,channelId:string,input:Parameters<ReturnType<typeof createAutomationService>['saveBoxRouting']>[3]){
+   const decision=await nativeDecision(access),request:Request={action:'flow:edit',id};
+   const actor=await scoped(access,request)._transact(access.organizationId,async tx=>{
+    const state=await guard(tx,access,request,decision);
+    return state.session.user_id??state.session.credential_id??fail('FLOW_ACCESS_DENIED',403);
+   });
+   return (await resourceScoped(access,id,channelId,'flow:edit')).saveBoxRouting(access.organizationId,id,channelId,input,actor);
+  },
   actionCatalog:async(access:FlowAccess,id:string,channelId:string,input:{pageSize?:number;cursor?:string}={})=>(await resourceScoped(access,id,channelId,'flow:read')).actionCatalog(access.organizationId,id,channelId,input),
   saveActionResource:async(access:FlowAccess,id:string,channelId:string,input:ActionResourceWrite)=>(await resourceScoped(access,id,channelId,'flow:edit')).saveActionResource(access.organizationId,id,channelId,input),
   mediaCatalog:async(access:FlowAccess,id:string,channelId:string)=>(await resourceScoped(access,id,channelId,'flow:read')).mediaCatalog(access.organizationId,id,channelId),
@@ -598,11 +608,14 @@ export function createFlowDelegationService(options:FlowDelegationOptions){
    let failure:unknown;
    try{
     if(target.transport==='CENTRAL_TRANSPORT'){
-     const facade=createChannelFacade({transact:delegated._transact,instances:{} as never,meta:{} as never,automationStatus:org=>delegated.status(org)});
+     const routing=options.automation?.boxRouting?createBoxRoutingService({...options.automation.boxRouting._options,transact:delegated._transact}):undefined;
+     const prepared=routing?await routing.prepareBinding(access.organizationId,id,input.version,target.channel_id,input.expectedProfileRevision):undefined;
+     const facade=createChannelFacade({transact:delegated._transact,instances:{} as never,meta:{} as never,automationStatus:org=>delegated.status(org),
+      ...(prepared?{beforeAutomationBind:async(tx:TenantTransaction)=>{await prepared.assertCurrent(tx);await prepared.activateProfile(tx);}}:{})});
      const result=await facade.bindAutomation(access.organizationId,target.channel_id,{automationId:id,version:input.version,expectedOwnerRevision:input.expectedOwnerRevision});
      return {...result.binding,ownerRevision:result.ownerRevision};
     }
-    return await delegated.bind(access.organizationId,id,{channelId:target.channel_id,version:input.version,expectedOwnerRevision:input.expectedOwnerRevision});
+    return await delegated.bind(access.organizationId,id,{channelId:target.channel_id,version:input.version,expectedOwnerRevision:input.expectedOwnerRevision,...(input.expectedProfileRevision===undefined?{}:{expectedProfileRevision:input.expectedProfileRevision})});
    }catch(error){failure=error;throw error;}
    finally{
     try{await delegated._releaseBind();}catch(error){if(failure!==undefined)throw new AggregateError([failure,error],'Flow bind and nomination cleanup failed');throw error;}

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import {boxHandoffAuthorization} from '../automations/box-directory.js';
 import { AUTOMATION_ORIGIN, AutomationHandoffConfigV1Schema } from '@jrc/contracts';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { OutboxRow } from '../automations/repository.js';
@@ -10,6 +11,7 @@ import { NativeHandoffError, type HandoffOperation, type HandoffRepository, type
 const columns=`id,organization_id AS "organizationId",outbox_id AS "outboxId",execution_id AS "executionId",channel_id AS "channelId",
  conversation_id AS "conversationId",lease_token AS "leaseToken",snapshot,phase,state,last_error AS error`;
 interface Context {
+  runtimeState?:Record<string,unknown>;
   executionId:string; channelId:string; conversationId:string; automationId:string; version:number; executionStatus:string;
   bindingId:string; bindingRevision:number; bindingStatus:string; bindingAutomation:string; bindingVersion:number;
   ownerRevision:number; ownerExecutor:string; ownerAutomation:string|null; ownerVersion:number|null; remoteBinding:string|null;
@@ -21,7 +23,7 @@ interface Context {
 }
 async function context(tx:TenantTransaction,org:string,executionId:string):Promise<Context|undefined> {
   return (await tx.query<Context>(`SELECT e.id AS "executionId",e.channel_id AS "channelId",e.conversation_id AS "conversationId",
-    e.automation_id AS "automationId",e.version,e.status AS "executionStatus",e.binding_id AS "bindingId",
+    e.automation_id AS "automationId",e.version,e.state AS "runtimeState",e.status AS "executionStatus",e.binding_id AS "bindingId",
     b.revision AS "bindingRevision",b.status AS "bindingStatus",b.automation_id AS "bindingAutomation",b.version AS "bindingVersion",
     own.revision AS "ownerRevision",own.executor AS "ownerExecutor",own.automation_id AS "ownerAutomation",own.version AS "ownerVersion",own.remote_binding_id AS "remoteBinding",
     ch.bot_public_id AS "botPublicId",ch.bot_origin_reference AS "botOrigin",(ch.deleting_at IS NOT NULL) AS deleting,
@@ -109,6 +111,8 @@ export function createPostgresHandoffRepository():HandoffRepository {
       const bad=async(error:string)=>({operation:await insertFailure(tx,item,c,error),fresh:true});
       const config=AutomationHandoffConfigV1Schema.safeParse(row.payload);
       if(!config.success)return bad('HANDOFF_DESTINATION_REQUIRED_REPUBLISH');
+      let routeAuthority;
+      try{routeAuthority=boxHandoffAuthorization(c.runtimeState??{},row.payload);}catch{return bad('FLOW_BOX_TARGET_CHANGED');}
       if(!authority(c)||c.mode!=='BOT')return bad('HANDOFF_AUTHORITY_CHANGED');
       let scope;
       try{scope=await resolveAttendanceScope(tx,item.organizationId,item.channelId);}catch{return bad('HANDOFF_DESTINATION_NOT_READY');}
@@ -149,7 +153,7 @@ export function createPostgresHandoffRepository():HandoffRepository {
         WHERE organization_id=$1 AND conversation_id=$2 RETURNING revision`,[item.organizationId,c.conversationId])).rows[0]!;
       const snapshot:HandoffSnapshot={scope,origin:account.base_url,credentialRevision:account.credential_version,bindingId:c.bindingId,bindingRevision:c.bindingRevision,
         automationId:c.automationId,version:c.version,ownerRevision:c.ownerRevision,controlRevision:control.revision,sessionId:session.id,sessionRevision:session.revision,
-        cycle:c.cycle!,remoteConversationId:Number(c.remoteId),target:config.data.target};
+        cycle:c.cycle!,remoteConversationId:Number(c.remoteId),target:config.data.target,...(routeAuthority?{routeTeamId:routeAuthority.teamId}:{})};
       const operation=(await tx.query<HandoffOperation>(`INSERT INTO attendance_handoff_operations(organization_id,outbox_id,execution_id,channel_id,conversation_id,integration_id,lease_token,snapshot)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING ${columns}`,[item.organizationId,item.id,c.executionId,c.channelId,c.conversationId,scope.integrationId,item.leaseToken,JSON.stringify(snapshot)])).rows[0]!;
       return {operation,fresh:true};

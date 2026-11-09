@@ -4,6 +4,9 @@ import { FlowGraphSchema, AutomationHandoffConfigSchema, hasNativeHandoffConfig,
   type AutomationGraphV1, type FlowNode } from '@jrc/contracts';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
 import { executeDataNode } from './data-nodes.js';
+import {BoxDirectorySnapshotSchema,RouteHandoffV3Schema} from '@jrc/contracts';
+import {resolveRouteHandoff} from './box-directory.js';
+import {directoryMenu} from './box-menu-runtime.js';
 import {getDataNodeV2Schema,isDataNodeType,publishedDependencyPolicy,SUBFLOW_MAX_DEPTH} from '@jrc/contracts';
 import {SwitchNodeConfigSchema,selectSwitchPort} from '@jrc/contracts';
 import { isBusinessOpen } from './business-hours.js';
@@ -49,6 +52,8 @@ export async function executeAutomation(
   if(stateVersion===1&&!inputWaiting||!previous||acceptsMessage)variables.message=runtimeJson(input.text);
   const state:RuntimeState=previous?{...previous,runtimeStateVersion:stateVersion,variables,stack:[...previous.stack]}:{runtimeStateVersion:stateVersion,automationId:root.automationId,version:root.version,
     nodeId:root.graph.nodes.find(node=>node.type==='start')!.id,variables,steps:0,stack:[]};
+  const freshStart=!previous||previous.steps===0&&!previous.waiting&&previous.stack.length===0&&previous.nodeId===root.graph.nodes.find(n=>n.type==='start')?.id;
+  if(freshStart&&!state.boxDirectory&&input.boxDirectory)state.boxDirectory=BoxDirectorySnapshotSchema.parse(runtimeJson(input.boxDirectory));
   assertRuntimeState(state);
   const finish=(result:RuntimeResult):RuntimeResult=>{assertRuntimeState(result.state);return result;};
   // Ordinals are the emission order within this turn, including nested subflows.
@@ -90,6 +95,29 @@ export async function executeAutomation(
       if(safeKey(target))variables[target]=stateVersion===1?runtimeJson(runtimeText(runtimeJson(output??null))):runtimeJson(output);
       const outcome=string(input.payload?.outcome)||'unknown',allowed=automationNodePorts(waiting);
       current=next(published.graph,waiting.id,allowed.includes(outcome)?outcome:allowed.at(-1))??null;
+    }else if(waiting.type==='directory-menu'){
+      const saved=state.waiting,{config,route,text,errorText,backValue}=directoryMenu(waiting,state);
+      if(!route.agents.length)throw Error('AUTOMATION_MENU_WAIT_INVALID');
+      if(!saved.waitId||!Number.isInteger(saved.invalidAttempts)||saved.invalidAttempts!<0||saved.invalidAttempts!>=config.maxAttempts||
+        (config.timeoutSeconds!==undefined)!==(saved.deadlineAt!==undefined))throw Error('AUTOMATION_MENU_WAIT_INVALID');
+      const pending=()=>finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:waiting.id,waitId:state.waiting!.waitId!,
+        ...(saved.deadlineAt===undefined?{}:{deadlineAt:new Date(saved.deadlineAt)})}} as RuntimeResult);
+      if(input.inputWait?.waitId!==saved.waitId)return pending();
+      if(input.eventType==='TIMER'){
+        if(saved.deadlineAt===undefined||input.now.getTime()<saved.deadlineAt)return pending();
+        current=next(published.graph,waiting.id,'timeout')??null;
+      }else if(input.eventType==='MESSAGE'&&Number.isFinite(input.inputWait.admittedAt)){
+        if(saved.deadlineAt!==undefined&&input.inputWait.admittedAt!>saved.deadlineAt)current=next(published.graph,waiting.id,'timeout')??null;
+        else{
+          const value=input.text.trim(),index=route.agents.findIndex((a,i)=>(a.optionValue??String(i+1))===value);
+          if(index>=0){state.boxSelection={routeKey:config.routeKey,agentId:route.agents[index]!.id,language:config.language,menuNodeId:waiting.id};current=next(published.graph,waiting.id,'selected')??null;}
+          else if(value===backValue){delete state.boxSelection;current=next(published.graph,waiting.id,'back')??null;}
+          else if(saved.invalidAttempts!+1>=config.maxAttempts)current=next(published.graph,waiting.id,'exhausted')??null;
+          else{state.waiting={...saved,invalidAttempts:saved.invalidAttempts!+1,waitId:randomUUID()};
+            effects.push({nodeId:waiting.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text:errorText+'\n'+text}});return pending();}
+        }
+      }else return pending();
+      if(!current)throw Error('AUTOMATION_MENU_CONNECTION_MISSING');
     }else if(waiting.type==='input'&&waiting.data.inputConfigVersion!==undefined){
       const config=InputCaptureConfigSchema.parse(waiting.data);
       const saved=state.waiting;
@@ -207,12 +235,36 @@ export async function executeAutomation(
     const record={nodeId:node.id,type:node.type,label:node.label,input:{message:variables.message??''},output:{} as Record<string,unknown>};trace.push(record);
     if(node.type==='end') {current=null;continue;}
     if(node.type==='handoff'){
+      if(node.data.handoffVersion===3){
+        const config=RouteHandoffV3Schema.parse(node.data),snapshot=state.boxDirectory;
+        if(!snapshot)throw Error('FLOW_BOX_PROFILE_REQUIRED');
+        const selected=state.boxSelection?.routeKey===config.routeKey?state.boxSelection:undefined;
+        const payload=resolveRouteHandoff(snapshot,config.routeKey,selected?.agentId),route=snapshot.routes.find(r=>r.routeKey===config.routeKey)!;
+        const name=route.mode==='TEAM'?route.teamName:route.agents.find(a=>a.id===selected?.agentId)!.name;
+        const en=selected?.language==='en'||state.variables.language==='en';
+        effects.push({nodeId:node.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text:en?`Please wait, we will transfer your conversation to ${name}.`:`Aguarde, vamos encaminhar seu atendimento para ${name}.`}});
+        record.output={status:'HANDOFF_PENDING',target:payload.target};
+        effects.push({nodeId:node.id,ordinal:effects.length,kind:'HANDOFF',payload});state.nodeId=null;
+        return finish({status:'HANDOFF',state,effects,trace});
+      }
       const native=hasNativeHandoffConfig(node.data),parsed=native?AutomationHandoffConfigSchema.safeParse(node.data):null;
       if(parsed&&!parsed.success)throw new Error('AUTOMATION_HANDOFF_CONFIG_INVALID');
       const payload=parsed?.success?parsed.data:{};
       record.output=parsed?.success?{status:'HANDOFF_PENDING',destination:parsed.data.destination,target:parsed.data.target}
         :{status:'ACTION_REQUIRED',reason:'HANDOFF_DESTINATION_REQUIRED'};
       effects.push({nodeId:node.id,ordinal:effects.length,kind:'HANDOFF',payload});state.nodeId=null;return finish({status:'HANDOFF',state,effects,trace});
+    }
+    if(node.type==='directory-menu'){
+      const {config,route,text}=directoryMenu(node,state),waitId=randomUUID(),deadlineAt=config.timeoutSeconds===undefined?undefined:input.now.getTime()+config.timeoutSeconds*1000;
+      if(!route.agents.length){
+        const back=next(published.graph,node.id,'back');if(published.graph.nodes.find(n=>n.id===back)?.type!=='menu')throw Error('FLOW_BOX_ROUTE_UNAVAILABLE');
+        effects.push({nodeId:node.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text:config.language==='en'?'No attendants are available in this department. Please choose another department.':'Não há atendentes disponíveis neste departamento. Escolha outro departamento.'}});
+        delete state.boxSelection;current=back!;continue;
+      }
+      delete state.boxSelection;
+      effects.push({nodeId:node.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text}});
+      state.nodeId=node.id;state.waiting={kind:'EVENT',nodeId:node.id,waitId,invalidAttempts:0,...(deadlineAt===undefined?{}:{deadlineAt})};
+      return finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:node.id,waitId,...(deadlineAt===undefined?{}:{deadlineAt:new Date(deadlineAt)})}});
     }
     if(node.type==='message'){
       const text=renderFlowText(node.data.text,variables);record.output={text};effects.push({nodeId:node.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text}});

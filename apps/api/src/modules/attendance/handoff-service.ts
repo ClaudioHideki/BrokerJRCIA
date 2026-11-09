@@ -5,6 +5,7 @@ import type { ChatwootClient } from '../integrations/chatwoot-client.js';
 import type { AccountRow } from '../integrations/chatwoot-context.js';
 import { createPostgresHandoffRepository } from './handoff-repository.js';
 import { NativeHandoffError, type HandoffOperation, type HandoffRepository, type HandoffTransactions } from './handoff-types.js';
+import {createDirectoryHandoffRecovery,type DirectoryHandoffRecovery} from '../automations/box-handoff-recovery.js';
 
 type Canonical=Awaited<ReturnType<ChatwootClient['attendanceConversation']>>;
 interface Options extends HandoffTransactions {
@@ -14,6 +15,7 @@ interface Options extends HandoffTransactions {
     catalog(org:string,integrationId:string):Promise<AttendanceCatalog>;
   };
   repository?:HandoffRepository;
+  recovery?:DirectoryHandoffRecovery;
 }
 const errorCode=(error:unknown)=>error instanceof Error&&/^[A-Z][A-Z0-9_]{2,100}$/.test(error.message)?error.message:'HANDOFF_VALIDATION_FAILED';
 function scoped(op:HandoffOperation,value:Canonical) {
@@ -36,14 +38,14 @@ function confirmed(op:HandoffOperation,value:Canonical) {
     value.meta.team?.id!==target.teamId||(value.meta.assignee!==null?!human:value.meta.assignee_type!=null):
     value.meta.assignee?.id!==target.agentId||!human||value.meta.team!==null))throw new NativeHandoffError('HANDOFF_REMOTE_RESULT_UNCONFIRMED');
 }
-function policy(op:HandoffOperation,catalog:AttendanceCatalog) {
+function policy(op:HandoffOperation,catalog:AttendanceCatalog,recovery=false) {
   const s=op.snapshot!;
   if(!catalog.scope||Object.entries(s.scope).some(([key,value])=>catalog.scope[key as keyof AttendanceScope]!==value)||catalog.credentialRevision!==s.credentialRevision)
     throw new NativeHandoffError('HANDOFF_CONTEXT_CHANGED');
   if(catalog.inboxPolicy?.greetingEnabled!==false||catalog.inboxPolicy?.autoAssignmentEnabled!==false||
     catalog.capabilities?.agentBot!=='SUPPORTED'||catalog.remoteBot!==null&&catalog.remoteBot.id!==catalog.brokerBotId||
     s.target.teamId!==null&&!catalog.teams.some(team=>team.id===s.target.teamId&&typeof team.autoAssignment==='boolean')||
-    s.target.agentId!==null&&!catalog.agents.some(agent=>agent.id===s.target.agentId&&agent.inboxMember))
+    !recovery&&s.target.agentId!==null&&!catalog.agents.some(agent=>agent.id===s.target.agentId&&agent.inboxMember))
     throw new NativeHandoffError('HANDOFF_INBOX_POLICY_UNSAFE');
 }
 
@@ -52,6 +54,7 @@ function policy(op:HandoffOperation,catalog:AttendanceCatalog) {
  * GET/POST race. Local takeover always prevents subsequent remote mutations. */
 export function createNativeHandoffService(options:Options) {
   const repository=options.repository??createPostgresHandoffRepository();
+  const recovery=options.recovery??createDirectoryHandoffRecovery({transact:options.transact,repository,client:options.client});
   const guard=(op:HandoffOperation,lease=true,settlement=false)=>options.transact(op.organizationId,t=>repository.guard(t,op,lease,settlement));
   const fail=(op:HandoffOperation,error:string,uncertain:boolean)=>options.transact(op.organizationId,t=>repository.fail(t,op,error,uncertain));
   async function canonical(op:HandoffOperation,lease:boolean,settlement=false) {
@@ -80,7 +83,7 @@ export function createNativeHandoffService(options:Options) {
       let dispatched=false;
       try {
         const s=op.snapshot;
-        const validated=await options.attendanceService.validateTarget(s.scope,s.target);
+        const validated=await options.attendanceService.validateTarget(s.scope,s.routeTeamId===undefined?s.target:{teamId:s.routeTeamId,agentId:s.target.agentId});
         if(validated.credentialRevision!==s.credentialRevision)throw new NativeHandoffError('HANDOFF_CONTEXT_CHANGED');
         const initialCatalog=await options.attendanceService.catalog(op.organizationId,s.scope.integrationId);policy(op,initialCatalog);
         unassigned(op,await canonical(op,true),true,initialCatalog.brokerBotId);
@@ -94,6 +97,10 @@ export function createNativeHandoffService(options:Options) {
         // Recheck policy and the canonical conversation immediately before the
         // final assignment. There are no more remote mutations after assignment.
         policy(op,await options.attendanceService.catalog(op.organizationId,s.scope.integrationId));
+        if(s.routeTeamId!==undefined){
+          const current=await options.attendanceService.validateTarget(s.scope,{teamId:s.routeTeamId,agentId:s.target.agentId});
+          if(current.credentialRevision!==s.credentialRevision)throw new NativeHandoffError('HANDOFF_CONTEXT_CHANGED');
+        }
         unassigned(op,await canonical(op,true),false);
         account=await options.transact(op.organizationId,async t=>{
           const account=await repository.guard(t,op,true);op=await repository.stage(t,op,'ASSIGNMENT_DISPATCHED');return account;
@@ -103,6 +110,16 @@ export function createNativeHandoffService(options:Options) {
         await options.transact(op.organizationId,t=>repository.confirm(t,op));
         return {kind:'SENT',remoteReference:`chatwoot-handoff:${op.id}`};
       } catch(error) {
+        if(!dispatched&&op.phase==='PREPARED'&&op.state==='PENDING'&&op.snapshot?.routeTeamId!==undefined&&
+          ['ATTENDANCE_AGENT_NOT_IN_TEAM','ATTENDANCE_AGENT_NOT_IN_INBOX'].includes(errorCode(error))){
+          try{
+            const catalog=await options.attendanceService.catalog(op.organizationId,op.snapshot.scope.integrationId);policy(op,catalog,true);
+            unassigned(op,await canonical(op,true),true,catalog.brokerBotId);
+            const account=await guard(op,true),plan=await recovery.prepare(item,op,account,catalog);
+            unassigned(op,await canonical(op,true),true,catalog.brokerBotId);
+            return {kind:'FAILED',error:'FLOW_BOX_AGENT_UNAVAILABLE_REOFFERED',commit:plan.commit};
+          }catch{/* An unproven scope/control/policy remains paused for explicit review. */}
+        }
         await fail(op,errorCode(error),dispatched);
         if(dispatched)throw new NativeHandoffError('HANDOFF_REMOTE_OUTCOME_UNKNOWN');
         return {kind:'FAILED',error:errorCode(error)};

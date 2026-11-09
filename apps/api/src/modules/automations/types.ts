@@ -1,4 +1,4 @@
-import type { AutomationGraphV1,AutomationInputMedia } from '@jrc/contracts';
+import type { AutomationGraphV1,AutomationInputMedia,BoxDirectorySnapshot } from '@jrc/contracts';
 
 export type ExecutionStatus = 'QUEUED'|'RUNNING'|'WAITING'|'HANDOFF'|'COMPLETED'|'FAILED'|'CANCELED'|'UNKNOWN';
 export interface RuntimeFrame { automationId:string; version:number; returnNodeId:string; deadlineAt?:number; outputSchema?:Record<string,unknown>;
@@ -8,6 +8,8 @@ export interface RuntimeState {
   runtimeStateVersion?:1|2;
   automationId:string; version:number; nodeId:string|null; variables:Record<string,RuntimeJson>; steps:number;
   stack:RuntimeFrame[]; waiting?:{kind:'EVENT'|'DELAY'|'IO';nodeId:string;wakeAt?:number;waitId?:string;deadlineAt?:number;invalidAttempts?:number;inputConfigVersion?:3};
+  boxDirectory?:BoxDirectorySnapshot;
+  boxSelection?:{routeKey:string;agentId:number;language:'pt'|'en';menuNodeId:string};
 }
 export type RuntimeJson = null | boolean | number | string | RuntimeJson[] | { [key:string]:RuntimeJson };
 export interface RuntimeEffect { nodeId:string; ordinal:number; kind:'SEND_TEXT'|'HANDOFF'|'IO_HTTP'|'IO_SQL'|'IO_CODE'|'IO_AI'|'IO_CONVERSATION'|'SEND_MEDIA'; payload:Record<string,unknown> }
@@ -18,6 +20,8 @@ export interface RuntimeResult {
 }
 export interface PublishedAutomation { automationId:string; version:number; graph:AutomationGraphV1; runtimeStateVersion?:1|2 }
 export interface RuntimeInput { text:string; eventType:'MESSAGE'|'RESUME'|'TIMER'; now:Date; payload?:Record<string,unknown>;
+  /** Server prepared directory, never reconstructed from the public payload. */
+  boxDirectory?:BoxDirectorySnapshot;
   /** Internal canonical reference or an explicit pure-simulation fixture; never a URL. */
   media?:AutomationInputMedia;
   /** Internal simulation reconstruction only; public schemas never accept this callback. */

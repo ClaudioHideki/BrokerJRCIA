@@ -44,6 +44,9 @@ import { createWhatsAppGroupCatalog } from '../whatsapp-groups/service.js';
 import {createConversationEffectRuntime} from '../automations/conversation-runtime.js';
 import {assertQueuedMediaAuthority} from '../automations/conversation-media.js';
 import {assertPartnerMessageAuthority} from '../messaging/partner-authority.js';
+import {createBoxRoutingService,type BoxRoutingService} from '../automations/box-routing-service.js';
+import {createHandoffReadiness} from '../attendance/handoff-readiness.js';
+import {resolveAttendanceScope} from '../attendance/repository.js';
 import type {TenantTransaction} from '../../db/tenant-transaction.js';
 
 type QrConfig = Pick<
@@ -140,7 +143,9 @@ export function createIntegrationRuntime(
       return{connected:snapshot.profile.state==='open',phone:snapshot.profile.phone};},
     readGroups:(context,key)=>fleet!.groups.list(context,key),
   }):undefined;
+  let boxRouting:BoxRoutingService|undefined;
   const groupAutomation=groupPolicy&&config.qr?createGroupAutomationRuntime({
+    get boxRouting(){return boxRouting;},
     ...groupPolicy,transact,captureBinding:fleet!.capture,assertBinding:fleet!.assert,enabled:automationRuntimeEnabled(environment),
     ...(groupCatalog?{refreshCatalogs:groupCatalog.refreshDueForAutomation}:{}),
     async readIdentity(context,instanceKey){
@@ -304,6 +309,9 @@ export function createIntegrationRuntime(
       });
   }
   const chatwoot = options ? createChatwootService(options) : undefined;
+  if(chatwoot)boxRouting=createBoxRoutingService({transact,catalog:chatwoot.attendanceCatalog,teamMembers:chatwoot.attendanceTeamMembers,
+    integration:async(org,channel)=>{const scope=await transact(org,tx=>resolveAttendanceScope(tx,org,channel));if(!scope)throw Error('FLOW_BOX_INTEGRATION_REQUIRED');return scope.integrationId;},
+    readiness:createHandoffReadiness({transact,catalog:chatwoot.attendanceCatalog,validateTarget:chatwoot.validateHumanDestination})});
   const centralEnvironment=options?chatwootEnvironment(options):undefined;
   const centralIngress=options&&centralEnvironment?createChatwootRuntimeIngress({transact,secrets:centralEnvironment.vault,
     enabled:automationRuntimeEnabled(environment),router:createEventRouter({transact,enabled:automationRuntimeEnabled(environment)}),
@@ -330,6 +338,7 @@ export function createIntegrationRuntime(
     qr,
     fleet,
     groupAutomation,
+    boxRouting,
     refreshCentralGroupCatalogs:groupCatalog?.refreshDueForCentral,
     groupPolicy,
     chatwoot,

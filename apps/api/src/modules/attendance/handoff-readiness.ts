@@ -6,7 +6,7 @@ import { resolveAttendanceScope } from './repository.js';
 import { AttendanceError } from './types.js';
 import { assertLocalHumanTarget } from './local-directory.js';
 
-export interface PreparedHandoffReadiness { assertCurrent(tx:TenantTransaction):Promise<void> }
+export interface PreparedHandoffReadiness { assertCurrent(tx:TenantTransaction):Promise<void>;activateProfile?(tx:TenantTransaction):Promise<void> }
 export interface HandoffReadiness { prepare(org:string,graph:AutomationGraphV1,channelId?:string):Promise<PreparedHandoffReadiness> }
 type TargetValidation={scope:AttendanceScope;credentialRevision:number};
 type Options={
