@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,6 +8,8 @@ import { describe, expect, it } from 'vitest';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const composeFile = join(root, 'infra', 'dokploy', 'compose.yaml');
 const composeSource = readFileSync(composeFile, 'utf8');
+const isolatedDockerConfig = join(root, 'node_modules', '.cache', 'compose-test-docker');
+mkdirSync(isolatedDockerConfig, { recursive: true });
 
 function renderCompose(overrides = {}) {
   const requiredNames = [...composeSource.matchAll(/\$\{([A-Z0-9_]+):\?[^}]*\}/g)].map((match) => match[1]);
@@ -37,6 +39,7 @@ function renderCompose(overrides = {}) {
       APPDATA: process.env.APPDATA,
       LOCALAPPDATA: process.env.LOCALAPPDATA,
       ProgramFiles: process.env.ProgramFiles,
+      DOCKER_CONFIG: isolatedDockerConfig,
       ...synthetic,
     },
   });
@@ -47,6 +50,17 @@ function renderCompose(overrides = {}) {
 }
 
 describe('Dokploy Compose interpolation', () => {
+  it('brands new linked devices as Broker JRC without replacing the compatible Chrome identity', () => {
+    const config = renderCompose();
+    expect(config.services.evolution.environment.CONFIG_SESSION_PHONE_CLIENT).toBe('Broker JRC');
+    expect(config.services.evolution.environment.CONFIG_SESSION_PHONE_NAME).toBe('Chrome');
+  });
+
+  it('forwards explicitly configured device branding to the engine', () => {
+    const config = renderCompose({ CONFIG_SESSION_PHONE_CLIENT: 'Broker Example', CONFIG_SESSION_PHONE_NAME: 'Chrome' });
+    expect(config.services.evolution.environment.CONFIG_SESSION_PHONE_CLIENT).toBe('Broker Example');
+    expect(config.services.evolution.environment.CONFIG_SESSION_PHONE_NAME).toBe('Chrome');
+  });
   it('allows an external-only Chatwoot installation while keeping the existing broker host', () => {
     const config = renderCompose();
     const labels = config.services.web.labels;
