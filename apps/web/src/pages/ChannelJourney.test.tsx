@@ -23,9 +23,9 @@ const workspace=()=>({observedAt:at,providerAvailable:false,instance:{id:instanc
  profile:{name:null,phone:null,state:null},counts:{contacts:null,chats:null,messages:null},settings:null,operations:[]});
 describe('connection recovery and diagnostic journey',()=>{
  it('retries an unavailable list using the current bounded API instead of leaving a dead end',async()=>{
-  const request=vi.fn().mockRejectedValueOnce(new ApiClientError('Indisponível',503,'synthetic-request')).mockResolvedValue({data:[fixture()]});
+  let attempts=0;const request=vi.fn(async(path:string)=>{if(path==='/v1/guided-setups/availability')return {enabled:false};if(!attempts++)throw new ApiClientError('Indisponível',503,'synthetic-request');return {data:[fixture()]};});
   mount(request,true);await screen.findByRole('alert');fireEvent.click(screen.getByRole('button',{name:'Tentar carregar caixas novamente'}));
-  expect(await screen.findByRole('heading',{name:'Caixa sintética'})).toBeVisible();expect(request).toHaveBeenCalledTimes(2);
+  expect(await screen.findByRole('heading',{name:'Caixa sintética'})).toBeVisible();expect(request.mock.calls.filter(([path])=>path==='/v1/channels?pageSize=50')).toHaveLength(2);
   expect(request).toHaveBeenLastCalledWith('/v1/channels?pageSize=50');
  });
  it('ends the detail loading state on failure and permits an explicit safe read retry',async()=>{

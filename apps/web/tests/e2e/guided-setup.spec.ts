@@ -1,0 +1,34 @@
+import { expect, test } from '@playwright/test';
+import { welcomeFlow } from '@jrc/contracts';
+import { expectNoAutomaticAccessibilityViolations, signIn } from './helpers.js';
+
+test('persists guided setup, imports a private package and isolates the next company', async ({ page }, info) => {
+  test.setTimeout(90000); await signIn(page); await page.goto('/channels');
+  await page.getByRole('link', { name: 'Configurar atendimento guiado' }).click();
+  await page.getByLabel('Nome da configuração').fill(`Suporte sintético ${info.project.name}`);
+  await page.getByRole('button', { name: 'Iniciar configuração' }).click();
+  await expect(page.getByRole('navigation', { name: 'Etapas da configuração guiada' })).toBeVisible();
+  const firstUrl = page.url(); await page.reload();
+  await expect(page.getByRole('heading', { name: `Suporte sintético ${info.project.name}` })).toBeVisible();
+  await page.getByRole('button', { name: 'Robô e vínculos', exact: true }).click();
+  const content = { format: 'jrc-broker-package/1', rootKey: 'root', flows: [{ key: 'root', name: 'Robô sintético portátil', graph: welcomeFlow() }] };
+  await page.getByLabel('Arquivo do robô JSON').setInputFiles({ name: 'package.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(content)) });
+  await page.getByRole('button', { name: 'Importar rascunhos' }).click();
+  await expect(page.getByRole('heading', { name: 'Pacote importado' })).toBeVisible();
+  await page.getByRole('button', { name: 'Publicar pacote', exact: true }).click();
+  await expect(page.getByText('Pacote publicado. Confira a versão da raiz selecionada acima.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Exportar pacote portátil' })).toBeEnabled();
+  await expectNoAutomaticAccessibilityViolations(page);
+  await test.info().attach('guided-package', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  await page.getByRole('link', { name: 'Editar e simular o robô no Flow' }).click();
+  await expect(page.getByRole('link', { name: 'Voltar à configuração guiada' })).toBeVisible();
+  await page.getByRole('link', { name: 'Voltar à configuração guiada' }).click(); await expect(page).toHaveURL(firstUrl);
+  await page.getByLabel('Organização ativa').selectOption({ label: 'JRC E2E Filial' });
+  await expect(page.getByRole('heading', { name: `Suporte sintético ${info.project.name}` })).not.toBeVisible();
+  await page.goto('/configuracao-guiada'); await page.getByLabel('Nome da configuração').fill(`Meta sintética ${info.project.name}`);
+  await page.getByLabel('Conexão WhatsApp', { exact: true }).selectOption('META');
+  await page.getByRole('button', { name: 'Iniciar configuração' }).click();
+  await expect(page.getByRole('navigation', { name: 'Etapas da configuração guiada' })).toBeVisible();
+  expect(page.url()).not.toBe(firstUrl); await page.reload();
+  await expect(page.getByRole('heading', { name: `Meta sintética ${info.project.name}` })).toBeVisible();
+});

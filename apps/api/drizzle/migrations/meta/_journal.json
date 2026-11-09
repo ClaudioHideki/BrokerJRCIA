@@ -589,6 +589,13 @@
       "when": 1794782400000,
       "tag": "0084_native_csat_transport",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1794782400001,
+      "tag": "0085_guided_setup",
+      "breakpoints": true
     }
   ]
 }

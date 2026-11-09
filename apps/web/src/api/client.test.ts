@@ -40,6 +40,22 @@ function session(accessToken = ACCESS_TOKEN, activeIndex = 0) {
 }
 
 describe('createApiClient', () => {
+  it.each(['organization', 'user'] as const)('does not replay an action when automatic restore changes the %s', async kind => {
+    let actions = 0;
+    const changed = kind === 'organization' ? session(RENEWED_ACCESS_TOKEN, 1) : {
+      ...session(RENEWED_ACCESS_TOKEN), user: { id: TARGET_ID, email: 'another@example.test' },
+    };
+    const client = createApiClient({ cookieSource: () => 'jrc_csrf=synthetic-csrf',
+      fetchImpl: vi.fn(async input => {
+        if (input === '/v1/console/auth/select-organization') return jsonResponse(session());
+        if (input === '/v1/console/auth/restore') return jsonResponse(changed);
+        actions++; return jsonResponse({ status: 401 }, 401);
+      }) });
+    const purge = vi.fn(), expired = vi.fn(); client.registerTenantPurge(purge); client.subscribeToSessionExpiration(expired);
+    await client.selectOrganization({ organizationId: SOURCE_ID, selectionToken: SELECTION_TOKEN });
+    await expect(client.request('/v1/guided-setups', { method: 'POST', body: JSON.stringify({ name: 'Support', transport: 'QR' }) })).rejects.toBeInstanceOf(StaleTenantResponseError);
+    expect(actions).toBe(1); expect(purge).toHaveBeenCalledOnce(); expect(expired).toHaveBeenCalledOnce();
+  });
   it('preserves structured automation diagnostics in problem responses',async()=>{
     const diagnostics=[{nodeId:'same-label-2',field:'data.text',code:'INVALID_CONFIG',message:'Informe uma mensagem.'}];
     const client=createApiClient({fetchImpl:vi.fn(async()=>jsonResponse({code:'AUTOMATION_INVALID',diagnostics},422,{'content-type':'application/problem+json'}))});

@@ -38,6 +38,20 @@ import { registerAutomationWebhookRoutes, type AutomationWebhookRouteOptions } f
 import { createWebhookService } from './modules/automation-integrations/webhooks.js';
 import { registerAutomationImportRoutes, type AutomationImportRouteOptions } from './http/routes/automation-imports.js';
 import { createAutomationImporter } from './modules/automation-integrations/importer.js';
+import { registerAutomationPackageRoutes, type AutomationPackageRouteOptions } from './http/routes/automation-packages.js';
+import { createAutomationPackageService } from './modules/automation-integrations/package-service.js';
+import { registerGuidedSetupRoutes, type GuidedSetupRouteOptions } from './http/routes/guided-setup.js';
+import { createGuidedSetupService } from './modules/guided-setup/service.js';
+import { createNativeSetupReader } from './modules/guided-setup/native-reader.js';
+import { guidedSetupRollout } from './modules/guided-setup/rollout.js';
+import { createNativeSetupInspector } from './modules/guided-setup/native-snapshot.js';
+import { createNativeTestPreparer } from './modules/guided-setup/native-test.js';
+import { createNativeSetupProofReader } from './modules/guided-setup/native-proof.js';
+import { assertSetupBindingScope } from './modules/guided-setup/binding-scope.js';
+import { assertSetupOperation, createNativeSetupOwner } from './modules/guided-setup/native-owner.js';
+import { createPackageDraftLocalizer } from './modules/guided-setup/package-mapping.js';
+import { GuidedSetupError } from './modules/guided-setup/service.js';
+import { createConversationResourceService } from './modules/automations/conversation-resources.js';
 import { createIntegrationRuntime,loadIntegrationConfig } from "./modules/integrations/runtime.js";
 import { z } from 'zod';
 import { createChatwootControlAuth } from './modules/integrations/chatwoot-control-auth.js';
@@ -194,6 +208,8 @@ export interface BuildAppOptions {
   credentials?: CredentialRouteOptions;
   automationWebhooks?: AutomationWebhookRouteOptions;
   automationImports?: AutomationImportRouteOptions;
+  automationPackages?: AutomationPackageRouteOptions;
+  guidedSetup?: GuidedSetupRouteOptions;
   metaWebhooks?: MetaWebhookRouteOptions;
   platform?: PlatformRouteOptions;
   metaOnboarding?: MetaOnboardingRouteOptions;
@@ -268,6 +284,8 @@ export function buildApp(options: BuildAppOptions = {}) {
       options.credentials !== undefined ||
       options.automationWebhooks !== undefined ||
       options.automationImports !== undefined ||
+      options.automationPackages !== undefined ||
+      options.guidedSetup !== undefined ||
       options.metaWebhooks !== undefined ||
       options.platform !== undefined ||
       options.metaOnboarding !== undefined ||
@@ -302,6 +320,8 @@ export function buildApp(options: BuildAppOptions = {}) {
   let credentials = nodeEnv === "test" ? options.credentials : undefined;
   let automationWebhooks = nodeEnv === "test" ? options.automationWebhooks : undefined;
   let automationImports = nodeEnv === "test" ? options.automationImports : undefined;
+  let automationPackages = nodeEnv === 'test' ? options.automationPackages : undefined;
+  let guidedSetup = nodeEnv === 'test' ? options.guidedSetup : undefined;
   let instanceWorkspace =
     nodeEnv === "test" ? options.instanceWorkspace : undefined;
   let whatsappGroups = nodeEnv === 'test' ? options.whatsappGroups : undefined;
@@ -677,6 +697,44 @@ export function buildApp(options: BuildAppOptions = {}) {
       executions:createExecutionService(automationOptions),
       migration:createLegacyFlowMigrationService({...automationOptions,runtimeReady:automationRuntimeReady}),
     };
+    automationPackages = { jwtSecret: config.jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey,
+      resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
+      service: createAutomationPackageService({ ...automationOptions, automations: automations.service }) };
+    const setupReader = createNativeSetupReader({ transact: automationOptions.transact, channels: channels.service,
+      automations: automations.service, packages: automationPackages.service,
+      ...(integrationRuntime.chatwoot ? { chatwoot: integrationRuntime.chatwoot } : {}) });
+    const setupRoleResolver = createMessagingMembershipResolver(pools.authPool);
+    const setupResources = createConversationResourceService(automationOptions);
+    const inspectSetup = createNativeSetupInspector({ transact: automationOptions.transact, channels: channels.service,
+      automations: automations.service, meta: metaOnboardingService, controlAuth,
+      refreshResources: setupResources.refreshGraphs,
+      ...(integrationRuntime.controlService ? { control: integrationRuntime.controlService } : {}),
+      ...(integrationRuntime.chatwoot ? { chatwoot: integrationRuntime.chatwoot } : {}) });
+    const setupAutomations = automations.service;
+    guidedSetup = { jwtSecret: config.jwtSecret, authenticateApiKey: apiKeys.authenticateApiKey,
+      resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
+      service: createGuidedSetupService({ transact: automationOptions.transact,
+        resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
+        isEnabled: guidedSetupRollout(messagingEnvironment.GUIDED_SETUP_TENANTS), ports: {
+          ...setupReader, inspect: inspectSetup,
+          localizePackageDrafts: createPackageDraftLocalizer(),
+          ...createNativeSetupOwner({ transact: automationOptions.transact, channels: channels.service,
+            authorize: async principal => {
+              const role = await setupRoleResolver(principal.actorId, principal.organizationId);
+              if (!role || !['OWNER', 'ADMIN'].includes(role)) throw new GuidedSetupError('GUIDED_SETUP_FORBIDDEN', 403);
+            } }),
+          prepareTest: createNativeTestPreparer({ ...automationOptions, automations: setupAutomations }),
+          readProof: createNativeSetupProofReader({ transact: automationOptions.transact, channels: channels.service }),
+          bind: (principal, input) => setupAutomations.bind(principal.organizationId, input.automationId, {
+            channelId: input.channelId, version: input.version, expectedOwnerRevision: input.expectedOwnerRevision,
+            assertScope: async tx => {
+              const role = await setupRoleResolver(principal.actorId, principal.organizationId);
+              if (!role || !['OWNER', 'ADMIN'].includes(role)) throw new GuidedSetupError('GUIDED_SETUP_FORBIDDEN', 403);
+              await assertSetupOperation(tx, principal.organizationId, input.setupId, input.leaseToken);
+              await assertSetupBindingScope(tx, principal.organizationId, input.snapshot);
+            },
+          }),
+        } }) };
     const vaultKeys=messagingEnvironment.CREDENTIAL_VAULT_KEYS_JSON??(messagingEnvironment.INTEGRATION_ENCRYPTION_KEY?JSON.stringify({1:messagingEnvironment.INTEGRATION_ENCRYPTION_KEY}):undefined);
     const nativeRuntime=createNativeFlowRuntime({authPool:pools.authPool,authentication:{jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool)},rateLimit:{store:rateLimitStore,secret:config.identityRateLimitHmacSecret,nodeEnv,trustedProxyCidrs:config.trustedProxyCidrs,ipLimit:config.authRateLimit.limit,identityLimit:config.authRateLimit.limit,windowMs:config.authRateLimit.ttlMs},...(vaultKeys?{registration:{keyring:vaultKeys,transact:automationOptions.transact}}:{})});
     flowDelegation={jwtSecret:config.jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(pools.authPool),resolveFlowSession:createFlowSessionResolver(pools.authPool),service:createFlowDelegationService({nativeAdapter:nativeRuntime.adapter,transact:automationOptions.transact,knownNativeOrigins:flowOriginOptions.knownNativeOrigins,automation:{enabled:config.automationRuntimeV2Enabled,runtimeReady:automationRuntimeReady,
@@ -988,6 +1046,14 @@ export function buildApp(options: BuildAppOptions = {}) {
   if (automationImports) {
     const configured=automationImports;
     app.register(scope=>registerAutomationImportRoutes(scope,configured));
+  }
+  if (automationPackages) {
+    const configured = automationPackages;
+    app.register(scope => registerAutomationPackageRoutes(scope, configured));
+  }
+  if (guidedSetup) {
+    const configured = guidedSetup;
+    app.register(scope => registerGuidedSetupRoutes(scope, configured));
   }
   if(attendanceResume){const configured=attendanceResume;app.register(scope=>registerAttendanceResumeRoutes(scope,configured));}
   if(attendanceLocal){const configured=attendanceLocal;app.register(scope=>registerAttendanceLocalRoutes(scope,configured));}

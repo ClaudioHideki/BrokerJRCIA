@@ -239,6 +239,7 @@ export function createChatwootService(options: ChatwootOptions) {
     destinations,
     attendanceCatalog:attendance.catalog,
     validateHumanDestination:attendance.validateTarget,
+    validateGuidedHumanDestination:attendance.validateGuidedTarget,
     async status(org: string) {
       return tx(org, async (t) => {
         const { account: a, destination } = await resolveChatwootContext(t, org, env.origin);

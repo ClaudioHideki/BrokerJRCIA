@@ -20,6 +20,8 @@ const PROTECTED_PATH_PREFIXES = [
   "/v1/attendance",
   "/v1/automation-nodes",
   "/v1/automation-imports",
+  "/v1/automation-packages",
+  "/v1/guided-setups",
   "/v1/credentials",
   "/v1/webhooks",
   "/v1/channels",
@@ -51,6 +53,14 @@ function documentationOptions() {
     },
   ) as ProviderAccountService;
   return {
+    automationPackages: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
+      service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/automation-integrations/package-service.js').AutomationPackageService,
+    },
+    guidedSetup: {
+      jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable, resolveCurrentRole: unavailable,
+      service: new Proxy({}, { get() { return unavailable; } }) as import('../modules/guided-setup/service.js').GuidedSetupService,
+    },
     mediaCustody: {
       jwtSecret: `${DOCUMENTATION_SECRET}-jwt`, authenticateApiKey: unavailable,
       service: new Proxy({}, {get() { return unavailable; }}) as import('../modules/media-custody/service.js').MediaCustodyService,

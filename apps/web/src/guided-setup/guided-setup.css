@@ -1,0 +1,14 @@
+.guided-setup { max-width: 1200px; }
+.guided-setup .panel { margin-block: 1rem; }
+.guided-setup label { display: flex; flex-direction: column; gap: .4rem; margin-block: .8rem; }
+.guided-setup label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; flex-wrap: wrap; }
+.guided-setup input:not([type="checkbox"]):not([type="file"]), .guided-setup select { width: 100%; min-height: 2.6rem; }
+.guided-setup fieldset { margin-block: 1rem; padding: 1rem; border: 1px solid #d8e2ec; border-radius: .6rem; }
+.guided-setup .button { margin: .3rem .5rem .3rem 0; }
+.guided-setup .wizard-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .5rem; padding: 0; list-style: none; }
+.guided-setup .wizard-steps li { display: block; padding: .4rem; }
+.guided-setup .wizard-steps button { width: 100%; min-height: 3rem; padding: .4rem; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.guided-setup code { overflow-wrap: anywhere; }
+.guided-setup small { opacity: .8; }
+@media (max-width: 760px) { .guided-setup .wizard-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 440px) { .guided-setup .wizard-steps { grid-template-columns: 1fr; } }
