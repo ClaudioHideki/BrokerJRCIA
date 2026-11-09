@@ -787,7 +787,7 @@ it('native execution capability confines history to current root channels and re
 
 it('box-routing delegation saves and activates a published profile with CAS and rejects another inbox before remote IO',async()=>{
  const t=await fixture(),qr=await qrInbox(t),other=await secondInbox(t),remote=remoteClient(t);
- const scope={...t.scope,channelId:qr.channel,integrationId:qr.integration};
+ const scope={...t.scope,channelId:qr.channel,integrationId:qr.integration,inboxId:19};
  const catalog=vi.fn(async()=>({...boxCatalog(),scope}));
  const boxRouting=createBoxRoutingService({transact:db.transact,integration:async()=>qr.integration,catalog,teamMembers:async()=>[],readiness:{prepare:async()=>({assertCurrent:async()=>{}})}});
  const service=t.serviceWith({automation:{enabled:true,boxRouting},client:()=>remote.client,identity:qr.health});
