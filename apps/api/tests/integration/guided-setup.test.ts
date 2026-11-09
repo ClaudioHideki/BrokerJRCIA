@@ -73,7 +73,10 @@ describe('guided setup real PostgreSQL isolation and durable receipts', () => {
       await writeSetupAudit(tx, principal, setup.id, 'TESTED', { channelId: a.channel });
     });
     await expect(db.transact(a.org, tx => assertSetupOperation(tx, a.org, setup.id, 'abandoned'))).rejects.toMatchObject({ code: 'GUIDED_SETUP_LEASE_LOST' });
-    const audit = await db.transact(a.org, tx => tx.query('SELECT actor_id,metadata FROM audit_logs WHERE resource_id=$1', [setup.id]));
+    // Runtime audit access intentionally permits INSERT only; inspect the receipt
+    // through the isolated test administrator without widening application grants.
+    await expect(db.transact(a.org, tx => tx.query('SELECT id FROM audit_logs'))).rejects.toMatchObject({ code: '42501' });
+    const audit = await db.database.pool.query('SELECT actor_id,metadata FROM audit_logs WHERE organization_id=$1 AND resource_id=$2', [a.org, setup.id]);
     expect(audit.rows).toEqual([{ actor_id: actor, metadata: { channelId: a.channel } }]);
   });
   it('runs every proof predicate against real tables and rejects invented or foreign executions', async () => {

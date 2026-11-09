@@ -8,6 +8,8 @@ O administrador JRC cria a empresa e habilita o módulo de automações pelo pro
 
 O piloto usa a variável pública de runtime `GUIDED_SETUP_TENANTS`, com UUIDs de organizações separados por vírgula. Vazio desabilita o assistente; `all` libera explicitamente para todas as organizações. O piloto deve conter somente a organização autorizada da Branef. O código não contém um identificador fixo de cliente. Alterar essa variável exige recriar o serviço da API; não altera vínculos existentes.
 
+Os modelos Compose do repositório encaminham essa variável para o container da API. Em um Compose já instalado e personalizado, confira também a seção `api.environment`: ela deve conter `GUIDED_SETUP_TENANTS: ${GUIDED_SETUP_TENANTS:-}`. Preencher somente o Environment do Dokploy não injeta variáveis que o Compose não encaminha. A opção vazia mantém o assistente desabilitado.
+
 ## Empresa e destino
 
 Informe um nome para a configuração. Escolha QR ou Meta. Na primeira etapa, confira a empresa e configure a instalação JRC no painel nativo de integração. Use o endereço HTTPS da instalação, a conta e a credencial no formulário protegido. Um destino externo pode depender da aprovação administrativa já existente no Broker.
@@ -64,6 +66,16 @@ Em caso de timeout, use **Atualizar andamento** e **Conferir e retomar**. A reco
 Cancelar uma configuração em edição conserva caixas, agentes e robôs para reutilização. Recursos ativos ou operações desconhecidas precisam ser interrompidos/conferidos antes do cancelamento. Retirar um tenant da lista de disponibilidade esconde o assistente, mas não desativa seu atendimento; use primeiro a interrupção ou o mecanismo nativo de vínculo quando necessário.
 
 ## Arquitetura e evidências
+
+### Atualização do schema
+
+A API e os workers não aplicam migrações no startup. Antes de iniciar a revisão que exige `0085_guided_setup`, use o serviço de manutenção com a imagem aprovada, a partir da pasta e do arquivo Compose realmente instalados. Para uma atualização de schema, execute diretamente o migrador:
+
+```sh
+docker compose --profile maintenance run --rm --no-deps --workdir /app --entrypoint node migrate --input-type=module -e 'import {runMigrations} from "./apps/api/dist/db/migrate.js"; const url=process.env.MIGRATION_DATABASE_URL; if(!url) throw new Error("MIGRATION_DATABASE_URL required"); await runMigrations(url); console.log("Schema atualizado");'
+```
+
+O comando reutiliza a credencial protegida do perfil de manutenção, aplica as migrações pendentes pelo Drizzle e mantém seu journal. O provisionador completo `infra/app/provision.mjs`, usado na instalação inicial, também configura senhas de roles; para atualização use a entrada direta acima. Confira o resultado do migrador, a prontidão do schema e a saúde da API antes de liberar o piloto. Preserve os volumes e as credenciais atuais.
 
 O assistente coordena os serviços existentes; não cria outro motor de mensagens. A migração aditiva `0085_guided_setup` acrescenta manifestos de pacotes e de progresso, com isolamento forçado por organização, restrições de escopo, privilégios limitados e cadastro no ciclo de vida. O processo da API não recebe privilégio de exclusão nessas tabelas.
 

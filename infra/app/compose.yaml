@@ -13,6 +13,7 @@ services:
       - "${JRC_API_BIND:-127.0.0.1:3000}:3000"
     environment:
       NODE_ENV: production
+      GUIDED_SETUP_TENANTS: "${GUIDED_SETUP_TENANTS:-}"
       PORT: "3000"
       DATABASE_URL: "${DATABASE_URL:?required}"
       AUTH_DATABASE_URL: "${AUTH_DATABASE_URL:?required}"
