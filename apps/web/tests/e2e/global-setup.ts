@@ -16,6 +16,9 @@ import {
 } from '@jrc/providers';
 import { initializePasswordVerifier } from '@jrc/security';
 
+import {createAutomationPackageService} from '../../../api/src/modules/automation-integrations/package-service.js';
+import {createGuidedSetupService} from '../../../api/src/modules/guided-setup/service.js';
+import {createNativeSetupReader} from '../../../api/src/modules/guided-setup/native-reader.js';
 import {createChannelFacade} from '../../../api/src/modules/channels/facade.js';
 import {ensureQrChannel} from '../../../api/src/modules/messaging/qr-service.js';
 import {createAutomationService,createExecutionService} from '../../../api/src/modules/automations/service.js';
@@ -304,7 +307,12 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     process.env.JRC_E2E_META_SECRET = metaWebhookSecret;
     const transact=<T>(org:string,work:OrganizationTransaction<T>)=>withOrganizationTransaction(appPool!,org,work);
     const automationOptions={transact},routeAuth={jwtSecret,authenticateApiKey:apiKeys.authenticateApiKey,resolveCurrentRole:createMessagingMembershipResolver(authPool)};
+    const guidedChannels=createChannelFacade({instances,meta:{start:async()=>{throw new Error('Meta real não configurada no E2E');}},transact,activateQr:(org,id)=>transact(org,tx=>ensureQrChannel(tx,org,id))});
+    const guidedAutomations=createAutomationService(automationOptions);
+    const guidedPackages=createAutomationPackageService({transact,automations:guidedAutomations});
     app = buildApp({
+      automationPackages:{...routeAuth,service:guidedPackages},
+      guidedSetup:{...routeAuth,service:createGuidedSetupService({transact,isEnabled:()=>true,resolveCurrentRole:routeAuth.resolveCurrentRole,ports:createNativeSetupReader({transact,channels:guidedChannels,automations:guidedAutomations,packages:guidedPackages})})},
       attendanceResume:{...routeAuth,service:resumeFixture.service},
       support:{...routeAuth,service:createSupportService({transact})},
       channels:{...routeAuth,service:createChannelFacade({instances,meta:{start:async()=>{throw new Error('Meta real não configurada no E2E');}},transact,activateQr:(org,id)=>transact(org,tx=>ensureQrChannel(tx,org,id))})},

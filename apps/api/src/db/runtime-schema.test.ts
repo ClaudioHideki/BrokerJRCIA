@@ -4,6 +4,12 @@ import { loadExpectedMigrations } from './schema-status.js';
 import { RUNTIME_SCHEMA_BASELINE, probeRequiredRuntimeSchema } from './runtime-schema.js';
 
 describe('runtime schema probe', () => {
+  it('requires tenant-private guided setup and package manifests without broad delete access', async () => {
+    const query = vi.fn(async (_sql: string) => ({ rows: [{ ready: false }] }));
+    await probeRequiredRuntimeSchema(query);
+    for (const marker of ['automation_packages', 'guided_setup_operations', 'automation_packages_tenant', 'guided_setup_tenant'])
+      expect(query.mock.calls[0]?.[0]).toContain(marker);
+  });
   it('only invokes private catalogue functions after their structural guards have passed', async () => {
     const query=vi.fn(async (_sql:string)=>({rows:[{ready:true}]}));
     expect(await probeRequiredRuntimeSchema(query)).toBe(true);
