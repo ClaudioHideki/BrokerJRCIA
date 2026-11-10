@@ -4,6 +4,23 @@ import { normalizeQrEvent, normalizeQrHistoryEvent } from '../../src/modules/mes
 const envelope = (data: unknown, event = 'messages.upsert') => ({ event, instance: 'jrc-private-instance', data });
 const message = { key: { id: 'qr-message-1', remoteJid: '15550000001@s.whatsapp.net', fromMe: false }, messageTimestamp: 1789470000, pushName: 'Contato de teste', message: { conversation: 'Olá JRC' } };
 describe('eventos QR canônicos', () => {
+  it('recebe documento com legenda no envelope suportado pela Evolution sem perder a identidade de mídia', () => {
+    const raw = { ...message, message: { documentWithCaptionMessage: { message: { documentMessage: { fileName: 'proposta.pdf', caption: 'Documento sintético', mimetype: 'application/pdf' } } } } };
+    expect(normalizeQrEvent(envelope(raw), 'jrc-private-instance')).toMatchObject([{
+      kind: 'media', upstreamMessageId: message.key.id, externalId: '15550000001', caption: 'Documento sintético',
+      media: { kind: 'document', source: 'QR', sourceKey: message.key.id, fileName: 'proposta.pdf', descriptor: { messageId: message.key.id } },
+    }]);
+  });
+  it('preserva direção e ordem em lote misto com documento aninhado', () => {
+    const raw = { ...message, key: { ...message.key, id: 'document-out', fromMe: true }, message: { ephemeralMessage: { message: { documentWithCaptionMessage: { message: { documentMessage: { fileName: 'arquivo.pdf', caption: 'Legenda' } } } } } } };
+    const result = normalizeQrEvent(envelope([message, raw]), 'jrc-private-instance');
+    expect(result).toHaveLength(2);
+    expect(result[1]).toMatchObject({ kind: 'outbound-media', upstreamMessageId: 'document-out', displayName: null, caption: 'Legenda' });
+  });
+  it('não habilita mídia histórica implicitamente ao normalizar documentos novos', () => {
+    const raw = { ...message, message: { documentWithCaptionMessage: { message: { documentMessage: { caption: 'Histórico sintético' } } } } };
+    expect(() => normalizeQrHistoryEvent(envelope([raw], 'messages.set'), 'jrc-private-instance')).toThrow('QR_HISTORY_CONTENT_UNSUPPORTED');
+  });
   it('preserves the authenticated source timestamp for ordering connection facts', () => {
     const occurredAt = '2026-01-01T10:00:00.123Z';
     expect(normalizeQrEvent({ ...envelope({ state: 'close' }, 'connection.update'), date_time: occurredAt }, 'jrc-private-instance'))

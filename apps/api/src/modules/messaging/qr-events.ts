@@ -151,7 +151,7 @@ export function normalizeQrEvent(
         if(occurredAt.getTime()>Date.now()+300000)throw new Error('QR_EVENT_INVALID');
         let message=object(data.message);
         for(let i=0;i<3;i++) {
-          const wrapped=object(message.ephemeralMessage??message.viewOnceMessage??message.viewOnceMessageV2);
+          const wrapped=object(message.ephemeralMessage??message.viewOnceMessage??message.viewOnceMessageV2??message.documentWithCaptionMessage);
           if(!wrapped.message)break;message=object(wrapped.message);
         }
         if(message.protocolMessage||message.reactionMessage||message.senderKeyDistributionMessage)return [];
@@ -185,7 +185,8 @@ export function normalizeQrEvent(
         const wrapped = object(
           message.ephemeralMessage ??
             message.viewOnceMessage ??
-            message.viewOnceMessageV2,
+            message.viewOnceMessageV2 ??
+            message.documentWithCaptionMessage,
         );
         if (!wrapped.message) break;
         message = object(wrapped.message);
