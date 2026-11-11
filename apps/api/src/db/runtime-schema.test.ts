@@ -38,6 +38,14 @@ describe('runtime schema probe', () => {
     expect(RUNTIME_SCHEMA_BASELINE).toBe(migrations.at(-1)?.name);
   });
 
+  it('requires the private historical ledger and immutable admission receipt structure', async () => {
+    const query = vi.fn(async (_sql:string) => ({rows:[{ready:true}]}));
+    await probeRequiredRuntimeSchema(query);
+    const sql = query.mock.calls[0]?.[0] ?? '';
+    for (const name of ['history_account_identities','history_sync_runs','history_sync_chunks','history_sync_receipts',
+      'history_sync_tenant','admission_kind','history_sync_chunk_guard','history_sync_run_guard']) expect(sql).toContain(name);
+  });
+
   it('refuses an older schema even when the observability table exists', async () => {
     const query = vi.fn(async (_sql: string) => ({ rows: [{ ready: false }] }));
     expect(await probeRequiredRuntimeSchema(query)).toBe(false);

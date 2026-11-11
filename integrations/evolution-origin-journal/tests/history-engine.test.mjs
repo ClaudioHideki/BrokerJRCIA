@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { before, after, test } from 'node:test';
+import { Pool } from 'pg';
+import { withOriginEngineLabHost, awaitOriginEngineReady } from '../src/engine-host.mjs';
+import { createOriginEngineComposition } from '../src/engine-composition.mjs';
+import { createOriginJournal, installOriginJournal, bindingFingerprint } from '../src/journal.mjs';
+import { compileEngineFixture } from './engine-fixture.mjs';
+import { validateTestAdminUrl } from './lab-database.mjs';
+
+let pool, admin, database;
+const key = Buffer.alloc(32, 95), enabled = { JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED: 'true', HISTORY_SYNC_V2_ENABLED: 'true' };
+before(async () => {
+  const url = validateTestAdminUrl(process.env.TEST_DATABASE_ADMIN_URL);
+  database = `jrc_test_history_engine_${randomUUID().replaceAll('-', '')}`;
+  admin = new Pool({ connectionString: url.href, max: 1 }); await admin.query(`CREATE DATABASE "${database}"`);
+  url.pathname = `/${database}`; pool = new Pool({ connectionString: url.href, max: 4 }); await installOriginJournal(pool);
+});
+after(async () => { await pool?.end(); try { if (admin && database) await admin.query(`DROP DATABASE "${database}"`); } finally { await admin?.end(); } });
+
+test('the compiled pinned socket callback seals history synchronously and commits it through the source journal before legacy work', async () => {
+  const binding = { instanceId: randomUUID(), instanceName: `Synthetic-${randomUUID()}`, generation: 1, destinationId: randomUUID(), revision: 1 };
+  const scope = { organizationId: randomUUID(), channelId: randomUUID(), instanceId: binding.instanceId, engineId: 'synthetic-engine', engineGeneration: 1,
+    sessionGeneration: randomUUID(), bindingFingerprint: bindingFingerprint(binding), identityScopeId: null, historyAccountIdentity: null, ownerFingerprint: null };
+  const endpoint = `https://broker.invalid/v1/webhooks/whatsapp/${binding.destinationId}`, runId = randomUUID();
+  const fixture = await compileEngineFixture({ endpoint });
+  const journal = createOriginJournal({ pool, encryptionKey: key, history: { maxStagedBytes: 2000000 } });
+  const history = { scope, runId };
+  await withOriginEngineLabHost({ labOnly: true, env: enabled, prepareInstance: async () => ({ pool, journal, binding,
+    resolveBinding: async () => binding, history, transport: { endpoint, bearerToken: 'synthetic-test-only' } }) }, async () => {
+    const engine = fixture.create(binding); await awaitOriginEngineReady(engine.instance);
+    history.runId = randomUUID(); // Attached host authority must remain latched.
+    let legacyObservedCommitted = false;
+    engine.instance.messageHandle['messaging-history.set'] = async () => { legacyObservedCommitted = (await journal.history.pending(scope)).length === 1; };
+    const event = { 'messaging-history.set': { isLatest: true, progress: 100, chats: [], contacts: [], messages: [{
+      key: { id: 'synthetic-engine-history', remoteJid: `${'1'.repeat(11)}@s.whatsapp.net`, fromMe: false },
+      messageTimestamp: 1600000000, message: { conversation: 'Original socket text' },
+    }] } };
+    const capturing = engine.emit(event);
+    event['messaging-history.set'].messages[0].message.conversation = 'Mutation after callback';
+    await capturing;
+    const [pending] = await journal.history.pending(scope);
+    assert.equal(pending?.chunk.records[0].content.text, 'Original socket text');
+    assert.equal(pending.runId, runId);
+    assert.equal(legacyObservedCommitted, true);
+    assert.equal((await awaitOriginEngineReady(engine.instance)).deliveryOwnership, 'UNPROVEN');
+  });
+});
+
+test('history opt-in refuses a mismatched engine identity instead of admitting another instance history', () => {
+  const binding = { instanceId: randomUUID(), instanceName: 'Synthetic mismatch', generation: 1, destinationId: randomUUID(), revision: 1 };
+  const scope = { instanceId: randomUUID(), engineGeneration: 1, bindingFingerprint: bindingFingerprint(binding) };
+  assert.throws(() => createOriginEngineComposition({ binding, pool, journal: createOriginJournal({ pool, encryptionKey: key }), env: enabled,
+    history: { scope, runId: randomUUID() }, resolveBinding: async () => binding,
+    transport: { endpoint: `https://broker.invalid/v1/webhooks/whatsapp/${binding.destinationId}`, bearerToken: 'synthetic-test-only' } }), /HISTORY_SOURCE_BINDING_CHANGED/u);
+});

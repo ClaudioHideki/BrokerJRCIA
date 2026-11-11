@@ -1,3 +1,18 @@
+# Checkpoint ativo — histórico WhatsApp, 11/11/2026
+
+Branch local `codex/whatsapp-history-sync-20261111`, base preservada `1fed8ffcc68859c717f64a8aae50f29e8345e05b`. Main `29095bea35702893e1a5b80f5131bdd13b901a7e` reconferida após os testes e já ancestral. Checkouts antigos e alterações de áudio alheias preservados. Nenhum push, merge, deploy, alteração produtiva, credencial, pareamento, envio/replay ou backup/dump/restore neste incremento.
+
+Plano aprovado: `docs/superpowers/plans/2026-11-05-whatsapp-history-sync.md`. Ledger privado `.superpowers/sdd/2026-11-05-whatsapp-history-sync/progress.md`. Núcleo recuperado seletivamente do commit `608aee7`; migration nova e ainda não aplicada em produção `0087_history_sync`, depois de `0085_guided_setup`/`0086_automation_box_routing`. Nenhuma migration aplicada foi renumerada.
+
+Implementado localmente: contratos e staging cifrado V2; catálogo de identidade; journal de origem com páginas limitadas; CHAT/CONTACT/MESSAGE/GAP, individuais, grupos, participantes e referências privadas de mídia. Snapshot síncrono cifrado antes de await, sequência transacional, ACK do envelope completo, reserva de memória limitada, retry privado, continuidade após promoção e gates físicos de schema. Ownership da engine continua UNPROVEN e o host é de laboratório.
+
+Gates atuais do Broker: **4.340 testes/567 arquivos passaram**, sem falhas; `npm run typecheck` e `npm run build` passaram. Script real `test:origin-journal`: **93/93**; integração PostgreSQL descartável: **16/16**; contratos focais: **28/28**. `test:compiled`: **1 passou/1 skipped**, pois não houve imagem/container para o teste dependente de CONTAINER_SMOKE_URL. A suíte global foi repetida sequencialmente após duas correções de fixtures/baseline; uma tentativa paralela intermediária foi interrompida por pressão de memória e não conta como aprovação. CI remota e imagens não executadas/publicadas.
+
+LAB2: worktree `C:/Users/DEV02/.codex/worktrees/whatsapp-history-order/consolidacao-core-20261109`, branch `codex/whatsapp-history-order-20261111`, base `126d251dd5d5179783706f4934ba4fabc9d12b19`; main `d8a83b824b11cc68ddbbce7c79681f368051fb70` já incorporada. Preservado o escopo Minhas por membership antes da paginação, relógio monotônico, agrupamento por caixa e permissões exclusivas/URA. Acrescentado receptor Rails V2 local, gated, texto/grupos/LID e recibos pós-commit, sem callbacks, com proteção de grupos no diretório/busca/rotas e reuso comprovado de mensagens. Mídia V2 ainda não é anunciada como suportada. A rodada ampla inicial desse receptor passou **226 exemplos Rails**; ver o checkpoint LAB2 para a revisão exata posterior.
+
+Próximas tarefas internas, sem reiniciar: writer canônico e deduplicação live/history; transporte/autoridade e coverage-close da origem (isLatest não é término); mídias físicas/S3 e custódia KEEP; worker de projeção com negociação V2 e recibos; progresso/API/UI; imagem efetiva da engine e E2E/CI no novo SHA. Nunca habilitar captura produtiva nem afirmar que todo o telefone foi espelhado com esses testes sintéticos.
+---
+
 # Continuação ativa — conexões e histórico, 04/11/2026
 
 ## Incremento posterior — sessão humana e visibilidade, 05/11/2026

@@ -47,7 +47,8 @@ export function attachOriginEngineInstance(scope, instance) {
   if (!host) throw new Error('ORIGIN_ENGINE_OWNERSHIP_UNPROVEN');
   const name = scope?.instanceName, id = scope?.instanceId;
   if (typeof name !== 'string' || !name || typeof id !== 'string' || !id || names.has(name) || instances.has(instance)) throw new Error('ORIGIN_ENGINE_INSTANCE_INVALID');
-  const entry = { name, id, instance, captureQueue: Promise.resolve(), fanouts: new Set() }, authority = Object.freeze({ instanceName: name, instanceId: id });
+  const entry = { name, id, instance, captureQueue: Promise.resolve(), fanouts: new Set(),
+    historyEnabled: host.env.HISTORY_SYNC_V2_ENABLED === 'true' }, authority = Object.freeze({ instanceName: name, instanceId: id });
   let timer, expired = false;
   const preparing = (async () => {
     // Only the explicit trusted laboratory host receives the constructed object;
@@ -57,8 +58,10 @@ export function attachOriginEngineInstance(scope, instance) {
     if (options.binding?.instanceName !== name || options.binding?.instanceId !== id) throw new Error('ORIGIN_ENGINE_BINDING_CHANGED');
     const result = await options.pool.query("SELECT current_setting('fsync')='on' AND current_setting('full_page_writes')='on' AND to_regclass('jrc_evolution_origin.events') IS NOT NULL AS ready");
     if (expired || result.rows[0]?.ready !== true) throw new Error('ORIGIN_ENGINE_DATABASE_NOT_READY');
-    const journal = options.journal ?? createOriginJournal({ pool: options.pool, encryptionKey: options.encryptionKey });
+    const journal = options.journal ?? createOriginJournal({ pool: options.pool, encryptionKey: options.encryptionKey,
+      history: options.history ? { maxStagedBytes: options.history.maxStagedBytes } : undefined });
     const composition = createOriginEngineComposition({ ...options, journal, env: host.env });
+    entry.snapshot = composition.snapshot;
     if (options.startWorker === true) composition.start().catch(() => undefined);
     return composition;
   })();
@@ -88,7 +91,8 @@ export async function captureOriginBatch(instance, events, enqueue) {
   const entry = instances.get(instance);
   if (entry?.closing) throw new Error('ORIGIN_ENGINE_HOST_CLOSING');
   if (!entry) { await awaitOriginEngineReady(instance); return enqueue(); }
-  const snapshot = snapshotOriginBatch({ instanceId: entry.id, instanceName: entry.name }, events);
+  if (entry.historyEnabled && events?.['messaging-history.set'] && !entry.snapshot) throw Error('HISTORY_SOURCE_HOST_NOT_READY');
+  const snapshot = entry.snapshot ? entry.snapshot(events) : snapshotOriginBatch({ instanceId: entry.id, instanceName: entry.name }, events);
   const work = entry.captureQueue.then(async () => {
     const composition = await admittedEntryReady(instance, entry);
     const token = await composition.capturePrepared(snapshot);

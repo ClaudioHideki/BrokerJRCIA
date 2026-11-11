@@ -38,4 +38,29 @@ CREATE TABLE IF NOT EXISTS jrc_evolution_origin.attempts (
   finished_at timestamptz,
   UNIQUE(event_id,number)
 );
+-- Low-priority historical obligations use the same source journal/pool, separately
+-- from live event ordering. Payloads are sealed before the first database await.
+CREATE TABLE IF NOT EXISTS jrc_evolution_origin.history_batches (
+  scope_key char(64) NOT NULL CHECK(scope_key ~ '^[a-f0-9]{64}$'),
+  capture_id uuid NOT NULL, organization_id uuid NOT NULL, run_id uuid NOT NULL,
+  checksum char(64) NOT NULL CHECK(checksum ~ '^[a-f0-9]{64}$'),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY(scope_key,capture_id)
+);
+CREATE TABLE IF NOT EXISTS jrc_evolution_origin.history_chunks (
+  scope_key char(64) NOT NULL, capture_id uuid NOT NULL, run_id uuid NOT NULL, chunk_id uuid NOT NULL,
+  source_sequence bigserial UNIQUE NOT NULL, ordinal bigint NOT NULL CHECK(ordinal BETWEEN 0 AND 9007199254740991),
+  checksum char(64) NOT NULL CHECK(checksum ~ '^[a-f0-9]{64}$'),
+  payload_hash char(64) NOT NULL CHECK(payload_hash ~ '^[a-f0-9]{64}$'),
+  payload_bytes integer NOT NULL CHECK(payload_bytes BETWEEN 1 AND 1048576),
+  payload_ciphertext bytea NOT NULL CHECK(octet_length(payload_ciphertext)=payload_bytes),
+  payload_iv bytea NOT NULL CHECK(octet_length(payload_iv)=12),
+  payload_tag bytea NOT NULL CHECK(octet_length(payload_tag)=16),
+  state text NOT NULL DEFAULT 'PENDING' CHECK(state IN ('PENDING','DELIVERED')),
+  acknowledged_at timestamptz,
+  PRIMARY KEY(scope_key,chunk_id), UNIQUE(scope_key,run_id,ordinal),
+  FOREIGN KEY(scope_key,capture_id) REFERENCES jrc_evolution_origin.history_batches(scope_key,capture_id),
+  CHECK((state='DELIVERED')=(acknowledged_at IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS origin_history_pending ON jrc_evolution_origin.history_chunks(scope_key,source_sequence) WHERE state='PENDING';
 COMMIT;

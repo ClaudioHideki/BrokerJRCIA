@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { canonicalText } from './projection.mjs';
+import { createHistorySourceJournal } from './history-source-journal.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
@@ -27,7 +28,7 @@ async function transaction(pool, work) {
 export async function installOriginJournal(pool) { await pool.query(await readFile(new URL('../schema/origin-journal.sql', import.meta.url), 'utf8')); }
 
 /** Engine-owned obligation store. The caller supplies its own pool/key; no defaults or auto-start. */
-export function createOriginJournal({ pool, encryptionKey }) {
+export function createOriginJournal({ pool, encryptionKey, history }) {
   if (!pool || !Buffer.isBuffer(encryptionKey) || encryptionKey.length !== 32) throw new Error('ORIGIN_JOURNAL_CONFIGURATION_INVALID');
   const key = Buffer.from(encryptionKey);
   function encrypt(body, associated) {
@@ -45,6 +46,8 @@ export function createOriginJournal({ pool, encryptionKey }) {
     } catch { throw new Error('ORIGIN_PAYLOAD_UNAVAILABLE'); }
   }
   return Object.freeze({
+    history: history ? createHistorySourceJournal({ pool, encryptionKey: key, maxStagedBytes: history.maxStagedBytes,
+      transact: work => transaction(pool, work) }) : null,
     async lookupCommittedOwnership(binding, envelope) {
       const body = canonicalText(binding, envelope), scope = scopeKey(binding);
       const eventKey = hash(JSON.stringify([body.data.key.id, body.data.key.fromMe, body.data.key.remoteJid]));
