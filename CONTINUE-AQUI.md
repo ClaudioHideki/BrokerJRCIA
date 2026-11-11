@@ -1,5 +1,21 @@
 # Checkpoint ativo — histórico WhatsApp, 11/11/2026
 
+## Continuação: catálogo e receptor LAB2
+
+Núcleo de origem/staging registrado no commit local `5a396fd1961b341867a4f67884f1e01009ada824`. Subincremento posterior na mesma branch acrescenta `0088_history_catalogue`, catálogo privado de peers e checkpoint atômico por página. A0087 não foi alterada; ambas as migrations foram aplicadas somente em bancos descartáveis. Catálogo não é mensagem persistida, mídia copiada ou histórico entregue ao JRC. Writer canônico, transporte operacional de origem, projeção e custódia física continuam pendentes.
+
+Gates deste subincremento: **35 testes PostgreSQL/7 arquivos** passaram; typecheck e build passaram; contratos/licenças/submódulo passaram; binário compilado1 passou/1 skipped (sem alvo de container smoke). A suíte geral com `tests/backup.test.mjs` explicitamente excluído terminou com **4338 passados/1 falha**, apenas pela expectativa antiga de migrations em repository-baseline. Corrigido o fixture para incluir0088 e executados novamente **38 focais/5 arquivos, zero falhas**. A aplicação não foi alterada depois desse resultado geral; não se repetiu toda a suíte após a correção apenas do fixture e não se declara uma nova execução integral verde. Uma rodada anterior do mesmo subincremento foi interrompida para aplicar a exclusão de escopo e não conta como aprovação. Nenhuma rotina operacional de backup/dump/restore foi executada.
+
+A revisão reproduziu nome de participante como nome do grupo, nome vazio persistido e policy RLS ausente no definer do lifecycle. Corrigidos com RED→GREEN, inclusive exclusão explícita populada de canal/empresa preservando outro tenant. Não há P1/P2 restante no recorte revisado. Os catálogos novos não alteram mensagens, bots, envio, campanhas, relógios ou atribuições live. Guard de identidade e revogação do host precisa permanecer válido até COMMIT antes de qualquer composição operacional.
+
+LAB2: código em `3f3e2f27c6d84d0722062be718f4686e126f8479`, documentação complementar em `ca6e7824842022bcfe4db04d6d5a359994f8540b`, branch `codex/whatsapp-history-order-20261111`. **228 Rails/15 arquivos e65 JS/5 arquivos, zero falhas**; RuboCop12 arquivos novos e ESLint7 arquivos alterados sem ocorrências. Código UI é o mesmo do build Vite já verificado. Receptor V2 local de texto/grupos, sem mídia V2 anunciada, default off. Documentos correntes: `CONTINUE-AQUI.md` e `docs/jrc-broker/history-sync-v2.md` no LAB2.
+
+Main Broker `29095bea35702893e1a5b80f5131bdd13b901a7e` e main LAB2 `d8a83b824b11cc68ddbbce7c79681f368051fb70` foram reconferidas e já são ancestrais das candidatas; conferir novamente antes de publicação futura. Sem push, merge, imagem publicada, deploy, migration produtiva, credencial nova, pareamento, envio real ou replay. Bancos/Redis e rede descartáveis dos testes foram removidos por seus rótulos; nenhum volume ou container de outros projetos foi removido.
+
+Próximo passo executável: Task3 writer canônico, deduplicação live/history e adoção legada comprovada; depois mídia privada física/KEEP, projeção/capability/recibos, progresso/API/UI e E2E. Não promover estes testes sintéticos a homologação de sessão real. Não usar downgrade de imagem incompatível com schema0088 nem descartar os filtros de privacidade dos grupos no LAB2.
+
+## Evidência anterior do núcleo5a396fd
+
 Branch local `codex/whatsapp-history-sync-20261111`, base preservada `1fed8ffcc68859c717f64a8aae50f29e8345e05b`. Main `29095bea35702893e1a5b80f5131bdd13b901a7e` reconferida após os testes e já ancestral. Checkouts antigos e alterações de áudio alheias preservados. Nenhum push, merge, deploy, alteração produtiva, credencial, pareamento, envio/replay ou backup/dump/restore neste incremento.
 
 Plano aprovado: `docs/superpowers/plans/2026-11-05-whatsapp-history-sync.md`. Ledger privado `.superpowers/sdd/2026-11-05-whatsapp-history-sync/progress.md`. Núcleo recuperado seletivamente do commit `608aee7`; migration nova e ainda não aplicada em produção `0087_history_sync`, depois de `0085_guided_setup`/`0086_automation_box_routing`. Nenhuma migration aplicada foi renumerada.

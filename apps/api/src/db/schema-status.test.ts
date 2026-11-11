@@ -9,16 +9,16 @@ const expected = [
 ] as const;
 
 describe('schema status read-only', () => {
-  it('loads the complete migration manifest through 0087', async () => {
+  it('loads the complete migration manifest through 0088', async () => {
     const migrations = await loadExpectedMigrations();
-    expect(migrations).toHaveLength(87);
-    expect(migrations.slice(-13).map(entry => entry.name)).toEqual([
-      '0075_media_custody', '0076_qr_connection_watermark', '0077_partner_delivery_replay', '0078_qr_origin_receipts', '0079_partner_persistence_receipts','0080_integration_failure_diagnostics','0081_automation_execution_inspection','0082_flow_execution_capability','0083_central_flow_media_references','0084_native_csat_transport','0085_guided_setup','0086_automation_box_routing','0087_history_sync',
+    expect(migrations).toHaveLength(88);
+    expect(migrations.slice(-14).map(entry => entry.name)).toEqual([
+      '0075_media_custody', '0076_qr_connection_watermark', '0077_partner_delivery_replay', '0078_qr_origin_receipts', '0079_partner_persistence_receipts','0080_integration_failure_diagnostics','0081_automation_execution_inspection','0082_flow_execution_capability','0083_central_flow_media_references','0084_native_csat_transport','0085_guided_setup','0086_automation_box_routing','0087_history_sync','0088_history_catalogue',
     ]);
   });
   it('keeps the previous media schema pending until all audit corrections are applied',async()=>{
     const migrations=await loadExpectedMigrations();
-    expect(compareMigrationStatus(migrations,migrations.slice(0,74))).toMatchObject({state:'PENDING',compatible:false,expectedVersion:'0087_history_sync',appliedVersion:'0074_partner_media',pending:['0075_media_custody','0076_qr_connection_watermark','0077_partner_delivery_replay','0078_qr_origin_receipts','0079_partner_persistence_receipts','0080_integration_failure_diagnostics','0081_automation_execution_inspection','0082_flow_execution_capability','0083_central_flow_media_references','0084_native_csat_transport','0085_guided_setup','0086_automation_box_routing','0087_history_sync']});
+    expect(compareMigrationStatus(migrations,migrations.slice(0,74))).toMatchObject({state:'PENDING',compatible:false,expectedVersion:'0088_history_catalogue',appliedVersion:'0074_partner_media',pending:['0075_media_custody','0076_qr_connection_watermark','0077_partner_delivery_replay','0078_qr_origin_receipts','0079_partner_persistence_receipts','0080_integration_failure_diagnostics','0081_automation_execution_inspection','0082_flow_execution_capability','0083_central_flow_media_references','0084_native_csat_transport','0085_guided_setup','0086_automation_box_routing','0087_history_sync','0088_history_catalogue']});
   });
 
   it('informa a versão aplicada e migrations pendentes sem expor hashes', () => {

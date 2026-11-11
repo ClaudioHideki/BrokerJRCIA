@@ -32,7 +32,7 @@ Data: 05/11/2026. Base Broker `0266ec02a33775cd065217e8e2e6b4fd2b0ef786`; consum
 
 Este incremento implementa contratos estritos e um núcleo privado de staging PostgreSQL. **Não existe uma rota V2 publicada, um host Evolution V2 conectado, nem projeção V2 operacional no JRC.** Os caminhos V2 citados no plano são propostas, não endpoints disponíveis aos clientes. V1 permanece intacto.
 
-O plano completo está em `docs/superpowers/plans/2026-11-05-whatsapp-history-sync.md`. Captura da engine, escrita canônica live/histórico, receptor Rails silencioso, transferência física de mídia e homologação ponta a ponta continuam necessárias.
+O plano completo está em `docs/superpowers/plans/2026-11-05-whatsapp-history-sync.md`. A captura operacional autenticada, a escrita canônica live/histórico, a projeção, a transferência física de mídia e a homologação ponta a ponta continuam necessárias. O receptor Rails V2 de texto/grupos foi implementado e testado localmente no LAB2, com a flag desligada por padrão; mídia V2 ainda não é anunciada.
 
 ## Contratos implementados
 
@@ -71,7 +71,7 @@ Promoção exige a mesma engine/generation/session/binding da captura. Scope dif
 
 ## Atualização e pausa
 
-0085 foi executada somente em bancos locais descartáveis, incluindo upgrade com fatos V1 pré-existentes. Não houve migration em produção. Antes de uma release, conferir novamente a numeração da main, o catálogo de lifecycle, grants e a compatibilidade do binário efetivo.
+0087 e0088 foram executadas somente em bancos locais descartáveis nesta continuação. O núcleo anterior também validou upgrade com fatos V1 pré-existentes. Não houve migration em produção. Antes de uma release, conferir novamente a numeração da main, o catálogo de lifecycle, grants e a compatibilidade do binário efetivo.
 
 A reversão prevista é manter V2 sem admissão/host/worker e usar o comportamento V1 existente. Não executar DOWN destrutivo nem remover tabelas para voltar ao binário anterior. Nenhuma habilitação produtiva está implícita neste documento.
 
@@ -83,3 +83,32 @@ A reversão prevista é manter V2 sem admissão/host/worker e usar o comportamen
 - Typecheck `tsc -b` executado. Não confundir essa compilação com imagem Docker, CI remota ou homologação de WhatsApp.
 
 Os logs locais e os resultados exatos ficam no ledger `.superpowers/sdd/2026-11-05-whatsapp-history-sync/` e no pacote de evidências do workspace. A suíte integral, engine isolada, MinIO físico, Rails/Sidekiq e benchmark V2 ainda são gates pendentes.
+
+## Continuação de 11/11 — catálogo durável e receptor LAB2
+
+Primeiro incremento Broker registrado localmente em `5a396fd1961b341867a4f67884f1e01009ada824`: contratos/staging e journal paginado, snapshot cifrado antes de await, replay/ACK correlacionado do envelope completo, limite global de memória e captura antes da confirmação do dono. Node93/93 e PostgreSQL16/16; suíte de unidade4340/4340 antes deste subincremento. Ownership da engine continua UNPROVEN, sem ativação produtiva. `isLatest` de Baileys não é fim do histórico; a origem mantém cobertura desconhecida até prova de encerramento.
+
+Migration aditiva **0088_history_catalogue** acrescenta:
+
+| Tabela | Significado |
+|---|---|
+| history_sync_peers | Peers/identidades de chat descobertos por tenant, canal, dono lógico, categoria e JID normalizado |
+| history_sync_catalogue_pages | Checkpoint transacional da catalogação de uma página cifrada já validada |
+
+`catalogNext` é um passo privado e limitado a uma página/100 registros. Mantém a autoridade até COMMIT, não expõe staging provisório, conserva isolamento e retoma após rollback. Reconexões do mesmo dono não duplicam peers; outro dono fica em catálogo separado. PN/LID/grupo continuam tipos distintos e **LID nunca é convertido em telefone por inferência**. Relações PN↔LID ainda exigem prova para a futura materialização canônica.
+
+Nomes são obtidos de CHAT/CONTACT, nunca do pushName da MESSAGE, que pode ser participante do grupo ou o próprio dono em mensagem enviada. Nome vazio é ausência; primeiro nome não vazio é preservado. O relógio da última mensagem é monotônico. Esses metadados não são prova de estado atual do WhatsApp e não alteram contatos/conversas live.
+
+**CATALOGUED não significa PERSISTED, projetado no consumidor ou mídia copiada.** O passo não avança next_ordinal/persistence do writer, não fabrica mensagem nativa, não mexe em bots/envios/campanhas, não marca a sincronização como completa e não inicia worker produtivo. GAPs e referências de mídia continuam na página cifrada. Writer canônico de mensagens e adoção live/legada comprovada permanecem a próxima parte da Task3.
+
+As duas tabelas novas têm RLS forçada, chaves compostas, isolamento tenant e escrita limitada por coluna. A policy do definer `jrc_migrator` mantém o mecanismo **já existente de exclusão explicitamente autorizada** funcional; seu guard é verificado na admissão do binário. Não existe rotina de limpeza/retenção nova. Testes de exclusão foram executados somente com catálogos sintéticos descartáveis e preservaram outro tenant.
+
+Rollback é uma candidata compatível com o schema0088, mantendo os guards e com admissão/projeção V2 desligadas. O comparador atual rejeita um banco com migrations além do manifesto do binário; portanto uma imagem anterior cujo baseline termina em0087 não é um rollback direto homologado após aplicar0088. No LAB2, a candidata também deve preservar a privacidade de grupos já persistidos. Não executar DOWN destrutivo nem apagar recibos para contornar esses gates.
+
+Revisão reproduziu e corrigiu o nome incorreto dos grupos, nomes vazios e a ausência da policy de lifecycle. A primeira tentativa de repro do lifecycle falhou na fixture UUID e não foi contada como prova do defeito. Depois da correção da fixture, a ausência da policy produziu dois REDs reais (`ACTION_REQUIRED/LIFECYCLE_PURGE_FAILED`); sua inclusão resolveu ambos. Regressão PostgreSQL final do subincremento: **35/35 em7 arquivos**, incluindo fonte, staging, catálogo, schema, lifecycle preenchido e readiness. Evidências: `catalogue-*` no ledger privado.
+
+LAB2 local: `3f3e2f27c6d84d0722062be718f4686e126f8479`, branch `codex/whatsapp-history-order-20261111`. Receptor silencioso texto/grupos, recibos pós-commit, fonte canônica de grupo, adoção comprovada, proteção de grupos em Contacts/Search/Export/Merge e escopo pessoal por membership. **228 Rails/15 arquivos e65 JS/5 arquivos**, sem falhas. RuboCop12 arquivos novos e ESLint7 arquivos alterados sem ocorrências; violações preexistentes do core foram registradas. Não houve publicação/deploy.
+
+Restam: writer canônico e controle de concorrência com live; autoridade/transporte/coverage-close de origem em execução efetiva; mídia física e custódia KEEP; worker de projeção/capability/recibos; progresso e API/UI; imagem efetiva da engine, E2E entre os dois consumidores e CI dos novos SHAs. Não afirmar espelhamento integral do telefone nem capacidade de900 sessões com estes testes sintéticos.
+
+Fechamento dos gates do catálogo: typecheck/build/contratos/licenças/submódulo passaram. Compiled1pass/1skip por ausência de alvo de container smoke. A rodada geral excluindo o teste de backup fora do escopo teve4338 aprovações e1 falha: a lista esperada de migrations não continha0088. Corrigido somente o fixture;38 focais em5 arquivos passaram depois. Não houve nova execução integral após essa correção do teste. O transcript integral com a falha e o resultado focal corrigido são preservados nas evidências; não se declara a rodada geral como verde.

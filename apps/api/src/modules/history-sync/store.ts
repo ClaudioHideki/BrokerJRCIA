@@ -3,6 +3,7 @@ import { HistorySyncCommandSchema, HistorySyncStartSchema } from '@jrc/contracts
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import { hashIdempotencyRequest } from '../instances/idempotency.js';
 import { HistorySyncScopeSchema, parseHistorySyncSourceChunk, type HistorySyncScope } from './contract.js';
+import { catalogueHistoryRecords } from './catalogue.js';
 
 type Row = { id:string; organization_id:string; channel_id:string; instance_id:string; request_hash:string;
   engine_id:string; engine_generation:string; session_generation:string; binding_fingerprint:string;
@@ -165,6 +166,34 @@ export function createHistorySyncStore(options:Options) {
           capture='CAPTURING',revision=revision+1,updated_at=$6 WHERE organization_id=$1 AND id=$2 RETURNING *`,
         [org,runId,identity,confirmed.identityScopeId,confirmed.ownerFingerprint,now])).rows[0]!;
         return view(promoted);
+      });
+    },
+    /** Low-priority bounded catalogue step. A catalogue receipt is deliberately
+     * separate from message persistence, projection and physical media custody. */
+    async catalogNext(rawScope:HistorySyncScope,runId:string,now:Date) {
+      const scope=Object.freeze(HistorySyncScopeSchema.parse(rawScope)),org=scope.organizationId;
+      if(!Number.isFinite(now.getTime())) failure('HISTORY_SYNC_CLOCK_INVALID');
+      return options.transact(org,async tx=>{
+        const row=await read(tx,org,runId,true);
+        if(!row) failure('HISTORY_SYNC_NOT_FOUND');
+        await options.assertCurrentScope(tx,scope);
+        if(hashIdempotencyRequest(scopeOf(row))!==hashIdempotencyRequest(scope)) failure('HISTORY_SYNC_SCOPE_CHANGED');
+        if(row.state!=='RUNNING') failure('HISTORY_SYNC_NOT_RUNNING');
+        if(!row.history_account_identity) return {kind:'WAITING_IDENTITY'} as const;
+        const candidate=(await tx.query<{chunk_id:string;checksum:string;scope_hash:string;private_payload:Envelope}>(
+          `SELECT c.chunk_id,c.checksum,c.scope_hash,c.private_payload FROM history_sync_chunks c
+           WHERE c.organization_id=$1 AND c.run_id=$2 AND c.state IN('VALIDATED','PERSISTED')
+            AND NOT EXISTS(SELECT 1 FROM history_sync_catalogue_pages p WHERE p.organization_id=c.organization_id
+              AND p.run_id=c.run_id AND p.chunk_id=c.chunk_id)
+           ORDER BY c.ordinal LIMIT 1 FOR UPDATE OF c`,[org,runId])).rows[0];
+        if(!candidate) return {kind:'IDLE'} as const;
+        const chunk=parseHistorySyncSourceChunk(open(candidate.private_payload,aad(org,runId,candidate.chunk_id,candidate.scope_hash)),scope,now);
+        if(chunk.chunkId!==candidate.chunk_id || chunk.checksum!==candidate.checksum) failure('HISTORY_SYNC_CHUNK_CONFLICT');
+        const counts=await catalogueHistoryRecords(tx,scope,chunk.records,now);
+        await tx.query(`INSERT INTO history_sync_catalogue_pages(organization_id,channel_id,run_id,chunk_id,checksum,
+          record_count,peer_count,chat_count,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [org,row.channel_id,runId,chunk.chunkId,chunk.checksum,chunk.records.length,counts.peers,counts.chats,now]);
+        return {kind:'CATALOGUED',chunkId:chunk.chunkId,recordCount:chunk.records.length,...counts} as const;
       });
     },
   };

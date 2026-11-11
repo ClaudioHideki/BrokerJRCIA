@@ -16,6 +16,22 @@ it('admits the migrated private schema and refuses a missing immutable admission
     expect((await client.query(`SELECT (${historySyncRuntimeSql}) AS ready`)).rows[0].ready).toBe(false);
   } finally {await client.query('ROLLBACK');client.release();}
 });
+it('refuses the catalogue schema if its peer identity guard is disabled',async()=>{
+  const client=await db.database.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('ALTER TABLE history_sync_peers DISABLE TRIGGER history_sync_peer_guard');
+    expect((await client.query(`SELECT (${historySyncRuntimeSql}) AS ready`)).rows[0].ready).toBe(false);
+  } finally {await client.query('ROLLBACK');client.release();}
+});
+it('refuses a forced-RLS catalogue that the existing explicit lifecycle definer cannot clean',async()=>{
+  const client=await db.database.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DROP POLICY lifecycle_migrator ON history_sync_catalogue_pages');
+    expect((await client.query(`SELECT (${historySyncRuntimeSql}) AS ready`)).rows[0].ready).toBe(false);
+  } finally {await client.query('ROLLBACK');client.release();}
+});
 async function seed() {
   const t = await seedAttendanceTenant(db.database), instance = randomUUID();
   await db.database.pool.query(`INSERT INTO instances(id,organization_id,provider_account_id,name,upstream_instance_key)
