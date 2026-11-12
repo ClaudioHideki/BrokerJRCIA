@@ -5,6 +5,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { attendanceDatabase, seedAttendanceTenant } from './helpers/attendance.js';
 import { createHistorySyncStore } from '../../src/modules/history-sync/store.js';
 import { historySyncRecordsDigest, type HistorySyncScope, type HistorySyncRecord } from '../../src/modules/history-sync/contract.js';
+import { HistorySyncStatusSchema } from '@jrc/contracts';
 
 let db: Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async () => { db = await attendanceDatabase(); }, 180000);
@@ -29,6 +30,18 @@ async function fixture() {
     isLast:false,progress:null,records:[message],checksum:historySyncRecordsDigest([message])});
   return {t,scope,store,options,chunk,revoke:()=>{revoked=true;}};
 }
+
+it('returns public progress only for the requested tenant and channel, without source secrets or completion guesses',async()=>{
+  const f=await fixture(),run=await f.store.admit(f.scope,randomUUID(),selection,now);
+  await f.store.acceptChunk(f.scope,run.id,f.chunk(),now);
+  const status=await f.store.status(f.t.org,f.t.channel,run.id);
+  expect(HistorySyncStatusSchema.parse(status)).toMatchObject({id:run.id,state:'RUNNING',capture:'WAITING_IDENTITY',
+    sourceTotalKnown:false,counts:{persistedMessages:0,projectedMessages:0,pendingMedia:0}});
+  expect(JSON.stringify(status)).not.toMatch(/fingerprint|scopeId|private_payload|providerMessageId|Synthetic private/iu);
+  expect(await f.store.status(f.t.org,randomUUID(),run.id)).toBeNull();
+  const other=await seedAttendanceTenant(db.database);
+  expect(await f.store.status(other.org,f.t.channel,run.id)).toBeNull();
+});
 
 it('commits encrypted provisional chunks and resumes them through a new store without importing or acknowledging ownership',async()=>{
   const f=await fixture(), run=await f.store.admit(f.scope,randomUUID(),selection,now), chunk=f.chunk();

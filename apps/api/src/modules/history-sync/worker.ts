@@ -15,6 +15,7 @@ type Options = {
   store: Store;
   source: HistorySourceReader;
   projector: Pick<ReturnType<typeof createHistorySyncProjector>, 'runOnce'>;
+  media?: {runOnce(scope:HistorySyncScope,runId:string,now:Date):Promise<{kind:string}>};
   /** Private host port: verify the admitted policy/source and current authority.
    * No browser or source payload may supply this capability. Store transactions
    * independently retain their revocation fences through COMMIT. */
@@ -55,15 +56,19 @@ export function createHistorySyncWorker(options: Options) {
         // freeze work already committed in the Broker while the receiver recovers.
         source = 'RETRY';
       }
-      let materialization: string = 'WAITING_IDENTITY', projection: string = 'WAITING_IDENTITY';
+      let materialization: string = 'WAITING_IDENTITY', projection: string = 'WAITING_IDENTITY',media: string = 'WAITING_IDENTITY';
       if (current.historyAccountIdentity !== null) {
+        if(options.media) {
+          try {media=(await options.media.runOnce(scope,runId,now)).kind;}
+          catch {media='RETRY';}
+        }
         try { materialization = (await options.store.persistNext(scope, runId, now)).kind; }
         catch { materialization = 'RETRY'; }
         try { projection = (await options.projector.runOnce(scope, runId, now)).kind; }
         catch { projection = 'RETRY'; }
       }
       // Baileys progress/isLatest is never promoted to a coverage-close proof.
-      return { kind: 'ADVANCED', source, materialization, projection, capture: current.capture } as const;
+      return { kind: 'ADVANCED', source, materialization, projection, capture: current.capture,...(options.media?{media}:{}) } as const;
     },
   };
 }

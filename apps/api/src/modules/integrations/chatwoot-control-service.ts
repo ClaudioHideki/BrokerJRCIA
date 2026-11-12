@@ -13,6 +13,8 @@ import { IntegrationError } from './integration-error.js';
 import { ChatwootError } from './chatwoot-client.js';
 import { observeChatwootCapabilities } from './chatwoot-compatibility.js';
 import type { PairActionStore } from './chatwoot-pair-action-store.js';
+import { HistorySyncControlProgressSchema } from '@jrc/contracts';
+import { readLatestHistorySyncProgress } from '../history-sync/progress.js';
 
 export interface ChatwootControlOptions extends ChatwootOptions { auth: ChatwootControlAuth; health: ChatwootHealth; instances: InstanceService; chatwoot: ChatwootService; pairActions?: PairActionStore }
 interface Mapping extends ConnectionRow { instance_id: string }
@@ -75,6 +77,13 @@ export function createChatwootControlService(options: ChatwootControlOptions) {
   return {
     ...createChatwootCampaignService(options),
     routingContext: createChatwootRoutingContext(options),
+    async historyProgress(p:ChatwootControlPrincipal,id:string) {
+      return tx(p.organizationId,async t=>{
+        const c=await mapping(t,p,id,'chatwoot:read');
+        return HistorySyncControlProgressSchema.parse({...await readLatestHistorySyncProgress(t,p.organizationId,c.channel_id),
+          integrationId:id,accountId:p.accountId,inboxId:Number(c.inbox_id),destinationRevision:p.destinationRevision});
+      });
+    },
     async pairOperation(p: ChatwootControlPrincipal, id: string, operationId: string): Promise<PairOperation> {
       const { progress, instanceId, currentConnect } = await tx(p.organizationId, async t => {
         const c = await pairOperationMapping(t, p, id);

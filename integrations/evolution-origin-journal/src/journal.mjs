@@ -46,7 +46,7 @@ export function createOriginJournal({ pool, encryptionKey, history }) {
     } catch { throw new Error('ORIGIN_PAYLOAD_UNAVAILABLE'); }
   }
   return Object.freeze({
-    history: history ? createHistorySourceJournal({ pool, encryptionKey: key, maxStagedBytes: history.maxStagedBytes,
+    history: history ? createHistorySourceJournal({ pool, encryptionKey: key, maxStagedBytes: history.maxStagedBytes,captureMedia:history.captureMedia,
       transact: work => transaction(pool, work) }) : null,
     async lookupCommittedOwnership(binding, envelope) {
       const body = canonicalText(binding, envelope), scope = scopeKey(binding);

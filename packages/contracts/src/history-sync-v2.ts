@@ -47,3 +47,11 @@ export type HistorySyncStart = z.infer<typeof HistorySyncStartSchema>;
 export type HistorySyncStatus = z.infer<typeof HistorySyncStatusSchema>;
 export type HistorySyncCounts = z.infer<typeof HistorySyncCountsSchema>;
 export type HistorySyncCapability = z.infer<typeof HistorySyncCapabilitySchema>;
+
+/** Read-only view. Absence of a run does not admit capture or authorize replay. */
+export const HistorySyncProgressSchema=z.strictObject({schemaVersion:z.literal(2),organizationId:id,channelId:id,
+  run:HistorySyncStatusSchema.nullable()}).refine(value=>value.run===null || (value.run.organizationId===value.organizationId
+    && value.run.channelId===value.channelId),'Progress belongs to another tenant or channel');
+export type HistorySyncProgress=z.infer<typeof HistorySyncProgressSchema>;
+export const HistorySyncControlProgressSchema=HistorySyncProgressSchema.safeExtend({integrationId:id,accountId:count.positive(),
+  inboxId:count.positive(),destinationRevision:count.positive()});

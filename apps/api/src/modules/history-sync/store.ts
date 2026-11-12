@@ -4,9 +4,10 @@ import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant
 import { hashIdempotencyRequest } from '../instances/idempotency.js';
 import { HistorySyncScopeSchema, parseHistorySyncSourceChunk, type HistorySyncScope } from './contract.js';
 import { catalogueHistoryRecords } from './catalogue.js';
-import { writeHistoryRecords,pendingHistoryMedia } from './writer.js';
+import { writeHistoryRecords,pendingHistoryMedia,normalizeHistoryJid } from './writer.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
 import { createHistoryProjectionStore, type HistoryProjectionOptions } from './delivery-store.js';
+import { readHistorySyncProgress } from './progress.js';
 
 type Row = { id:string; organization_id:string; channel_id:string; instance_id:string; request_hash:string;
   engine_id:string; engine_generation:string; session_generation:string; binding_fingerprint:string;
@@ -71,6 +72,9 @@ export function createHistorySyncStore(options:Options) {
   });
   return {
     ...projection,
+    async status(org:string,channel:string,run:string) {
+      return options.transact(org,tx=>readHistorySyncProgress(tx,org,channel,run));
+    },
     async admit(rawScope:HistorySyncScope,requestId:string,rawSelection:unknown,now:Date) {
       const scope=Object.freeze(HistorySyncScopeSchema.parse(rawScope)), selection=HistorySyncStartSchema.parse(rawSelection);
       if(!Number.isFinite(now.getTime())) failure('HISTORY_SYNC_CLOCK_INVALID');
@@ -234,10 +238,11 @@ export function createHistorySyncStore(options:Options) {
         await catalogueHistoryRecords(tx,scope,chunk.records,now);
         const written=await writeHistoryRecords(tx,scope,chunk.records,now);
         for(const [index,result] of written.results.entries()) {
+          const fact=chunk.records[index]!,chat=fact.kind==='CHAT'||fact.kind==='MESSAGE'?fact:null;
           await tx.query(`INSERT INTO history_sync_record_results
-          (organization_id,channel_id,run_id,chunk_id,record_index,disposition,receipt_id,message_id,safe_code)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[org,scope.channelId,runId,chunk.chunkId,index,result.disposition,result.receiptId,result.messageId,result.code]);
-          const fact=chunk.records[index]!;
+          (organization_id,channel_id,run_id,chunk_id,record_index,disposition,receipt_id,message_id,safe_code,recipient_kind,peer_jid)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[org,scope.channelId,runId,chunk.chunkId,index,result.disposition,result.receiptId,result.messageId,result.code,
+            chat?.recipientKind??null,chat?normalizeHistoryJid(chat.chatJid):null]);
           if(!['BLOCKED','GAP'].includes(result.disposition) && (fact.kind==='CHAT'||fact.kind==='MESSAGE'))
             await tx.query(`INSERT INTO history_sync_deliveries(organization_id,channel_id,run_id,chunk_id,record_index,next_attempt_at)
               VALUES($1,$2,$3,$4,$5,$6)`,[org,scope.channelId,runId,chunk.chunkId,index,now]);

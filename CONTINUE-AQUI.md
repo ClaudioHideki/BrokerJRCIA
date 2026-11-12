@@ -1,3 +1,21 @@
+# Continuação local: mídia de origem e progresso, 12/11/2026
+
+Este registro substitui as pendências já implementadas dos checkpoints abaixo, sem transformar evidência antiga em aprovação do novo candidato. Bases preservadas: Broker ece27d13584b8eee661ccc2e8a792308c7fcd827 e LAB2 e919b0ac7eaa95f844880e6f60bb8092d603f94b. Mains reconferidas nesta rodada: Broker29095bea e LAB2d8a83b82, ambas ancestrais; sem merge/push/deploy.
+
+Implementado neste working tree: descritor mínimo de mídia cifrado e atômico com a página no journal; opt-in conservado pelo bootstrap compilado; download estreito abortável e autenticado; hash/tamanho/recibo/lease/retry/KEEP; normalização Opus e separação do upload público; migration Broker0090 aditiva; contagem distinta de chats; progresso somente leitura React/Vue PT-BR, com inbox/revisão/permissão revalidadas e descarte de resposta tardia. LAB2 não recebeu nova migration nesta rodada.
+
+Evidências novas já concluídas: origem/engine113 (inclui SIGKILL após COMMIT de página/mídia), PostgreSQL60 mais8 de estrutura0090, contratos/HTTP/UI Broker38, gates OpenAPI/documentação43, Rails progresso34 e regressão silenciosa/mídia/Minhas63; UI LAB2 focal6 e InboxView4; artefato/empacotamento da engine31. São suítes sobrepostas, não somar como total. E2E HTTP com PostgreSQL/MinIO/Rails/Redis/Sidekiq:12 mensagens/8 mídias, áudio Opus com parâmetro, grupos/LID, ACKs perdidos e recaptura sem duplicidade; Minhas retorna somente as duas conversas da caixa correta. Duas Accounts na mesma instalação, não duas instalações independentes ou WhatsApp real. Componente React também validado em Chromium desktop/mobile com API sintética: sem overflow, mutações ou violações automáticas de acessibilidade; não é navegador E2E operacional.
+
+A execução geral final passou 4363/4363 testes em572 arquivos, sem falhas/skips; somente tests/backup.test.mjs foi excluído por escopo. Também passaram typecheck/build Broker e build LAB2 (5640 módulos,11m41s). A primeira execução ampla teve10 falhas/7 skips: PDF/catálogo anteriores, baseline runtime0089 e restrições de spawn Git/OpenSSL; preservada como tentativa falha, corrigida e substituída pela execução geral completa verde. O runtime agora exige0090 e recusa estruturas/permissões ausentes, com RED PostgreSQL e GREEN. ESLint novo2 arquivos sem erros/avisos;10 avisos antigos de i18n nos arquivos existentes. RuboCop novo parser/spec limpos;9 métricas/nomeações antigas de controller/client/control, incluindo ClassLength ainda acima do limite, não são lint global limpo.
+
+A imagem local da engine pinada foi construída nesta rodada, sem publicação. O gate executado dentro dela passou com a Baileys 7.0.0-rc.9 efetivamente instalada: derivação HKDF independente, download autenticado e rejeição de MAC corrompido para imagem, áudio, vídeo, documento e figurinha. O transporte desse teste é sintético e sem rede; não é sessão WhatsApp real nem host produtivo homologado.
+
+**Não habilitar captura em produção:** host operacional de autoridade/ownership continua pendente e LAB/UNPROVEN. Faltam admissão/política automática persistida por conexão, composição operacional do downloader, convergência live de saída/mídia/grupos e prova de fechamento de cobertura. O painel observa operações admitidas; não implementa start/resume/cancel públicos V2. isLatest/progress100 não provam o telefone completo.
+
+Detalhes e rollback: docs/implementation/history-source-media-progress-20261112.md no Broker. Registros privados em .superpowers/sdd/2026-11-05-whatsapp-history-sync/; relatório e pacote de evidências do workspace serão atualizados ao fechar. Nenhum número/sessão real, credencial produtiva, imagem ou banco de produção foi alterado. Nenhuma rotina de backup/dump/restore executada.
+
+---
+
 # Checkpoint ativo - sincronizacao WhatsApp, 12/11/2026
 
 Implementacao local sobre Broker bb438150060a418a7aa36a04beacf0a81a88bc3d e LAB2 ca6e7824842022bcfe4db04d6d5a359994f8540b. Preservados os incrementos e as branches atuais. Nenhum push, merge, imagem publicada, deploy, envio/pareamento/replay real, credencial alterada ou rotina de backup/dump/restore nesta rodada.

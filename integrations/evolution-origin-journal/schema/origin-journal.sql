@@ -63,4 +63,23 @@ CREATE TABLE IF NOT EXISTS jrc_evolution_origin.history_chunks (
   CHECK((state='DELIVERED')=(acknowledged_at IS NOT NULL))
 );
 CREATE INDEX IF NOT EXISTS origin_history_pending ON jrc_evolution_origin.history_chunks(scope_key,source_sequence) WHERE state='PENDING';
+-- Additive source-only schema; never install automatically in a live engine.
+-- Descriptors contain the minimal media key/path encrypted with authenticated
+-- scope/run/reference AAD. READY means verified Broker custody, not JRC custody.
+CREATE TABLE IF NOT EXISTS jrc_evolution_origin.history_media (
+  scope_key char(64) NOT NULL,run_id uuid NOT NULL,capture_id uuid NOT NULL,reference_id uuid NOT NULL,
+  descriptor_hash char(64) NOT NULL CHECK(descriptor_hash ~ '^[a-f0-9]{64}$'),
+  descriptor_bytes integer NOT NULL CHECK(descriptor_bytes BETWEEN 1 AND 16384),
+  descriptor_ciphertext bytea NOT NULL CHECK(octet_length(descriptor_ciphertext)=descriptor_bytes),
+  descriptor_iv bytea NOT NULL CHECK(octet_length(descriptor_iv)=12),descriptor_tag bytea NOT NULL CHECK(octet_length(descriptor_tag)=16),
+  state text NOT NULL DEFAULT 'PENDING' CHECK(state IN ('PENDING','CLAIMED','READY')),
+  lease_token uuid,lease_until timestamptz,attempts integer NOT NULL DEFAULT 0 CHECK(attempts>=0),
+  next_attempt_at timestamptz NOT NULL DEFAULT '-infinity',persisted_at timestamptz,last_error text,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(scope_key,run_id,reference_id),
+  FOREIGN KEY(scope_key,capture_id) REFERENCES jrc_evolution_origin.history_batches(scope_key,capture_id),
+  CHECK((state='CLAIMED')=(lease_token IS NOT NULL AND lease_until IS NOT NULL)),
+  CHECK((state='READY')=(persisted_at IS NOT NULL)),
+  CHECK(last_error IS NULL OR last_error IN ('DOWNLOAD_FAILED','INTEGRITY_FAILED','PERSISTENCE_UNCERTAIN','AUTHORITY_CHANGED'))
+);
+CREATE INDEX IF NOT EXISTS origin_history_media_pending ON jrc_evolution_origin.history_media(scope_key,run_id,next_attempt_at) WHERE state<>'READY';
 COMMIT;

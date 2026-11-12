@@ -18,6 +18,8 @@ const descriptor = z.discriminatedUnion("source", [
   z.object({source:z.literal('UPLOAD'),descriptor:z.union([
     z.strictObject({rootAutomationId:z.uuid(),idempotencyKey:z.uuid(),sha256:z.string().regex(/^[a-f0-9]{64}$/u)}),
     z.strictObject({uploadKind:z.literal('PARTNER'),apiKeyId:z.uuid(),idempotencyKey:z.uuid(),sha256:z.string().regex(/^[a-f0-9]{64}$/u),requestHash:z.string().regex(/^[a-f0-9]{64}$/u),mimeType:z.string().min(1),byteSize:z.number().int().positive().max(16*1024*1024)}),
+    z.strictObject({uploadKind:z.literal('HISTORY'),referenceId:z.uuid(),runId:z.uuid(),captureScopeKey:z.string().regex(/^[a-f0-9]{64}$/u),
+      sha256:z.string().regex(/^[a-f0-9]{64}$/u),mimeType:z.string().min(1),byteSize:z.number().int().positive().max(16*1024*1024)}),
   ])}),
   z.object({
     source: z.literal("QR"),
@@ -65,6 +67,7 @@ export async function registerPendingMedia(
   org: string,
   channel: string,
   input: MediaRegistration,
+  capturedReferenceId?: string,
 ): Promise<string> {
   const parsed = descriptor.parse(input);
   const sourceKey = z.string().min(1).max(512).parse(input.sourceKey);
@@ -73,7 +76,7 @@ export async function registerPendingMedia(
     .parse(input.kind);
   const row = (
     await tx.query<{ id: string }>(
-      `INSERT INTO messaging_media(organization_id,channel_id,source,source_key,kind,file_name,descriptor) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)
+      `INSERT INTO messaging_media(id,organization_id,channel_id,source,source_key,kind,file_name,descriptor) VALUES(COALESCE($8::uuid,gen_random_uuid()),$1,$2,$3,$4,$5,$6,$7::jsonb)
  ON CONFLICT(organization_id,channel_id,source,source_key) DO UPDATE SET source_key=messaging_media.source_key RETURNING id`,
       [
         org,
@@ -83,6 +86,7 @@ export async function registerPendingMedia(
         kind,
         safeMediaName(input.fileName),
         JSON.stringify(parsed.descriptor),
+        capturedReferenceId ?? null,
       ],
     )
   ).rows[0];
@@ -99,6 +103,7 @@ export interface MediaStoreOptions {
 export type MediaUploadIdentity = {rootAutomationId:string;idempotencyKey:string} | {
   uploadKind:'PARTNER';apiKeyId:string;idempotencyKey:string;sha256:string;requestHash:string;
 };
+export type HistoryMediaUploadIdentity={uploadKind:'HISTORY';referenceId:string;runId:string;captureScopeKey:string;sha256:string};
 /** Bind replay to validated content and metadata in this tenant/channel/key. */
 export function partnerMediaUploadRequestHash(org:string,channel:string,apiKeyId:string,input:BinaryMedia):string {
   return createHash('sha256').update(JSON.stringify(['partner-media-upload-v1',org,channel,apiKeyId,
@@ -114,21 +119,31 @@ export function createMediaStore(options: MediaStoreOptions) {
     .positive()
     .max(1_099_511_627_776)
     .parse(options.maxStorageBytes ?? 1_073_741_824);
-  return {
-    async writeUpload(org:string,channel:string,identity:MediaUploadIdentity,input:BinaryMedia,control?:PrivateMediaReadControl):Promise<string>{
-      const file={...input,bytes:new Uint8Array(input.bytes),fileName:safeMediaName(input.fileName)};validateUploadMedia(file);
+  const store = {
+    async writeHistoryUpload(org:string,channel:string,identity:HistoryMediaUploadIdentity,input:BinaryMedia,
+      control:PrivateMediaReadControl&{authorize:NonNullable<PrivateMediaReadControl['authorize']>}):Promise<string>{
+      if(typeof control?.authorize!=='function')throw new MediaError('MEDIA_UPLOAD_AUTHORITY_REQUIRED');
+      return store.writeUpload(org,channel,identity,input,control);
+    },
+    async writeUpload(org:string,channel:string,identity:MediaUploadIdentity|HistoryMediaUploadIdentity,input:BinaryMedia,control?:PrivateMediaReadControl):Promise<string>{
+      const file={...input,bytes:new Uint8Array(input.bytes),fileName:safeMediaName(input.fileName)};
+      const history='uploadKind' in identity&&identity.uploadKind==='HISTORY';
+      if(history)validateMedia(file);else validateUploadMedia(file);
       const sha256=createHash('sha256').update(file.bytes).digest('hex');
-      const partner='uploadKind' in identity;
+      const partner='uploadKind' in identity&&identity.uploadKind==='PARTNER';
+      if(history&&(typeof control?.authorize!=='function'||identity.sha256!==sha256))throw new MediaError('MEDIA_UPLOAD_IDEMPOTENCY_CONFLICT');
       if(partner&&(identity.sha256!==sha256||identity.requestHash!==partnerMediaUploadRequestHash(org,channel,identity.apiKeyId,file)))throw new MediaError('MEDIA_UPLOAD_IDEMPOTENCY_CONFLICT');
-      const sourceKey=partner?`partner:${identity.apiKeyId}:${identity.idempotencyKey}`:`${identity.rootAutomationId}:${identity.idempotencyKey}`;
-      const uploadDescriptor=partner?{...identity,sha256,mimeType:file.mimeType,byteSize:file.bytes.byteLength}:{...identity,sha256};descriptor.parse({source:'UPLOAD',descriptor:uploadDescriptor});
+      const sourceKey=history?`history:${identity.captureScopeKey}:${identity.runId}:${identity.referenceId}`:partner?`partner:${identity.apiKeyId}:${identity.idempotencyKey}`:
+        'rootAutomationId' in identity?`${identity.rootAutomationId}:${identity.idempotencyKey}`:'';
+      const uploadDescriptor=partner||history?{...identity,sha256,mimeType:file.mimeType,byteSize:file.bytes.byteLength}:{...identity,sha256};descriptor.parse({source:'UPLOAD',descriptor:uploadDescriptor});
       const id=await tx(org,async t=>{
         await control?.authorize?.(t);
         if(!(await t.query<{open:boolean}>('select media_private_channel_open($1,$2) as open',[org,channel])).rows[0]?.open)throw new MediaError('RESOURCE_DELETING');
-        const id=await registerPendingMedia(t,org,channel,{source:'UPLOAD',sourceKey,kind:file.kind,fileName:file.fileName,descriptor:uploadDescriptor});
+        const id=await registerPendingMedia(t,org,channel,{source:'UPLOAD',sourceKey,kind:file.kind,fileName:file.fileName,descriptor:uploadDescriptor},history?identity.referenceId:undefined);
         const existing=(await t.query<MediaAsset>('select * from messaging_media where organization_id=$1 and id=$2',[org,id])).rows[0];
         if(!existing||existing.descriptor.sha256!==sha256||existing.kind!==file.kind||existing.file_name!==file.fileName
-          ||partner&&(existing.descriptor.uploadKind!=='PARTNER'||existing.descriptor.apiKeyId!==identity.apiKeyId||existing.descriptor.idempotencyKey!==identity.idempotencyKey||existing.descriptor.requestHash!==identity.requestHash))throw new MediaError('MEDIA_UPLOAD_IDEMPOTENCY_CONFLICT');
+          ||partner&&(existing.descriptor.uploadKind!=='PARTNER'||existing.descriptor.apiKeyId!==identity.apiKeyId||existing.descriptor.idempotencyKey!==identity.idempotencyKey||existing.descriptor.requestHash!==identity.requestHash)
+          ||history&&(id!==identity.referenceId||existing.descriptor.uploadKind!=='HISTORY'||existing.descriptor.runId!==identity.runId||existing.descriptor.captureScopeKey!==identity.captureScopeKey))throw new MediaError('MEDIA_UPLOAD_IDEMPOTENCY_CONFLICT');
         return id;
       });
       if(privateStore){
@@ -298,5 +313,6 @@ export function createMediaStore(options: MediaStoreOptions) {
       );
     },
   };
+  return store;
 }
 export type MediaStore = ReturnType<typeof createMediaStore>;

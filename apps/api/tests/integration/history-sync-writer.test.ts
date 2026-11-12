@@ -50,6 +50,16 @@ it('atomically materializes native messages, durable receipts, chats and the pag
   expect(result.effects).toEqual({bots:'0',sends:'0',live_jobs:'0',receipts:'1'});
   expect(await f.store.persistNext(f.scope,run.id,now)).toEqual({kind:'IDLE'});
 });
+it('counts distinct chats from this run including empty groups without counting repeat pages twice',async()=>{
+  const f=await fixture(),run=await f.admit();
+  await db.database.pool.query('INSERT INTO whatsapp_group_catalogs(organization_id,channel_id) VALUES($1,$2)',[f.t.org,f.t.channel]);
+  const chats:HistorySyncRecord[]=[{kind:'CHAT',recipientKind:'INDIVIDUAL',chatJid:jid,displayName:'Synthetic',lastMessageAt:1600000000,unreadCount:0},
+    {kind:'CHAT',recipientKind:'GROUP',chatJid:'100-200@g.us',displayName:'Synthetic group',lastMessageAt:1600000000,unreadCount:0}];
+  await f.store.acceptChunk(f.scope,run.id,f.chunk([...chats,text]),now);await f.store.persistNext(f.scope,run.id,now);
+  expect((await f.store.status(f.t.org,f.t.channel,run.id))?.counts.chats).toBe(2);
+  await f.store.acceptChunk(f.scope,run.id,f.chunk(chats,1),now);await f.store.persistNext(f.scope,run.id,now);
+  expect((await f.store.status(f.t.org,f.t.channel,run.id))?.counts.chats).toBe(2);
+});
 
 it('commits a versioned projection obligation before returning the native page acknowledgement',async()=>{
   const f=await fixture(),run=await f.admit();

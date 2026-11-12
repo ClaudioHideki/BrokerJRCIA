@@ -59,7 +59,7 @@ export function attachOriginEngineInstance(scope, instance) {
     const result = await options.pool.query("SELECT current_setting('fsync')='on' AND current_setting('full_page_writes')='on' AND to_regclass('jrc_evolution_origin.events') IS NOT NULL AS ready");
     if (expired || result.rows[0]?.ready !== true) throw new Error('ORIGIN_ENGINE_DATABASE_NOT_READY');
     const journal = options.journal ?? createOriginJournal({ pool: options.pool, encryptionKey: options.encryptionKey,
-      history: options.history ? { maxStagedBytes: options.history.maxStagedBytes } : undefined });
+      history: options.history ? { maxStagedBytes: options.history.maxStagedBytes, captureMedia: options.history.captureMedia === true } : undefined });
     const composition = createOriginEngineComposition({ ...options, journal, env: host.env });
     entry.snapshot = composition.snapshot;
     if (options.startWorker === true) composition.start().catch(() => undefined);

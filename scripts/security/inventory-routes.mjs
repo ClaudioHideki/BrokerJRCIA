@@ -240,6 +240,8 @@ const ROUTE_POLICIES = Object.freeze({
     'GET /v1/channels/{id}/history-import/{operationId}',
   ].map(route=>[route,policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN',true,
     'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_MEMBER_PUBLIC_INSTANCE_RESOLVED_SERVER_SOURCE_NO_RAW_PAGES')])),
+  'GET /v1/channels/{id}/history-sync/v2/progress':policy('apps/api/src/http/routes/channels.ts','JWT_CURRENT_MEMBERSHIP','OWNER_ADMIN_OPERATOR',true,
+    'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_MEMBER_CANONICAL_CHANNEL_SCALAR_STATUS_NO_SOURCE_ADMISSION_OR_REPLAY'),
   ...Object.fromEntries([
     'POST /v1/channels/{id}/history-import',
     'POST /v1/channels/{id}/history-import/{operationId}/advance',
@@ -425,6 +427,9 @@ const ROUTE_POLICIES = Object.freeze({
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',
     true, 'READ_ONLY_PROVIDER_STATUS', 'NONE', 'RLS_ACCOUNT_REVISION_CONNECTION_GRANT',
   ),
+  'GET /v1/integrations/chatwoot/control/connections/{integrationId}/history-sync/v2/progress':policy(
+    'apps/api/src/http/routes/chatwoot-control.ts','JWT_OR_BOUND_CONTROL_KEY','CURRENT_MEMBERSHIP_OR_CHATWOOT_READ',true,
+    'READ_ONLY','NO_STORE_METADATA_ONLY','RLS_CURRENT_ACCOUNT_DESTINATION_REVISION_INBOX_BINDING_RECHECK_NO_SOURCE_ADMISSION_OR_REPLAY'),
   'GET /v1/integrations/chatwoot/control/connections/{integrationId}/pair-operations/{operationId}': policy(
     'apps/api/src/http/routes/chatwoot-control.ts', 'JWT_OR_BOUND_CONTROL_KEY', 'CURRENT_MEMBERSHIP_OR_CHATWOOT_PAIR',
     true, 'READ_ONLY_ONE_TIME_QR', 'TEMPORARY_QR_REDIS_GETDEL', 'RLS_CURRENT_CONNECTION_GRANT_OPERATION_AND_PROVIDER_IDENTITY',

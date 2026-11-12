@@ -1,4 +1,22 @@
-# Incremento local de 12/11/2026 — materialização, mídia e projeção
+# Progresso e mídia de origem V2 — incremento posterior de 12/11/2026
+
+Implementação local posterior a ece27d1/LAB2e919b0ac. Journal cifrado da origem agora pode reter descritores mínimos de mídia com opt-in; worker separado baixa, autentica, verifica e guarda os mesmos bytes em armazenamento privado antes do recibo. O ACK perdido repete a identidade original. MIME Opus é normalizado antes de congelar o contrato. Não muda o upload público, não habilita captura e não prova ownership produtivo.
+
+Leituras aditivas, sem admissão ou replay:
+
+- JWT de membro atual: `GET /v1/channels/:id/history-sync/v2/progress`, usando messaging_channels.id.
+- Control autorizado: `GET /v1/integrations/chatwoot/control/connections/:integrationId/history-sync/v2/progress`, com Account/inbox/destino/revisão conferidos.
+- Proxy LAB2: `GET /api/v1/accounts/:account_id/jrc_broker/inboxes/:inbox_id/history-sync`, sessão e permissão locais, resposta escalar filtrada.
+
+Envelope schemaVersion2 contém organizationId/channelId/run|null. Control acrescenta integrationId/accountId/inboxId/destinationRevision. O run informa estado/fases/revisão/contadores e código sanitizado. Não retorna número, fingerprint, página, prompt, URL, chave ou descritor de mídia. `run:null` significa ausência de operação admitida. HTTP200 é observação, não conclusão.
+
+React e Vue mostram contadores separados e total da origem desconhecido. Uma consulta por vez, leitura periódica somente com aba visível e descarte de resposta antiga após trocar escopo. Não exibem percentual100 por isLatest/progress100. As duas rotas constam no OpenAPI canônico/inventário de segurança; não foram adicionadas ao catálogo comercial estável enquanto a admissão operacional V2 não estiver homologada.
+
+Migration0090 e DDL aditivo do journal permanecem somente em laboratório. Host operacional, política automática por conexão, convergência live e cobertura completa ainda pendentes. Descrição e rollback em `docs/implementation/history-source-media-progress-20261112.md`; resultados exatos no checkpoint atual, sem reutilizar CI de SHA anterior.
+
+---
+
+# Incremento local anterior de 12/11/2026 — materialização, mídia e projeção
 
 Sobre Broker bb438150/LAB2 ca6e782, ainda não publicado nem habilitado em produção. As seções de05/11 e11/11 abaixo são registros históricos.
 

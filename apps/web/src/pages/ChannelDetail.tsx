@@ -1,4 +1,5 @@
 import {HistoryImportPanel} from '../channels/HistoryImportPanel.js';
+import {HistorySyncPanel} from '../channels/HistorySyncPanel.js';
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 import {Link,useParams} from 'react-router';
 import type {AutomationBindingV1,AutomationDefinitionV1,ChannelV1,ConnectionAction} from '@jrc/contracts';
@@ -237,6 +238,7 @@ function ChannelDetail(){
     </>}
     {visibleArea==='history'&&!archived&&channel.provider==='QR'&&<>
      {canManage&&session&&<HistoryImportPanel client={client} organizationId={session.activeOrganization.id} channelId={id}/>}
+     {channel.messagingChannelId&&canPair&&session&&<HistorySyncPanel client={client} organizationId={session.activeOrganization.id} channelId={channel.messagingChannelId}/>}
      {channel.messagingChannelId&&canPair&&session&&<WhatsAppGroups key={channel.messagingChannelId} client={client} channelId={channel.messagingChannelId} canManage={canManage} eventsConfigurationOrganizationId={session.activeOrganization.id}/>}
      {!channel.messagingChannelId&&canPair&&<p>Os grupos estarão disponíveis depois que o recebimento desta conexão for preparado.</p>}
      {!canPair&&<p>Seu acesso permite consultar a conexão. Um administrador pode gerenciar o histórico e os grupos.</p>}

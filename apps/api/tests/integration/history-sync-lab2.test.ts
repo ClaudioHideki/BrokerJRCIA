@@ -9,25 +9,32 @@ import { createHistorySyncProjector } from '../../src/modules/history-sync/proje
 import { createHistorySyncWorker } from '../../src/modules/history-sync/worker.js';
 import { type HistorySyncRecord, type HistorySyncScope } from '../../src/modules/history-sync/contract.js';
 import { createOriginJournal, installOriginJournal } from '../../../../integrations/evolution-origin-journal/src/journal.mjs';
+import { createHistoryMediaWorker } from '../../../../integrations/evolution-origin-journal/src/history-media-worker.mjs';
 import { ChatwootClient } from '../../src/modules/integrations/chatwoot-client.js';
 import { createS3PrivateObjectStore } from '../../src/modules/messaging/private-object-store.js';
 import { createDurablePrivateMediaStore } from '../../src/modules/messaging/durable-private-media.js';
 import { createMediaStore } from '../../src/modules/messaging/media-store.js';
+import { initializeHistoryLabBucket } from '../../../../labs/history-sync-lab2/storage-fixture.mjs';
 
 // Opt-in full local infrastructure test. No real source/socket/WhatsApp session.
 it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('reconciles two isolated consumers through PostgreSQL, private MinIO, Rails HTTP and real Sidekiq',async()=>{
   const origin=process.env.HISTORY_LAB2_ORIGIN,endpoint=process.env.HISTORY_LAB_MINIO_ENDPOINT;
-  if(origin!=='http://127.0.0.1:54141' || endpoint!=='http://127.0.0.1:54134'
+  if(origin!=='http://127.0.0.1:54141' || !/^http:\/\/127[.]0[.]0[.]1:\d+$/u.test(endpoint??'')
     || process.env.HISTORY_LAB_RAILS_CONTAINER!=='jrc-history-v2-http-20261112')throw Error('Only dedicated synthetic laboratory permitted');
-  const docker=(args:string[])=>execFileSync('docker',args,{encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
+  const docker=(args:string[])=>execFileSync('docker',['--context','desktop-linux',...args],{encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
   const label=docker(['inspect','--format','{{index .Config.Labels "com.jrc.test"}}',process.env.HISTORY_LAB_RAILS_CONTAINER]).trim();
   if(label!=='jrc-history-v2-complete-20261112')throw Error('Invalid synthetic container label');
+  const storageName='jrc-history-v2-e2e-minio-20261112';
+  if(docker(['inspect','--format','{{index .Config.Labels "com.jrc.test"}}',storageName]).trim()!==label
+    || docker(['inspect','--format','{{(index (index .NetworkSettings.Ports "9000/tcp") 0).HostIp}}',storageName]).trim()!=='127.0.0.1'
+    || endpoint!==`http://127.0.0.1:${docker(['inspect','--format','{{(index (index .NetworkSettings.Ports "9000/tcp") 0).HostPort}}',storageName]).trim()}`)
+    throw Error('Only owned synthetic storage permitted');
   const db=await attendanceDatabase();
   try {
     // Only this disposable synthetic database. Reconstruct the source journal
     // between reads so worker memory cannot stand in for durable progress.
     await installOriginJournal(db.database.pool);
-    const sourceJournal=()=>createOriginJournal({pool:db.database.pool,encryptionKey:Buffer.alloc(32,83),history:{maxStagedBytes:4000000}}).history!;
+    const sourceJournal=()=>createOriginJournal({pool:db.database.pool,encryptionKey:Buffer.alloc(32,83),history:{maxStagedBytes:4000000,captureMedia:true}}).history!;
     const sources=[];
     for(let index=0;index<2;index++) {
       const t=await seedAttendanceTenant(db.database),instanceId=randomUUID();
@@ -49,6 +56,7 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('reconciles two isolated consum
     const consumers=await lab('seed',sources.map(s=>({organizationId:s.t.org,integrationId:s.t.integration,instanceId:s.scope.instanceId}))) as {accountId:number;inboxId:number;adminToken:string;agentToken:string}[];
     const bytes=readFileSync(join(process.env.HISTORY_LAB2_CHECKOUT!,'spec/assets/sample.png'));
     const sha256=createHash('sha256').update(bytes).digest('hex'),encryptionKey=Buffer.alloc(32,83).toString('base64');
+    await initializeHistoryLabBucket({labOnly:true,endpoint,accessKeyId:process.env.HISTORY_LAB_MINIO_ACCESS!,secretAccessKey:process.env.HISTORY_LAB_MINIO_SECRET!});
     const objectStore=createS3PrivateObjectStore({endpoint,bucket:'synthetic-broker-history-20261112',profile:'synthetic-history',region:'us-east-1',
       accessKeyId:process.env.HISTORY_LAB_MINIO_ACCESS!,secretAccessKey:process.env.HISTORY_LAB_MINIO_SECRET!,dedicatedBucket:true,
       allowLoopbackHttpForTests:true,requestTimeoutMs:5000});
@@ -64,9 +72,7 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('reconciles two isolated consum
       // A measured host proof is synthetic here. Real engine ownership remains an independent gate.
       const store=createHistorySyncStore({transact:db.transact,encryptionKey:Buffer.alloc(32,83),maxStagedBytes:4000000,
         assertCurrentScope:async()=>{},resolveDestination:async()=>({destination,authorityFingerprint:'f'.repeat(64)})});
-      const mediaId=await media.writeUpload(t.org,t.channel,{rootAutomationId:t.automation,idempotencyKey:randomUUID()},
-        {bytes:new Uint8Array(bytes),mimeType:'image/png',kind:'image',fileName:'synthetic.png'});
-      expect((await media.read(t.org,mediaId)).bytes).toEqual(new Uint8Array(bytes));
+      const mediaId=randomUUID(),sourceBytes=new Map<string,Buffer>([['synthetic-media',bytes]]);
       expectedMediaHashes.push(sha256);
       const jid=`${'1'.repeat(11)}@s.whatsapp.net`,groupJid='100-200@g.us';
       const records:HistorySyncRecord[]=[
@@ -86,9 +92,7 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('reconciles two isolated consum
       ]) {
         const content=readFileSync(join(process.env.HISTORY_LAB2_CHECKOUT!,'spec/assets',fixture.file));
         const checksum=createHash('sha256').update(content).digest('hex');
-        const reference=await media.writeUpload(t.org,t.channel,{rootAutomationId:t.automation,idempotencyKey:randomUUID()},
-          {bytes:new Uint8Array(content),mimeType:fixture.mime,kind:fixture.kind,fileName:fixture.file});
-        expect((await media.read(t.org,reference)).bytes).toEqual(new Uint8Array(content));
+        const reference=randomUUID();sourceBytes.set(`synthetic-${fixture.kind}`,content);
         expectedMediaHashes.push(checksum);
         records.push({kind:'MESSAGE',recipientKind:fixture.group?'GROUP':'INDIVIDUAL',chatJid:fixture.group?groupJid:jid,displayName:null,
           providerMessageId:`synthetic-${fixture.kind}`,participantJid:fixture.group&&!fixture.fromMe?'12345@lid':null,
@@ -102,11 +106,40 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('reconciles two isolated consum
         messages:records.filter(r=>r.kind==='MESSAGE').map(r=>({key:{id:r.providerMessageId,remoteJid:r.chatJid,fromMe:r.fromMe,participant:r.participantJid},
           messageTimestamp:r.messageTimestamp,status:r.state==='READ'?4:3,
           message:r.content.type==='TEXT'?{conversation:r.content.text}:
-            {[{IMAGE:'imageMessage',AUDIO:'audioMessage',VIDEO:'videoMessage',DOCUMENT:'documentMessage',STICKER:'stickerMessage'}[r.content.mediaType]]:{caption:r.content.caption}}})),
+            {[{IMAGE:'imageMessage',AUDIO:'audioMessage',VIDEO:'videoMessage',DOCUMENT:'documentMessage',STICKER:'stickerMessage'}[r.content.mediaType]]:{caption:r.content.caption,
+              mimetype:r.content.mediaType==='AUDIO'?'audio/ogg; codecs=opus':r.content.mimeType,fileName:r.content.filename,fileLength:r.content.byteSize,fileSha256:Buffer.from(r.content.sha256,'hex'),
+              mediaKey:Buffer.alloc(32,11),directPath:`/v/${r.providerMessageId}.enc`}}})),
       }};
       const journal=sourceJournal();
-      await journal.append(journal.prepare(scope,run.id,event,{provenance:'SOCKET',captureId:randomUUID(),capturedAt:now,startOrdinal:0,
-        mediaReference:({providerMessageId}:{providerMessageId:string})=>references.get(providerMessageId)}));
+      await journal.append(journal.prepare(scope,run.id,event,{provenance:'SOCKET',captureId:randomUUID(),capturedAt:now,startOrdinal:0}));
+      const captured=(await sourceJournal().pending(scope,{runId:run.id}))[0]!;
+      expect(captured.chunk.records.filter((r:{kind:string;content?:{type:string}})=>r.kind==='MESSAGE'&&r.content?.type==='MEDIA')).toHaveLength(4);
+      for(const r of captured.chunk.records)if(r.kind==='MESSAGE'&&r.content.type==='MEDIA') {
+        const original=records.find((m):m is Extract<HistorySyncRecord,{kind:'MESSAGE'}>=>m.kind==='MESSAGE'&&m.providerMessageId===r.providerMessageId)!;
+        original.content=r.content;references.set(r.providerMessageId,r.content);
+      }
+      let dropMediaAck=true;
+      const mediaAuthority=async(tx:Parameters<Parameters<typeof db.transact>[1]>[0]|null)=>{
+        const check=async(t:NonNullable<typeof tx>)=>{
+          const row=(await t.query<{state:string;channel_id:string}>('SELECT state,channel_id FROM history_sync_runs WHERE organization_id=$1 AND id=$2 FOR SHARE',[scope.organizationId,run.id])).rows[0];
+          if(!row||row.state!=='RUNNING'||row.channel_id!==scope.channelId)throw Error('SYNTHETIC_AUTHORITY_REVOKED');
+        };
+        if(tx)await check(tx);else await db.transact(scope.organizationId,check);
+      };
+      const mediaWorker=createHistoryMediaWorker({journal:sourceJournal(),assertCurrentScope:mediaAuthority,
+        download:async(descriptor:{directPath:string})=>{
+          const original=sourceBytes.get(descriptor.directPath.slice(3,-4));if(!original)throw Error('SYNTHETIC_MEDIA_MISSING');
+          return {async *[Symbol.asyncIterator](){yield original.subarray(0,7);yield original.subarray(7);}};
+        },persist:async(reference:Extract<Extract<HistorySyncRecord,{kind:'MESSAGE'}>['content'],{type:'MEDIA'}>,content:Buffer)=>{
+          const id=await media.writeHistoryUpload(t.org,t.channel,{uploadKind:'HISTORY',referenceId:reference.referenceId,runId:run.id,
+            captureScopeKey:captured.scopeKey,sha256:reference.sha256},
+          {bytes:new Uint8Array(content),mimeType:reference.mimeType,kind:reference.mediaType.toLowerCase() as 'image',fileName:reference.filename},
+          {authorize:mediaAuthority});
+          const physical=await media.read(t.org,id,{authorize:mediaAuthority});
+          expect(createHash('sha256').update(physical.bytes).digest('hex')).toBe(reference.sha256);
+          if(dropMediaAck){dropMediaAck=false;throw Error('SYNTHETIC_MEDIA_ACK_LOST');}
+          return {protocol:'jrc-history-media/2',persisted:true,scopeKey:captured.scopeKey,runId:run.id,referenceId:id,sha256:reference.sha256,byteSize:reference.byteSize};
+        }});
       let drop=true;
       const transport:typeof fetch=async(input,init)=>{
         const response=await fetch(input,init);
@@ -116,20 +149,26 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('reconciles two isolated consum
       const client=new ChatwootClient({baseUrl:origin,token:consumer.adminToken,allowLocal:true,fetch:transport,timeoutMs:30000});
       const projector=createHistorySyncProjector({store,consumer:()=>client.historySyncV2(),media:async(s,id)=>Buffer.from((await media.read(s.organizationId,id)).bytes)});
       let lostSourceAck=true;
-      const worker=createHistorySyncWorker({enabled:true,store,projector,assertAdmission:async()=>{},source:{
+      const worker=createHistorySyncWorker({enabled:true,store,projector,media:mediaWorker,assertAdmission:async()=>{},source:{
         pending:(s,selection)=>sourceJournal().pending(s,selection),
         acknowledge:async(s,page,receipt)=>{
           if(lostSourceAck){lostSourceAck=false;throw Error('SYNTHETIC_SOURCE_ACK_LOST');}
           return sourceJournal().acknowledge(s,page,receipt);
         },
       }});
+      const ticks=[];
       for(let attempt=0;attempt<40;attempt++) {
-        await worker.runOnce(scope,run.id,new Date(Date.now()+attempt*60000));
+        ticks.push(await worker.runOnce(scope,run.id,new Date(Date.now()+attempt*60000)));
         const done=await db.transact(t.org,tx=>tx.query<{count:string}>("SELECT count(*)::text FROM history_sync_deliveries WHERE run_id=$1 AND state='DONE'",[run.id]));
         if(done.rows[0]!.count==='8' && (await sourceJournal().pending(scope,{runId:run.id})).length===0)break;
         await new Promise(resolve=>setTimeout(resolve,250));
       }
       const sourceIds=(await db.transact(t.org,tx=>tx.query<{message_id:string;provider_message_id:string}>('SELECT message_id,provider_message_id FROM history_sync_receipts WHERE channel_id=$1 ORDER BY message_id',[t.channel]))).rows;
+      if(sourceIds.length!==6) {
+        const sourceMedia=(await db.database.pool.query('SELECT state,attempts,last_error FROM jrc_evolution_origin.history_media WHERE run_id=$1',[run.id])).rows;
+        const nativeMedia=(await db.transact(t.org,tx=>tx.query('SELECT status,kind,last_error FROM messaging_media WHERE channel_id=$1',[t.channel]))).rows;
+        throw Error(`SYNTHETIC_HISTORY_MEDIA_INCOMPLETE ${JSON.stringify({ticks,sourceMedia,nativeMedia,run:await store.status(t.org,t.channel,run.id)})}`);
+      }
       expect(sourceIds.map(row=>row.provider_message_id).sort()).toEqual(
         ['synthetic-group-outgoing','synthetic-media','synthetic-text','synthetic-document','synthetic-audio','synthetic-video'].sort());
       allSourceIds.push(sourceIds.map(row=>row.message_id));
@@ -144,7 +183,8 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('reconciles two isolated consum
         const safe=(await db.transact(t.org,tx=>tx.query('SELECT state,attempts,last_error FROM history_sync_deliveries WHERE run_id=$1',[run.id]))).rows;
         throw Error(`SYNTHETIC_HISTORY_PROJECTION_INCOMPLETE ${JSON.stringify(safe)}`);
       }
-      expect(drop).toBe(false);expect(lostSourceAck).toBe(false);
+      expect(drop).toBe(false);expect(lostSourceAck).toBe(false);expect(dropMediaAck).toBe(false);
+      expect(await store.status(t.org,t.channel,run.id)).toMatchObject({sourceTotalKnown:false,counts:{persistedMessages:6,projectedMessages:6,pendingMedia:0}});
       // Progress=100/isLatest is not a coverage-close proof for the phone.
       expect(await store.get(t.org,run.id)).toMatchObject({state:'RUNNING',capture:'CAPTURING'});
       expect((await db.database.pool.query('SELECT state,octet_length(payload_ciphertext) AS bytes FROM jrc_evolution_origin.history_chunks WHERE run_id=$1',[run.id])).rows)

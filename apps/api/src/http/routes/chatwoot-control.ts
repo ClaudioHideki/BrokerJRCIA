@@ -16,6 +16,7 @@ import { OperatorGrantViewSchema } from '@jrc/contracts';
 import { registerNicoTakeoverRoutes } from './nico-takeovers.js';
 import { ControlRoutingQuerySchema, ControlRoutingContextSchema } from '@jrc/contracts';
 import type { NicoTakeovers } from '../../modules/integrations/nico-takeover-types.js';
+import { HistorySyncControlProgressSchema } from '@jrc/contracts';
 
 export interface ChatwootControlRouteOptions extends AuthenticationOptions { service: ChatwootControlAuth; onboarding?: OnboardingService | undefined; facade?: ChatwootControlService | undefined; takeovers?: NicoTakeovers | undefined }
 export async function registerChatwootControlRoutes(app: FastifyInstance, options: ChatwootControlRouteOptions) {
@@ -82,6 +83,9 @@ export async function registerChatwootControlRoutes(app: FastifyInstance, option
   app.get('/v1/integrations/chatwoot/control/connections/:integrationId/status', {
     preHandler: read, schema: { querystring: empty, params: connectionParams, response: { 200: ConnectionHealthSchema } },
   }, async req => facade().status(await options.service.authorize(req.authentication!, 'chatwoot:read', integrationId(req)), integrationId(req)));
+  app.get('/v1/integrations/chatwoot/control/connections/:integrationId/history-sync/v2/progress',{
+    preHandler:read,schema:{params:connectionParams,querystring:empty,response:{200:HistorySyncControlProgressSchema}},
+  },async req=>facade().historyProgress(await options.service.authorize(req.authentication!,'chatwoot:read',integrationId(req)),integrationId(req)));
   app.get('/v1/integrations/chatwoot/control/connections/:integrationId/pair-operations/:operationId', {
     preHandler: read, schema: { querystring: empty, params: z.strictObject({ integrationId: z.uuid(), operationId: z.uuid() }),
       response: { 200: PairOperationSchema, 409: ProblemDetailsSchema } },

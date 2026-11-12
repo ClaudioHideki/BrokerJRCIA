@@ -23,6 +23,13 @@ function harness(enabled = true) {
   return { run, now, chunk, pending, store, source, projector, assertAdmission,
     worker: createHistorySyncWorker({ enabled, store, source, projector, assertAdmission }) };
 }
+it('services one durable source media obligation without freezing persisted text when media fails',async()=>{
+  const h=harness(),media={runOnce:vi.fn().mockRejectedValue(Error('synthetic source outage'))};
+  const worker=createHistorySyncWorker({...h,enabled:true,media});
+  expect(await worker.runOnce(scope,h.run,h.now)).toMatchObject({media:'RETRY',materialization:'IDLE',projection:'IDLE'});
+  expect(media.runOnce).toHaveBeenCalledWith(scope,h.run,h.now);
+  expect(h.projector.runOnce).toHaveBeenCalledOnce();
+});
 it('does nothing while the gate is disabled, including no source or membership query', async () => {
   const h = harness(false);
   expect(await h.worker.runOnce(scope, h.run, h.now)).toEqual({ kind: 'DISABLED' });

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash,randomUUID } from 'node:crypto';
 import { before, after, test } from 'node:test';
 import { Pool } from 'pg';
 import { withOriginEngineLabHost, awaitOriginEngineReady } from '../src/engine-host.mjs';
@@ -54,6 +54,30 @@ test('history opt-in refuses a mismatched engine identity instead of admitting a
   assert.throws(() => createOriginEngineComposition({ binding, pool, journal: createOriginJournal({ pool, encryptionKey: key }), env: enabled,
     history: { scope, runId: randomUUID() }, resolveBinding: async () => binding,
     transport: { endpoint: `https://broker.invalid/v1/webhooks/whatsapp/${binding.destinationId}`, bearerToken: 'synthetic-test-only' } }), /HISTORY_SOURCE_BINDING_CHANGED/u);
+});
+
+test('the compiled pinned socket snapshots recoverable media descriptors before the original event can change',async()=>{
+  const binding={instanceId:randomUUID(),instanceName:`Synthetic-raw-media-${randomUUID()}`,generation:1,destinationId:randomUUID(),revision:1};
+  const scope={organizationId:randomUUID(),channelId:randomUUID(),instanceId:binding.instanceId,engineId:'synthetic-engine',engineGeneration:1,
+    sessionGeneration:randomUUID(),bindingFingerprint:bindingFingerprint(binding),identityScopeId:null,historyAccountIdentity:null,ownerFingerprint:null};
+  const endpoint=`https://broker.invalid/v1/webhooks/whatsapp/${binding.destinationId}`,runId=randomUUID(),bytes=Buffer.from('synthetic-socket-media');
+  const fixture=await compileEngineFixture({endpoint}),journal=createOriginJournal({pool,encryptionKey:key,history:{maxStagedBytes:2000000,captureMedia:true}});
+  await withOriginEngineLabHost({labOnly:true,env:enabled,prepareInstance:async()=>({pool,encryptionKey:key,binding,history:{scope,runId,maxStagedBytes:2000000,captureMedia:true},
+    resolveBinding:async()=>binding,transport:{endpoint,bearerToken:'synthetic-test-only'}})},async()=>{
+    const engine=fixture.create(binding);await awaitOriginEngineReady(engine.instance);
+    engine.instance.messageHandle['messaging-history.set']=async()=>{};
+    const media={mediaKey:Buffer.alloc(32,37),directPath:'/v/synthetic-engine.enc',fileLength:bytes.length,
+      fileSha256:createHash('sha256').update(bytes).digest(),mimetype:'image/png',caption:'Synthetic captured caption'};
+    const event={'messaging-history.set':{chats:[],contacts:[],messages:[{key:{id:'synthetic-raw-media',remoteJid:`${'1'.repeat(11)}@s.whatsapp.net`,fromMe:true},
+      messageTimestamp:1600000000,message:{imageMessage:media}}]}};
+    const writing=engine.emit(event);media.mediaKey.fill(99);media.caption='Changed after socket callback';await writing;
+    const [page]=await journal.history.pending(scope,{runId}),claim=await journal.history.claimMedia(scope,runId,new Date());
+    assert.equal(page.chunk.records[0].content.caption,'Synthetic captured caption');
+    assert.equal(page.chunk.records[0].fromMe,true);
+    assert.equal(claim.descriptor.mediaKey,Buffer.alloc(32,37).toString('base64'));
+    assert.equal(page.chunk.records[0].content.referenceId,claim.reference.referenceId);
+    assert.doesNotMatch(JSON.stringify(page),/mediaKey|directPath|Changed after socket/u);
+  });
 });
 
 test('the compiled hook retains only persisted media references fenced to its original capture scope', async () => {

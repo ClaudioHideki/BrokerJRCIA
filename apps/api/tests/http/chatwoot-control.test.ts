@@ -24,15 +24,26 @@ function harness(enabled = true) {
   const list = vi.fn().mockResolvedValue({ data: [operation] });
   const routingContext = vi.fn().mockResolvedValue({ schemaVersion: 1, organizationId: org, accountId: 1,
     destinationRevision: 1, checkedAt: '2030-01-01T00:00:00.000Z', data: [] });
+  const historyProgress=vi.fn(async(_p,id)=>({schemaVersion:2,organizationId:org,channelId:keyId,integrationId:id,accountId:1,inboxId:9,destinationRevision:1,run:null}));
   const instance = vi.fn();
   const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ async verifyPasswordOrDummy() { return false; } }),
-    chatwootControl: { jwtSecret: secret, authenticateApiKey, service, facade: { routingContext } as unknown as ChatwootControlService, onboarding: { start, get, recover, list } as unknown as OnboardingService },
+    chatwootControl: { jwtSecret: secret, authenticateApiKey, service, facade: { routingContext,historyProgress } as unknown as ChatwootControlService, onboarding: { start, get, recover, list } as unknown as OnboardingService },
     integrations: { jwtSecret: secret, authenticateApiKey, resolveCurrentRole: async () => null, service: new Proxy({}, { get: () => instance }) as ChatwootService },
     instances: { jwtSecret: secret, authenticateApiKey, service: new Proxy({}, { get: () => instance }) as InstanceService } });
   apps.push(app);
-  return { app, context, instance, authorize, start, get, recover, operation, resources, list, routingContext, headers: { 'x-jrc-api-key': 'synthetic-control' } };
+  return { app, context, instance, authorize, start, get, recover, operation, resources, list, routingContext,historyProgress, headers: { 'x-jrc-api-key': 'synthetic-control' } };
 }
 afterEach(async () => { await Promise.all(apps.splice(0).map(a => a.close())); });
+it('offers read-only history progress with the existing integration-scoped control credential',async()=>{
+  const h=harness(),id='519b77a6-a4e5-409a-85c8-d78fc155c525';
+  const path=`/v1/integrations/chatwoot/control/connections/${id}/history-sync/v2/progress`;
+  const result=await h.app.inject({method:'GET',url:path,headers:h.headers});
+  expect(result.statusCode).toBe(200);expect(result.headers['cache-control']).toBe('no-store');
+  expect(h.authorize).toHaveBeenCalledWith(expect.objectContaining({kind:'API_KEY'}),'chatwoot:read',id);
+  expect(h.historyProgress).toHaveBeenCalledOnce();
+  expect((await h.app.inject({method:'GET',url:path})).statusCode).toBe(401);
+  expect((await h.app.inject({method:'POST',url:path,headers:h.headers,payload:{}})).statusCode).toBe(404);
+});
 it('offers a bounded fresh read-only routing snapshot through the existing control credential', async () => {
   const h = harness();
   const id = '519b77a6-a4e5-409a-85c8-d78fc155c525';

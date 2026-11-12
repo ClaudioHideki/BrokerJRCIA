@@ -24,6 +24,20 @@ it('refuses the catalogue schema if its peer identity guard is disabled',async()
     expect((await client.query(`SELECT (${historySyncRuntimeSql}) AS ready`)).rows[0].ready).toBe(false);
   } finally {await client.query('ROLLBACK');client.release();}
 });
+it('refuses incomplete 0090 source-media and chat-progress structures before serving the candidate binary',async()=>{
+  const client=await db.database.pool.connect();
+  try {
+    for(const drift of [
+      'ALTER TABLE history_sync_record_results DROP COLUMN peer_jid CASCADE',
+      'ALTER TABLE messaging_media DROP CONSTRAINT messaging_media_upload_identity',
+      'REVOKE EXECUTE ON FUNCTION history_media_upload_identity_valid(jsonb,text,uuid) FROM jrc_app',
+    ]) {
+      await client.query('BEGIN');await client.query(drift);
+      expect((await client.query(`SELECT (${historySyncRuntimeSql}) AS ready`)).rows[0].ready,drift).toBe(false);
+      await client.query('ROLLBACK');
+    }
+  } finally {await client.query('ROLLBACK');client.release();}
+});
 it('refuses a forced-RLS catalogue that the existing explicit lifecycle definer cannot clean',async()=>{
   const client=await db.database.pool.connect();
   try {

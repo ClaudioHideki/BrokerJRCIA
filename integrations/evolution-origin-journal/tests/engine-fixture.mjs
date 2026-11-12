@@ -8,7 +8,7 @@ import * as host from '../src/engine-host.mjs';
 import { ENGINE_SOURCE_HASHES, preparePinnedEngineSources } from '../src/engine-overlay.mjs';
 const requireNative = createRequire(import.meta.url);
 export async function compileEngineFixture({ endpoint, globalEndpoint, onLegacyHttp = async () => {}, onSink = async () => {},
-  preserveMessageHandler = false, onConsole = () => {} } = {}) {
+  preserveMessageHandler = false, onConsole = () => {}, baileysModule = {} } = {}) {
   const originals = {};
   for (const path of Object.keys(ENGINE_SOURCE_HASHES)) originals[path] = await readFile(new URL(`../../../upstream/evolution-api/${path}`,import.meta.url),'utf8');
   const apiPath = 'src/api/controllers/instance.controller.ts';
@@ -53,7 +53,7 @@ export async function compileEngineFixture({ endpoint, globalEndpoint, onLegacyH
     if (name === '@utils/createJid') return { createJid: value => value };
     if (name === 'node-cache') return Noop;
     if (name === 'long') return { isLong:()=>false };
-    if (name === 'baileys') return { getContentType:message=>Object.keys(message??{})[0],getDevice:()=> 'synthetic',default:()=>{throw Error('WHATSAPP_NETWORK_FORBIDDEN');} };
+    if (name === 'baileys') return { getContentType:message=>Object.keys(message??{})[0],getDevice:()=> 'synthetic',default:()=>{throw Error('WHATSAPP_NETWORK_FORBIDDEN');},...baileysModule };
     if (name === 'axios') return { create: options => ({ post:async(_path,body)=>{ calls.push({kind:'legacy-http',destination:options.baseURL}); await onLegacyHttp(options.baseURL,body); } }) };
     const sink = /\/event\/(websocket|rabbitmq|nats|sqs|pusher|kafka)\//u.exec(name);
     if (sink) { const kind=sink[1], key=kind==='rabbitmq'?'Rabbitmq':kind==='websocket'?'Websocket':kind==='sqs'?'Sqs':kind[0].toUpperCase()+kind.slice(1); return { [`${key}Controller`]:class { async emit(data){calls.push({kind});await onSink(kind,data);} } }; }

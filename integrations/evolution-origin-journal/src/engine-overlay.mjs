@@ -38,6 +38,9 @@ export function preparePinnedEngineSources(input) {
   const rawConsole = '          console.log(messageRaw);';
   if (service.split(rawConsole).length !== 2) throw new Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
   service = service.replace(rawConsole, '          // Do not write message payloads to unconditional process output.');
+  const historyConsole = "          console.log('received on-demand history sync, messages=', messages);";
+  if(service.split(historyConsole).length!==2)throw Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
+  service=service.replace(historyConsole,'          // On-demand history payloads must remain private.');
   const queue = nodes(ast(service), n => n.type === 'ExpressionStatement' && service.slice(n.start,n.end).startsWith('this.eventProcessingQueue = this.eventProcessingQueue.then'));
   if (queue.length !== 1) throw new Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
   const statement = queue[0];

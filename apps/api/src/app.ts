@@ -90,6 +90,7 @@ import {
 } from "./http/routes/channels.js";
 import { createChannelFacade } from "./modules/channels/facade.js";
 import {createHistoryImportService} from './modules/history-import/service.js';
+import {createHistorySyncProgressService} from './modules/history-sync/progress-service.js';
 import {createHistorySourceRuntime} from './modules/history-import/runtime.js';
 import {
   registerTenantOperationsRoutes,
@@ -568,6 +569,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     app.addHook('onClose',async()=>historySourceRuntime.close());
     channels = {
       historyImport:createHistoryImportService({transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work),...(historySourceRuntime.source?{source:historySourceRuntime.source}:{})}),
+      historySyncProgress:createHistorySyncProgressService({transact:(org,work)=>withOrganizationTransaction(pools.appPool,org,work)}),
       jwtSecret: config.jwtSecret,
       authenticateApiKey: apiKeys.authenticateApiKey,
       resolveCurrentRole: createMessagingMembershipResolver(pools.authPool),
