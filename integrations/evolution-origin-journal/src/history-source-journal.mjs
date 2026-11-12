@@ -111,10 +111,12 @@ export function createHistorySourceJournal({ pool, encryptionKey, maxStagedBytes
       for (const token of [...prepared.keys()].slice(0,limit)) { await journal.append(token); count++; }
       return { staged: count };
     },
-    async pending(scope, { limit = 1 } = {}) {
+    async pending(scope, { limit = 1, runId = null } = {}) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw Error('HISTORY_SOURCE_LIMIT_INVALID');
+      if (runId !== null && !uuid.test(runId)) throw Error('HISTORY_SOURCE_CONTEXT_INVALID');
       const rows = (await pool.query(`SELECT * FROM jrc_evolution_origin.history_chunks
-        WHERE scope_key=$1 AND state='PENDING' ORDER BY source_sequence LIMIT $2`, [historyCaptureScopeKey(scope), limit])).rows;
+        WHERE scope_key=$1 AND state='PENDING' AND ($3::uuid IS NULL OR run_id=$3)
+        ORDER BY source_sequence LIMIT $2`, [historyCaptureScopeKey(scope), limit, runId])).rows;
       return rows.map(row => freeze({ scopeKey: row.scope_key, runId: row.run_id, captureId: row.capture_id,
         payloadHash: row.payload_hash, chunk: open(row) }));
     },

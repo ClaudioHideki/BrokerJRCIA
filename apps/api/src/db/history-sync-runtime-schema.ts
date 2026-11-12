@@ -4,7 +4,8 @@
 export const historySyncRuntimeSql = `NOT EXISTS(
  SELECT 1 FROM (VALUES ('history_account_identities',false),('history_sync_runs',true),
  ('history_sync_chunks',true),('history_sync_receipts',false),('history_sync_peers',false),
- ('history_sync_catalogue_pages',false)) required(name,mutable)
+ ('history_sync_catalogue_pages',false),('history_sync_native_peers',false),('history_sync_record_results',false),
+ ('history_sync_live_proofs',false),('history_sync_deliveries',true),('history_sync_remote_peers',false)) required(name,mutable)
  WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass('public.'||required.name)
   AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'
   AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid AND p.polname='history_sync_tenant'

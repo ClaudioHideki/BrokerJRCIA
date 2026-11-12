@@ -14,6 +14,7 @@ import {readGroupHumanDispatch} from './central-group-dispatch.js';
 import {readChatwootAttendanceGate} from '../attendance/control-service.js';
 import {hasAmbiguousGroupProviderId} from './provider-scope.js';
 import {canAdvanceMessageState,lockMessageStatusKey} from '../messaging/message-state.js';
+import {recordLiveHistoryFact,reuseHistoryForLive} from '../history-sync/live-fact.js';
 import {AUTOMATION_ORIGIN,type AbandonQrDispatchAttemptRequest,type AbandonQrOutboundObservationRequest} from '@jrc/contracts';
 import {WhatsAppGroupAutomationViewSchema,type WhatsAppGroupAutomationView} from '@jrc/contracts';
 export interface GroupPrincipal {organizationId:string;actorId:string}
@@ -286,6 +287,10 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
       }
       const identity=(await tx.query<{identity_revision:string;identity_fingerprint:string|null}>(`SELECT identity_revision,identity_fingerprint FROM whatsapp_group_catalogs WHERE organization_id=$1 AND channel_id=$2 FOR UPDATE`,[org,channel])).rows[0];
       if(!identity?.identity_fingerprint)return{duplicate:false,executionId:null,reason:'GROUP_IDENTITY_REQUIRED'};
+      const historyFact={kind:'MESSAGE' as const,recipientKind:'GROUP' as const,chatJid:event.groupJid,providerMessageId:event.upstreamMessageId,
+        fromMe:event.fromMe,participantJid:event.participantJid,displayName:null,messageTimestamp:Math.floor(event.occurredAt.getTime()/1000),
+        content:event.content,state:'DELIVERED' as const};
+      if(await reuseHistoryForLive(tx,org,channel,historyFact))return{duplicate:true,executionId:null,reason:'HISTORY_ALREADY_PERSISTED'};
       const conversation=(await tx.query<{id:string}>(`INSERT INTO messaging_conversations(organization_id,channel_id,recipient_kind,group_jid,contact_id)
         VALUES($1,$2,'GROUP',$3,NULL) ON CONFLICT(organization_id,channel_id,group_jid) WHERE recipient_kind='GROUP' DO UPDATE SET group_jid=EXCLUDED.group_jid RETURNING id`,[org,channel,event.groupJid])).rows[0]!;
       const inserted=(await tx.query<{id:string}>(`INSERT INTO whatsapp_group_transport_facts(organization_id,channel_id,conversation_id,group_jid,identity_revision,identity_fingerprint,provider_message_id,from_me,participant_jid,participant_jid_alt,content,occurred_at)
@@ -306,8 +311,10 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
         await tx.query(`UPDATE whatsapp_group_transport_facts SET disposition=$3,observation_id=$4,message_id=$5 WHERE organization_id=$1 AND id=$2`,[org,inserted.id,observed.disposition,observed.id,observed.message_id]);
         return{duplicate:false,executionId:null,reason:observed.disposition};
       }
-      const message=(await messaging.recordIncoming(tx,{id:randomUUID(),organizationId:org,channelId:channel,conversationId:conversation.id,upstreamMessageId:event.upstreamMessageId,
-        webhookEventKey:`group:${identity.identity_revision}:${event.groupJid}:${event.upstreamMessageId}`,content:event.content,occurredAt:event.occurredAt,scheduleBot:false})).message;
+      const outcome=await messaging.recordIncoming(tx,{id:randomUUID(),organizationId:org,channelId:channel,conversationId:conversation.id,upstreamMessageId:event.upstreamMessageId,
+        webhookEventKey:`group:${identity.identity_revision}:${event.groupJid}:${event.upstreamMessageId}`,content:event.content,occurredAt:event.occurredAt,scheduleBot:false});
+      const message=outcome.message;
+      if(outcome.kind==='created')await recordLiveHistoryFact(tx,org,channel,message.id,historyFact);
       await tx.query('UPDATE whatsapp_group_transport_facts SET message_id=$3 WHERE organization_id=$1 AND id=$2',[org,inserted.id,message.id]);
       if(!g?.enabled)return ignored('GROUP_NOT_ENABLED');if(g.pause_reason)return ignored('GROUP_PAUSED');
       if(!await ready(org)||!await authoritative(tx,org,channel,g))return ignored('GROUP_AUTHORITY_CHANGED');

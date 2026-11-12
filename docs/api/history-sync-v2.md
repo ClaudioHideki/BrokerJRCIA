@@ -1,3 +1,24 @@
+# Incremento local de 12/11/2026 — materialização, mídia e projeção
+
+Sobre Broker bb438150/LAB2 ca6e782, ainda não publicado nem habilitado em produção. As seções de05/11 e11/11 abaixo são registros históricos.
+
+- Migration0089: peers canônicos imutáveis, provas live, resultados por registro, obrigações com lease/retry e bootstrap remoto estável. Fato, recibo, obrigação e checkpoint são transacionais; RLS/tenant e KEEP preservados.
+- Writer separa PN/LID/grupo, datas e direção, sem bots/envios/atribuição. Adoção legada somente com prova do dono. Dedupe live/history cobre texto incoming individual/grupo; convergência outbound/mídia live permanece pendente.
+- Consumidor V2 exige capability/recibo correlacionado e destino/revisão/credencial imutáveis. Nenhum fallback live/V1. Mapas Chatwoot comuns são gravados com a prova do destino atual.
+- Mídia privada pronta do Broker: tamanho/hash/tipo verificados, multipart até16MiB. LAB2 reserva antes do PUT, verifica leitura física e confirma o anexo por Sidekiq. ATTACH_PENDING fica no PostgreSQL; reupload repara somente os mesmos bytes. SHA256 final obrigatório, KEEP preservado.
+- Worker privado headless: uma página de origem/nativa e uma entrega por tick, sem browser. Perda de ACK repete a intenção idempotente. Falha da origem não paralisa trabalho já persistido. Leitor filtra runId. Pausa/cancelamento e gate desligado não iniciam captura.
+- LAB2 invalida cache histórico revogado; Minhas inclui histórico resolvido comprovado em caixas de membership não exclusivas, preservando URA, exclusividade e supervisão.
+
+## Limites atuais
+
+Os ports assertCurrentScope/resolveDestination/assertAdmission ainda exigem host real que prove e mantenha autoridade/revogação. O host da engine permanece de laboratório/ownership UNPROVEN. Faltam composição operacional da captura (incluindo obtenção privada dos bytes na origem), admissão/política por conexão, integração live de grupos e outbound/mídia, endpoints/painéis de progresso e cobertura física de sessão autorizada. Callbacks sintéticos e syncFullHistory não substituem essas provas.
+
+O driver privado não monta endpoints públicos do Broker; start/status/resume/cancelV2 do design continuam propostos. O receptor LAB2 implementa capability, bootstrap/messages/media e receipts no namespace versionado, default off. Isso não habilita captura automática produtiva.
+
+O E2E usa journal PostgreSQL, Broker, Rails HTTP, Redis/Sidekiq e MinIO reais com origem sintética, em duas Accounts isoladas da mesma instalação Rails. Não comprova duas instalações Chatwoot independentes nem sessão WhatsApp real. isLatest/progress100 não conclui a cobertura. Resultados atuais: CONTINUE-AQUI.md e relatório do incremento.
+
+---
+
 > **Checkpoint ativo 11/11/2026:** base 1fed8ff, branch local codex/whatsapp-history-sync-20261111. O texto de05/11 abaixo é histórico e seus50/31casos não são a aprovação deste candidato. A migration recuperada foi reconciliada como0087, sem alterar0085/0086. Nenhuma alteração produtiva.
 
 ## Incremento de captura da origem
@@ -25,6 +46,14 @@ Referência de mídia válida nesta fronteira não é download nem recibo físic
 ---
 
 # Histórico V2 — contrato e núcleo privado em implementação
+
+Atualização12/11/2026: materialização nativa e projetor durável privado implementados localmente, ainda sem admissão/composição operacional. O receptor LAB2 local passou a implementar mídia privada (até16MiB), reserva/PUT/readback e recibo MEDIA_PENDING/PERSISTED com SHA256. O host deve conferir propriedade de origem, membership, revisão do destino e credencial até COMMIT. Não existe endpoint públicoV2 de captura no Broker e não há ativação produtiva.
+
+O caminho adicional no LAB2 é `POST /api/v1/accounts/:account_id/jrc_history_sync/v2/inboxes/:inbox_id/media` (multipart `scope`, `metadata`, `file`). Retorna STORED após verificar fisicamente o objeto, não custódia final da mensagem. O POST da mensagem retorna MEDIA_PENDING; somente o recibo PERSISTED com `media_sha256` correspondente permite concluir o anexo. O job e a intenção persistida sobrevivem à perda do enqueue/ACK. Repetir a intenção faz PUT dos mesmos bytes/chave, reparando objeto perdido antes do attach; não muda o destinatário ou o objeto.
+
+O JSON canônico compartilhado Ruby/JavaScript usa UTF8 JSON padrão, sem escapar HTML adicionalmente; o fixture comum valida esse limite. Recibos de candidatasV2 anteriores não publicadas não devem ser reinterpretados silenciosamente. Bootstrap usa nome/data congelados por peer e intenção por destino; mensagens preservam suas datas próprias. Mapas canônicos são conferidos sob fence antes da conclusão. Itens legados sem proveniência e operações UNKNOWN continuam bloqueados, sem resend ou adoção cega.
+
+Os testes de laboratório são distintos de captura de sessão real. Ver o checkpoint ativo em `CONTINUE-AQUI.md` para resultados e pendências.
 
 Data: 05/11/2026. Base Broker `0266ec02a33775cd065217e8e2e6b4fd2b0ef786`; consumidor LAB2 `200b4f1ddd7459ec924e314cfe34cb93f11c5d5e`.
 

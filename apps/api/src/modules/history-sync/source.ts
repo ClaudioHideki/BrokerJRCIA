@@ -6,7 +6,7 @@ import type { createHistorySyncStore } from './store.js';
  * fence through the store transaction. This is not an unversioned HTTP route.
  * STAGED confirms durable private bytes only; it does not confirm owner or media custody.
  */
-export async function acceptHistorySourceChunk(store: ReturnType<typeof createHistorySyncStore>, scope: HistorySyncScope,
+export async function acceptHistorySourceChunk(store: Pick<ReturnType<typeof createHistorySyncStore>, 'acceptChunk'>, scope: HistorySyncScope,
   runId: string, rawChunk: unknown, now: Date) {
   const verified = Object.freeze(HistorySyncScopeSchema.parse(scope));
   const chunk = parseHistorySyncSourceChunk(rawChunk,verified,now);

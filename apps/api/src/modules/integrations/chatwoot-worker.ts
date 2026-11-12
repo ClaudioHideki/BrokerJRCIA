@@ -112,6 +112,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
                 AND blocked_map.conversation_id=blocked_conversation.id
                 AND blocked_map.remote_conversation_id::text=blocked.payload->>'conversationId'))))`;
   const eligibleJob = `j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now()
+    AND j.payload->>'historySyncVersion' IS DISTINCT FROM '2'
     AND (NOT EXISTS(SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=j.organization_id
       AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN')
     OR (j.kind='MIRROR_MESSAGE' AND EXISTS(

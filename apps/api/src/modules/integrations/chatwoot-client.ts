@@ -5,6 +5,7 @@ import {
   ConversationEffectReceiptSchema, ConversationEffectRequestSchema,
 } from '../automations/conversation-effect-protocol.js';
 import { createChatwootSafeFetch } from './chatwoot-safe-http.js';
+import { createHistoryConsumer } from '../history-sync/consumer.js';
 import {
   MediaError,
   readMediaBytes,
@@ -99,6 +100,8 @@ const record = (v: unknown): Record<string, unknown> =>
 export class ChatwootClient {
   private readonly origin: string;
   private readonly fetch: typeof globalThis.fetch;
+  /** Versioned, callback-free historical receiver. No fallback to live sends. */
+  historySyncV2() { return createHistoryConsumer((method,path,body)=>this.request(method,path,body)); }
   constructor(private readonly options: Options) {
     const url = new URL(options.baseUrl);
     const local =

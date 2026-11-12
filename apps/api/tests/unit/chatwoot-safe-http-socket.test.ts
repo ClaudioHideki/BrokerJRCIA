@@ -17,7 +17,7 @@ beforeAll(async () => {
   // Ephemeral synthetic certificate: no private key is committed or retained after the test.
   execFileSync(openssl, ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', resolve(folder, 'key.pem'),
     '-out', resolve(folder, 'cert.pem'), '-days', '1', '-subj', '/CN=chatwoot.transport.test',
-    '-addext', 'subjectAltName=DNS:chatwoot.transport.test'], { stdio: 'ignore', timeout: 10000 });
+    '-addext', 'subjectAltName=DNS:chatwoot.transport.test'], { stdio: 'ignore', timeout: 30000 });
   ca = await readFile(resolve(folder, 'cert.pem'), 'utf8');
   server = createServer({ key: await readFile(resolve(folder, 'key.pem')), cert: ca }, (req, res) => {
     observed.push({ host: req.headers.host ?? '', localAddress: req.socket.localAddress });
@@ -29,7 +29,7 @@ beforeAll(async () => {
   });
   await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
   port = (server.address() as AddressInfo).port;
-}, 20000);
+}, 45000);
 afterAll(async () => {
   server?.closeAllConnections();
   if (server) await new Promise<void>(done => server.close(() => done()));

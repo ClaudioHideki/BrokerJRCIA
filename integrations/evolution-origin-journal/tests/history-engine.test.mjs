@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { withOriginEngineLabHost, awaitOriginEngineReady } from '../src/engine-host.mjs';
 import { createOriginEngineComposition } from '../src/engine-composition.mjs';
 import { createOriginJournal, installOriginJournal, bindingFingerprint } from '../src/journal.mjs';
+import { historyCaptureScopeKey } from '../src/history-projection.mjs';
 import { compileEngineFixture } from './engine-fixture.mjs';
 import { validateTestAdminUrl } from './lab-database.mjs';
 
@@ -53,4 +54,49 @@ test('history opt-in refuses a mismatched engine identity instead of admitting a
   assert.throws(() => createOriginEngineComposition({ binding, pool, journal: createOriginJournal({ pool, encryptionKey: key }), env: enabled,
     history: { scope, runId: randomUUID() }, resolveBinding: async () => binding,
     transport: { endpoint: `https://broker.invalid/v1/webhooks/whatsapp/${binding.destinationId}`, bearerToken: 'synthetic-test-only' } }), /HISTORY_SOURCE_BINDING_CHANGED/u);
+});
+
+test('the compiled hook retains only persisted media references fenced to its original capture scope', async () => {
+  const binding = { instanceId:randomUUID(),instanceName:`Synthetic-media-${randomUUID()}`,generation:1,destinationId:randomUUID(),revision:1 };
+  const scope = { organizationId:randomUUID(),channelId:randomUUID(),instanceId:binding.instanceId,engineId:'synthetic-engine',engineGeneration:1,
+    sessionGeneration:randomUUID(),bindingFingerprint:bindingFingerprint(binding),identityScopeId:null,historyAccountIdentity:null,ownerFingerprint:null };
+  const endpoint = `https://broker.invalid/v1/webhooks/whatsapp/${binding.destinationId}`, runId=randomUUID();
+  const fixture = await compileEngineFixture({endpoint});
+  const journal = createOriginJournal({pool,encryptionKey:key,history:{maxStagedBytes:2000000}});
+  const reference = {persisted:true,scopeKey:historyCaptureScopeKey(scope),referenceId:randomUUID(),mediaType:'IMAGE',
+    byteSize:4,sha256:'a'.repeat(64),mimeType:'image/png',filename:'synthetic.png',caption:'Synthetic media'};
+  let resolved = 0;
+  const history = {scope,runId,mediaReference:request=>{
+    assert.deepEqual(request.scope,scope);assert.equal(request.providerMessageId,'synthetic-scoped-media');resolved++;return reference;
+  }};
+  await withOriginEngineLabHost({labOnly:true,env:enabled,prepareInstance:async()=>({pool,journal,binding,history,
+    resolveBinding:async()=>binding,transport:{endpoint,bearerToken:'synthetic-test-only'}})},async()=>{
+    const engine=fixture.create(binding);await awaitOriginEngineReady(engine.instance);
+    engine.instance.messageHandle['messaging-history.set']=async()=>{};
+    history.mediaReference=()=>{throw Error('Resolver changed after attachment');};
+    await engine.emit({'messaging-history.set':{chats:[],contacts:[],messages:[{
+      key:{id:'synthetic-scoped-media',remoteJid:`${'1'.repeat(11)}@s.whatsapp.net`,fromMe:false},messageTimestamp:1600000000,
+      message:{imageMessage:{url:'https://synthetic.invalid/private-media',mediaKey:'synthetic-raw-key-must-not-survive'}},
+    }]}});
+    const [page]=await journal.history.pending(scope,{runId});
+    assert.equal(resolved,1);assert.equal(page.chunk.records[0].content.type,'MEDIA');
+    assert.equal(page.chunk.records[0].content.referenceId,reference.referenceId);
+    assert.equal(JSON.stringify(page.chunk).includes('synthetic-raw-key'),false);
+    assert.equal(JSON.stringify(page.chunk).includes('synthetic.invalid/private-media'),false);
+  });
+});
+
+test('the engine refuses a ready reference from another capture scope and preserves a media gap',async()=>{
+  const binding={instanceId:randomUUID(),instanceName:`Synthetic-other-media-${randomUUID()}`,generation:1,destinationId:randomUUID(),revision:1};
+  const scope={organizationId:randomUUID(),channelId:randomUUID(),instanceId:binding.instanceId,engineId:'synthetic-engine',engineGeneration:1,
+    sessionGeneration:randomUUID(),bindingFingerprint:bindingFingerprint(binding),identityScopeId:null,historyAccountIdentity:null,ownerFingerprint:null};
+  const journal=createOriginJournal({pool,encryptionKey:key,history:{maxStagedBytes:2000000}}),runId=randomUUID();
+  const composition=createOriginEngineComposition({binding,pool,journal,env:enabled,history:{scope,runId,mediaReference:()=>({
+    persisted:true,scopeKey:'f'.repeat(64),referenceId:randomUUID(),mediaType:'IMAGE',byteSize:4,sha256:'a'.repeat(64),
+    mimeType:'image/png',filename:'synthetic.png',caption:'Synthetic wrong capture'})},resolveBinding:async()=>binding,
+    transport:{endpoint:`https://broker.invalid/v1/webhooks/whatsapp/${binding.destinationId}`,bearerToken:'synthetic-test-only'}});
+  await composition.capture({'messaging-history.set':{messages:[{key:{id:'synthetic-wrong-media-scope',remoteJid:`${'1'.repeat(11)}@s.whatsapp.net`,fromMe:false},
+    messageTimestamp:1600000000,message:{imageMessage:{}}}]}});
+  const [page]=await journal.history.pending(scope,{runId});
+  assert.deepEqual(page.chunk.records.map(r=>r.kind==='GAP'?r.reason:r.kind),['MEDIA_UNAVAILABLE']);
 });

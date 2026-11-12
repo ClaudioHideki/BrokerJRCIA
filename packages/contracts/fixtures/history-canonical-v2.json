@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "value": {
+    "a": "Synthetic A & B <ok>   ",
+    "emoji": "🙂",
+    "nested": {
+      "f": false,
+      "n": 1,
+      "z": null
+    }
+  },
+  "sha256": "cc9187b6fe6610e52f1e2cc35595c5c9d8feb5161bb8f98ae28a3d9f494d1e22"
+}

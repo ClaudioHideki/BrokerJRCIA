@@ -206,3 +206,13 @@ test('retains a failed private append under backpressure and can retry it when P
   assert.equal((await store.pending(scope)).length,1);
   assert.deepEqual(await store.retryPrepared(),{staged:0});
 });
+
+test('a headless run reader cannot consume another admitted run from the same socket scope', async () => {
+  const scope = binding(), first = randomUUID(), second = randomUUID(), store = journal();
+  await store.append(store.prepare(scope, first, source(), context()));
+  await store.append(store.prepare(scope, second, source(), context()));
+  const pages = await store.pending(scope, { limit: 1, runId: second });
+  assert.equal(pages.length, 1);
+  assert.equal(pages[0].runId, second);
+  await assert.rejects(store.pending(scope, { limit: 1, runId: 'not-a-run' }), /HISTORY_SOURCE_CONTEXT_INVALID/u);
+});

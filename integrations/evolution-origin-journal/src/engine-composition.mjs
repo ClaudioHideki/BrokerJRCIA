@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createOriginLabBootstrap } from './bootstrap.mjs';
 import { bindingFingerprint } from './journal.mjs';
 import { projectTextBatch } from './projection.mjs';
+import { historyCaptureScopeKey } from './history-projection.mjs';
 const digest = body => createHash('sha256').update(JSON.stringify(body)).digest('hex');
 const snapshots = new WeakMap();
 
@@ -28,14 +29,25 @@ export function createOriginEngineComposition(options) {
   const historyEnabled = options.env?.HISTORY_SYNC_V2_ENABLED === 'true';
   const historyScope = options.history?.scope ? Object.freeze({ ...options.history.scope }) : null;
   const historyRunId = options.history?.runId;
+  const resolveMediaReference = options.history?.mediaReference;
   if (historyEnabled && (!enabled || !historyScope || historyScope.instanceId !== binding.instanceId
     || historyScope.engineGeneration !== binding.generation || historyScope.bindingFingerprint !== fingerprint
     || typeof options.journal.history?.prepare !== 'function' || typeof options.journal.history?.append !== 'function'))
     throw Error('HISTORY_SOURCE_BINDING_CHANGED');
+  if (historyEnabled && resolveMediaReference !== undefined && typeof resolveMediaReference !== 'function')
+    throw Error('HISTORY_SOURCE_MEDIA_RESOLVER_INVALID');
+  const mediaReference = request => {
+    if (!resolveMediaReference) return null;
+    // This port accepts an already durable private object from the attached
+    // host. It cannot turn an arbitrary URL/key or another capture's object
+    // into a historical media receipt.
+    const reference = resolveMediaReference(Object.freeze({ ...request, scope: historyScope }));
+    return reference?.persisted === true && reference.scopeKey === historyCaptureScopeKey(historyScope) ? reference : null;
+  };
   const snapshot = events => {
     const historical = historyEnabled && events?.['messaging-history.set']
       ? options.journal.history.prepare(historyScope, historyRunId, events,
-        { provenance: 'SOCKET', captureId: randomUUID(), capturedAt: new Date(), startOrdinal: 0 }) : null;
+        { provenance: 'SOCKET', captureId: randomUUID(), capturedAt: new Date(), startOrdinal: 0, mediaReference }) : null;
     return snapshotOriginBatch(binding, events, historical);
   };
   const capturePrepared = async snapshot => {
