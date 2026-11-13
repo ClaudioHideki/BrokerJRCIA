@@ -99,7 +99,8 @@ describe('artefatos reproduzíveis da auditoria de segurança', () => {
 
     // The same real repository/history, scans and PDF pipeline run twice.
     // Sharing their immutable results removes two duplicate full scans from
-    // the layout/canary checks, using the existing two-generation budget.
+    // the layout/canary checks. On the hosted runner a complete generation
+    // takes about 63 s; budget both real generations without dropping a scan.
     beforeAll(async () => {
       const first = await outputDirectory(sharedDirectories);
       const second = await outputDirectory(sharedDirectories);
@@ -109,7 +110,7 @@ describe('artefatos reproduzíveis da auditoria de segurança', () => {
       const result = await generateSecurityAudit({ rootDirectory: ROOT, outputDirectory: first, sourceDateEpoch: EPOCH, fingerprintSecret: FINGERPRINT_SECRET, auditData: source });
       await generateSecurityAudit({ rootDirectory: ROOT, outputDirectory: second, sourceDateEpoch: EPOCH, fingerprintSecret: FINGERPRINT_SECRET, auditData: source });
       artifacts = { first, second, result };
-    }, 90_000);
+    }, 180_000);
 
     afterAll(() => removeOwnedDirectories(sharedDirectories));
 
