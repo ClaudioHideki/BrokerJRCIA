@@ -1,6 +1,9 @@
 # Copied ONLY into the disposable Rails HTTP/Sidekiq laboratory, never a product initializer.
 raise 'History laboratory requires Rails test and explicit opt-in' unless Rails.env.test? && ENV['HISTORY_LAB_MODE'] == 'true'
 
+# Rails can reload ActiveStorage classes between requests. Preserve the shared
+# private service in configuration as well as on the initial Blob class.
+Rails.application.config.active_storage.service = :s3_compatible
 Rails.application.config.after_initialize do
   ActiveStorage::Blob.service = ActiveStorage::Blob.services.fetch('s3_compatible')
   ActiveJob::Base.queue_adapter = :sidekiq
