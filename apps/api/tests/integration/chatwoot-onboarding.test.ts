@@ -110,6 +110,19 @@ describe('durable Chatwoot onboarding with tenant PostgreSQL', () => {
     await service.runOnce(org); await service.runOnce(org); await service.runOnce(org);
     expect(await service.get(principal, op.operationId)).toMatchObject({ state: 'SUCCEEDED' }); expect(inboxPosts).toBe(count);
   });
+  it('admits configured source capture once inside a revalidated new connection stage',async()=>{
+    const calls:string[]=[];
+    const candidate=createOnboardingService({transact,auth,instances,chatwoot,activateQr,
+      admitHistory:async(p:ChatwootControlPrincipal,channel:string,request:string,validate:(tx:any)=>Promise<void>)=>{
+        await transact(p.organizationId,validate);expect(channel).toBeTruthy();calls.push(request);
+      }});
+    const op=await candidate.start(principal,input(),randomUUID());
+    await candidate.runOnce(org);expect(calls).toHaveLength(0);
+    await candidate.runOnce(org);expect(calls).toEqual([op.operationId]);
+    expect(await candidate.get(principal,op.operationId)).toMatchObject({stage:'LINK_INBOX'});
+    await candidate.recover(principal,op.operationId,'CANCEL',randomUUID());
+    await candidate.runOnce(org);
+  });
   it('agent failure retries only that stage; cancellation preserves all created resources', async () => {
     const op = await service.start(principal, input(), randomUUID());
     await service.runOnce(org); await service.runOnce(org); await service.runOnce(org);

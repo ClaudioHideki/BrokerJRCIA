@@ -1,4 +1,6 @@
 import {createEvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
+import {createHistoryConnectionAdmission} from '../history-sync/connection-admission.js';
+import {createHistoryLiveMediaRecovery} from '../history-sync/live-media-recovery.js';
 import { createRedactedLogger } from '@jrc/security';
 import type { Pool } from "pg";
 import {createCentralCutoverService} from '../channels/central-cutover-service.js';
@@ -219,6 +221,7 @@ export function createIntegrationRuntime(
     : undefined;
   const privateMedia=createPrivateMediaRuntime(environment,{transact,
     cleanupTransact:async()=>{throw new Error("PRIVATE_MEDIA_CLEANUP_REQUIRES_LIFECYCLE_ROLE");}});
+  let liveMediaRecovery:ReturnType<typeof createHistoryLiveMediaRecovery>|undefined;
   const media: MediaStore | undefined = environment.INTEGRATION_ENCRYPTION_KEY
     ? createMediaStore({
         encryptionKey: environment.INTEGRATION_ENCRYPTION_KEY,
@@ -237,6 +240,8 @@ export function createIntegrationRuntime(
           );
           if (!channel) throw new MediaError("MEDIA_CHANNEL_NOT_FOUND");
           if (asset.source === "QR") {
+            if(fleet)liveMediaRecovery??=createHistoryLiveMediaRecovery({environment,transact,fleet});
+            const recovered=await(await liveMediaRecovery)?.download(asset);if(recovered)return recovered;
             if (!qr) throw new MediaError("MEDIA_NOT_CONFIGURED");
             return qr.downloadMedia(
               channel,
@@ -355,7 +360,8 @@ export function createIntegrationRuntime(
       ...options, ...control, chatwoot, health: identity,
       ...(control.pairActionRedis ? { pairActions: createPairActionStore({ client: control.pairActionRedis, encryptionKey: options.encryptionKey }) } : {}),
     }) : undefined,
-    onboarding: control && chatwoot && qr ? createOnboardingService({ transact, ...control, chatwoot, activateQr: qr.activate }) : undefined,
+    onboarding: control && chatwoot && qr ? createOnboardingService({ transact, ...control, chatwoot, activateQr: qr.activate,
+      ...(environment.HISTORY_SYNC_V2_ENABLED==='true'&&fleet?{admitHistory:createHistoryConnectionAdmission({transact,auth:control.auth,fleet,signingKey:config.qr!.signingKey})}:{}) }) : undefined,
     chatwootWorker: options ? createChatwootWorker(options) : undefined,
     provisioner: options ? createChatwootProvisioner(options) : undefined,
     media,

@@ -38,6 +38,23 @@ it('refuses incomplete 0090 source-media and chat-progress structures before ser
     }
   } finally {await client.query('ROLLBACK');client.release();}
 });
+it('refuses missing or weakened source-host authority and origin-journal isolation',async()=>{
+  const client=await db.database.pool.connect();
+  try{for(const drift of [
+    'ALTER TABLE history_source_sessions DROP COLUMN origin_role_name CASCADE',
+    'ALTER TABLE jrc_evolution_origin.events NO FORCE ROW LEVEL SECURITY',
+    'GRANT DELETE ON jrc_evolution_origin.history_media TO jrc_app',
+    'GRANT EXECUTE ON FUNCTION history_source_open(text,uuid,text) TO PUBLIC',
+    'REVOKE EXECUTE ON FUNCTION history_source_assert(uuid) FROM jrc_app',
+    'ALTER TABLE jrc_evolution_origin.history_media DROP COLUMN live_message_key CASCADE',
+    'DROP INDEX jrc_evolution_origin.origin_live_media_key',
+    'ALTER TABLE whatsapp_group_transport_facts DROP CONSTRAINT whatsapp_group_transport_facts_content_check',
+  ]){
+    await client.query('BEGIN');await client.query(drift);
+    expect((await client.query(`SELECT (${historySyncRuntimeSql}) AS ready`)).rows[0].ready,drift).toBe(false);
+    await client.query('ROLLBACK');
+  }}finally{await client.query('ROLLBACK');client.release();}
+});
 it('refuses a forced-RLS catalogue that the existing explicit lifecycle definer cannot clean',async()=>{
   const client=await db.database.pool.connect();
   try {

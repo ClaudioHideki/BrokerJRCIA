@@ -1,9 +1,8 @@
-import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { historyCaptureScopeKey, historyProjectionDigest } from './history-projection.mjs';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 const fields = { IMAGE: 'imageMessage', AUDIO: 'audioMessage', VIDEO: 'videoMessage', DOCUMENT: 'documentMessage', STICKER: 'stickerMessage' };
-const extensions = { IMAGE: 'jpg', AUDIO: 'ogg', VIDEO: 'mp4', DOCUMENT: 'bin', STICKER: 'webp' };
 const supported = { IMAGE:['image/jpeg','image/png'],STICKER:['image/webp'],AUDIO:['audio/aac','audio/mp4','audio/mpeg','audio/amr','audio/ogg'],
   VIDEO:['video/mp4','video/3gpp'],DOCUMENT:['application/pdf','text/plain','application/msword','application/vnd.ms-excel','application/vnd.ms-powerpoint',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -41,9 +40,9 @@ export function createHistorySourceMedia({ pool, encryptionKey, transact }) {
     } catch { throw Error('HISTORY_SOURCE_MEDIA_PRIVATE_PAYLOAD_INVALID'); }
   };
   return Object.freeze({
-    prepare(scope, runId, captureId, events) {
+    prepare(scope, runId, captureId, events,live=false) {
       const scopeKey = historyCaptureScopeKey(scope), messages = new Map(), snapshots = new Map();
-      for (const message of events?.['messaging-history.set']?.messages ?? []) {
+      for (const message of (live?events?.['messages.upsert']?.messages:events?.['messaging-history.set']?.messages) ?? []) {
         const k = identity({ chatJid:message?.key?.remoteJid,providerMessageId:message?.key?.id,fromMe:message?.key?.fromMe });
         // Ambiguous duplicate input cannot choose which encryption descriptor to trust.
         messages.set(k, messages.has(k) ? null : message);
@@ -58,30 +57,46 @@ export function createHistorySourceMedia({ pool, encryptionKey, transact }) {
           || !supported[request.mediaType]?.includes(raw.mimetype.toLowerCase().split(';')[0].trim())
           || request.mediaType==='IMAGE'&&byteSize>5*1024*1024 || request.mediaType==='STICKER'&&byteSize>500*1024
           || (raw.caption !== undefined && (typeof raw.caption !== 'string' || raw.caption.length > 4096))) return null;
-        const id = referenceId([scopeKey,runId,captureId,k]);
-        const filename = typeof raw.fileName === 'string' && raw.fileName.length > 0 && raw.fileName.length <= 255
-          ? raw.fileName.replace(/[\\/\u0000-\u001f]/gu,'_') : `whatsapp.${extensions[request.mediaType]}`;
+        const liveSourceKey=live?(request.chatJid.endsWith('@g.us')?`group:${request.chatJid}:${request.providerMessageId}`:request.providerMessageId):null;
+        const liveMessageKey=liveSourceKey===null?null:createHash('sha256').update(liveSourceKey).digest('hex');
+        const id = referenceId(live?[scopeKey,runId,'LIVE',liveMessageKey]:[scopeKey,runId,captureId,k]);
+        // Match the existing QR safeMediaName contract; proved bytes do not
+        // converge if the historical and live lanes invent different names.
+        const filename=(typeof raw.fileName==='string'?raw.fileName:request.mediaType.toLowerCase())
+          .replace(/[\u0000-\u001f\u007f/\\]/gu,'_').replace(/^\.+/u,'').slice(0,120)||'arquivo';
         const reference = { referenceId:id,mediaType:request.mediaType,byteSize,sha256:sha.toString('hex'),
           mimeType:raw.mimetype.toLowerCase().split(';')[0].trim(),filename,caption:raw.caption ?? '' };
-        const value = { reference,descriptor:{ mediaType:request.mediaType,mediaKey:mediaKey.toString('base64'),directPath:raw.directPath } };
+        const value = { reference,descriptor:{ mediaType:request.mediaType,mediaKey:mediaKey.toString('base64'),directPath:raw.directPath },...(live?{liveSourceKey}:{} ) };
         const hash = historyProjectionDigest(value), iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm',key,iv);
         cipher.setAAD(aad(scopeKey,runId,id,hash));
         const plaintext = Buffer.from(JSON.stringify(value)), ciphertext = Buffer.concat([cipher.update(plaintext),cipher.final()]); plaintext.fill(0);
-        snapshots.set(k,{ reference,scopeKey,runId,captureId,hash,iv,ciphertext,tag:cipher.getAuthTag() });
+        snapshots.set(k,{ reference,scopeKey,runId,captureId,liveMessageKey,hash,iv,ciphertext,tag:cipher.getAuthTag() });
         return reference;
       } };
     },
     async append(client, snapshots) {
-      for (const m of snapshots) await client.query(`INSERT INTO jrc_evolution_origin.history_media
-        (scope_key,run_id,capture_id,reference_id,descriptor_hash,descriptor_bytes,descriptor_ciphertext,descriptor_iv,descriptor_tag)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[m.scopeKey,m.runId,m.captureId,m.reference.referenceId,m.hash,m.ciphertext.length,m.ciphertext,m.iv,m.tag]);
+      for (const m of snapshots) {
+        const row=(await client.query(`INSERT INTO jrc_evolution_origin.history_media
+          (scope_key,run_id,capture_id,reference_id,descriptor_hash,descriptor_bytes,descriptor_ciphertext,descriptor_iv,descriptor_tag,live_message_key)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(scope_key,run_id,reference_id)
+          DO UPDATE SET reference_id=history_media.reference_id RETURNING descriptor_hash`,
+          [m.scopeKey,m.runId,m.captureId,m.reference.referenceId,m.hash,m.ciphertext.length,m.ciphertext,m.iv,m.tag,m.liveMessageKey])).rows[0];
+        if(row?.descriptor_hash!==m.hash)throw Error('HISTORY_SOURCE_MEDIA_CONFLICT');
+      }
+    },
+    async readLive(scope,runId,sourceKey) {
+      const row=(await pool.query(`SELECT * FROM jrc_evolution_origin.history_media WHERE scope_key=$1 AND run_id=$2 AND live_message_key=$3`,
+        [historyCaptureScopeKey(scope),runId,createHash('sha256').update(sourceKey).digest('hex')])).rows[0];
+      if(!row)return null;
+      const value=open(row);if(value.liveSourceKey!==sourceKey)throw Error('HISTORY_SOURCE_MEDIA_CONFLICT');
+      return value;
     },
     async claimMedia(scope,runId,now) {
       if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw Error('HISTORY_SOURCE_CLOCK_INVALID');
       const scopeKey = historyCaptureScopeKey(scope), lease = randomUUID();
       return transact(async client => {
         const row = (await client.query(`WITH candidate AS (
-          SELECT reference_id FROM jrc_evolution_origin.history_media WHERE scope_key=$1 AND run_id=$2
+          SELECT reference_id FROM jrc_evolution_origin.history_media WHERE scope_key=$1 AND run_id=$2 AND live_message_key IS NULL
           AND ((state='PENDING' AND next_attempt_at<=$3) OR (state='CLAIMED' AND lease_until<=$3))
           ORDER BY attempts,created_at,reference_id FOR UPDATE SKIP LOCKED LIMIT 1)
           UPDATE jrc_evolution_origin.history_media m SET state='CLAIMED',lease_token=$4,lease_until=$3::timestamptz+interval '60 seconds',attempts=attempts+1

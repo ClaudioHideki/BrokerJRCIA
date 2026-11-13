@@ -48,6 +48,7 @@ COPY --chown=node:node apps/api/drizzle ./apps/api/drizzle
 COPY --chown=node:node infra/app/postgres ./infra/app/postgres
 COPY --chown=node:node infra/app/provision.mjs ./infra/app/provision.mjs
 COPY --chown=node:node infra/web/frame-policy.mjs ./infra/web/frame-policy.mjs
+COPY --chown=node:node integrations/evolution-origin-journal/src ./integrations/evolution-origin-journal/src
 
 USER node
 EXPOSE 3000

@@ -8,8 +8,9 @@ import {lockAttendanceChannel} from '../attendance/repository.js';
 import {SUPERSEDED_PHYSICAL_CYCLE_PREFIX} from '../attendance/conversation-cycle-fence.js';
 import {registerPendingMedia} from './media-store.js';
 import {recordQrOutboundObservation} from './qr-outbound-observation.js';
-import {recordLiveHistoryFact,reuseHistoryForLive} from '../history-sync/live-fact.js';
+import {recordLiveHistoryFact,reuseHistoryForLive,qrLiveMediaFact} from '../history-sync/live-fact.js';
 import type {HistorySyncRecord} from '../history-sync/contract.js';
+import type {LiveMediaFact} from '../history-sync/writer.js';
 const error=(code:string,status=422)=>Object.assign(new Error(code),{code,status});
 /** Shared SQL path. Callers own the tenant transaction and historical/live flag. */
 export async function persistQrContactEvent(tx:TenantTransaction,channel:MessagingChannel,event:QrContactEvent){
@@ -22,6 +23,8 @@ export async function persistQrContactEvent(tx:TenantTransaction,channel:Messagi
     ?{kind:'MESSAGE',recipientKind:'INDIVIDUAL',chatJid:`${event.externalId}@s.whatsapp.net`,providerMessageId:event.upstreamMessageId,
       fromMe:observed,participantJid:null,messageTimestamp:Math.floor(event.occurredAt.getTime()/1000),displayName:null,content:event.content,state:'DELIVERED'}:null;
   if(fact && await reuseHistoryForLive(tx,org,channelId,fact))return false;
+  const capturedMediaId='media'in event?await registerPendingMedia(tx,org,channelId,event.media):undefined;
+  if(!event.historical&&capturedMediaId&&await reuseHistoryForLive(tx,org,channelId,qrLiveMediaFact(event),capturedMediaId))return false;
   // An old pushName cannot replace the current contact identity/name.
   const contact=event.historical
     ? (await tx.query<{id:string}>(`INSERT INTO messaging_contacts(id,organization_id,external_id,display_name,consent_status)
@@ -53,13 +56,18 @@ export async function persistQrContactEvent(tx:TenantTransaction,channel:Messagi
       return true;
     }
   }
-  const content:MessageContent='media' in event?{type:'MEDIA',mediaId:await registerPendingMedia(tx,org,channelId,event.media),
+  const content:MessageContent='media' in event?{type:'MEDIA',mediaId:capturedMediaId!,
     kind:event.media.kind,fileName:event.media.fileName,caption:event.caption}:event.content;
-  if(observed){await recordQrOutboundObservation(tx,{organizationId:org,channelId,conversationId:conversation.id,
-    upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt});return;}
+  const liveFact=fact??(!event.historical&&'media' in event?{kind:'MESSAGE',recipientKind:'INDIVIDUAL',chatJid:`${event.externalId}@s.whatsapp.net`,
+    providerMessageId:event.upstreamMessageId,fromMe:observed,participantJid:null,displayName:null,messageTimestamp:Math.floor(event.occurredAt.getTime()/1000),
+    state:'DELIVERED',content:{type:'LIVE_MEDIA',mediaType:event.media.kind.toUpperCase(),filename:event.media.fileName,caption:event.caption}} as LiveMediaFact:null);
+  if(observed){const created=await recordQrOutboundObservation(tx,{organizationId:org,channelId,conversationId:conversation.id,
+    upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt});
+    if(created&&liveFact)await recordLiveHistoryFact(tx,org,channelId,created,liveFact);
+    return;}
   const outcome=await repository.recordIncoming(tx,{id:randomUUID(),organizationId:org,channelId,conversationId:conversation.id,
     webhookEventKey:`qr:${event.upstreamMessageId}`,upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt,
     ...(event.recoveredIdentity||event.historical?{scheduleBot:false}:{}),...(event.historical?{historical:true}:{})});
-  if(fact && outcome.kind==='created')await recordLiveHistoryFact(tx,org,channelId,outcome.message.id,fact);
+  if(liveFact && outcome.kind==='created')await recordLiveHistoryFact(tx,org,channelId,outcome.message.id,liveFact);
   return outcome.kind==='created';
 }

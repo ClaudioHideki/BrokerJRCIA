@@ -20,6 +20,15 @@ export const historyFactHash=(record:Fact)=>hashIdempotencyRequest({recipientKin
   chatJid:normalizeHistoryJid(record.chatJid),providerMessageId:record.providerMessageId,fromMe:record.fromMe,
   participantJid:record.participantJid===null?null:normalizeHistoryJid(record.participantJid),
   messageTimestamp:record.messageTimestamp,content:immutableContent(record.content)});
+export type LiveMediaFact=Omit<Fact,'content'>&{content:{type:'LIVE_MEDIA';mediaType:string;filename:string;caption:string}};
+/** Provenance of a newly received media observation; never a custody receipt.
+ * Adoption separately requires both physical objects to be READY with equal bytes. */
+export const historyLiveMediaHash=(record:LiveMediaFact|Fact)=>{
+  if(record.content.type==='TEXT')throw Error('HISTORY_SYNC_MEDIA_REQUIRED');
+  return hashIdempotencyRequest({protocol:'history-live-media/1',recipientKind:record.recipientKind,chatJid:normalizeHistoryJid(record.chatJid),
+    providerMessageId:record.providerMessageId,fromMe:record.fromMe,participantJid:record.participantJid===null?null:normalizeHistoryJid(record.participantJid),
+    messageTimestamp:record.messageTimestamp,content:{mediaType:record.content.mediaType,filename:record.content.filename,caption:record.content.caption}});
+};
 const blocked=(code:string):Result=>({disposition:'BLOCKED',receiptId:null,messageId:null,code});
 export async function pendingHistoryMedia(tx:TenantTransaction,scope:HistorySyncScope,records:HistorySyncRecord[]) {
   let pending=0;
@@ -103,9 +112,17 @@ async function writeMessage(tx:TenantTransaction,scope:HistorySyncScope,record:F
   if(native) {
     const proof=(await tx.query(`SELECT 1 FROM history_sync_live_proofs p JOIN history_sync_runs r ON r.organization_id=p.organization_id AND r.channel_id=p.channel_id
       AND r.identity_scope_id=p.identity_scope_id AND r.binding_fingerprint=p.binding_fingerprint
-      WHERE p.organization_id=$1 AND p.message_id=$2 AND p.content_hash=$3 AND r.history_account_identity=$4`,[org,native.id,digest,scope.historyAccountIdentity])).rowCount;
+      WHERE p.organization_id=$1 AND p.message_id=$2 AND p.content_hash=ANY($3::text[]) AND r.history_account_identity=$4`,
+    [org,native.id,record.content.type==='MEDIA'?[digest,historyLiveMediaHash(record)]:[digest],scope.historyAccountIdentity])).rowCount;
+    let sameContent=hashIdempotencyRequest(native.content)===hashIdempotencyRequest(content);
+    if(record.content.type==='MEDIA'&&native.content.type==='MEDIA'){
+      const m=record.content;
+      sameContent=native.content.kind===m.mediaType.toLowerCase()&&native.content.caption===m.caption&&native.content.fileName===m.filename&&Boolean((await tx.query(
+        `SELECT 1 FROM messaging_media WHERE organization_id=$1 AND channel_id=$2 AND id=$3 AND status='READY'
+          AND sha256=$4 AND byte_size=$5 AND mime_type=$6 AND kind=$7`,[org,ch,native.content.mediaId,m.sha256,m.byteSize,m.mimeType,m.mediaType.toLowerCase()])).rowCount);
+    }
     if(!proof || native.conversation_id!==target.conversation_id || native.direction!==(record.fromMe?'OUTGOING':'INCOMING')
-      || native.created_at.getTime()!==record.messageTimestamp*1000 || hashIdempotencyRequest(native.content)!==hashIdempotencyRequest(content))return blocked('HISTORY_SYNC_LEGACY_UNPROVEN');
+      || native.created_at.getTime()!==record.messageTimestamp*1000 || !sameContent)return blocked('HISTORY_SYNC_LEGACY_UNPROVEN');
     messageId=native.id;disposition='DUPLICATE';
   } else {
     // Unknown sends remain obligations; historical observation is never a resend decision.

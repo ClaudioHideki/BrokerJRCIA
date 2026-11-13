@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { bindingFingerprint } from './journal.mjs';
 import { projectTextBatch } from './projection.mjs';
+import {projectLiveBatch} from './live-projection.mjs';
 const hash = value => createHash('sha256').update(value).digest('hex');
 
 /** A suppression decision requires an exact row visible through the journal's committed-read port. */
-export function createOriginWebhookOwnershipGuard({ env = {}, journal, binding, endpoint, resolveBinding, timeoutMs = 1000, allowInsecureLoopbackForTests = false }) {
+export function createOriginWebhookOwnershipGuard({ env = {}, journal, binding, endpoint, resolveBinding, timeoutMs = 1000, allowInsecureLoopbackForTests = false,liveVersion=1 }) {
   let target, fingerprint;
   const fixed = Object.freeze({ ...binding });
   try {
@@ -24,7 +25,7 @@ export function createOriginWebhookOwnershipGuard({ env = {}, journal, binding, 
       return 'DELIVER_LEGACY';
     }
     if (instanceName !== fixed.instanceName) throw new Error('ORIGIN_WEBHOOK_BINDING_CHANGED');
-    const [body] = projectTextBatch(fixed, { 'messages.upsert': { type: 'notify', messages: [data] } });
+    const [body] = (liveVersion===2?projectLiveBatch:projectTextBatch)(fixed, { 'messages.upsert': { type: 'notify', messages: [data] } });
     if (!body) return 'DELIVER_LEGACY';
     if (typeof journal?.lookupCommittedOwnership !== 'function' || typeof resolveBinding !== 'function') throw new Error('ORIGIN_WEBHOOK_OWNERSHIP_UNAVAILABLE');
     const controller = new AbortController(), deadlineAt = Date.now() + timeoutMs;

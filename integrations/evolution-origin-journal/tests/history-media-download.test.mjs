@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict';
-import { createCipheriv,createHmac } from 'node:crypto';
+import { createCipheriv,createHmac,hkdfSync } from 'node:crypto';
 import { createServer } from 'node:http';
 import { test } from 'node:test';
-import { createBaileysHistoryMediaDownloader } from '../src/history-media-download.mjs';
+import { createBaileysHistoryMediaDownloader,deriveHistoryMediaKeys } from '../src/history-media-download.mjs';
+
+test('headless Broker derives the pinned WhatsApp media subkeys without loading auth or a socket',()=>{
+ for(const [type,info] of [['image','Image'],['audio','Audio'],['video','Video'],['document','Document']]){
+  const key=Buffer.alloc(32,71),expanded=Buffer.from(hkdfSync('sha256',key,Buffer.alloc(0),`WhatsApp ${info} Keys`,112)),actual=deriveHistoryMediaKeys(key,type);
+  assert.deepEqual(actual.iv,expanded.subarray(0,16));assert.deepEqual(actual.cipherKey,expanded.subarray(16,48));assert.deepEqual(actual.macKey,expanded.subarray(48,80));
+ }
+ assert.throws(()=>deriveHistoryMediaKeys(Buffer.alloc(31),'image'));
+ assert.throws(()=>deriveHistoryMediaKeys(Buffer.alloc(32),'arbitrary'));
+});
 
 const bytes=Buffer.from('synthetic encrypted WhatsApp media'),cipherKey=Buffer.alloc(32,39),iv=Buffer.alloc(16,43),macKey=Buffer.alloc(32,47);
 const cipher=createCipheriv('aes-256-cbc',cipherKey,iv),encrypted=Buffer.concat([cipher.update(bytes),cipher.final()]);

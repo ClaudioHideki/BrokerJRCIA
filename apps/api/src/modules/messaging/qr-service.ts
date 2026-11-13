@@ -238,10 +238,22 @@ export function createQrMessagingService(options: QrServiceOptions) {
           orderedEvents.push(event);
         }
         events = orderedEvents;
-        const ownerPhone=qrPhone(envelope.sender);
+        let ownerPhone=qrPhone(envelope.sender);
+        if(originReceipt?.sourceIdentity){
+          const source=originReceipt.sourceIdentity;
+          await tx.query('SELECT history_source_assert($1)',[source.sessionId]);
+          const identity=(await tx.query<{scope_id:string;owner_fingerprint:string}>(`SELECT q.scope_id,q.owner_fingerprint FROM qr_identity_scopes q
+            JOIN history_source_sessions s ON s.organization_id=q.organization_id AND s.channel_id=q.channel_id AND s.instance_id=q.instance_id
+            WHERE s.id=$1 AND s.state='ACTIVE' AND q.organization_id=$2 AND q.channel_id=$3 AND q.instance_id=$4
+              AND q.upstream_instance_key=$5 AND q.binding_fingerprint=$6 AND s.owner_proof IS NOT NULL FOR SHARE OF q,s`,
+            [source.sessionId,binding.organizationId,channelId,binding.instanceId,row.upstream_instance_key,bindingFingerprint(authority?.snapshot)])).rows[0];
+          const expected=createHmac('sha256',options.signingKey).update(`qr-identity:v1:${binding.organizationId}:${channelId}:${row.upstream_instance_key}:${source.ownerPhone}`).digest('hex');
+          if(identity?.scope_id!==source.identityScopeId||identity.owner_fingerprint!==expected)throw error('HISTORY_SYNC_SCOPE_CHANGED',409);
+          ownerPhone=source.ownerPhone;
+        }
         // Acquire the exclusive lock before any per-message read lock in a mixed batch.
         // Otherwise two incoming/outgoing batches could both try to upgrade a SHARE lock.
-        if(historical||ownerPhone||events.some(event=>['connection','group','group-text','group-status','outbound','outbound-media','status','identity-pending'].includes(event.kind)||'lid' in event&&event.lid)) {
+        if(historical||ownerPhone||events.some(event=>['connection','group','group-text','group-media','group-status','outbound','outbound-media','status','identity-pending'].includes(event.kind)||'lid' in event&&event.lid)) {
           await lockAttendanceChannel(tx,binding.organizationId,channelId);
           const current = (await tx.query<{ upstream_instance_key: string }>(`SELECT i.upstream_instance_key FROM messaging_channels c
             JOIN instances i ON i.organization_id=c.organization_id AND i.id=c.instance_id
@@ -259,11 +271,12 @@ export function createQrMessagingService(options: QrServiceOptions) {
         if(groupEvents.length)await options.groups?.ingest(tx,binding.organizationId,channelId,groupEvents);
         for (const event of events) {
           if(event.kind==='group')continue;
-          if(event.kind==='group-text'||event.kind==='group-status') {
+          if(event.kind==='group-text'||event.kind==='group-media'||event.kind==='group-status') {
             // A group JID and its participant are never converted to a contact/phone.
             // Persist the authenticated fact in this transaction before acknowledging it.
             if(!options.groupAutomation) throw error('GROUP_RUNTIME_UNAVAILABLE',503);
             await options.groupAutomation.ingestWithinTransaction(tx,binding.organizationId,channelId,event);
+            if(originReceipt&&event.kind!=='group-status')await assertOriginFactPersisted(tx,{organizationId:binding.organizationId,channelId},event,originReceipt.projectionVersion);
             continue;
           }
           if (event.kind === "connection") {
@@ -282,7 +295,7 @@ export function createQrMessagingService(options: QrServiceOptions) {
           }
           if(event.kind==='identity-pending')throw error('QR_IDENTITY_UNEXPECTED');
           await persistQrContactEvent(tx,channel,event);
-          if(originReceipt)await assertOriginFactPersisted(tx,{organizationId:binding.organizationId,channelId},event);
+          if(originReceipt)await assertOriginFactPersisted(tx,{organizationId:binding.organizationId,channelId},event,originReceipt.projectionVersion);
         }
         return 'accepted' as const;
       });

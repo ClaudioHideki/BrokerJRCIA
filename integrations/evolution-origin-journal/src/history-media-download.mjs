@@ -1,6 +1,15 @@
-import { createDecipheriv,createHmac,timingSafeEqual } from 'node:crypto';
+import { createDecipheriv,createHmac,hkdfSync,timingSafeEqual } from 'node:crypto';
 
 const maximum=16*1024*1024+26;
+/** Protocol-only derivation for the Broker worker; independently checked against
+ * getMediaKeys from the pinned Baileys image. No session library is loaded here. */
+export function deriveHistoryMediaKeys(key,type){
+  const label={image:'Image',audio:'Audio',video:'Video',document:'Document'}[type];
+  if(!(key instanceof Uint8Array)||key.length!==32||!label)throw Error('HISTORY_SOURCE_MEDIA_KEYS_INVALID');
+  const expanded=Buffer.from(hkdfSync('sha256',key,Buffer.alloc(0),`WhatsApp ${label} Keys`,112));
+  try{return{iv:Buffer.from(expanded.subarray(0,16)),cipherKey:Buffer.from(expanded.subarray(16,48)),macKey:Buffer.from(expanded.subarray(48,80))};}
+  finally{expanded.fill(0);}
+}
 /** The pinned Baileys 7.0.0-rc.9 getHttpStream drops signal/redirect options.
  * Keep its getMediaKeys derivation port, but own the narrow bounded HTTP and
  * authenticated CBC stream here. No global fetch patch or vendor edit.

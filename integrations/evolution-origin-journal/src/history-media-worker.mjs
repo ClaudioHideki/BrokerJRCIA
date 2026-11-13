@@ -12,7 +12,7 @@ function abortable(promise,signal) {
     Promise.resolve(promise).then(value=>{signal.removeEventListener('abort',abort);resolve(value);},error=>{signal.removeEventListener('abort',abort);reject(error);});
   });
 }
-async function collect(stream,reference,signal) {
+export async function collectHistoryMedia(stream,reference,signal) {
   const chunks=[],hash=createHash('sha256');let length=0;
   const iterator=stream[Symbol.asyncIterator]();
   try {
@@ -49,7 +49,7 @@ export function createHistoryMediaWorker({journal,assertCurrentScope,download,pe
     try {
       await assertCurrentScope(null,current);signal.throwIfAborted();code='DOWNLOAD_FAILED';
       const stream=await abortable(download(claim.descriptor,{signal}),signal);
-      try {bytes=await collect(stream,claim.reference,signal);}
+      try {bytes=await collectHistoryMedia(stream,claim.reference,signal);}
       catch(error) {if(error?.message==='HISTORY_MEDIA_INTEGRITY')code='INTEGRITY_FAILED';throw error;}
       code='AUTHORITY_CHANGED';await assertCurrentScope(null,current);signal.throwIfAborted();code='PERSISTENCE_UNCERTAIN';
       const receipt=await persist(claim.reference,bytes,{scope:current,runId,scopeKey:claim.scopeKey,signal});

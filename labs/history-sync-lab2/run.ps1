@@ -1,5 +1,7 @@
 #requires -Version 7
-param([Parameter(Mandatory=$true)][string]$EvidencePath)
+param([Parameter(Mandatory=$true)][string]$EvidencePath,
+  [ValidateSet('apps/api/tests/integration/history-sync-lab2.test.ts','apps/api/tests/integration/history-sync-operational-lab2.test.ts')]
+  [string]$TestFile='apps/api/tests/integration/history-sync-lab2.test.ts')
 $ErrorActionPreference = 'Stop'
 $taskContext = 'desktop-linux'
 function Read-LabContainer([string]$Name,[string]$Label) {
@@ -30,5 +32,5 @@ $env:HISTORY_LAB_MINIO_SECRET = ($taskStorage.Config.Env | Where-Object { $_ -li
 $taskCredential = ($taskHttp.Config.Env | Where-Object { $_ -like 'JRC_BROKER_CREDENTIAL_KEY=*' }) -replace '^JRC_BROKER_CREDENTIAL_KEY=', ''
 $env:HISTORY_LAB_HTTP_KEY = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
   [Text.Encoding]::UTF8.GetBytes('synthetic-history-http:' + $taskCredential))).ToLowerInvariant()
-& npm run test:integration -- apps/api/tests/integration/history-sync-lab2.test.ts --maxWorkers=1 --no-file-parallelism *> $EvidencePath
+& npm run test:integration -- $TestFile --maxWorkers=1 --no-file-parallelism *> $EvidencePath
 exit $LASTEXITCODE

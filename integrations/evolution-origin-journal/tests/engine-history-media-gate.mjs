@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createCipheriv, createHmac, hkdfSync } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { getMediaKeys } from '/evolution/node_modules/baileys/lib/Utils/messages-media.js';
-import { createBaileysHistoryMediaDownloader } from '/evolution/jrc-origin/history-media-download.mjs';
+import { createBaileysHistoryMediaDownloader,deriveHistoryMediaKeys } from '/evolution/jrc-origin/history-media-download.mjs';
 
 assert.equal(process.env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED, 'false');
 assert.notEqual(process.getuid(), 0);
@@ -28,6 +28,8 @@ for (const [mediaType, type, info] of [
   const expected = { iv: expanded.subarray(0, 16), cipherKey: expanded.subarray(16, 48), macKey: expanded.subarray(48, 80) };
   const actual = await getMediaKeys(key, type);
   for (const part of ['iv', 'cipherKey', 'macKey']) assert.deepEqual(Buffer.from(actual[part]), expected[part]);
+  const workerKeys=deriveHistoryMediaKeys(key,type);
+  for(const part of ['iv','cipherKey','macKey'])assert.deepEqual(workerKeys[part],Buffer.from(actual[part]));
   const clear = Buffer.from(`synthetic pinned-library historical ${mediaType.toLowerCase()} bytes`);
   const cipher = createCipheriv('aes-256-cbc', expected.cipherKey, expected.iv);
   const encrypted = Buffer.concat([cipher.update(clear), cipher.final()]);

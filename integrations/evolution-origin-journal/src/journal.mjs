@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { canonicalText } from './projection.mjs';
+import {canonicalLive} from './live-projection.mjs';
 import { createHistorySourceJournal } from './history-source-journal.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -28,9 +29,18 @@ async function transaction(pool, work) {
 export async function installOriginJournal(pool) { await pool.query(await readFile(new URL('../schema/origin-journal.sql', import.meta.url), 'utf8')); }
 
 /** Engine-owned obligation store. The caller supplies its own pool/key; no defaults or auto-start. */
-export function createOriginJournal({ pool, encryptionKey, history }) {
+export function createOriginJournal({ pool, encryptionKey, history, assertTransaction,liveVersion=1 }) {
   if (!pool || !Buffer.isBuffer(encryptionKey) || encryptionKey.length !== 32) throw new Error('ORIGIN_JOURNAL_CONFIGURATION_INVALID');
   const key = Buffer.from(encryptionKey);
+  if(![1,2].includes(liveVersion))throw Error('ORIGIN_JOURNAL_CONFIGURATION_INVALID');
+  const canonical=liveVersion===2?canonicalLive:canonicalText;
+  if (assertTransaction !== undefined && typeof assertTransaction !== 'function') throw Error('ORIGIN_JOURNAL_CONFIGURATION_INVALID');
+  const transact = work => transaction(pool, async client => {
+    // The operational host validates the source session in this same transaction.
+    // Its revocation locks live through COMMIT, including historical media/ACKs.
+    if (assertTransaction) await assertTransaction(client);
+    return work(client);
+  });
   function encrypt(body, associated) {
     const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, iv);
     cipher.setAAD(Buffer.from(associated));
@@ -42,25 +52,26 @@ export function createOriginJournal({ pool, encryptionKey, history }) {
       decipher.setAAD(Buffer.from(`${row.id}:${row.scope_key}:${row.binding_fingerprint}`));
       decipher.setAuthTag(row.payload_tag);
       const body = JSON.parse(Buffer.concat([decipher.update(row.payload_ciphertext), decipher.final()]).toString('utf8'));
-      return canonicalText(binding, body);
+      return canonical(binding, body);
     } catch { throw new Error('ORIGIN_PAYLOAD_UNAVAILABLE'); }
   }
+  const historyJournal=history?createHistorySourceJournal({pool,encryptionKey:key,maxStagedBytes:history.maxStagedBytes,captureMedia:history.captureMedia,transact}):null;
   return Object.freeze({
-    history: history ? createHistorySourceJournal({ pool, encryptionKey: key, maxStagedBytes: history.maxStagedBytes,captureMedia:history.captureMedia,
-      transact: work => transaction(pool, work) }) : null,
+    history:historyJournal,
     async lookupCommittedOwnership(binding, envelope) {
-      const body = canonicalText(binding, envelope), scope = scopeKey(binding);
+      const body = canonical(binding, envelope), scope = scopeKey(binding);
       const eventKey = hash(JSON.stringify([body.data.key.id, body.data.key.fromMe, body.data.key.remoteJid]));
       // Dedicated pool read, outside the append transaction: MVCC cannot see its uncommitted row.
       const row = (await pool.query('SELECT id,scope_key,event_key,binding_fingerprint,body_hash FROM jrc_evolution_origin.events WHERE scope_key=$1 AND event_key=$2', [scope, eventKey])).rows[0];
       return row ? Object.freeze({ id: row.id, scopeKey: row.scope_key, eventKey: row.event_key, bindingFingerprint: row.binding_fingerprint, bodyHash: row.body_hash }) : null;
     },
-    async acceptBatch(binding, envelopes) {
+    async acceptBatch(binding, envelopes,mediaToken=null) {
       const scope = scopeKey(binding), fingerprint = bindingFingerprint(binding);
       if (!Array.isArray(envelopes) || envelopes.length > 100) throw new Error('ORIGIN_TEXT_INVALID');
-      const bodies = envelopes.map(envelope => canonicalText(binding, envelope));
+      const bodies = envelopes.map(envelope => canonical(binding, envelope));
       if (!bodies.length) return [];
-      return transaction(pool, async client => {
+      const receipt=await transact(async client => {
+        if(mediaToken){if(!historyJournal)throw Error('HISTORY_SOURCE_SNAPSHOT_REQUIRED');await historyJournal.appendInTransaction(client,mediaToken);}
         const accepted = [];
         for (const body of bodies) {
           const eventKey = hash(JSON.stringify([body.data.key.id, body.data.key.fromMe, body.data.key.remoteJid]));
@@ -76,11 +87,13 @@ export function createOriginJournal({ pool, encryptionKey, history }) {
         }
         return accepted;
       });
+      if(mediaToken)historyJournal.committed(mediaToken);
+      return receipt;
     },
     async claim(binding, { leaseMs = 30000 } = {}) {
       const scope = scopeKey(binding), fingerprint = bindingFingerprint(binding);
       if (!integer(leaseMs, 100, 300000)) throw new Error('ORIGIN_LEASE_INVALID');
-      return transaction(pool, async client => {
+      return transact(async client => {
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [scope]);
         const row = (await client.query(`SELECT *,lease_until>clock_timestamp() AS lease_active,next_attempt_at>clock_timestamp() AS not_due
           FROM jrc_evolution_origin.events WHERE scope_key=$1 AND state<>'DELIVERED' ORDER BY source_sequence LIMIT 1 FOR UPDATE`, [scope])).rows[0];
@@ -97,7 +110,7 @@ export function createOriginJournal({ pool, encryptionKey, history }) {
     async finish(claim, { type, category, httpStatus = null, durationMs = 0, retryAfterMs = 0 }) {
       if (!['DELIVERED', 'RETRY', 'BLOCKED'].includes(type) || typeof category !== 'string' || !/^[A-Z][A-Z0-9_]{0,79}$/u.test(category)
         || !integer(durationMs, 0, 2147483647) || !integer(retryAfterMs, 0, 300000) || !(httpStatus === null || integer(httpStatus, 100, 599))) throw new Error('ORIGIN_OUTCOME_INVALID');
-      return transaction(pool, async client => {
+      return transact(async client => {
         const settled = await client.query(`UPDATE jrc_evolution_origin.events SET state=$4,lease_token=NULL,lease_until=NULL,
           last_category=$5,last_http_status=$6,next_attempt_at=clock_timestamp()+($7*interval '1 millisecond'),updated_at=clock_timestamp()
           WHERE id=$1 AND scope_key=$2 AND lease_token=$3 AND state='CLAIMED' AND lease_until>clock_timestamp() RETURNING id`,

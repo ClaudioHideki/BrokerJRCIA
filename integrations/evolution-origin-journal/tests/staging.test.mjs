@@ -14,7 +14,7 @@ test('full source staging copies pinned overlays, runtime and legal provenance w
   assert.deepEqual(stage.manifest.patches.map(patch=>patch.path).sort(),[
    'src/main.ts','src/api/repository/repository.service.ts','src/cache/rediscache.client.ts',
    'src/api/controllers/instance.controller.ts','src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts',
-   'src/api/integrations/channel/channel.controller.ts','src/api/services/channel.service.ts',
+   'src/api/integrations/channel/channel.controller.ts','src/api/services/channel.service.ts','src/api/services/monitor.service.ts',
    'src/api/integrations/event/webhook/webhook.controller.ts','src/api/integrations/event/event.manager.ts',
    'src/api/integrations/event/event.controller.ts','src/api/types/wa.types.ts',
   ].sort());

@@ -3,26 +3,32 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createOriginLabBootstrap } from './bootstrap.mjs';
 import { bindingFingerprint } from './journal.mjs';
 import { projectTextBatch } from './projection.mjs';
+import {projectLiveBatch} from './live-projection.mjs';
 import { historyCaptureScopeKey } from './history-projection.mjs';
+import {createOriginWebhookOwnershipGuard} from './webhook-ownership.mjs';
 const digest = body => createHash('sha256').update(JSON.stringify(body)).digest('hex');
 const snapshots = new WeakMap();
 
 /** Synchronous allowlisted arrival snapshot. No raw event, quoted content or auth material is retained. */
-export function snapshotOriginBatch(scope, events, historyToken = null) {
+export function snapshotOriginBatch(scope, events, historyToken = null,project=projectTextBatch,mediaToken=null) {
   if (typeof scope?.instanceId !== 'string' || typeof scope?.instanceName !== 'string') throw new Error('ORIGIN_ENGINE_SNAPSHOT_INVALID');
   const type = events?.['messages.upsert']?.type ?? 'other';
-  const bodies = projectTextBatch(scope, events);
+  const bodies = project(scope, events);
   for (const body of bodies) { Object.freeze(body.data.key); Object.freeze(body.data.message); Object.freeze(body.data); Object.freeze(body); }
   Object.freeze(bodies);
   const token = Object.freeze({});
-  snapshots.set(token, Object.freeze({ instanceId: scope.instanceId, instanceName: scope.instanceName, type, bodies, hashes: new Set(bodies.map(digest)), historyToken }));
+  snapshots.set(token, Object.freeze({ instanceId: scope.instanceId, instanceName: scope.instanceName, type, bodies, hashes: new Set(bodies.map(digest)), historyToken,mediaToken }));
   return token;
 }
 
 /** Laboratory engine composition. The opaque capability is minted only after acceptBatch COMMIT. */
 export function createOriginEngineComposition(options) {
   const binding = Object.freeze({ ...options.binding }), fingerprint = bindingFingerprint(binding);
-  const base = createOriginLabBootstrap({ ...options, binding });
+  const project=options.brokerPull===true?projectLiveBatch:projectTextBatch;
+  const base = options.brokerPull === true ? {
+    start:async()=>{throw Error('ORIGIN_ENGINE_BROKER_PULL_REQUIRED');},stop:async()=>{},
+    webhookGuard:createOriginWebhookOwnershipGuard({...options,liveVersion:2,binding,endpoint:options.transport.endpoint}),
+  } : createOriginLabBootstrap({ ...options, binding });
   const storage = new AsyncLocalStorage(), capabilities = new WeakMap();
   const endpoint = new URL(options.transport.endpoint).href;
   const enabled = options.env?.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED === 'true';
@@ -30,8 +36,8 @@ export function createOriginEngineComposition(options) {
   const historyScope = options.history?.scope ? Object.freeze({ ...options.history.scope }) : null;
   const historyRunId = options.history?.runId;
   const resolveMediaReference = options.history?.mediaReference;
-  if (historyEnabled && (!enabled || !historyScope || historyScope.instanceId !== binding.instanceId
-    || historyScope.engineGeneration !== binding.generation || historyScope.bindingFingerprint !== fingerprint
+  if (historyEnabled && (!enabled || !historyScope || historyScope.instanceId !== (options.history.canonicalInstanceId??binding.instanceId)
+    || historyScope.engineGeneration !== binding.generation || historyScope.bindingFingerprint !== (options.history.configurationFingerprint??fingerprint)
     || typeof options.journal.history?.prepare !== 'function' || typeof options.journal.history?.append !== 'function'))
     throw Error('HISTORY_SOURCE_BINDING_CHANGED');
   if (historyEnabled && resolveMediaReference !== undefined && typeof resolveMediaReference !== 'function')
@@ -48,13 +54,15 @@ export function createOriginEngineComposition(options) {
     const historical = historyEnabled && events?.['messaging-history.set']
       ? options.journal.history.prepare(historyScope, historyRunId, events,
         { provenance: 'SOCKET', captureId: randomUUID(), capturedAt: new Date(), startOrdinal: 0, mediaReference }) : null;
-    return snapshotOriginBatch(binding, events, historical);
+    const mediaToken=historyEnabled&&options.brokerPull===true&&events?.['messages.upsert']?.type==='notify'
+      ?options.journal.history.prepare(historyScope,historyRunId,events,{captureId:randomUUID(),liveMediaBodies:project(binding,events)}):null;
+    return snapshotOriginBatch(binding, events, historical,project,mediaToken);
   };
   const capturePrepared = async snapshot => {
     if (!enabled) return Object.freeze({ enabled: false, captured: 0 });
     const prepared = snapshots.get(snapshot);
     if (!prepared || prepared.instanceId !== binding.instanceId || prepared.instanceName !== binding.instanceName) throw new Error('ORIGIN_ENGINE_SNAPSHOT_INVALID');
-    await options.journal.acceptBatch(binding, prepared.bodies);
+    await options.journal.acceptBatch(binding, prepared.bodies,prepared.mediaToken);
     if (prepared.historyToken) {
       if (!historyEnabled) throw Error('HISTORY_SOURCE_BINDING_CHANGED');
       await options.journal.history.append(prepared.historyToken);
@@ -78,7 +86,7 @@ export function createOriginEngineComposition(options) {
       let destination;
       try { destination = new URL(input.destination).href; } catch { return base.webhookGuard.decide(input); }
       if (input.event !== 'messages.upsert' || destination !== endpoint) return base.webhookGuard.decide(input);
-      const [body] = projectTextBatch(binding, { 'messages.upsert': { type: 'notify', messages: [input.data] } });
+      const [body] = project(binding, { 'messages.upsert': { type: 'notify', messages: [input.data] } });
       if (!body) return base.webhookGuard.decide(input);
       const context = storage.getStore();
       if (!context || context.fingerprint !== fingerprint) throw new Error('ORIGIN_ENGINE_PROVENANCE_UNAVAILABLE');

@@ -7,6 +7,9 @@ import { persistQrContactEvent } from '../../src/modules/messaging/qr-contact-pe
 import { createPostgresMessagingRepository } from '../../src/modules/messaging/repository.js';
 import { createGroupAutomationRuntime } from '../../src/modules/whatsapp-groups/automation-runtime.js';
 import { createMediaStore } from '../../src/modules/messaging/media-store.js';
+import {normalizeQrEvent} from '../../src/modules/messaging/qr-events.js';
+import {registerPendingMedia} from '../../src/modules/messaging/media-store.js';
+import {assertOriginFactPersisted} from '../../src/modules/messaging/origin-receipt.js';
 
 let db: Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async () => { db = await attendanceDatabase(); },180000);
@@ -137,12 +140,41 @@ it('adopts a live native message only with a capture proof correlated to the log
   expect((await db.transact(f.t.org,tx=>tx.query('SELECT count(*) FROM messaging_messages WHERE channel_id=$1',[f.t.channel]))).rows[0].count).toBe('1');
 });
 
+it('reuses an authenticated live outgoing observation when its historical copy arrives later',async()=>{
+  const f=await fixture(),run=await f.admit(),record={...text,fromMe:true,providerMessageId:'synthetic-outbound-convergence'} as Extract<HistorySyncRecord,{kind:'MESSAGE'}>;
+  await db.transact(f.t.org,async tx=>{
+    const channel=(await createPostgresMessagingRepository().findChannel(tx,f.t.org,f.t.channel))!;
+    await persistQrContactEvent(tx,channel,{kind:'outbound',externalId:jid.split('@')[0]!,displayName:null,upstreamMessageId:record.providerMessageId,
+      occurredAt:new Date(record.messageTimestamp*1000),content:{type:'TEXT',text:'Synthetic historical fact'}});
+  });
+  await f.store.acceptChunk(f.scope,run.id,f.chunk([record]),now);
+  expect(await f.store.persistNext(f.scope,run.id,now)).toMatchObject({created:0,duplicates:1,blocked:0});
+  expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_messages WHERE channel_id=$1',[f.t.channel])).rows[0].n).toBe(1);
+  expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_outbox WHERE organization_id=$1',[f.t.org])).rows[0].n).toBe(0);
+});
+
 it('does not schedule a bot or duplicate native data when live follows history',async()=>{
   const f=await fixture(),run=await f.admit();
   await f.store.acceptChunk(f.scope,run.id,f.chunk([text]),now);
   await f.store.persistNext(f.scope,run.id,now);
   expect(await live(f)).toBe(false);
   expect((await db.transact(f.t.org,tx=>tx.query('SELECT count(*) FROM messaging_bot_jobs'))).rows[0].count).toBe('0');
+});
+
+it('converges a newly observed outgoing group message with its historical copy',async()=>{
+  const f=await fixture(),run=await f.admit();
+  await db.database.pool.query(`INSERT INTO whatsapp_group_catalogs(organization_id,channel_id,identity_fingerprint,catalog_revision,snapshot_id,observed_at,valid_until)
+    VALUES($1,$2,$3,1,$4,$5,$6)`,[f.t.org,f.t.channel,'e'.repeat(64),randomUUID(),now,new Date(now.getTime()+3600000)]);
+  const record={...text,kind:'MESSAGE',recipientKind:'GROUP',chatJid:'100-200@g.us',participantJid:null,fromMe:true,
+    providerMessageId:'synthetic-live-outgoing-group'} as Extract<HistorySyncRecord,{kind:'MESSAGE'}>;
+  const runtime=createGroupAutomationRuntime({transact:db.transact,encryptionKey:Buffer.alloc(32,75).toString('base64'),configurationScope:'synthetic',
+    readIdentity:async()=>({connected:true,phone:null,groupsIgnore:false}),sendText:async()=>{throw Error('Synthetic send forbidden');}});
+  await db.transact(f.t.org,tx=>runtime.ingestWithinTransaction(tx,f.t.org,f.t.channel,{kind:'group-text',groupJid:record.chatJid,
+    upstreamMessageId:record.providerMessageId,fromMe:true,participantJid:null,participantJidAlt:null,
+    content:{type:'TEXT',text:'Synthetic historical fact'},occurredAt:new Date(record.messageTimestamp*1000)}));
+  await f.store.acceptChunk(f.scope,run.id,f.chunk([record]),now);
+  expect(await f.store.persistNext(f.scope,run.id,now)).toMatchObject({created:0,duplicates:1,blocked:0});
+  expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_messages WHERE channel_id=$1',[f.t.channel])).rows[0].n).toBe(1);
 });
 
 it('records an immutable conflict when the same proved provider ID arrives with changed content',async()=>{
@@ -283,4 +315,88 @@ it('reuses the first canonical media reference when the same provider fact is re
   const claim=await projecting.claimProjection(f.scope,next.id,now);
   expect(claim).toMatchObject({kind:'CLAIMED',record:{content:{referenceId:first}}});
   expect((await db.transact(f.t.org,tx=>tx.query('SELECT count(*) FROM messaging_messages WHERE channel_id=$1',[f.t.channel]))).rows[0].count).toBe('1');
+});
+
+for(const fromMe of [false,true])it(`converges verified live ${fromMe?'outgoing':'incoming'} media without adopting a different binary`,async()=>{
+  const f=await fixture(),run=await f.admit(),bytes=Buffer.from('Synthetic live/history verified document');
+  const media=createMediaStore({transact:db.transact,encryptionKey:Buffer.alloc(32,83).toString('base64'),
+    download:async()=>({bytes,mimeType:'text/plain',kind:'document',fileName:'synthetic.txt'})});
+  const providerMessageId='synthetic-live-media-convergence';
+  await db.transact(f.t.org,async tx=>{
+    const channel=(await createPostgresMessagingRepository().findChannel(tx,f.t.org,f.t.channel))!;
+    await persistQrContactEvent(tx,channel,{kind:fromMe?'outbound-media':'media',externalId:jid.split('@')[0]!,displayName:null,
+      upstreamMessageId:providerMessageId,occurredAt:new Date(1600000000000),caption:'Synthetic media caption',
+      media:{source:'QR',sourceKey:providerMessageId,kind:'document',fileName:'synthetic.txt',descriptor:{messageId:providerMessageId}}});
+  });
+  await media.runOnce(f.t.org);
+  const ref=await media.writeUpload(f.t.org,f.t.channel,{rootAutomationId:f.t.automation,idempotencyKey:randomUUID()},
+    {bytes,mimeType:'text/plain',kind:'document',fileName:'synthetic.txt'});
+  const fact={...text,kind:'MESSAGE',providerMessageId,fromMe,content:{type:'MEDIA',referenceId:ref,mediaType:'DOCUMENT',byteSize:bytes.length,
+    sha256:createHash('sha256').update(bytes).digest('hex'),mimeType:'text/plain',filename:'synthetic.txt',caption:'Synthetic media caption'}} as Extract<HistorySyncRecord,{kind:'MESSAGE'}>;
+  await f.store.acceptChunk(f.scope,run.id,f.chunk([fact]),now);
+  expect(await f.store.persistNext(f.scope,run.id,now)).toMatchObject({created:0,duplicates:1,blocked:0});
+  const changed=Buffer.from('Synthetic conflicting verified binary'),other=await media.writeUpload(f.t.org,f.t.channel,
+    {rootAutomationId:f.t.automation,idempotencyKey:randomUUID()},{bytes:changed,mimeType:'text/plain',kind:'document',fileName:'synthetic.txt'});
+  if(fact.content.type!=='MEDIA')throw Error('Expected media fixture');
+  const next=await f.admit();await f.store.acceptChunk(f.scope,next.id,f.chunk([{...fact,content:{...fact.content,referenceId:other,
+    sha256:createHash('sha256').update(changed).digest('hex'),byteSize:changed.length}}]),now);
+  expect(await f.store.persistNext(f.scope,next.id,now)).toMatchObject({created:0,duplicates:0,blocked:1});
+  expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_messages WHERE channel_id=$1',[f.t.channel])).rows[0].n).toBe(1);
+});
+
+for(const group of [false,true])for(const fromMe of [false,true])it(`reuses history-first media before ACK even after reconnect (group=${group},outgoing=${fromMe})`,async()=>{
+ const f=await fixture(),run=await f.admit(),bytes=Buffer.from('Synthetic reverse media'),providerMessageId='synthetic-reverse-media',groupJid='100-200@g.us';
+ if(group)await db.database.pool.query(`INSERT INTO whatsapp_group_catalogs(organization_id,channel_id,identity_fingerprint,catalog_revision,snapshot_id,observed_at,valid_until)
+  VALUES($1,$2,$3,1,$4,$5,$6)`,[f.t.org,f.t.channel,'e'.repeat(64),randomUUID(),now,new Date(now.getTime()+3600000)]);
+ const media=createMediaStore({transact:db.transact,encryptionKey:Buffer.alloc(32,83).toString('base64'),
+  download:async()=>({bytes,mimeType:'text/plain',kind:'document',fileName:'synthetic.txt'})});
+ const referenceId=await media.writeUpload(f.t.org,f.t.channel,{rootAutomationId:f.t.automation,idempotencyKey:randomUUID()},
+  {bytes,mimeType:'text/plain',kind:'document',fileName:'synthetic.txt'});
+ const fact={...text,kind:'MESSAGE',recipientKind:group?'GROUP':'INDIVIDUAL',chatJid:group?groupJid:jid,fromMe,
+  participantJid:group&&!fromMe?'123456789@lid':null,providerMessageId,content:{type:'MEDIA',referenceId,mediaType:'DOCUMENT',mimeType:'text/plain',
+   sha256:createHash('sha256').update(bytes).digest('hex'),byteSize:bytes.length,filename:'synthetic.txt',caption:'Synthetic reverse caption'}} as Extract<HistorySyncRecord,{kind:'MESSAGE'}>;
+ await f.store.acceptChunk(f.scope,run.id,f.chunk([fact]),now);expect(await f.store.persistNext(f.scope,run.id,now)).toMatchObject({created:1});
+ if(group){const next={...f.scope,identityScopeId:randomUUID(),sessionGeneration:randomUUID()};await f.admit(next);
+  await db.database.pool.query('UPDATE qr_identity_scopes SET scope_id=$2 WHERE channel_id=$1',[f.t.channel,next.identityScopeId]);
+  await db.database.pool.query('UPDATE whatsapp_group_catalogs SET identity_revision=2 WHERE channel_id=$1',[f.t.channel]);}
+ const [event]=normalizeQrEvent({event:'messages.upsert',instance:f.scope.instanceId,data:{key:{id:providerMessageId,remoteJid:group?groupJid:jid,fromMe,
+   ...(group&&!fromMe?{participant:'123456789@lid'}:{})},messageTimestamp:1600000000,message:{documentMessage:{fileName:'synthetic.txt',caption:'Synthetic reverse caption'}}}},f.scope.instanceId);
+ if(!event||!('media'in event))throw Error('Expected synthetic media event');
+ // The admitted source pre-registers the bounded download obligation before
+ // ingress; a failed receipt transaction cannot roll this separate work back.
+ await db.transact(f.t.org,tx=>registerPendingMedia(tx,f.t.org,f.t.channel,event.media));await media.runOnce(f.t.org);
+ const runtime=createGroupAutomationRuntime({transact:db.transact,encryptionKey:Buffer.alloc(32,75).toString('base64'),configurationScope:'synthetic',
+  readIdentity:async()=>({connected:true,phone:null,groupsIgnore:false}),sendText:async()=>{throw Error('No synthetic sends');}});
+ await db.transact(f.t.org,async tx=>{
+  if(event.kind==='group-media')await runtime.ingestWithinTransaction(tx,f.t.org,f.t.channel,event);
+  else await persistQrContactEvent(tx,(await createPostgresMessagingRepository().findChannel(tx,f.t.org,f.t.channel))!,event as Parameters<typeof persistQrContactEvent>[2]);
+  await assertOriginFactPersisted(tx,{organizationId:f.t.org,channelId:f.t.channel},event as Parameters<typeof assertOriginFactPersisted>[2],2);
+ });
+ expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_messages WHERE channel_id=$1',[f.t.channel])).rows[0].n).toBe(1);
+ expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_bot_jobs WHERE organization_id=$1',[f.t.org])).rows[0].n).toBe(0);
+});
+
+for(const fromMe of [false,true])it(`persists ${fromMe?'outgoing':'incoming'} group media with the real group identity, then deduplicates history`,async()=>{
+  const f=await fixture(),run=await f.admit(),groupJid='100-200@g.us',providerMessageId='synthetic-group-document';
+  await db.database.pool.query(`INSERT INTO whatsapp_group_catalogs(organization_id,channel_id,identity_fingerprint,catalog_revision,snapshot_id,observed_at,valid_until)
+    VALUES($1,$2,$3,1,$4,$5,$6)`,[f.t.org,f.t.channel,'e'.repeat(64),randomUUID(),now,new Date(now.getTime()+3600000)]);
+  const [event]=normalizeQrEvent({event:'messages.upsert',instance:f.scope.instanceId,data:{key:{id:providerMessageId,fromMe,remoteJid:groupJid,participant:'123456789@lid'},
+    messageTimestamp:1600000000,message:{documentMessage:{fileName:'synthetic.txt',caption:'Synthetic group media'}}}},f.scope.instanceId);
+  expect(event).toMatchObject({kind:'group-media',groupJid});
+  const runtime=createGroupAutomationRuntime({transact:db.transact,encryptionKey:Buffer.alloc(32,75).toString('base64'),configurationScope:'synthetic',
+    readIdentity:async()=>({connected:true,phone:null,groupsIgnore:false}),sendText:async()=>{throw Error('Synthetic send forbidden');}});
+  await db.transact(f.t.org,tx=>runtime.ingestWithinTransaction(tx,f.t.org,f.t.channel,event as Extract<typeof event,{kind:'group-media'}>));
+  const bytes=Buffer.from('Synthetic group document bytes'),media=createMediaStore({transact:db.transact,encryptionKey:Buffer.alloc(32,83).toString('base64'),
+    download:async()=>({bytes,mimeType:'text/plain',kind:'document',fileName:'synthetic.txt'})});await media.runOnce(f.t.org);
+  const referenceId=await media.writeUpload(f.t.org,f.t.channel,{rootAutomationId:f.t.automation,idempotencyKey:randomUUID()},
+    {bytes,mimeType:'text/plain',kind:'document',fileName:'synthetic.txt'});
+  const fact={...text,kind:'MESSAGE',recipientKind:'GROUP',chatJid:groupJid,participantJid:'123456789@lid',fromMe,providerMessageId,
+    content:{type:'MEDIA',referenceId,mediaType:'DOCUMENT',mimeType:'text/plain',sha256:createHash('sha256').update(bytes).digest('hex'),
+      byteSize:bytes.length,filename:'synthetic.txt',caption:'Synthetic group media'}} as Extract<HistorySyncRecord,{kind:'MESSAGE'}>;
+  await f.store.acceptChunk(f.scope,run.id,f.chunk([fact]),now);
+  expect(await f.store.persistNext(f.scope,run.id,now)).toMatchObject({created:0,duplicates:1,blocked:0});
+  expect((await db.database.pool.query(`SELECT c.recipient_kind,c.contact_id FROM messaging_messages m JOIN messaging_conversations c ON c.id=m.conversation_id
+    AND c.organization_id=m.organization_id WHERE m.channel_id=$1 AND m.upstream_message_id=$2`,[f.t.channel,providerMessageId])).rows)
+    .toEqual([{recipient_kind:'GROUP',contact_id:null}]);
+  expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_bot_jobs WHERE organization_id=$1',[f.t.org])).rows[0].n).toBe(0);
 });

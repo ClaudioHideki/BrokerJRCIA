@@ -1,3 +1,13 @@
+# Continuação operacional — 12/11/2026
+
+Incremento atual sobre `6522938097781d099e46f594eefc51e9149e783c`, na branch `codex/whatsapp-history-sync-20261111`. Host privado PostgreSQL, principal por engine, capability por socket/epoch, admissão de nova conexão autorizada, journal live+mídia atômico, recuperação física e convergência live/histórico implementados. Migrations novas e ainda não produtivas:0091–0093. Autoridade, revogação até COMMIT, LID, grupos e dedupe nas duas ordens têm regressões. Captura produtiva continua default off/UNPROVEN; não inferir homologação de telefone.
+
+Provas atuais:4363/574 gerais verdes (backup/recovery excluídos);86PG/6 arquivos mais25/25 do host após último ajuste;116 origem; E2E operacional final de duas imagens/tenants com PG/MinIO/Rails/Sidekiq aprovado. Revisão independente confirmou fechamento dos oito achados. CI/imagens/deploy do novo SHA precisam da própria evidência. Detalhes, infraestrutura, migrações, limites e rollback: `docs/implementation/history-operational-host-20261112.md`.
+
+LAB2 consolidou histórico + A–G `cad427d4` + runtime/Scout `d11c879a`, candidata `a3c10814fae79ccea86315d24fc27c231c803422`. CI própria em andamento, com falha do fixture antigo de paginação sendo corrigida sem afrouxar membership. Mains preservadas; nenhuma produção alterada. Controle Dokploy segue indisponível mesmo após reabertura. Usuário autorizou publicação/deploy final, mas nenhum envio, replay ou pareamento real. Backup/dump/restore excluídos.
+
+---
+
 # Continuação local: mídia de origem e progresso, 12/11/2026
 
 Este registro substitui as pendências já implementadas dos checkpoints abaixo, sem transformar evidência antiga em aprovação do novo candidato. Bases preservadas: Broker ece27d13584b8eee661ccc2e8a792308c7fcd827 e LAB2 e919b0ac7eaa95f844880e6f60bb8092d603f94b. Mains reconferidas nesta rodada: Broker29095bea e LAB2d8a83b82, ambas ancestrais; sem merge/push/deploy.

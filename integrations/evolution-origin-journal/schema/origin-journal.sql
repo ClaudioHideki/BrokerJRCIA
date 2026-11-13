@@ -69,6 +69,7 @@ CREATE INDEX IF NOT EXISTS origin_history_pending ON jrc_evolution_origin.histor
 CREATE TABLE IF NOT EXISTS jrc_evolution_origin.history_media (
   scope_key char(64) NOT NULL,run_id uuid NOT NULL,capture_id uuid NOT NULL,reference_id uuid NOT NULL,
   descriptor_hash char(64) NOT NULL CHECK(descriptor_hash ~ '^[a-f0-9]{64}$'),
+  live_message_key char(64) CHECK(live_message_key ~ '^[a-f0-9]{64}$'),
   descriptor_bytes integer NOT NULL CHECK(descriptor_bytes BETWEEN 1 AND 16384),
   descriptor_ciphertext bytea NOT NULL CHECK(octet_length(descriptor_ciphertext)=descriptor_bytes),
   descriptor_iv bytea NOT NULL CHECK(octet_length(descriptor_iv)=12),descriptor_tag bytea NOT NULL CHECK(octet_length(descriptor_tag)=16),
@@ -82,4 +83,5 @@ CREATE TABLE IF NOT EXISTS jrc_evolution_origin.history_media (
   CHECK(last_error IS NULL OR last_error IN ('DOWNLOAD_FAILED','INTEGRITY_FAILED','PERSISTENCE_UNCERTAIN','AUTHORITY_CHANGED'))
 );
 CREATE INDEX IF NOT EXISTS origin_history_media_pending ON jrc_evolution_origin.history_media(scope_key,run_id,next_attempt_at) WHERE state<>'READY';
+CREATE UNIQUE INDEX IF NOT EXISTS origin_live_media_key ON jrc_evolution_origin.history_media(scope_key,run_id,live_message_key) WHERE live_message_key IS NOT NULL;
 COMMIT;

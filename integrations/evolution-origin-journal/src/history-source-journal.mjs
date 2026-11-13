@@ -44,15 +44,21 @@ export function createHistorySourceJournal({ pool, encryptionKey, maxStagedBytes
     } catch { throw Error('HISTORY_SOURCE_PAYLOAD_UNAVAILABLE'); }
   };
   const journal = {
-    claimMedia: media.claimMedia, settleMedia: media.settleMedia, retryMedia: media.retryMedia,
+    claimMedia: media.claimMedia, settleMedia: media.settleMedia, retryMedia: media.retryMedia,readLiveMedia:media.readLive,
     prepare(scope, runId, events, context) {
       if (!uuid.test(runId)) throw Error('HISTORY_SOURCE_CONTEXT_INVALID');
       const organizationId = scope.organizationId, captureId = context.captureId;
       let bytes = 0;
       const pages = [];
-      const captured = captureMedia === true ? media.prepare(scope,runId,captureId,events) : null;
+      const live=Array.isArray(context.liveMediaBodies);
+      const captured = captureMedia === true ? media.prepare(scope,runId,captureId,events,live) : null;
+      if(live)for(const body of context.liveMediaBodies){
+        const kind=['image','audio','video','document','sticker'].find(k=>body.data.message[k+'Message']);
+        if(kind&&!captured?.resolve({chatJid:body.data.key.remoteJid,providerMessageId:body.data.key.id,fromMe:body.data.key.fromMe,mediaType:kind.toUpperCase()}))
+          throw Error('HISTORY_SOURCE_LIVE_MEDIA_UNAVAILABLE');
+      }
       const projectionContext = captured ? { ...context,mediaReference:request => context.mediaReference?.(request) ?? captured.resolve(request) } : context;
-      for (const chunk of projectHistoryBatch(scope, events, projectionContext)) {
+      for (const chunk of live?[]:projectHistoryBatch(scope, events, projectionContext)) {
         const scopeKey = historyCaptureScopeKey(chunk.scope), page = seal(scopeKey, captureId, runId, chunk);
         bytes += page.payload_bytes;
         if (preparedBytes + bytes > maxStagedBytes) throw Error('HISTORY_SOURCE_QUOTA');
@@ -61,17 +67,17 @@ export function createHistorySourceJournal({ pool, encryptionKey, maxStagedBytes
       const mediaSnapshots = captured ? [...captured.snapshots.values()] : [];
       bytes += mediaSnapshots.reduce((sum,item) => sum+item.ciphertext.length,0);
       if (preparedBytes+bytes>maxStagedBytes) throw Error('HISTORY_SOURCE_QUOTA');
-      if (!pages.length) throw Error('HISTORY_SOURCE_EVENT_REQUIRED');
+      if (!pages.length&&!mediaSnapshots.length) {if(live)return null;throw Error('HISTORY_SOURCE_EVENT_REQUIRED');}
       const token = Object.freeze({});
-      prepared.set(token, { scopeKey: pages[0].scope_key, organizationId, runId, captureId,
+      prepared.set(token, { scopeKey: pages[0]?.scope_key??historyCaptureScopeKey(scope), organizationId, runId, captureId,
         checksum: historyProjectionDigest([...pages.map(page => page.payload_hash),...mediaSnapshots.map(item=>item.hash)]), bytes, chunkCount: pages.length, released: false, pages,mediaSnapshots });
       preparedBytes += bytes;
       return token;
     },
-    async append(token) {
+    async appendInTransaction(client,token) {
       const value = prepared.get(token) ?? committed.get(token);
       if (!value) throw Error('HISTORY_SOURCE_SNAPSHOT_REQUIRED');
-      const receipt = await transact(async client => {
+      return (async()=>{
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`history-source:${value.organizationId}`]);
         const prior = (await client.query(`SELECT run_id,checksum FROM jrc_evolution_origin.history_batches
           WHERE scope_key=$1 AND capture_id=$2`, [value.scopeKey, value.captureId])).rows[0];
@@ -104,7 +110,11 @@ export function createHistorySourceJournal({ pool, encryptionKey, maxStagedBytes
           await media.append(client,value.mediaSnapshots);
         }
         return Object.freeze({ kind: 'STAGED', captureId: value.captureId, chunks: value.chunkCount });
-      });
+      })();
+    },
+    committed(token){
+      const value=prepared.get(token)??committed.get(token);
+      if(!value)throw Error('HISTORY_SOURCE_SNAPSHOT_REQUIRED');
       // Only a real COMMIT releases the in-flight reservation. A failed append
       // retains its sealed snapshot for retry and applies backpressure to arrivals.
       if (!value.released) {
@@ -114,7 +124,10 @@ export function createHistorySourceJournal({ pool, encryptionKey, maxStagedBytes
         value.pages = null; value.mediaSnapshots=null; value.released = true;
         prepared.delete(token); committed.set(token,value);
       }
-      return receipt;
+    },
+    async append(token){
+      const receipt=await transact(client=>journal.appendInTransaction(client,token));
+      journal.committed(token);return receipt;
     },
     /** Retry private appends retained in this live process; not a WhatsApp send or a crash-recovery claim. */
     async retryPrepared({ limit = 1 } = {}) {

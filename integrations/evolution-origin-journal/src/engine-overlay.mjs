@@ -10,6 +10,7 @@ export const ENGINE_SOURCE_HASHES = Object.freeze({
   'src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts': PINNED_SERVICE_LF_SHA256,
   'src/api/integrations/channel/channel.controller.ts': '2cfb9244569ead825f004846a257da3a01669e5e44363a7060f001eb81dbaf16',
   'src/api/services/channel.service.ts': 'ab8b495c07906cf66f083186a0fd6f5c4da7847b2e2492e72b28744b1e3491be',
+  'src/api/services/monitor.service.ts': 'f9b3583c5b70a95f402e7594247ecd42a3825a99e2283c75d336833ef2f9ba17',
   'src/api/integrations/event/webhook/webhook.controller.ts': PINNED_WEBHOOK_LF_SHA256,
   'src/api/integrations/event/event.manager.ts': 'ac7b8db0ab0c9f911d86f184b6d8ae5a54c75a03fe3c38c1f25a7ae9a8905c14',
   'src/api/integrations/event/event.controller.ts': '6506fdab7ffee0f6e753b51da8a300679a6491425880bd2050f35c70f4f9b0e4',
@@ -44,11 +45,21 @@ export function preparePinnedEngineSources(input) {
   const queue = nodes(ast(service), n => n.type === 'ExpressionStatement' && service.slice(n.start,n.end).startsWith('this.eventProcessingQueue = this.eventProcessingQueue.then'));
   if (queue.length !== 1) throw new Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
   const statement = queue[0];
-  service = service.slice(0,statement.start) + `await captureOriginBatch(this, events, () => {\n${service.slice(statement.start,statement.end)}\n});` + service.slice(statement.end);
+  service = service.slice(0,statement.start) + `await captureOriginBatch(this, events, () => {\n${service.slice(statement.start,statement.end)}\n}, jrcOriginSocket);` + service.slice(statement.end);
+  const handler='  private eventHandler() {';
+  if(service.split(handler).length!==2)throw Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
+  service=service.replace(handler,`${handler}\n    const jrcOriginSocket=bindOriginEngineSocket(this);`);
   const client = '  private async createClient(number?: string): Promise<WASocket> {';
   if (service.split(client).length !== 2) throw new Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
   service = service.replace(client, `${client}\n    await awaitOriginEngineReady(this);`);
-  sources[servicePath] = `import { awaitOriginEngineReady, captureOriginBatch } from '@jrc-origin/engine-host.mjs';\n${service}`;
+  const auth = '    this.instance.authState = await this.defineAuthState();';
+  if(service.split(auth).length!==2)throw Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
+  service=service.replace(auth,`${auth}\n    await prepareOriginEngineSocket(this);`);
+  sources[servicePath] = `import { awaitOriginEngineReady, prepareOriginEngineSocket, captureOriginBatch, bindOriginEngineSocket } from '@jrc-origin/engine-host.mjs';\n${service}`;
+  const monitorPath='src/api/services/monitor.service.ts',remove='        delete this.waInstances[instanceName];';
+  if(sources[monitorPath].split(remove).length!==2)throw Error('ORIGIN_ENGINE_SOURCE_MISMATCH');
+  sources[monitorPath]=`import {retireOriginEngineInstance} from '@jrc-origin/engine-host.mjs';\n`+
+    sources[monitorPath].replace(remove,`        await retireOriginEngineInstance(this.waInstances[instanceName]);\n${remove}`);
   const factoryPath = 'src/api/integrations/channel/channel.controller.ts';
   let factory = sources[factoryPath];
   const returns = nodes(ast(factory), n => n.type === 'ReturnStatement' && n.argument?.type === 'NewExpression' && n.argument.callee?.name === 'BaileysStartupService');

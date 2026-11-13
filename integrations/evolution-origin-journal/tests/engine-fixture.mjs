@@ -13,8 +13,10 @@ export async function compileEngineFixture({ endpoint, globalEndpoint, onLegacyH
   for (const path of Object.keys(ENGINE_SOURCE_HASHES)) originals[path] = await readFile(new URL(`../../../upstream/evolution-api/${path}`,import.meta.url),'utf8');
   const apiPath = 'src/api/controllers/instance.controller.ts';
   originals[apiPath] ??= await readFile(new URL(`../../../upstream/evolution-api/${apiPath}`,import.meta.url),'utf8');
+  const monitorPath='src/api/services/monitor.service.ts';
+  originals[monitorPath]??=await readFile(new URL(`../../../upstream/evolution-api/${monitorPath}`,import.meta.url),'utf8');
   const prepared = preparePinnedEngineSources(originals), codes = {};
-  for (const [path,source] of Object.entries({[apiPath]:originals[apiPath],...prepared.sources})) codes[path] = (await transform(source,{loader:'ts',format:'cjs',target:'node24',sourcefile:path,tsconfigRaw:{compilerOptions:{useDefineForClassFields:false,experimentalDecorators:true}}})).code;
+  for (const [path,source] of Object.entries({[apiPath]:originals[apiPath],[monitorPath]:originals[monitorPath],...prepared.sources})) codes[path] = (await transform(source,{loader:'ts',format:'cjs',target:'node24',sourcefile:path,tsconfigRaw:{compilerOptions:{useDefineForClassFields:false,experimentalDecorators:true}}})).code;
   const calls = [], errors = [], server = { chatbotController: { emit: async () => {} } }, monitor = { waInstances: {} }, pendingFanouts = new Set();
   const config = { get(name) {
     if (name === 'LOG') return { BAILEYS: 'silent', LEVEL: [] };
@@ -94,10 +96,17 @@ export async function compileEngineFixture({ endpoint, globalEndpoint, onLegacyH
       // Match the pinned source: sendDataWebhook is fire-and-forget here.
       for(const message of payload.messages){legacyPasses++;const pending=instance.sendDataWebhook(types.Events.MESSAGES_UPSERT,instance.prepareMessage(message));pendingFanouts.add(pending);pending.then(()=>pendingFanouts.delete(pending),()=>pendingFanouts.delete(pending));}
     };
-    instance.eventHandler();
-    return { instance, async emit(events){await callback(events);await instance.eventProcessingQueue;}, get legacyPasses(){return legacyPasses;} };
+    let registered=false;
+    return { instance,registerCallback(){instance.eventHandler();registered=true;const selected=callback;return async events=>{await selected(events);await instance.eventProcessingQueue;};},
+      async emit(events){if(!registered){instance.eventHandler();registered=true;}await callback(events);await instance.eventProcessingQueue;}, get legacyPasses(){return legacyPasses;} };
   }
   // Observer only: tests may wait explicitly; the source handler never awaits it.
   async function drainFanouts(){while(pendingFanouts.size)await Promise.all([...pendingFanouts]);}
-  return { create,createThroughApi,calls,errors,originals,prepared,codes,manager,drainFanouts };
+  async function remove(instanceName){
+    const listeners=new Map(),{WAMonitoringService}=load(monitorPath);
+    WAMonitoringService.prototype.removeInstance.call({...monitor,eventEmitter:{on:(event,fn)=>listeners.set(event,fn)},
+      clearDelInstanceTime(){},cleaningUp(){},cleaningStoreData(){},logger:{warn(){},error(){}}});
+    await listeners.get('remove.instance')(instanceName);
+  }
+  return { create,createThroughApi,remove,calls,errors,originals,prepared,codes,manager,drainFanouts };
 }
