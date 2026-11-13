@@ -1,0 +1,62 @@
+{
+  "captured_on": "2026-11-13",
+  "project_id": "broker",
+  "project_name": "Broker JRC",
+  "nature": "Brownfield",
+  "scope": "application",
+  "source_branch": "codex/whatsapp-history-sync-20261111",
+  "source_head": "f8e730efd7435d77232f6c6a58a64c91ff00859b",
+  "origin": "https://github.com/ClaudioHideki/BrokerJRCIA.git",
+  "stack_description": "TypeScript, Node.js, Fastify, React/Vite, PostgreSQL, Redis, Evolution/Baileys e armazenamento compatível com S3.",
+  "application_runtime_verified": false,
+  "deployment_verified": false,
+  "sources": [
+    {
+      "path": "AGENTS.md",
+      "kind": "file",
+      "sha256": "cf60383a9a794b4f600868052fb3ec6359bcac2f517a241fdb13b9395365cc32"
+    },
+    {
+      "path": "README.md",
+      "kind": "file",
+      "sha256": "94f89c1ad3342423171a18dde74a10c1b5619b438860822286b542fcf1965352"
+    },
+    {
+      "path": "CONTINUE-AQUI.md",
+      "kind": "file",
+      "sha256": "ad9d84e3b8db89204de8f673d64872cf5066900391e5823fba9ace47eadd7d03"
+    },
+    {
+      "path": "package.json",
+      "kind": "file",
+      "sha256": "b7e52ad253aac62a4fba387808325be8b9ad11d747df8eda1c8f09035cceaccd"
+    },
+    {
+      "path": "apps/api/src/modules",
+      "kind": "directory"
+    },
+    {
+      "path": "apps/web/src",
+      "kind": "directory"
+    },
+    {
+      "path": "infra/dokploy/compose.yaml",
+      "kind": "file",
+      "sha256": "304c52e00aeb02421c1bcf28a929b1a7f1a7b89f3cef8ca41927bb5e7ba10f7f"
+    },
+    {
+      "path": "docs/implementation/history-operational-host-20261112.md",
+      "kind": "file",
+      "sha256": "9ec54a72e6b0d751a72274a6c385c9bb028ef3b31d3c10227ef8f27eba56f8bc"
+    }
+  ],
+  "declared_versions": {
+    "node_declared": "24.19.0",
+    "node_nvmrc": "24.19.0",
+    "name": "@jrc/whatsapp-broker",
+    "version": "0.0.0",
+    "engines": {
+      "node": "24.19.0"
+    }
+  }
+}
