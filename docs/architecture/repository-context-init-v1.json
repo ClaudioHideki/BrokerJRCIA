@@ -1,0 +1,48 @@
+{
+  "captured_on": "2026-11-13",
+  "project_id": "broker-flow-lab",
+  "project_name": "Broker JRC — Flow por caixa LAB",
+  "nature": "Brownfield",
+  "scope": "application",
+  "source_branch": "codex/flow-por-caixa-20261109",
+  "source_head": "dd34c7f05c41f8ced49cebf0bb6a56743ff99fbf",
+  "origin": "https://github.com/ClaudioHideki/BrokerJRCIA.git",
+  "stack_description": "TypeScript, Fastify, React, PostgreSQL, Redis e Evolution/Baileys.",
+  "application_runtime_verified": false,
+  "deployment_verified": false,
+  "sources": [
+    {
+      "path": "AGENTS.md",
+      "kind": "file",
+      "sha256": "cf60383a9a794b4f600868052fb3ec6359bcac2f517a241fdb13b9395365cc32"
+    },
+    {
+      "path": "README.md",
+      "kind": "file",
+      "sha256": "94f89c1ad3342423171a18dde74a10c1b5619b438860822286b542fcf1965352"
+    },
+    {
+      "path": "CONTINUE-AQUI.md",
+      "kind": "file",
+      "sha256": "3740f75ba7125929423765c46de781c103a2fa495522f0f85378341c43ebd327"
+    },
+    {
+      "path": "package.json",
+      "kind": "file",
+      "sha256": "b45114e366cba28f9e99781f1ba917acb152755e4db4f5898d28dc4b32af8ee0"
+    },
+    {
+      "path": "apps/api/src/modules",
+      "kind": "directory"
+    }
+  ],
+  "declared_versions": {
+    "node_declared": "24.19.0",
+    "node_nvmrc": "24.19.0",
+    "name": "@jrc/whatsapp-broker",
+    "version": "0.0.0",
+    "engines": {
+      "node": "24.19.0"
+    }
+  }
+}
