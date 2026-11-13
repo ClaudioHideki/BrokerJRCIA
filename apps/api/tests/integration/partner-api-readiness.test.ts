@@ -7,7 +7,7 @@ beforeAll(async () => { db = await attendanceDatabase(); }, 60_000);
 afterAll(async () => { await db?.dispose(); });
 
 it('accepts the fully migrated partner API under the actual app role', async () => {
-  expect(RUNTIME_SCHEMA_BASELINE).toBe('0086_automation_box_routing');
+  expect(RUNTIME_SCHEMA_BASELINE).toBe('0094_history_lifecycle_compatibility');
   const client = await db.database.pool.connect();
   try {
     await client.query('BEGIN');

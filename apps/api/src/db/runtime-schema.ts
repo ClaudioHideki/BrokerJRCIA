@@ -18,7 +18,7 @@ import {centralMediaRuntimeSql} from './central-media-runtime-schema.js';
 import {guidedSetupRuntimeSql} from './guided-setup-runtime-schema.js';
 import {boxRoutingRuntimeSql} from './box-routing-runtime-schema.js';
 import {historySyncRuntimeSql} from './history-sync-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0093_group_media_facts';
+export const RUNTIME_SCHEMA_BASELINE = '0094_history_lifecycle_compatibility';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
@@ -455,7 +455,7 @@ export async function probeRequiredRuntimeSchema(query: SchemaProbeQuery): Promi
   // calls while parsing, including calls in an unreachable CASE branch. Only
   // parse these calls after both functions' existence, owner and ACL pass above.
   try {
-    const catalogue = await query('SELECT public.partner_event_catalogue_ready() AND public.campaign_catalogue_ready() AND public.audit_corrections_catalogue_ready() AS ready');
+    const catalogue = await query('SELECT public.partner_event_catalogue_ready() AND public.campaign_catalogue_ready() AND public.audit_corrections_catalogue_ready() AND public.history_source_lifecycle_ready() AS ready');
     return catalogue.rows[0]?.ready === true;
   } catch(error) {
     // A concurrent schema change can remove a checked function between queries.

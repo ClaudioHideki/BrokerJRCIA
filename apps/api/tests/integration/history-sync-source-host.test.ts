@@ -22,6 +22,7 @@ import {deriveHistoryMediaKeys} from '../../../../integrations/evolution-origin-
 import {createHistoryConnectionAdmission} from '../../src/modules/history-sync/connection-admission.js';
 import {createChatwootControlAuth} from '../../src/modules/integrations/chatwoot-control-auth.js';
 import {projectLiveBatch} from '../../../../integrations/evolution-origin-journal/src/live-projection.mjs';
+import {createLifecycleService,withLifecyclePlatformTransaction,withLifecycleWorkerTransaction} from '../../src/modules/lifecycle/service.js';
 
 let db:Awaited<ReturnType<typeof attendanceDatabase>>,source:Pool;
 const role='jrc_origin_t_'+randomUUID().replaceAll('-','').slice(0,12);
@@ -55,6 +56,41 @@ async function setup(){
   const open=async()=>((await source.query('SELECT history_source_open($1,$2,$3) AS admission',[instanceKey,native,sessionFingerprint])).rows[0].admission);
   return{...t,instance,instanceKey,actor,request,engine,native,sessionFingerprint,enable,open};
 }
+
+it('removes both sealed journal scopes only through explicit company deletion and preserves another tenant',async()=>{
+  const target=await setup(),other=await setup();
+  const admissions=[];
+  for(const f of [target,other]){
+    await f.enable();const a=await f.open();admissions.push(a);
+    for(const key of [a.historyScopeKey,a.liveScopeKey]){
+      const capture=randomUUID();
+      await db.database.pool.query(`INSERT INTO jrc_evolution_origin.history_batches(scope_key,capture_id,organization_id,run_id,checksum)
+       VALUES($1,$2,$3,$4,$5)`,[key,capture,f.org,a.runId,'a'.repeat(64)]);
+      await db.database.pool.query(`INSERT INTO jrc_evolution_origin.history_media
+       (scope_key,run_id,capture_id,reference_id,descriptor_hash,descriptor_bytes,descriptor_ciphertext,descriptor_iv,descriptor_tag,state,persisted_at)
+       VALUES($1,$2,$3,$4,$5,1,$6,$7,$8,'READY',clock_timestamp())`,
+       [key,a.runId,capture,randomUUID(),'b'.repeat(64),Buffer.alloc(1),Buffer.alloc(12),Buffer.alloc(16)]);
+    }
+  }
+  const actor=randomUUID();
+  await db.database.pool.query(`INSERT INTO platform_users(id,email,password_hash,role,mfa_seed)
+   VALUES($1,$2,'no-login','SUPER_ADMIN','no-login')`,[actor,actor+'@example.test']);
+  const platform=new Pool({connectionString:connectionStringForRole(db.database.connectionString,'jrc_platform'),max:1});
+  const worker=new Pool({connectionString:connectionStringForRole(db.database.connectionString,'jrc_lifecycle'),max:1});
+  try{
+    const service=createLifecycleService({transact:work=>withLifecyclePlatformTransaction(platform,work),deprovision:async()=>{}});
+    const processor=createLifecycleService({transact:work=>withLifecycleWorkerTransaction(worker,work),deprovision:async()=>{}});
+    const request=await service.requestOrganization(target.org,'Attendance','Synthetic explicitly confirmed deletion',actor);
+    await processor.processOne();
+    expect(await service.status(target.org,target.org,request.operationId)).toMatchObject({status:'COMPLETED',errorCode:null});
+    expect((await db.database.pool.query(`SELECT organization_id,count(*)::int n FROM jrc_evolution_origin.history_batches
+     WHERE organization_id=ANY($1::uuid[]) GROUP BY organization_id`,[[target.org,other.org]])).rows)
+     .toEqual([{organization_id:other.org,n:2}]);
+    expect((await db.database.pool.query(`SELECT scope_key FROM jrc_evolution_origin.history_media
+     WHERE scope_key=ANY($1::text[]) ORDER BY scope_key`,[admissions.flatMap(a=>[a.historyScopeKey,a.liveScopeKey])])).rows.map(row=>row.scope_key))
+     .toEqual([admissions[1].historyScopeKey,admissions[1].liveScopeKey].sort());
+  }finally{await platform.end();await worker.end();}
+});
 
 it('does not capture existing/unadmitted connections, then admits an authorized connection exactly once',async()=>{
   const f=await setup();

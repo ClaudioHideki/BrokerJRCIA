@@ -405,7 +405,8 @@ describe('migrations PostgreSQL', () => {
     const lifecycleManaged=catalogue.filter(table=>!['support_tickets','support_messages',
       'commercial_plans','commercial_plan_versions','organization_commercial_plans',
       'evolution_instance_bindings','evolution_io_leases','evolution_io_backoff',
-      'automation_box_profile_heads','automation_box_profile_versions'].includes(table)).length+1;
+      'automation_box_profile_heads','automation_box_profile_versions',
+      'history_source_sessions','history_sync_connection_policies'].includes(table)).length+1;
     const result = await database.pool.query<{
       policyname: string;
       roles: string[];
@@ -467,6 +468,13 @@ describe('migrations PostgreSQL', () => {
       ...Array.from({length:2},()=>({policyname:'box_profile_migrator',roles:['jrc_migrator'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'box_profile_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'guided_setup_tenant',roles:['jrc_app'],cmd:'ALL'},
+      {policyname:'history_origin_roles_migrator',roles:['jrc_migrator'],cmd:'ALL'},
+      {policyname:'history_policy_migrator',roles:['jrc_migrator'],cmd:'ALL'},
+      {policyname:'history_policy_tenant',roles:['jrc_app'],cmd:'ALL'},
+      {policyname:'history_source_migrator',roles:['jrc_migrator'],cmd:'ALL'},
+      {policyname:'history_source_poll',roles:['jrc_app'],cmd:'UPDATE'},
+      {policyname:'history_source_tenant',roles:['jrc_app'],cmd:'SELECT'},
+      ...Array.from({length:11},()=>({policyname:'history_sync_tenant',roles:['jrc_app'],cmd:'ALL'})),
       ...Array.from({length:2},()=>({policyname:'operational_tenant',roles:['jrc_app'],cmd:'ALL'})),
       {policyname:'legacy_flow_discovery',roles:['jrc_migrator'],cmd:'SELECT'},
       {policyname:'lifecycle_catalogue_migrator',roles:['jrc_migrator'],cmd:'ALL'},

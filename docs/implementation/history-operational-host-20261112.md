@@ -1,5 +1,13 @@
 # Host de origem, admissão e convergência — 12/11/2026
 
+## Correção da compatibilidade composta após CI completa
+
+A CI de `1eef1e2` passou os 4354 testes regulares mais os 9 testes PDF, mas encontrou 67 falhas na integração ampla. A decomposição nativa do probe isolou a checagem consolidada: ela ainda exigia a forma pré-0090 da constraint de upload. A forma atual preserva a validação original de parceiro e admite a validação adicional de histórico; a checagem foi reconciliada sem retirar nenhum ramo. Os quatro fixtures de baseline foram atualizados para a versão atual, preservando todos os cenários negativos.
+
+As falhas de expurgo mostraram a falta de duas tabelas no catálogo obrigatório. A nova migration **0094_history_lifecycle_compatibility**, sem reescrever 0091–0093, registra `history_source_sessions` e `history_sync_connection_policies`. Um novo teste com dois tenants também reproduziu o journal órfão no caminho separado de exclusão de empresa. A correção limpa os dois escopos selados no expurgo de canal e o journal privado da empresa antes de apagar as referências públicas. Só atua no fluxo preexistente de exclusão definitiva explicitamente autorizada; não altera KEEP, remoção com histórico preservado, timers ou boot.
+
+O gate somente leitura verifica o catálogo, os escopos de limpeza e o caminho de empresa, além do owner/ACL da função. Retirar uma entrada do catálogo volta a bloquear a prontidão. RED inicial: 2/10 falhas; teste adicional reproduziu bytes órfãos; GREEN posterior: **59 testes/3 arquivos PostgreSQL**, incluindo exclusão real apenas de registros sintéticos e preservação do segundo tenant. Uma segunda revisão independente não identificou P1/P2 nesses trechos; não substitui CI integral ou homologação produtiva.
+
 Incremento sobre Broker `6522938097781d099e46f594eefc51e9149e783c`, branch `codex/whatsapp-history-sync-20261111`. LAB2 consolidado com A–G `cad427d400d824fc1fdc06c1c1079f324e7f3f6c` e runtime/Scout `d11c879a3d6e27499e1aea45736797a6e913b829`. Mains reconferidas e preservadas: Broker `29095bea35702893e1a5b80f5131bdd13b901a7e`, LAB2 `d8a83b824b11cc68ddbbce7c79681f368051fb70`.
 
 ## Implementação

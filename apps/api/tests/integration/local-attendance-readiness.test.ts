@@ -5,7 +5,7 @@ let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();},60000);
 afterAll(async()=>{await db?.dispose();});
 it('requires the directory baseline and reports a complete migration as ready',async()=>{
- expect(RUNTIME_SCHEMA_BASELINE).toBe('0086_automation_box_routing');
+ expect(RUNTIME_SCHEMA_BASELINE).toBe('0094_history_lifecycle_compatibility');
  expect(await probeRequiredRuntimeSchema(sql=>db.database.pool.query(sql))).toBe(true);
 });
 it.each([

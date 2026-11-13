@@ -25,6 +25,7 @@ AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.
  AND pg_catalog.pg_get_constraintdef(c.oid) LIKE '%fileName%')
 AND NOT EXISTS(SELECT 1 FROM (VALUES
  ('public.history_source_open(text,uuid,text)',false,true),('public.history_origin_host_identity()',false,true),
+ ('public.history_source_lifecycle_ready()',true,false),
  ('public.history_register_origin_engine(text,text,bigint,text)',false,false),
  ('public.history_source_assert(uuid)',true,true),('public.history_source_bind_owner(uuid,jsonb)',false,true),
  ('public.history_source_owner(uuid)',false,true),('public.history_sync_enable_connection(uuid,uuid,uuid,uuid,jsonb,uuid)',true,false),

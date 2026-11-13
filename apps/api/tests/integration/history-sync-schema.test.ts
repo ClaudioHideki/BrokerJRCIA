@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { attendanceDatabase, seedAttendanceTenant } from './helpers/attendance.js';
 import { historySyncRuntimeSql } from '../../src/db/history-sync-runtime-schema.js';
+import { probeRequiredRuntimeSchema } from '../../src/db/runtime-schema.js';
 
 let db: Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async () => { db = await attendanceDatabase(); }, 180000);
@@ -11,9 +12,21 @@ it('admits the migrated private schema and refuses a missing immutable admission
   const client=await db.database.pool.connect();
   try {
     expect((await client.query(`SELECT (${historySyncRuntimeSql}) AS ready`)).rows[0].ready).toBe(true);
+    expect(await probeRequiredRuntimeSchema(sql=>client.query(sql))).toBe(true);
     await client.query('BEGIN');
     await client.query('ALTER TABLE history_sync_chunks DROP COLUMN admission_kind');
     expect((await client.query(`SELECT (${historySyncRuntimeSql}) AS ready`)).rows[0].ready).toBe(false);
+  } finally {await client.query('ROLLBACK');client.release();}
+});
+it('requires source policy and session tables in the existing explicit tenant purge inventory',async()=>{
+  const tables=(await db.database.pool.query<{table_name:string}>(`SELECT table_name FROM lifecycle_purge_catalogue
+    WHERE table_name IN ('history_source_sessions','history_sync_connection_policies') ORDER BY table_name`)).rows;
+  expect(tables.map(row=>row.table_name)).toEqual(['history_source_sessions','history_sync_connection_policies']);
+  const client=await db.database.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("DELETE FROM lifecycle_purge_catalogue WHERE table_name='history_source_sessions'");
+    expect(await probeRequiredRuntimeSchema(sql=>client.query(sql))).toBe(false);
   } finally {await client.query('ROLLBACK');client.release();}
 });
 it('refuses the catalogue schema if its peer identity guard is disabled',async()=>{

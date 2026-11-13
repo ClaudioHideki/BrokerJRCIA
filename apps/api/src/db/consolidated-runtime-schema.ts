@@ -34,7 +34,7 @@ export const consolidatedRuntimeSql=`
  AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conrelid=pg_catalog.to_regclass('public.messaging_media')
   AND c.conname='messaging_media_upload_identity' AND c.contype='c' AND c.convalidated
   AND regexp_replace(pg_catalog.pg_get_expr(c.conbin,c.conrelid),'[[:space:]()]','','g')
-   ='source<>''UPLOAD''::textORpartner_media_upload_identity_validdescriptor,source_key')
+   ='source<>''UPLOAD''::textORpartner_media_upload_identity_validdescriptor,source_keyORhistory_media_upload_identity_validdescriptor,source_key,id')
  AND EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.oid=pg_catalog.to_regprocedure('public.partner_media_upload_identity_valid(jsonb,text)')
   AND NOT p.prosecdef AND p.provolatile='i' AND pg_catalog.pg_get_userbyid(p.proowner)='jrc_migrator'
   AND p.proconfig @> ARRAY['search_path=pg_catalog, public']::text[]

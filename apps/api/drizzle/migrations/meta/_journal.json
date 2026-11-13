@@ -652,6 +652,13 @@
       "when": 1794782400009,
       "tag": "0093_group_media_facts",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1794782400010,
+      "tag": "0094_history_lifecycle_compatibility",
+      "breakpoints": true
     }
   ]
 }

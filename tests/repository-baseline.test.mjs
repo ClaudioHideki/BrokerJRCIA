@@ -17,7 +17,7 @@ describe('repository baseline', () => {
       .filter((name) => /manifest.*sha256|sha256.*manifest/iu.test(name))
       .sort();
 
-    expect(migrations.slice(-51)).toEqual([
+    expect(migrations.slice(-52)).toEqual([
       '0043_user_password_reset.sql',
       '0044_attendance_resume_operations.sql',
       '0045_local_attendance_directory.sql',
@@ -69,6 +69,7 @@ describe('repository baseline', () => {
       '0091_history_source_authority.sql',
       '0092_history_source_journal.sql',
       '0093_group_media_facts.sql',
+      '0094_history_lifecycle_compatibility.sql',
     ]);
     expect(rootManifests).toEqual(['MANIFESTO_ARQUIVOS_SHA256.txt']);
   });
