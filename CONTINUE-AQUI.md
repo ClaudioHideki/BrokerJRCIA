@@ -1,3 +1,15 @@
+# Preparação de release autorizada — 14/11/2026
+
+Base preservada `9199b9aa` (funcional `f8e730e`); main remota reconferida `29095bea`. CI43593190599 aprovada para a base, não para as alterações posteriores. O usuário autorizou atualizar main e produção dos dois produtos; nenhuma alteração produtiva foi executada neste checkpoint.
+
+A revisão reproduziu um P2: a ingestão reutilizava texto já importado por histórico, mas o ACK V2 exigia observação/fato live que esse caminho não cria. Correção estreita em `origin-receipt.ts`: exigir o mesmo recibo histórico imutável, com escopo e hash, antes do ACK TEXT V2. V1 e mídia preservados. Regressão unitária:7 falhas/1 aprovação RED,8/8 GREEN, incluindo hashes divergentes; typecheck aprovado. Quatro regressões PostgreSQL acrescentadas em `history-sync-writer.test.ts` para entrada/saída individual/grupo e reconexão do mesmo dono; execução real depende do gate isolado, não é provada pelo teste unitário.
+
+Migrations0087–0094 permanecem aditivas e inalteradas neste incremento. Após0090, o binário da main antiga não passa o probe de schema: planejar troca coordenada migrate/binário e eventual reversão somente para uma imagem comprovadamente compatível. Nunca executar DOWN, exclusão de registros ou replay para compensar uma falha de release. Captura V2 continua default off/UNPROVEN; deploy não autoriza ativá-la.
+
+Fechamento local:4362/4362 testes regulares em573 arquivos, mais9/9 testes PDF em2 arquivos, sem falhas; backup/recovery explicitamente excluídos. Typecheck aprovado; revisão da correção confirmou4/4 ACKs e11 recusas negativas estreitas. Esses testes não substituem PostgreSQL: exigir integração PG/Redis/MinIO/origem, CI e imagem do novo SHA antes da main. Conferir o runtime real antes de aplicar. Dokploy e Computer Use falharam na inicialização com os error3; recuperação do acesso solicitada. Backup/dump/restore, sessões e dados reais permanecem preservados.
+
+---
+
 # Continuação operacional — 12/11/2026
 
 Fechamento da fixture E2E: a recarga de classes Rails descartava a escolha S3 atribuída somente à classe Blob e voltava ao disco local. A configuração explícita do serviço foi preservada também no initializer descartável versionado, sem alterar storage de produto. Os dois E2Es voltaram a passar (host59,11s; histórico94,98s), mais lote sintético10001/101 páginas183,88s. API/web01407daf publicadas/assinadas, CI43347776029 verde; este follow-up deve receber sua própria CI/imagem antes da publicação final. LAB2A–G0606d0ff continua na matriz nativa; conexões600Rails/397UI/14navegador e frontend2495 verdes. Dokploy novamente falhou antes do acesso; nenhuma implantação ou captura produtiva.

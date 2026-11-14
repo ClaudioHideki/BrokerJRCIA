@@ -344,6 +344,34 @@ for(const fromMe of [false,true])it(`converges verified live ${fromMe?'outgoing'
   expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_messages WHERE channel_id=$1',[f.t.channel])).rows[0].n).toBe(1);
 });
 
+for(const group of [false,true])for(const fromMe of [false,true])it(`acknowledges history-first text after same-owner reconnect without duplicating live effects (group=${group},outgoing=${fromMe})`,async()=>{
+ const f=await fixture(),run=await f.admit(),groupJid='100-200@g.us',providerMessageId='synthetic-reverse-text';
+ if(group)await db.database.pool.query(`INSERT INTO whatsapp_group_catalogs(organization_id,channel_id,identity_fingerprint,catalog_revision,snapshot_id,observed_at,valid_until)
+  VALUES($1,$2,$3,1,$4,$5,$6)`,[f.t.org,f.t.channel,'e'.repeat(64),randomUUID(),now,new Date(now.getTime()+3600000)]);
+ const fact={...text,kind:'MESSAGE',recipientKind:group?'GROUP':'INDIVIDUAL',chatJid:group?groupJid:jid,fromMe,
+  participantJid:group&&!fromMe?'123456789@lid':null,providerMessageId} as Extract<HistorySyncRecord,{kind:'MESSAGE'}>;
+ await f.store.acceptChunk(f.scope,run.id,f.chunk([fact]),now);
+ expect(await f.store.persistNext(f.scope,run.id,now)).toMatchObject({created:1});
+ const next={...f.scope,identityScopeId:randomUUID(),sessionGeneration:randomUUID()};await f.admit(next);
+ await db.database.pool.query('UPDATE qr_identity_scopes SET scope_id=$2 WHERE channel_id=$1',[f.t.channel,next.identityScopeId]);
+ if(group)await db.database.pool.query('UPDATE whatsapp_group_catalogs SET identity_revision=2 WHERE channel_id=$1',[f.t.channel]);
+ const [event]=normalizeQrEvent({event:'messages.upsert',instance:f.scope.instanceId,data:{key:{id:providerMessageId,remoteJid:group?groupJid:jid,fromMe,
+  ...(group&&!fromMe?{participant:'123456789@lid'}:{})},messageTimestamp:1600000000,message:{conversation:'Synthetic historical fact'}}},f.scope.instanceId);
+ if(!event||!['message','outbound','group-text'].includes(event.kind))throw Error('Expected synthetic text event');
+ const runtime=createGroupAutomationRuntime({transact:db.transact,encryptionKey:Buffer.alloc(32,75).toString('base64'),configurationScope:'synthetic',
+  readIdentity:async()=>({connected:true,phone:null,groupsIgnore:false}),sendText:async()=>{throw Error('No synthetic sends');}});
+ await db.transact(f.t.org,async tx=>{
+  if(event.kind==='group-text')await runtime.ingestWithinTransaction(tx,f.t.org,f.t.channel,event);
+  else await persistQrContactEvent(tx,(await createPostgresMessagingRepository().findChannel(tx,f.t.org,f.t.channel))!,event as Parameters<typeof persistQrContactEvent>[2]);
+  await assertOriginFactPersisted(tx,{organizationId:f.t.org,channelId:f.t.channel},event as Parameters<typeof assertOriginFactPersisted>[2],2);
+ });
+ expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_messages WHERE channel_id=$1',[f.t.channel])).rows[0].n).toBe(1);
+ expect((await db.database.pool.query('SELECT count(*)::int n FROM history_sync_receipts WHERE channel_id=$1',[f.t.channel])).rows[0].n).toBe(1);
+ expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_bot_jobs WHERE organization_id=$1',[f.t.org])).rows[0].n).toBe(0);
+ expect((await db.database.pool.query('SELECT count(*)::int n FROM qr_outbound_observations WHERE channel_id=$1',[f.t.channel])).rows[0].n).toBe(0);
+ expect((await db.database.pool.query('SELECT count(*)::int n FROM whatsapp_group_transport_facts WHERE channel_id=$1',[f.t.channel])).rows[0].n).toBe(0);
+});
+
 for(const group of [false,true])for(const fromMe of [false,true])it(`reuses history-first media before ACK even after reconnect (group=${group},outgoing=${fromMe})`,async()=>{
  const f=await fixture(),run=await f.admit(),bytes=Buffer.from('Synthetic reverse media'),providerMessageId='synthetic-reverse-media',groupJid='100-200@g.us';
  if(group)await db.database.pool.query(`INSERT INTO whatsapp_group_catalogs(organization_id,channel_id,identity_fingerprint,catalog_revision,snapshot_id,observed_at,valid_until)

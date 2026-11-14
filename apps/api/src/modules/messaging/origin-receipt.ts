@@ -73,12 +73,22 @@ export async function assertOriginFactPersisted(tx:TenantTransaction,scope:{orga
 
 async function assertV2FactPersisted(tx:TenantTransaction,scope:{organizationId:string;channelId:string},
  event:QrContactEvent|Extract<QrEvent,{kind:'group-text'|'group-media'}>):Promise<void>{
+ const group=event.kind==='group-text'||event.kind==='group-media',outgoing=group?event.fromMe:event.kind==='outbound'||event.kind==='outbound-media';
+ if('content' in event&&event.content.type==='TEXT'){
+  // History-first duplicates have a canonical message and receipt, but no
+  // separate live observation. Require the same scoped immutable proof that
+  // caused ingress to reuse that message before acknowledging the journal.
+  const fact={kind:'MESSAGE' as const,recipientKind:group?'GROUP' as const:'INDIVIDUAL' as const,
+   chatJid:group?event.groupJid:`${event.externalId}@s.whatsapp.net`,providerMessageId:event.upstreamMessageId,
+   fromMe:outgoing,participantJid:group?event.participantJid:null,displayName:null,
+   messageTimestamp:Math.floor(event.occurredAt.getTime()/1000),content:event.content,state:'DELIVERED' as const};
+  if(await reuseHistoryForLive(tx,scope.organizationId,scope.channelId,fact))return;
+ }
  if('media'in event){
   const qr=(await tx.query<{id:string}>(`SELECT id FROM messaging_media WHERE organization_id=$1 AND channel_id=$2 AND source='QR' AND source_key=$3`,
    [scope.organizationId,scope.channelId,event.media.sourceKey])).rows[0];
   if(qr&&await reuseHistoryForLive(tx,scope.organizationId,scope.channelId,qrLiveMediaFact(event),qr.id))return;
  }
- const group=event.kind==='group-text'||event.kind==='group-media',outgoing=group?event.fromMe:event.kind==='outbound'||event.kind==='outbound-media';
  const values=[scope.organizationId,scope.channelId,event.upstreamMessageId];
  const row=(await tx.query<{content:MessageContent;peer:string;occurred_at:Date;direction:string;participant_jid?:string|null}>(group
   ? `SELECT f.content,f.group_jid AS peer,f.occurred_at,CASE WHEN f.from_me THEN 'OUTGOING' ELSE 'INCOMING' END AS direction,f.participant_jid
