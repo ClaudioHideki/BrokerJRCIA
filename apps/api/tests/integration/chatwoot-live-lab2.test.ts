@@ -210,18 +210,18 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('recovers native LIVE receipts 
    await db.database.pool.query("INSERT INTO chatwoot_connections(id,organization_id,channel_id,inbox_id,name,status) VALUES($1,$2,$3,$4,'Synthetic native','READY')",[t.integration,t.org,t.channel,consumer.inboxId]);
    await db.database.pool.query('INSERT INTO chatwoot_conversations(organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id) VALUES($1,$2,$3,$4,$5,$6)',
     [t.org,t.integration,t.conversation,contactId,linked.source_id,remote.id]);
-   const entries:({type:'TEXT';text:string}|{type:'MEDIA';mediaId:string;caption:string;sourceKey:string})[]=[{type:'TEXT',text:'Olá, sincronização 🙂'}];
+   const entries:({type:'TEXT';text:string}|{type:'MEDIA';mediaId:string;kind:'image'|'audio'|'document';fileName:string;caption:string;sourceKey:string})[]=[{type:'TEXT',text:'Olá, sincronização 🙂'}];
    for(const fixture of [{file:'sample.png',mime:'image/png',kind:'image' as const},{file:'sample.ogg',mime:'audio/ogg',kind:'audio' as const},{file:'sample.pdf',mime:'application/pdf',kind:'document' as const}]){
     const sourceKey=`synthetic-native-${randomUUID()}`,bytes=readFileSync(join(process.env.HISTORY_LAB2_CHECKOUT!,'spec/assets',fixture.file));
     const fileName=fixture.kind==='document'?'界'.repeat(100)+'.pdf':fixture.file;
     downloads.set(sourceKey,{bytes,mimeType:fixture.mime,kind:fixture.kind,fileName});
     const mediaId=await db.transact(t.org,tx=>registerPendingMedia(tx,t.org,t.channel,{source:'QR',sourceKey,kind:fixture.kind,fileName,descriptor:{messageId:sourceKey}}));
-    await media.runOnce(t.org);entries.push({type:'MEDIA',mediaId,caption:'Legenda íntegra 🙂',sourceKey});
+    await media.runOnce(t.org);entries.push({type:'MEDIA',mediaId,kind:fixture.kind,fileName,caption:'Legenda íntegra 🙂',sourceKey});
    }
    for(const [ordinal,content]of entries.entries()){
     const sourceAt=1_600_000_100-ordinal; // Older arrivals cannot move the current list backwards.
     const canonical=(await db.database.pool.query("INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state,created_at) VALUES($1,$2,$3,'INCOMING','CONTACT',$4::jsonb,'DELIVERED',to_timestamp($5)) RETURNING id",
-     [t.org,t.channel,t.conversation,JSON.stringify(content.type==='TEXT'?content:{type:'MEDIA',mediaId:content.mediaId,caption:content.caption}),sourceAt])).rows[0].id as string;
+     [t.org,t.channel,t.conversation,JSON.stringify(content.type==='TEXT'?content:{type:'MEDIA',mediaId:content.mediaId,kind:content.kind,fileName:content.fileName,caption:content.caption}),sourceAt])).rows[0].id as string;
     if(index===0&&ordinal===1){docker(['stop','--time','3',sidekiq]);sidekiqPaused=true;}
     await createChatwootWorker(options).runOnce(t.org);
     let row=(await db.database.pool.query('SELECT status,payload,last_error FROM integration_jobs WHERE organization_id=$1 AND message_id=$2',[t.org,canonical])).rows[0];
