@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 60
     env:
       # A branch name or main is never accepted by the laboratory entrypoint.
-      HISTORY_LAB2_SHA: ddc7bfd87cc5088cfe51a3216d95b018d3a5e933
+      HISTORY_LAB2_SHA: 1ea2f455e024d8b646733520197a8bf37b7d741d
       HISTORY_LAB2_CHECKOUT: ${{ github.workspace }}/lab2-consumer
     steps:
       - name: Prepare runner evidence directory
