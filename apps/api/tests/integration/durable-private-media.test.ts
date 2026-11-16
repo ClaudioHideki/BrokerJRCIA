@@ -512,7 +512,7 @@ it('keeps pending private media safely retriable for existing readers without mu
 it('commits expired DELETE recovery before locking its object and inspects instead of replaying', async () => {
   const t = await tenant(), media = await pending(t), h = transport(), base = core(h), staged = await base.stage(t.org, media, file);
   await base.dispatchPut(t.org, staged.objectId); const d = await organizationDeletion(t); await base.prepareCleanup(d.id, d.lease);
-  await db.database.pool.query(`UPDATE media_private_operations SET state='DISPATCHED',dispatched_at=clock_timestamp()-interval '2 minutes',
+  await lifecycle.query(`UPDATE media_private_operations SET state='DISPATCHED',dispatched_at=clock_timestamp()-interval '2 minutes',
     lease_token=$2,lease_expires_at=clock_timestamp()-interval '1 second' WHERE object_id=$1 AND kind='DELETE'`, [staged.objectId, randomUUID()]);
   const deleteId = (await operation(staged.objectId, 'DELETE')).id;
   const store = core(h, 100, { cleanupTransact: work => withLifecycleWorkerTransaction(lifecycle, async tx => {
