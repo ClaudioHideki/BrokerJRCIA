@@ -9,6 +9,9 @@ ENV['FRONTEND_URL'] = 'http://127.0.0.1:54141'
 # private service in configuration as well as on the initial Blob class.
 Rails.application.config.active_storage.service = :s3_compatible
 Rails.application.config.after_initialize do
+  # test.rb hardcodes localhost:3000 independently of FRONTEND_URL. All signed
+  # URLs in this disposable consumer must use the runner's loopback publication.
+  Rails.application.routes.default_url_options = { host: '127.0.0.1', port: 54141, protocol: 'http' }
   ActiveStorage::Blob.service = ActiveStorage::Blob.services.fetch('s3_compatible')
   ActiveJob::Base.queue_adapter = :sidekiq
   # Capture live outbound jobs in memory. This laboratory never runs an external

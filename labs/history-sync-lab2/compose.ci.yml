@@ -16,6 +16,8 @@ x-rails: &rails
     RAILS_ENV: test
     HISTORY_LAB_MODE: 'true'
     HISTORY_LAB_CI: 'true'
+    JRC_BROKER_ENABLED: 'true'
+    JRC_BROKER_ALLOWED_ORIGINS: https://synthetic.example.test
     POSTGRES_HOST: postgres
     POSTGRES_DATABASE: jrc_history_order_test
     POSTGRES_USERNAME: postgres

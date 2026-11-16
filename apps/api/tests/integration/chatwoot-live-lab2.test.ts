@@ -129,6 +129,7 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('keeps live human intents, outb
         expect(canonicalMedia).toMatchObject({id,message_type:'incoming',content_attributes:{jrc_broker_message_id:brokerMessageId}});
         expect(canonicalMedia.content?.replace(/\r\n/gu,'\n')).toBe(presentationText);
         expect(canonicalMedia.attachments).toHaveLength(1);
+        expect(new URL(String((canonicalMedia.attachments![0] as {data_url:string}).data_url)).origin).toBe(origin);
         const attachmentId=(canonicalMedia.attachments![0] as {id:number}).id;
         const downloaded=await client.downloadAttachment(consumer.accountId,consumer.inboxId,groupConversation,id,attachmentId);
         expect(createHash('sha256').update(downloaded.bytes).digest('hex')).toBe(createHash('sha256').update(bytes).digest('hex'));

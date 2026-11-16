@@ -103,6 +103,12 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('runs the admitted database hos
    const progress=(await db.database.pool.query(`SELECT s.state,s.persisted_at,m.status,m.sha256,m.byte_size FROM jrc_evolution_origin.history_media s
     JOIN messaging_media m ON m.id=s.reference_id AND m.organization_id=$2 WHERE s.run_id=$1`,[captured.admission.runId,t.org])).rows[0];
    expect(progress).toMatchObject({state:'READY',status:'READY',sha256,byte_size:bytes.length});expect(progress.persisted_at).toBeInstanceOf(Date);
+   // Broker custody is not a consumer delivery receipt. Diagnose projection
+   // before attributing an empty Minhas list to visibility rules.
+   const projected=(await db.database.pool.query('SELECT state,last_error,receipt FROM history_sync_deliveries WHERE organization_id=$1 AND run_id=$2',[t.org,captured.admission.runId])).rows;
+   if(projected.length!==2||projected.some(row=>row.state!=='DONE'))
+    throw Error(`SYNTHETIC_OPERATIONAL_PROJECTION_INCOMPLETE ${JSON.stringify(projected.map(row=>({state:row.state,error:row.last_error})))}`);
+   for(const delivery of projected)expect(delivery.receipt).toMatchObject({state:'PERSISTED',account_id:consumer.accountId,inbox_id:consumer.inboxId,organization_id:t.org,integration_id:t.integration});
    const visible=await fetch(`${origin}/api/v1/accounts/${consumer.accountId}/conversations?assignee_type=me&inbox_scope=member&status=all`,{headers:{api_access_token:consumer.agentToken}});
    expect(visible.status).toBe(200);expect((await visible.json()).data.payload).toEqual([expect.objectContaining({inbox_id:consumer.inboxId})]);
   }

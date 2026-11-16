@@ -10,6 +10,20 @@ const root=resolve('labs/history-sync-lab2');
 const bash=process.env.BASH_BIN??(process.platform==='win32'?join(homedir(),'AppData/Local/Programs/Git/bin/bash.exe'):'bash');
 const read=name=>readFileSync(join(root,name),'utf8');
 const run=(args,env={})=>spawnSync(bash,[join(root,'run-ci.sh'),...args],{encoding:'utf8',env:{...process.env,GITHUB_ACTIONS:'',RUNNER_ENVIRONMENT:'',HISTORY_LAB2_CHECKOUT:'',HISTORY_LAB2_SHA:'',...env}});
+test('disposable Rails and Sidekiq enable the Broker receiver for the synthetic origin',()=>{
+ const c=parse(read('compose.ci.yml'),{merge:true});
+ for(const name of ['rails','sidekiq']){
+  assert.equal(c.services[name].environment.RAILS_ENV,'test');
+  assert.equal(c.services[name].environment.JRC_BROKER_ENABLED,'true');
+  assert.equal(c.services[name].environment.JRC_BROKER_ALLOWED_ORIGINS,'https://synthetic.example.test');
+ }
+});
+test('signed attachment URLs use the published Rails origin after test configuration loads',()=>{
+ const source=read('rails-initializer.rb');
+ const hook=source.split('Rails.application.config.after_initialize do')[1];
+ assert.ok(hook,'fixture initialization hook required');
+ assert.match(hook,/Rails[.]application[.]routes[.]default_url_options\s*=\s*\{\s*host:\s*'127[.]0[.]0[.]1',\s*port:\s*54141,\s*protocol:\s*'http'\s*\}/);
+});
 test('Linux harness entrypoints have valid Bash syntax',()=>{for(const name of['run-ci.sh','start-ci.sh']){assert.ok(existsSync(join(root,name)),name+' missing');const r=spawnSync(bash,['-n',join(root,name)],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);}});
 test('refuses non-CI use before Docker or credential generation',()=>{const r=run(['--check']);assert.notEqual(r.status,0);assert.match(r.stderr,/GitHub-hosted CI required/);});
 test('rejects absent or mutable LAB2 revision before Docker',()=>{for(const revision of['','main','a'.repeat(39),'a'.repeat(41)]){const r=run(['--check'],{GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',HISTORY_LAB2_SHA:revision});assert.notEqual(r.status,0);assert.match(r.stderr,/exact LAB2 SHA/);}});

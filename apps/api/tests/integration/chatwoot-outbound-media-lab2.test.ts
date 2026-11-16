@@ -119,6 +119,7 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('delivers committed human PNG/O
           contentAttributes:{jrc_broker_outbound:{version:1,state:'PENDING',intent_id:original.delivery.id,integration_id:t.integration,inbox_id:consumer.inboxId}}});
         expect(original.callback.sender).toMatchObject({id:consumer.agentId,type:'user'});
         expect(original.callback.attachments).toHaveLength(1);
+        expect(new URL(String(original.callback.attachments[0].data_url)).origin).toBe(origin);
         expect(original.callback.content).toBe(caption);
         const raw=Buffer.from(JSON.stringify(original.callback)),timestamp=String(Math.floor(Date.now()/1000));
         const signature='sha256='+createHmac('sha256',secret).update(`${timestamp}.`).update(raw).digest('hex');
