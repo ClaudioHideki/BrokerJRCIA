@@ -88,7 +88,7 @@ it.each(['QR', 'META', 'CHATWOOT'] as const)('composes %s download with the curr
   expect(row).toMatchObject({ source, storage_backend: 'PRIVATE_OBJECT', status: 'READY', encrypted_data: null, byte_size: 5, lease_token: null });
   expect(await store.read(t.org, id)).toEqual(file);
   expect(h.downloads).toHaveLength(1); expect(h.downloads[0]!.lease_token).toMatch(/^[a-f0-9-]{36}$/);
-  expect(h.actions).toEqual(['PUT', 'GET']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT', 'GET']);
 });
 
 it('reconciles a private UNKNOWN after restart without downloading or putting it again', async () => {
@@ -117,7 +117,7 @@ it('gives private UNKNOWN inspection and a separate PENDING download progress in
   h.objectStore.put = async (ref, body) => { h.actions.push('PUT'); h.bytes.set(ref.operationId, new Uint8Array(body)); return { outcome: 'CONFIRMED' }; };
   await store.runOnce(t.org);
   expect((await media(a)).status).toBe('STORING'); expect((await media(b)).status).toBe('READY');
-  expect(h.actions).toEqual(['UNKNOWN_PUT', 'INSPECT', 'PUT']); expect(h.downloads).toHaveLength(2);
+  expect(h.actions).toEqual(['UNKNOWN_PUT', 'INSPECT', 'PUT', 'INSPECT']); expect(h.downloads).toHaveLength(2);
 });
 
 it('counts existing inline bytes and unknown private reservations exactly once for mixed quota', async () => {
@@ -154,7 +154,7 @@ it('reports an unavailable private backend without falling back to inline decryp
   const t = await seedAttendanceTenant(db.database, false), id = await registration(t), h = setup();
   const staged = await h.privateStore.stage(t.org, id, file); await h.privateStore.dispatchPut(t.org, staged.objectId);
   await expect(h.facade(false).read(t.org, id)).rejects.toMatchObject({ code: 'MEDIA_OBJECT_BACKEND_UNAVAILABLE' });
-  expect(h.actions).toEqual(['PUT']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT']);
 });
 
 it('excludes released private reservations from inline admission while preserving the private history', async () => {
@@ -185,7 +185,7 @@ it('forwards trusted authorization to both sides of a private GET before returni
   await expect(Reflect.apply(store.read, store, [t.org, id, { authorize: async () => {
     if (++checks === 2) throw new Error('SYNTHETIC_READ_REVOKED');
   } }])).rejects.toThrow('SYNTHETIC_READ_REVOKED');
-  expect(checks).toBe(2); expect(h.actions).toEqual(['PUT', 'GET']);
+  expect(checks).toBe(2); expect(h.actions).toEqual(['PUT', 'INSPECT', 'GET']);
 });
 
 it('recovers a lost stage commit receipt without resetting storage or downloading the bytes again', async () => {
@@ -196,5 +196,5 @@ it('recovers a lost stage commit receipt without resetting storage or downloadin
   await h.facade(true, losingPort).runOnce(t.org);
   expect((await media(id)).status).toBe('STORING'); expect(h.actions).toEqual([]);
   await h.facade().runOnce(t.org);
-  expect((await media(id)).status).toBe('READY'); expect(h.downloads).toHaveLength(1); expect(h.actions).toEqual(['PUT']);
+  expect((await media(id)).status).toBe('READY'); expect(h.downloads).toHaveLength(1); expect(h.actions).toEqual(['PUT', 'INSPECT']);
 });

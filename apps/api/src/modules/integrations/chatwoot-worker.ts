@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {createChatwootGroupWorker} from './chatwoot-group-worker.js';
 import { z } from "zod";
+import type {TenantTransaction} from '../../db/tenant-transaction.js';
 import { createPostgresMessagingRepository } from "../messaging/repository.js";
 import { isOrganizationActive } from "../tenancy/operational-limits.js";
 import { ChatwootError } from "./chatwoot-client.js";
@@ -11,6 +12,7 @@ import {
   IntegrationError,
   readChatwootAccount,
   readChatwootConnection,
+  createChatwootService,
   type ChatwootOptions,
 } from "./chatwoot-service.js";
 import { MediaError, type BinaryMedia } from "@jrc/providers";
@@ -23,6 +25,11 @@ import { beginChatwootMirrorAttempt,confirmChatwootMirrorAttempt,failChatwootMir
 import type { ChatwootAttendanceEvent } from './chatwoot-attendance-events.js';
 import {preparePhysicalConversationCycle} from './chatwoot-conversation-cycle.js';
 import {canonicalCampaignRecipient,requireCampaignIntent,verifyCanonicalCampaignMessage} from './chatwoot-campaign-authority.js';
+import {requireCanonicalHumanIntent} from './chatwoot-human-intent.js';
+import {lockChatwootDestination} from './chatwoot-destination.js';
+import {assertChatwootMirrorContext} from './chatwoot-mirror-context.js';
+import {LIVE_INGRESS_PROTOCOL,liveIngressLookup,liveIngressProofSchema,type LiveIngressProof} from './chatwoot-live-ingress.js';
+import {selectLiveMirrorProtocol,dispatchNativeLiveMirror,assertRejectedNativeRetry} from './chatwoot-live-dispatch.js';
 
 interface Job {
   id: string;
@@ -43,6 +50,7 @@ const replySchema = z
   .object({
     attendanceObservationId:z.string().uuid().optional(),
     campaignIntentId:z.uuid().optional(),
+    outboundIntentId:z.uuid().optional(),
     attendanceKind:z.enum(['HUMAN_PUBLIC','EXTERNAL_BOT','AUTOMATED_REPLY','NATIVE_CSAT']).optional(),
     destinationRevision:z.number().int().positive().optional(),
     messageId: z.number().int().positive(),
@@ -70,8 +78,9 @@ export function createChatwootWorker(options: ChatwootOptions) {
     tx = options.transact;
   // An uncertain mirror must fence its contact, including later physical cycles,
   // without stopping inbound mirrors for unrelated contacts. Only a separately
-  // authenticated campaign with an exact current map can pass a proven unrelated
-  // mirror; historical human/legacy replies and ambiguous context stay stopped.
+  // authenticated campaign or canonical durable human intent with an exact
+  // current map can pass a proven unrelated mirror. Legacy replies and ambiguous
+  // context stay stopped; the uncertain operation itself is never replayed.
   // Both claim queries use the same predicate so a blocked connection cannot
   // starve another connection that has eligible work.
   const independentCampaignReply = `j.kind='CHATWOOT_REPLY' AND j.payload->>'attendanceKind'='AUTOMATED_REPLY' AND EXISTS(
@@ -111,6 +120,42 @@ export function createChatwootWorker(options: ChatwootOptions) {
               WHERE blocked_map.organization_id=blocked.organization_id AND blocked_map.integration_id=blocked.integration_id
                 AND blocked_map.conversation_id=blocked_conversation.id
                 AND blocked_map.remote_conversation_id::text=blocked.payload->>'conversationId'))))`;
+  // Only the new durable human-intent protocol can isolate an unrelated mirror.
+  // Legacy replies have no such proof and retain the integration-wide fence.
+  const independentHumanReply = `j.kind='CHATWOOT_REPLY' AND j.payload->>'attendanceKind'='HUMAN_PUBLIC' AND EXISTS(
+    SELECT 1 FROM chatwoot_conversations human_map
+    JOIN messaging_conversations human_conversation ON human_conversation.organization_id=human_map.organization_id
+      AND human_conversation.id=human_map.conversation_id AND human_conversation.channel_id=c.channel_id
+      AND human_conversation.remote_conversation_key IS NULL AND human_conversation.recipient_kind='INDIVIDUAL'
+    JOIN chatwoot_accounts human_account ON human_account.organization_id=human_map.organization_id AND human_account.status='READY'
+    JOIN chatwoot_destinations human_destination ON human_destination.organization_id=human_account.organization_id
+      AND human_destination.base_url=human_account.base_url AND human_destination.approval_status='APPROVED'
+    JOIN chatwoot_attendance_observations human_observation ON human_observation.organization_id=human_map.organization_id
+      AND human_observation.integration_id=human_map.integration_id AND human_observation.channel_id=c.channel_id
+      AND human_observation.conversation_id=human_conversation.id AND human_observation.remote_conversation_id=human_map.remote_conversation_id
+      AND human_observation.account_id=human_account.account_id AND human_observation.inbox_id=c.inbox_id
+      AND human_observation.destination_revision=human_destination.revision AND human_observation.credential_revision=human_account.credential_version
+      AND human_observation.id::text=j.payload->>'attendanceObservationId' AND human_observation.disposition='APPLIED'
+      AND human_observation.event->>'kind'='HUMAN_PUBLIC' AND human_observation.event->>'mayForwardReply'='true'
+      AND human_observation.event->>'outboundIntentId'=j.payload->>'outboundIntentId'
+      AND human_observation.event->>'remoteMessageId'=j.payload->>'messageId'
+      AND human_observation.event->>'remoteConversationId'=j.payload->>'conversationId'
+    WHERE human_map.organization_id=j.organization_id AND human_map.integration_id=j.integration_id
+      AND human_map.remote_conversation_id::text=j.payload->>'conversationId'
+      AND human_destination.revision::text=j.payload->>'destinationRevision'
+      AND j.payload->>'outboundIntentId' IS NOT NULL
+      AND NOT EXISTS(SELECT 1 FROM integration_jobs blocked
+        LEFT JOIN messaging_messages blocked_message ON blocked_message.organization_id=blocked.organization_id
+          AND blocked_message.id=blocked.message_id AND blocked_message.channel_id=c.channel_id
+        LEFT JOIN messaging_conversations blocked_conversation ON blocked_conversation.organization_id=blocked_message.organization_id
+          AND blocked_conversation.id=blocked_message.conversation_id AND blocked_conversation.channel_id=blocked_message.channel_id
+        WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
+          AND (blocked.kind<>'MIRROR_MESSAGE' OR blocked.payload->>'operation' IS DISTINCT FROM 'SEND_MESSAGE'
+            OR blocked_conversation.contact_id IS NULL OR blocked_conversation.contact_id=human_conversation.contact_id
+            OR NOT EXISTS(SELECT 1 FROM chatwoot_conversations blocked_map
+              WHERE blocked_map.organization_id=blocked.organization_id AND blocked_map.integration_id=blocked.integration_id
+                AND blocked_map.conversation_id=blocked_conversation.id
+                AND blocked_map.remote_conversation_id::text=blocked.payload->>'conversationId'))))`;
   const eligibleJob = `j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now()
     AND j.payload->>'historySyncVersion' IS DISTINCT FROM '2'
     AND (NOT EXISTS(SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=j.organization_id
@@ -127,7 +172,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
             AND blocked_conversation.channel_id=blocked_message.channel_id AND blocked_conversation.id=blocked_message.conversation_id
           WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
              AND (blocked_conversation.contact_id IS NULL OR blocked_conversation.contact_id=candidate_conversation.contact_id))))
-    OR (${independentCampaignReply}))`;
+    OR (${independentCampaignReply}) OR (${independentHumanReply}))`;
   async function claim(org: string): Promise<Job | undefined> {
     return tx(org, async (t) => {
       // An expired POST might have succeeded remotely. Replies are local, idempotent transactions.
@@ -157,6 +202,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
         await t.query<{ id: string }>(
           `SELECT j.id FROM integration_jobs j JOIN chatwoot_connections c ON c.organization_id=j.organization_id AND c.id=j.integration_id
         WHERE j.organization_id=$1 AND j.integration_id=$2 AND ${eligibleJob}
+          AND NOT EXISTS(SELECT 1 FROM integration_jobs busy WHERE busy.organization_id=j.organization_id
+            AND busy.integration_id=j.integration_id AND busy.status='RUNNING')
         ORDER BY CASE WHEN j.payload->>'historical'='true' THEN 1 ELSE 0 END,j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`,
           [org, connection.id],
         )
@@ -248,6 +295,12 @@ export function createChatwootWorker(options: ChatwootOptions) {
       await tx(job.organization_id,t=>requireCampaignIntent(t,job.organization_id,data.campaignIntentId!,job.integration_id,data.conversationId,data.messageId));
       campaignCanonical=await env.client(binding.account).canonicalMessage(Number(binding.account.account_id),Number(binding.connection.inbox_id),data.conversationId,data.messageId);
     }
+    let humanCanonical:unknown;
+    if(data.outboundIntentId){
+      if(data.attendanceKind!=='HUMAN_PUBLIC'||!data.attendanceObservationId||!binding.account||!binding.connection?.inbox_id)
+        throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);
+      humanCanonical=await env.client(binding.account).canonicalMessage(Number(binding.account.account_id),Number(binding.connection.inbox_id),data.conversationId,data.messageId);
+    }
     let remote:
       | Awaited<ReturnType<ReturnType<typeof env.client>["conversation"]>>
       | undefined;
@@ -289,7 +342,14 @@ export function createChatwootWorker(options: ChatwootOptions) {
     }
     await tx(job.organization_id, async (t) => {
       if(!binding.connection)throw new IntegrationError('INTEGRATION_PAUSED',409);
+      // Serialize with destination/credential rotation before taking the channel
+      // lock, then retain the current scope through the outbox COMMIT.
+      if(data.outboundIntentId)await lockChatwootDestination(t,job.organization_id);
       await lockAttendanceChannel(t,job.organization_id,binding.connection.channel_id);
+      if(data.outboundIntentId)await t.query(`SELECT c.id FROM chatwoot_connections c
+        JOIN chatwoot_accounts a ON a.organization_id=c.organization_id
+        JOIN chatwoot_destinations d ON d.organization_id=a.organization_id AND d.base_url=a.base_url
+        WHERE c.organization_id=$1 AND c.id=$2 FOR SHARE OF c,a,d`,[job.organization_id,job.integration_id]);
       const lease = await t.query(
         "SELECT id FROM integration_jobs WHERE organization_id=$1 AND id=$2 AND lease_token=$3 AND status='RUNNING' AND lease_expires_at>now() FOR UPDATE",
         [job.organization_id, job.id, job.lease_token],
@@ -309,7 +369,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
         !(await isOrganizationActive(t, job.organization_id))
       )
         throw new IntegrationError("INTEGRATION_PAUSED", 409);
-      if(remote&&(!binding.account||!binding.connection||currentAccount?.base_url!==binding.account.base_url||
+      if((remote||data.outboundIntentId)&&(!binding.account||!binding.connection||currentAccount?.base_url!==binding.account.base_url||
         currentAccount.account_id!==binding.account.account_id||currentAccount.credential_version!==binding.account.credential_version||
         currentAccount.destination?.revision!==binding.account.destination?.revision||connection.inbox_id!==binding.connection.inbox_id||connection.channel_id!==binding.connection.channel_id))
         throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
@@ -390,6 +450,16 @@ export function createChatwootWorker(options: ChatwootOptions) {
           [job.organization_id,data.attendanceObservationId,job.integration_id,scope.destinationRevision,data.conversationId,map.conversation_id,scope.accountId,scope.inboxId])).rows[0];
         if(!observation||observation.disposition!=='APPLIED'||observation.event.kind!==data.attendanceKind||!await mayForwardChatwootAttendanceReply(t,scope,observation.event))
           throw new IntegrationError('ATTENDANCE_CONTROL_RECONCILIATION_REQUIRED',409);
+        if(data.outboundIntentId){
+          const event=observation.event;
+          if(event.kind!=='HUMAN_PUBLIC'||event.outboundIntentId!==data.outboundIntentId||event.senderId===undefined||
+            event.remoteMessageId!==data.messageId||event.remoteConversationId!==data.conversationId||
+            observation.credential_revision!==scope.credentialRevision||observation.channel_id!==scope.channelId)
+            throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);
+          requireCanonicalHumanIntent(humanCanonical,{intentId:data.outboundIntentId,integrationId:job.integration_id,accountId:scope.accountId,
+            inboxId:scope.inboxId,conversationId:data.conversationId,messageId:data.messageId,senderId:event.senderId,
+            ...(data.content?{content:data.content}:{}),...(data.caption!==undefined?{caption:data.caption}:{}),...(data.attachments?{attachments:data.attachments}:{})});
+        }
         if(nativeCsat&&(observation.credential_revision!==scope.credentialRevision||observation.channel_id!==scope.channelId||
           !('remoteMessageId' in observation.event)||observation.event.remoteMessageId!==data.messageId||observation.event.remoteConversationId!==data.conversationId))
           throw new IntegrationError('CHATWOOT_CSAT_PROOF_REQUIRED',409);
@@ -469,7 +539,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
   }
   async function mirror(job: Job): Promise<void> {
     if(await groups.mirror(job))return;
-    const org = job.organization_id;
+    const org = job.organization_id,originalMirrorOperation=job.payload.operation;
     const context = await tx(org, async (t) => {
       const a = await readChatwootAccount(t, org),
         c = await readChatwootConnection(t, org, job.integration_id);
@@ -486,9 +556,14 @@ export function createChatwootWorker(options: ChatwootOptions) {
           canonical_error_code: string | null;
           is_historical:boolean;
           created_at:Date;
+          instance_id:string|null;
+          has_mirror_attempt:boolean;
         }>(
-          "SELECT id,conversation_id,direction,source,content,state,canonical_error_code,is_historical,created_at FROM messaging_messages WHERE organization_id=$1 AND id=$2 AND channel_id=$3",
-          [org, job.message_id, c.channel_id],
+          `SELECT id,conversation_id,direction,source,content,state,canonical_error_code,is_historical,created_at,
+            (SELECT instance_id FROM messaging_channels WHERE organization_id=$1 AND id=$3) AS instance_id,
+            EXISTS(SELECT 1 FROM chatwoot_mirror_attempts WHERE organization_id=$1 AND job_id=$4) AS has_mirror_attempt
+            FROM messaging_messages WHERE organization_id=$1 AND id=$2 AND channel_id=$3`,
+          [org, job.message_id, c.channel_id,job.id],
         )
       ).rows[0];
       if (!message)
@@ -538,6 +613,16 @@ export function createChatwootWorker(options: ChatwootOptions) {
     if(!a.destination)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
     const attendanceScope:ChatwootObservationScope={organizationId:org,channelId:c.channel_id,integrationId:c.id,
       destinationRevision:a.destination.revision,credentialRevision:a.credential_version,accountId,inboxId};
+    const priorNative=job.payload.liveIngressProof===undefined?undefined:liveIngressProofSchema.safeParse(job.payload.liveIngressProof);
+    if(!context.mappedMessage&&typeof job.payload.remoteMessageId!=='number'&&priorNative!==undefined){
+      if(job.payload.mirrorProtocol!==LIVE_INGRESS_PROTOCOL||!priorNative.success||!context.map
+        ||priorNative.data.organization_id!==org||priorNative.data.integration_id!==c.id
+        ||priorNative.data.instance_id!==message.instance_id||priorNative.data.destination_revision!==attendanceScope.destinationRevision
+        ||priorNative.data.credential_revision!==a.credential_version||priorNative.data.base_url!==a.base_url
+        ||priorNative.data.account_id!==accountId||priorNative.data.inbox_id!==inboxId
+        ||priorNative.data.broker_message_id!==message.id||priorNative.data.conversation_id!==Number(context.map.remote_conversation_id))
+        throw new IntegrationError('CHATWOOT_LIVE_REQUEST_CONFLICT',409);
+    }
     const historical=message.is_historical;
     if(historical){
       const capability=await client.historyImportCapability(accountId,{organizationId:org,integrationId:c.id,inboxId});
@@ -553,7 +638,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
       if (!options.media) throw new MediaError("MEDIA_NOT_CONFIGURED");
       media = {
         ...(await options.media.read(org, message.content.mediaId)),
-        ...(externalObserved ? {caption:`${originLabel}${message.content.caption?'\n'+message.content.caption:''}`.slice(0,1024)} : message.content.caption
+        ...(message.content.caption
           ? { caption: message.content.caption }
           : {}),
       };
@@ -683,10 +768,66 @@ export function createChatwootWorker(options: ChatwootOptions) {
       await progress(job, {
         conversationId: Number(map.remote_conversation_id),
       });
+      const nativeScope=message.instance_id?{organization_id:org,integration_id:c.id,instance_id:message.instance_id,
+        destination_revision:attendanceScope.destinationRevision}:undefined;
+      const protocol=await selectLiveMirrorProtocol({client,scope:nativeScope,accountId,inboxId,
+        recorded:job.payload.mirrorProtocol,hasPriorAttempt:message.has_mirror_attempt,operation:originalMirrorOperation});
+      const previousNativeProof=job.payload.liveIngressProof;
+      const presentationText=media?(externalObserved?`${originLabel}${message.content.type==='MEDIA'&&message.content.caption?'\n'+message.content.caption:''}`:media.caption??''):text!;
+      const nativeBody=protocol===LIVE_INGRESS_PROTOCOL?client.liveIngress().prepare(nativeScope!,{
+        broker_message_id:message.id,conversation_id:Number(map.remote_conversation_id),
+        message_type:message.direction==='INCOMING'?'incoming':'outgoing',message_origin:externalObserved?'EXTERNAL_OBSERVED':'LIVE',content:presentationText,
+        ...(priorNative?.success?(priorNative.data.occurred_at===undefined?{}:{occurred_at:priorNative.data.occurred_at})
+          :{occurred_at:Math.floor(message.created_at.getTime()/1000)})},media):undefined;
       await beforeExternal(job, "SEND_MESSAGE");
-      const attempt=await tx(org,t=>beginChatwootMirrorAttempt(t,attendanceScope,{jobId:job.id,leaseToken:job.lease_token,messageId:message.id,
-        conversationId:message.conversation_id,remoteConversationId:Number(map!.remote_conversation_id)}));
-      try { remoteMessageId = media
+      let proof:LiveIngressProof|undefined;
+      const started=await tx(org,async t=>{
+        await assertChatwootMirrorContext(t,a,c,message.instance_id);
+        if(previousNativeProof!==undefined){
+          const prior=liveIngressProofSchema.safeParse(previousNativeProof);
+          if(!prior.success||!nativeBody)throw new ChatwootError('CHATWOOT_LIVE_CONFIRMATION_PENDING',false,true);
+          const rejected=(await t.query<{state:string}>(`SELECT state FROM chatwoot_mirror_attempts a
+            WHERE a.organization_id=$1 AND a.id=$2 AND a.job_id=$3 AND a.integration_id=$4 AND a.message_id=$5
+              AND a.channel_id=$6 AND a.destination_revision=$7 AND a.account_id=$8 AND a.inbox_id=$9
+              AND a.remote_conversation_id=$10 AND a.conversation_id=$11
+              AND NOT EXISTS(SELECT 1 FROM chatwoot_mirror_attempts other WHERE other.organization_id=a.organization_id
+                AND other.integration_id=a.integration_id AND other.message_id=a.message_id AND other.id<>a.id
+                AND other.state IN('DISPATCHED','UNKNOWN')) FOR UPDATE OF a`,
+            [org,prior.data.attempt_id,job.id,c.id,message.id,c.channel_id,attendanceScope.destinationRevision,accountId,inboxId,
+              Number(map!.remote_conversation_id),message.conversation_id])).rows[0];
+          assertRejectedNativeRetry(prior.data,nativeBody,{account_id:accountId,inbox_id:inboxId,
+            credential_revision:a.credential_version,base_url:a.base_url},rejected?.state);
+        }
+        const value=await beginChatwootMirrorAttempt(t,attendanceScope,{jobId:job.id,leaseToken:job.lease_token,messageId:message.id,
+          conversationId:message.conversation_id,remoteConversationId:Number(map!.remote_conversation_id)});
+        if(nativeBody)proof=liveIngressProofSchema.parse({...liveIngressLookup(nativeBody),attempt_id:value.id,
+          account_id:accountId,inbox_id:inboxId,credential_revision:a.credential_version,base_url:a.base_url,
+          ...(nativeBody.occurred_at===undefined?{}:{occurred_at:nativeBody.occurred_at})});
+        const patch={mirrorProtocol:protocol,...(proof?{liveIngressProof:proof}:{})};
+        const saved=await t.query(`UPDATE integration_jobs SET payload=payload||$4::jsonb
+          WHERE organization_id=$1 AND id=$2 AND lease_token=$3 AND status='RUNNING' AND lease_expires_at>clock_timestamp() RETURNING id`,
+          [org,job.id,job.lease_token,JSON.stringify(patch)]);
+        if(!saved.rowCount)throw new IntegrationError('INTEGRATION_LEASE_LOST',409);
+        return {attempt:value,patch};
+      });
+      const attempt=started.attempt;Object.assign(job.payload,started.patch);
+      const assertCurrent=async(t:TenantTransaction)=>{
+        await assertChatwootMirrorContext(t,a,c,message.instance_id);
+        const lease=await t.query(`SELECT id FROM integration_jobs WHERE organization_id=$1 AND id=$2 AND lease_token=$3
+          AND status='RUNNING' AND lease_expires_at>clock_timestamp() FOR UPDATE`,[org,job.id,job.lease_token]);
+        if(!lease.rowCount)throw new IntegrationError('INTEGRATION_LEASE_LOST',409);
+      };
+      const guard=async<T>(_operation:'PERSIST'|'RECEIPT',mutation:boolean,work:()=>Promise<T>)=>{
+        await tx(org,assertCurrent);
+        const result=await work();
+        try{await tx(org,assertCurrent);}
+        catch(error){if(mutation)throw new ChatwootError('CHATWOOT_LIVE_CONTEXT_CHANGED',false,true);throw error;}
+        return result;
+      };
+      try { remoteMessageId = nativeBody&&proof
+        ?await dispatchNativeLiveMirror({client,body:nativeBody,proof,...(media?{file:media}:{}),guard,
+          pin:async value=>{proof=value;await progress(job,{liveIngressProof:value});}})
+        :await guard('PERSIST',true,async()=>media
         ? await client.sendMedia(
             accountId,
             Number(map.remote_conversation_id),
@@ -695,6 +836,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
               incoming: message.direction === "INCOMING",
               brokerMessageId: message.id,
               ...(externalObserved?{messageOrigin:'EXTERNAL_OBSERVED' as const}:{}),
+              ...(externalObserved?{presentationText}:{}),
             },
           )
         : await client.sendMessage(
@@ -706,13 +848,16 @@ export function createChatwootWorker(options: ChatwootOptions) {
               brokerMessageId: message.id,
               ...(externalObserved?{messageOrigin:'EXTERNAL_OBSERVED' as const}:{}),
             },
-          );
+          ));
       } catch(error) {
         try {await tx(org,t=>failChatwootMirrorAttempt(t,attendanceScope,{attemptId:attempt.id,uncertain:!(error instanceof ChatwootError)||error.uncertain}));}
         catch { /* The persisted DISPATCHED attempt stays a barrier. Preserve the original POST outcome. */ }
         throw error;
       }
-      try {await tx(org,t=>confirmChatwootMirrorAttempt(t,attendanceScope,{attemptId:attempt.id,remoteMessageId:remoteMessageId!}));}
+      try {await tx(org,async t=>{
+        await assertCurrent(t);
+        await confirmChatwootMirrorAttempt(t,attendanceScope,{attemptId:attempt.id,remoteMessageId:remoteMessageId!});
+      });}
       catch {throw new ChatwootError('CHATWOOT_MIRROR_CONFIRMATION_PENDING',false,true);}
       await progress(job, { remoteMessageId });
     }
@@ -731,8 +876,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
       ["SENT", "DELIVERED", "READ", "FAILED"].includes(message.state)
     ) {
       const siblings = await tx(org, (t) =>
-        t.query<{ state: string; canonical_error_code: string | null }>(
-          `SELECT m.state,m.canonical_error_code FROM chatwoot_messages cm JOIN messaging_messages m ON m.organization_id=cm.organization_id AND m.id=cm.message_id WHERE cm.organization_id=$1 AND cm.integration_id=$2 AND cm.remote_message_id=$3`,
+        t.query<{ state: string; canonical_error_code: string | null; canonical_message_id:string;provider_message_id:string|null }>(
+          `SELECT m.state,m.canonical_error_code,m.id AS canonical_message_id,m.upstream_message_id AS provider_message_id
+            FROM chatwoot_messages cm JOIN messaging_messages m ON m.organization_id=cm.organization_id AND m.id=cm.message_id
+            WHERE cm.organization_id=$1 AND cm.integration_id=$2 AND cm.remote_message_id=$3 ORDER BY m.created_at,m.id`,
           [org, c.id, remoteMessageId],
         ),
       );
@@ -750,6 +897,12 @@ export function createChatwootWorker(options: ChatwootOptions) {
         await finish(job);
         return;
       }
+      // One central message can represent several attachments. Pin the same
+      // canonical representative across their later delivery/read callbacks.
+      const representative=siblings.rows[0];
+      const proof=representative&&(state==='failed'||representative.provider_message_id)
+        ?{version:1 as const,canonical_message_id:representative.canonical_message_id,provider_message_id:representative.provider_message_id,
+          state:state.toUpperCase() as 'SENT'|'DELIVERED'|'READ'|'FAILED'}:undefined;
       await beforeExternal(job, "UPDATE_STATUS");
       await client.updateMessageStatus(
         accountId,
@@ -758,13 +911,29 @@ export function createChatwootWorker(options: ChatwootOptions) {
         state,
         siblings.rows.find((m) => m.canonical_error_code)
           ?.canonical_error_code ?? undefined,
+        proof,
       );
     }
     await finish(job);
   }
   const groups=createChatwootGroupWorker(options,{before:beforeExternal,progress,finish});
+  const receiptRecovery=createChatwootService(options);
+  async function inspectNativeReceipt(org:string){
+    const candidate=await tx(org,async t=>{
+      if(!(await isOrganizationActive(t,org)))return undefined;
+      return(await t.query<{id:string}>(`UPDATE integration_jobs SET available_at=now()+interval '15 seconds'
+        WHERE organization_id=$1 AND id=(SELECT id FROM integration_jobs WHERE organization_id=$1 AND status='UNKNOWN'
+          AND kind='MIRROR_MESSAGE' AND payload->>'mirrorProtocol'=$2 AND payload ? 'liveIngressProof'
+          AND available_at<=now() ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1)
+        AND status='UNKNOWN' RETURNING id`,[org,LIVE_INGRESS_PROTOCOL])).rows[0];
+    });
+    if(!candidate)return;
+    try{await receiptRecovery.reconcileJob(org,candidate.id,'NATIVE_PERSISTENCE_RECEIPT_RECOVERED',undefined,undefined,3000);}
+    catch{ /* The indexed due time advances; UNKNOWN and original evidence stay intact. No replay. */ }
+  }
   return {
     async runOnce(org: string): Promise<void> {
+      await inspectNativeReceipt(org);
       const job = await claim(org);
       if (!job) return;
       try {

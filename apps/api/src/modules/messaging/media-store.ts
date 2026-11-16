@@ -33,12 +33,9 @@ const descriptor = z.discriminatedUnion("source", [
   }),
   z.object({
     source: z.literal("CHATWOOT"),
-    descriptor: z.strictObject({
-      integrationId: z.uuid(),
-      conversationId: z.number().int().positive(),
-      messageId: z.number().int().positive(),
-      attachmentId: z.number().int().positive(),
-    }),
+    descriptor: z.union([z.strictObject({integrationId:z.uuid(),conversationId:z.number().int().positive(),messageId:z.number().int().positive(),attachmentId:z.number().int().positive()}),
+      z.strictObject({integrationId:z.uuid(),conversationId:z.number().int().positive(),messageId:z.number().int().positive(),attachmentId:z.number().int().positive(),
+        groupReply:z.literal(true),destinationRevision:z.number().int().positive(),credentialRevision:z.number().int().positive()})]),
   }),
 ]);
 export interface MediaAsset {
@@ -54,6 +51,11 @@ export interface MediaAsset {
   attempts: number;
   lease_token: string;
   last_error: string | null;
+}
+/** Bound GROUP reply sources may never be fetched from a replacement destination. */
+export function assertChatwootMediaSnapshot(asset:Pick<MediaAsset,'source'|'descriptor'>,current:{destinationRevision:number|undefined;credentialRevision:number}){
+  if(asset.source==='CHATWOOT'&&asset.descriptor.groupReply===true&&
+    (asset.descriptor.destinationRevision!==current.destinationRevision||asset.descriptor.credentialRevision!==current.credentialRevision))throw new MediaError('MEDIA_CONTEXT_CHANGED');
 }
 export interface MediaRegistration {
   source: MediaAsset["source"];

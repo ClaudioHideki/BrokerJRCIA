@@ -1,12 +1,28 @@
 import { expect,it,vi } from 'vitest';
 import { ChatwootClient } from '../../src/modules/integrations/chatwoot-client.js';
 const message={id:41,conversation_id:51,account_id:7,inbox_id:9,message_type:0,private:false,content:'Synthetic input',content_type:'text',sender:{id:31,type:'contact'},created_at:100};
+it('finds the exact message when chronological pagination requires an existing cursor',async()=>{
+ const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch:async input=>{
+  const query=new URL(String(input)).searchParams;
+  return Response.json({payload:query.get('after')==='41'&&query.get('before')==='42'?[message]:[]});
+ }});
+ await expect(client.canonicalMessage(7,9,51,41)).resolves.toMatchObject({id:41});
+});
+it('reconciles a known remote ID through its exact range without an invented cursor',async()=>{
+ const brokerMessageId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch:async input=>{
+  const query=new URL(String(input)).searchParams;
+  return Response.json({payload:query.get('after')==='41'&&query.get('before')==='42'
+   ?[{...message,content_attributes:{jrc_broker_message_id:brokerMessageId}}]:[]});
+ }});
+ await expect(client.findBrokerMessage(7,51,brokerMessageId,41)).resolves.toBe(41);
+});
 it('reads an exact message through the documented bounded list endpoint',async()=>{
  const fetch=vi.fn(async()=>Response.json({payload:[message]}));
  const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch});
  expect(typeof client.canonicalMessage).toBe('function');
  expect(await client.canonicalMessage(7,9,51,41)).toMatchObject({...message,message_type:'incoming'});
- expect(fetch.mock.calls[0]?.[0]).toBe('https://central.example.test/api/v1/accounts/7/conversations/51/messages?before=42');
+ expect(fetch.mock.calls[0]?.[0]).toBe('https://central.example.test/api/v1/accounts/7/conversations/51/messages?after=41&before=42');
 });
 it.each(['inbox','account','conversation','duplicate','missing'])('rejects %s instead of using the newest message',async reason=>{
  const altered={...message,...(reason==='inbox'?{inbox_id:10}:reason==='account'?{account_id:8}:reason==='conversation'?{conversation_id:52}:{})};

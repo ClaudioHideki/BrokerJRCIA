@@ -227,4 +227,25 @@ describe('Chatwoot mirror isolation around uncertain remote writes', () => {
     expect(contacts).toBe(2);
     expect(t.posts).toHaveLength(2);
   });
+
+  it('rechecks an integration that became busy between connection admission and job claim',async()=>{
+    const t=await fixture();await uncertain(t);
+    const first=await incoming(t,await conversation(t,52)),second=await incoming(t,await conversation(t,53));
+    let admitted=false;
+    const options:ChatwootOptions={...t.options,transact:((org,work)=>db.transact(org,async transaction=>{
+      const wrapped=new Proxy(transaction,{get(target,key){if(key!=='query')return Reflect.get(target,key);
+        return async(text:string,values?:unknown[])=>{const result=await target.query(text,values);
+          if(!admitted&&text.includes('SELECT c.id FROM chatwoot_connections c')&&result.rowCount){
+            admitted=true;
+            await db.database.pool.query(`UPDATE integration_jobs SET status='RUNNING',attempts=1,lease_token=$2,lease_expires_at=now()+interval '3 minutes' WHERE id=$1`,[first.job,randomUUID()]);
+          }
+          return result;};}});
+      return work(wrapped);
+    })) as ChatwootOptions['transact']};
+    await createChatwootWorker(options).runOnce(t.org);
+    expect(admitted).toBe(true);
+    expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE id=$1',[second.job])).rows[0])
+      .toEqual({status:'PENDING',attempts:0});
+    expect(t.posts).toEqual([]);
+  });
 });

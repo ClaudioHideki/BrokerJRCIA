@@ -3,6 +3,8 @@
 
 ## Em progresso (WIP)
 
+- [ ] **DELIVERY-20261116:** Código humano/status/concorrência/cursor/mídia/GROUP e receptor LIVE nativo implementados; geral Broker4487/4487 e PG193/193, com deltas focais85/85 e32/32. Executar CI e HTTP E2Es finais no GitHub Actions conforme pedido do usuário, sem forçar Docker local. Migration LAB220261116190000 ainda não produtiva; hard delete/retention e build Linux elegível são gates pré-release. Plano: docs/superpowers/plans/2026-11-16-whatsapp-delivery-reliability.md. Evidências/limites: docs/implementation/whatsapp-delivery-reliability-20261116.md. Candidata de teste autorizada; sem produção/merge/imagens.
+
 - [ ] **RELEASE-20261114:** Validar e promover a candidata com ACK histórico TEXT corrigido, mantendo captura desabilitada; atualizar main/imagens e verificar schema/containers no Dokploy. Ver CONTINUE-AQUI.md; implantação ainda não comprovada.
 
 Nenhuma execução funcional é iniciada por este bootstrap. As frentes já em andamento permanecem nos planos/checkpoints existentes.

@@ -6,6 +6,7 @@ import {
 } from '../automations/conversation-effect-protocol.js';
 import { createChatwootSafeFetch } from './chatwoot-safe-http.js';
 import { createHistoryConsumer } from '../history-sync/consumer.js';
+import { createLiveIngressConsumer } from './chatwoot-live-ingress.js';
 import {
   MediaError,
   readMediaBytes,
@@ -97,11 +98,23 @@ const record = (v: unknown): Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : {};
+export interface ChatwootDeliveryReceipt {
+  version:1;
+  canonical_message_id:string;
+  provider_message_id:string|null;
+  state:'SENT'|'DELIVERED'|'READ'|'FAILED';
+}
+const deliveryReceiptSchema=z.object({version:z.literal(1),canonical_message_id:z.uuid(),
+  provider_message_id:z.string().regex(/^[^\s\x00-\x1f\x7f]{1,512}$/u).nullable(),
+  state:z.enum(['SENT','DELIVERED','READ','FAILED'])}).strict();
+
 export class ChatwootClient {
   private readonly origin: string;
   private readonly fetch: typeof globalThis.fetch;
   /** Versioned, callback-free historical receiver. No fallback to live sends. */
   historySyncV2() { return createHistoryConsumer((method,path,body)=>this.request(method,path,body)); }
+  liveIngress() { return createLiveIngressConsumer((method,path,body)=>this.request(method,path,body,false,!path.endsWith('/messages')),
+    (code,uncertain=false)=>new ChatwootError(code,false,uncertain)); }
   constructor(private readonly options: Options) {
     const url = new URL(options.baseUrl);
     const local =
@@ -129,8 +142,9 @@ export class ChatwootClient {
     path: string,
     body?: unknown,
     allowEmpty = false,
+    readOnly = false,
   ): Promise<unknown> {
-    const safe = method !== "POST";
+    const safe = method !== "POST" || readOnly;
     let response: Response;
     try {
       response = await this.fetch(this.origin + path, {
@@ -698,7 +712,7 @@ export class ChatwootClient {
     remoteId?: number,
   ): Promise<number | undefined> {
     const query = remoteId
-      ? `?before=${integer.max(Number.MAX_SAFE_INTEGER - 1).parse(remoteId) + 1}`
+      ? `?after=${integer.max(Number.MAX_SAFE_INTEGER - 1).parse(remoteId)}&before=${remoteId + 1}`
       : "";
     const data = record(
       await this.request(
@@ -735,7 +749,10 @@ export class ChatwootClient {
   }
   async centralMessages(accountId:number,inboxId:number,conversationId:number,beforeId?:number) {
     integer.parse(inboxId);
-    const query=beforeId===undefined?'':`?before=${integer.max(Number.MAX_SAFE_INTEGER-1).parse(beforeId)+1}`;
+    // The chronological LAB2 finder requires an existing anchor for before-only
+    // pagination. An exact inclusive/exclusive ID range also works in stock
+    // Chatwoot 3.x/4.x and never substitutes a neighbouring message as proof.
+    const query=beforeId===undefined?'':`?after=${integer.max(Number.MAX_SAFE_INTEGER-1).parse(beforeId)}&before=${beforeId+1}`;
     const data=record(await this.request('GET',this.account(accountId)+`/conversations/${integer.parse(conversationId)}/messages${query}`));
     const schema=z.object({id:canonicalInteger,account_id:canonicalInteger.optional(),inbox_id:canonicalInteger,conversation_id:canonicalInteger,
       message_type:z.union([z.literal(0),z.literal(1),z.literal(2),z.literal(3),z.enum(['incoming','outgoing','activity','template'])]),
@@ -773,11 +790,15 @@ export class ChatwootClient {
     accountId: number,
     conversationId: number,
     file: BinaryMedia,
-    input: { incoming: boolean; brokerMessageId: string; messageOrigin?:'EXTERNAL_OBSERVED'; dispatchProof?:string },
+    input: { incoming: boolean; brokerMessageId: string; messageOrigin?:'EXTERNAL_OBSERVED'; dispatchProof?:string;
+      /** Internal mirror presentation, separate from the provider caption limit. */
+      presentationText?:string },
   ): Promise<number> {
     validateMedia(file);
+    if(input.presentationText!==undefined&&!z.string().min(1).max(4096).safeParse(input.presentationText).success)
+      throw new ChatwootError('CHATWOOT_MEDIA_PRESENTATION_INVALID');
     const form = new FormData();
-    form.set("content", file.caption ?? "");
+    form.set("content", input.presentationText ?? file.caption ?? "");
     form.set("message_type", input.incoming ? "incoming" : "outgoing");
     form.set("private", "false");
     form.set(
@@ -809,9 +830,12 @@ export class ChatwootClient {
     messageId: number,
     attachmentId: number,
   ): Promise<BinaryMedia> {
-    const conversation = await this.conversation(accountId, conversationId);
+    // A group display contact has no individual telephone. Download authority
+    // comes from the exact scoped conversation/message/attachment, not a phone.
+    const conversation = parseCatalog(z.object({id:canonicalInteger,account_id:canonicalInteger,inbox_id:canonicalInteger}),
+      await this.request('GET',this.account(accountId)+`/conversations/${integer.parse(conversationId)}`));
     if (
-      conversation.account_id !== accountId ||
+      conversation.id !== conversationId || conversation.account_id !== accountId ||
       conversation.inbox_id !== inboxId
     )
       throw new MediaError("CHATWOOT_BINDING_MISMATCH");
@@ -819,7 +843,7 @@ export class ChatwootClient {
       await this.request(
         "GET",
         this.account(accountId) +
-          `/conversations/${integer.parse(conversationId)}/messages?before=${integer.max(Number.MAX_SAFE_INTEGER - 1).parse(messageId) + 1}`,
+          `/conversations/${integer.parse(conversationId)}/messages?after=${integer.max(Number.MAX_SAFE_INTEGER - 1).parse(messageId)}&before=${messageId + 1}`,
       ),
     );
     const messages = z
@@ -914,12 +938,16 @@ export class ChatwootClient {
     messageId: number,
     state: "sent" | "delivered" | "read" | "failed",
     error?: string,
+    proof?:ChatwootDeliveryReceipt,
   ): Promise<void> {
+    const parsed=proof===undefined?undefined:deliveryReceiptSchema.safeParse(proof);
+    if(parsed&&(!parsed.success||parsed.data.state!==state.toUpperCase()||state!=='failed'&&parsed.data.provider_message_id===null))
+      throw new ChatwootError('CHATWOOT_DELIVERY_RECEIPT_INVALID');
     await this.request(
       "PATCH",
       this.account(accountId) +
         `/conversations/${integer.parse(conversationId)}/messages/${integer.parse(messageId)}`,
-      { status: state, ...(error ? { external_error: error } : {}) },
+      { status: state, ...(error ? { external_error: error } : {}),...(parsed?.success?{broker_delivery:parsed.data}:{}) },
     );
   }
 }

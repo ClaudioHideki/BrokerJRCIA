@@ -17,7 +17,7 @@ import {
 } from "./chatwoot-service.js";
 import { createChatwootWorker } from "./chatwoot-worker.js";
 import { createChatwootProvisioner } from "./chatwoot-provisioner.js";
-import { createMediaStore, type MediaStore } from "../messaging/media-store.js";
+import { createMediaStore, assertChatwootMediaSnapshot, type MediaStore } from "../messaging/media-store.js";
 import { createPrivateMediaRuntime } from "../messaging/private-media-runtime.js";
 import { createPostgresMessagingRepository } from "../messaging/repository.js";
 import {
@@ -148,6 +148,8 @@ export function createIntegrationRuntime(
   let boxRouting:BoxRoutingService|undefined;
   const groupAutomation=groupPolicy&&config.qr?createGroupAutomationRuntime({
     get boxRouting(){return boxRouting;},
+    get media(){return media;},
+    sendMedia:(context,instanceKey,recipient,file)=>fleet!.groupMedia(context,instanceKey,recipient,file),
     ...groupPolicy,transact,captureBinding:fleet!.capture,assertBinding:fleet!.assert,enabled:automationRuntimeEnabled(environment),
     ...(groupCatalog?{refreshCatalogs:groupCatalog.refreshDueForAutomation}:{}),
     async readIdentity(context,instanceKey){
@@ -270,7 +272,9 @@ export function createIntegrationRuntime(
             !context.connection.inbox_id
           )
             throw new MediaError("CHATWOOT_BINDING_MISMATCH");
-          return chatwootEnvironment(options)
+          if(asset.descriptor.groupReply===true&&(context.account.status!=='READY'||context.connection.status!=='READY'))throw new MediaError('MEDIA_CONTEXT_CHANGED');
+          assertChatwootMediaSnapshot(asset,{destinationRevision:context.account.destination?.revision,credentialRevision:context.account.credential_version});
+          const file=await chatwootEnvironment(options)
             .client(context.account)
             .downloadAttachment(
               Number(context.account.account_id),
@@ -279,6 +283,14 @@ export function createIntegrationRuntime(
               Number(asset.descriptor.messageId),
               Number(asset.descriptor.attachmentId),
             );
+          if(asset.descriptor.groupReply===true){
+            const after=await transact(asset.organization_id,async t=>({account:await readChatwootAccount(t,asset.organization_id),
+              connection:await readChatwootConnection(t,asset.organization_id,String(asset.descriptor.integrationId))}));
+            if(!after.account||after.account.status!=='READY'||after.connection?.status!=='READY'||after.connection.channel_id!==channel.id||after.connection.inbox_id!==context.connection.inbox_id
+              ||after.account.account_id!==context.account.account_id)throw new MediaError('MEDIA_CONTEXT_CHANGED');
+            assertChatwootMediaSnapshot(asset,{destinationRevision:after.account.destination?.revision,credentialRevision:after.account.credential_version});
+          }
+          return file;
         },
       })
     : undefined;

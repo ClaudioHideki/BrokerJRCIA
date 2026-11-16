@@ -1,5 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join, relative } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import type { BinaryMedia } from '@jrc/providers';
@@ -278,11 +281,11 @@ it('refuses cleanup with an expired lease or revoked nominative actor before DEL
   await store.prepareCleanup(deletion.id, deletion.lease);
   await db.database.pool.query('UPDATE platform_users SET active=false WHERE id=$1', [deletion.actor]);
   await expect(store.runCleanupOnce(deletion.id, deletion.lease)).rejects.toThrow('LIFECYCLE_ACTOR_REVOKED');
-  expect(h.actions).toEqual(['PUT']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT']);
   await db.database.pool.query('UPDATE platform_users SET active=true WHERE id=$1', [deletion.actor]);
   await db.database.pool.query("UPDATE lifecycle_deletions SET lease_expires_at=now()-interval '1 second' WHERE id=$1", [deletion.id]);
   await expect(store.runCleanupOnce(deletion.id, deletion.lease)).rejects.toThrow('LIFECYCLE_LEASE_LOST');
-  expect(h.actions).toEqual(['PUT']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT']);
 });
 
 it('preserves a committed DISPATCHED claim after losing its commit receipt without issuing PUT', async () => {
@@ -318,7 +321,7 @@ it('rolls back failed persistence after confirmed PUT and recovers its exact obj
   expect((await operation(staged.objectId)).state).toBe('DISPATCHED'); expect((await object(staged.objectId)).state).toBe('STAGED');
   await db.database.pool.query("UPDATE media_private_operations SET lease_expires_at=dispatched_at+interval '1 microsecond' WHERE object_id=$1", [staged.objectId]);
   await store.runOnce(t.org);
-  expect((await operation(staged.objectId)).state).toBe('CONFIRMED'); expect(h.actions).toEqual(['PUT', 'INSPECT']);
+  expect((await operation(staged.objectId)).state).toBe('CONFIRMED'); expect(h.actions).toEqual(['PUT', 'INSPECT', 'INSPECT']);
   expect(await store.read(t.org, media)).toEqual(file);
 });
 
@@ -397,7 +400,7 @@ it('does not widen cleanup of a QR instance without a channel to other READY and
   expect((await db.database.pool.query('SELECT id FROM instances WHERE id=$1',[orphan])).rows).toEqual([]);
   expect({readyObject:await object(ready.objectId),unknownObject:await object(unknown.objectId),readyOperation:await operation(ready.objectId),unknownOperation:await operation(unknown.objectId),
     media:(await db.database.pool.query('SELECT * FROM messaging_media WHERE id=ANY($1::uuid[]) ORDER BY id',[[readyMedia,unknownMedia]])).rows}).toEqual(before);
-  expect(h.actions).toEqual(['PUT','PUT_UNKNOWN']);
+  expect(h.actions).toEqual(['PUT','INSPECT','PUT_UNKNOWN']);
   expect((await db.database.pool.query('SELECT id FROM messaging_channels WHERE id=$1',[t.channel])).rowCount).toBe(1);
 });
 
@@ -484,7 +487,7 @@ it('commits expired DELETE recovery before locking its object and inspects inste
   }) });
   await store.runCleanupOnce(d.id, d.lease);
   expect((await operation(staged.objectId, 'DELETE')).state).toBe('UNKNOWN');
-  expect(h.actions).toEqual(['PUT', 'INSPECT']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT', 'INSPECT']);
 });
 
 it('rejects admission in a SUSPENDED tenant before staging or reserving private media', async () => {
@@ -536,7 +539,7 @@ it('authorizes read before channel locks so lifecycle can take instance then cha
     await channelDeletion(t);
     await lockAttendanceChannel(tx as TenantTransaction, t.org, t.channel);
   } })).rejects.toThrow('RESOURCE_DELETING');
-  expect(h.actions).toEqual(['PUT']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT']);
 });
 
 it('schedules a PREPARED PUT despite an older UNKNOWN missing object without replaying the latter', async () => {
@@ -552,7 +555,7 @@ it('schedules a PREPARED PUT despite an older UNKNOWN missing object without rep
   await store.runOnce(t.org); await store.runOnce(t.org);
   expect((await operation(next.objectId)).state).toBe('CONFIRMED');
   expect((await operation(unknownId)).state).toBe('UNKNOWN');
-  expect(h.actions).toEqual(['UNKNOWN_PUT', 'INSPECT', 'PUT']);
+  expect(h.actions).toEqual(['UNKNOWN_PUT', 'INSPECT', 'PUT', 'INSPECT']);
 });
 
 it('rejects DELETE authorization whose lease expires while the SQL trigger waits for its deletion lock', async () => {
@@ -582,7 +585,7 @@ it('rejects DELETE authorization whose lease expires while the SQL trigger waits
     await holder.query('ROLLBACK'); await actor.query('ROLLBACK'); await pendingInsert;
     holder.release(); actor.release();
   }
-  expect(h.actions).toEqual(['PUT']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT']);
 });
 
 it('bounds DELETE lease and adapter preflight to current lifecycle authorization without sending after expiry', async () => {
@@ -689,3 +692,63 @@ it('blocks DELETE preparation and UNKNOWN absence inspection against a changed d
   expect((await operation(staged.objectId, 'DELETE')).state).toBe('UNKNOWN');
   expect((await object(staged.objectId)).reserved_bytes).toBe(5); expect(b.actions).toEqual([]);
 });
+
+
+it.each(['missing', 'corrupt', 'truncated', 'stalled'] as const)(
+  'retains staged bytes after a real HTTP PUT ACK with %s physical bytes, then reconciles without PUT replay', async mode => {
+    const directory = await mkdtemp(join(tmpdir(), 'jrc-media-custody-'));
+    const path = join(directory, 'object.cipher');
+    let healthy = false, puts = 0, gets = 0;
+    const server = createServer(async (request, reply) => {
+      const url = new URL(request.url!, 'http://localhost');
+      if (url.searchParams.has('versioning')) return reply.end('<VersioningConfiguration/>');
+      if (url.searchParams.has('object-lock') || url.searchParams.has('policy')) {
+        reply.statusCode = 404;
+        return reply.end('<Error><Code>' + (url.searchParams.has('policy') ? 'NoSuchBucketPolicy' : 'ObjectLockConfigurationNotFoundError') + '</Code></Error>');
+      }
+      if (url.searchParams.has('acl')) return reply.end('<AccessControlPolicy><AccessControlList><Grant><Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="CanonicalUser"><Type>CanonicalUser</Type></Grantee><Permission>FULL_CONTROL</Permission></Grant></AccessControlList></AccessControlPolicy>');
+      if (request.method === 'PUT') {
+        puts++;
+        const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        await writeFile(path, Buffer.concat(chunks));
+        return reply.end(); // Deliberately acknowledge before a usable physical read.
+      }
+      gets++;
+      if (!healthy && mode === 'missing') { reply.statusCode = 404; return reply.end('<Error><Code>NoSuchKey</Code></Error>'); }
+      if (!healthy && mode === 'stalled') { reply.writeHead(200); reply.flushHeaders(); return; }
+      const bytes = await readFile(path);
+      if (!healthy && mode === 'corrupt') bytes[0] = bytes[0]! ^ 1;
+      return reply.end(!healthy && mode === 'truncated' ? bytes.subarray(0, bytes.length - 1) : bytes);
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address(); if (!address || typeof address === 'string') throw new Error('missing listener');
+      const objectStore = createS3PrivateObjectStore({ endpoint: 'http://127.0.0.1:' + address.port, bucket: 'broker-private',
+        profile: 'private-v1', region: 'us-east-1', accessKeyId: 'SYNTHETICACCESS', secretAccessKey: 'synthetic-only',
+        dedicatedBucket: true, allowLoopbackHttpForTests: true, requestTimeoutMs: 5_000 });
+      const t = await tenant(), other = await tenant(), media = await pending(t);
+      const store = core(transport(), 100, { objectStore, requestTimeoutMs: 5_000 });
+      const staged = await store.stage(t.org, media, file), original = await object(staged.objectId);
+      expect(await store.dispatchPut(t.org, staged.objectId)).toBe('UNKNOWN');
+      const expectedError = { missing: 'MEDIA_OBJECT_NOT_OBSERVED', corrupt: 'OBJECT_INTEGRITY_FAILED',
+        truncated: 'OBJECT_INTEGRITY_FAILED', stalled: 'OBJECT_DEADLINE_EXCEEDED' }[mode];
+      expect(await operation(staged.objectId)).toMatchObject({ state: 'UNKNOWN', lease_token: null, last_error_code: expectedError });
+      expect(await object(staged.objectId)).toMatchObject({ state: 'STAGED', reserved_bytes: 5, staging_ciphertext: original.staging_ciphertext });
+      expect((await db.database.pool.query('SELECT status FROM messaging_media WHERE id=$1', [media])).rows).toEqual([{ status: 'STORING' }]);
+      await expect(store.read(t.org, media)).rejects.toThrow('MEDIA_NOT_READY');
+      await expect(store.read(other.org, media)).rejects.toThrow('MEDIA_NOT_FOUND');
+      healthy = true;
+      const restarted = core(transport(), 100, { objectStore, requestTimeoutMs: 5_000 });
+      expect(await restarted.reconcilePut(t.org, staged.objectId)).toBe('CONFIRMED');
+      expect(await restarted.read(t.org, media)).toEqual(file);
+      expect(await object(staged.objectId)).toMatchObject({ state: 'READY', reserved_bytes: 5, staging_ciphertext: null });
+      expect(puts).toBe(1); expect(gets).toBe(3);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      const within = relative(tmpdir(), directory);
+      if (!within || isAbsolute(within) || within.startsWith('..') || !within.startsWith('jrc-media-custody-')) throw new Error('UNSAFE_MEDIA_TMP_CLEANUP');
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);
