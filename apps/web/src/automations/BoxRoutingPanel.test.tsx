@@ -20,6 +20,22 @@ function setup(){
  return {client,element:(o=org,editable=true)=><MemoryRouter><BoxRoutingPanel client={client} organizationId={o} items={[item]} editable={editable} initialChannel={channel}/></MemoryRouter>};
 }
 afterEach(()=>{cleanup();vi.clearAllMocks();});
+it('loads and paginates boxes within the channel API limit while keeping tenant isolation',async()=>{
+ const h=setup(),otherChannel='55555555-5555-4555-8555-555555555555';
+ vi.mocked(listChannels).mockImplementation(async(_client,_archived,page)=>{
+  // /v1/channels rejects pageSize > 100 before reading any tenant records.
+  if(!page||page.pageSize>100)throw Error('CHANNEL_QUERY_INVALID');
+  const box=(id:string,name:string,organizationId=org)=>({id,organizationId,identity:{displayName:name,maskedAddress:null},destination:{name:'Atendimento',inboxId:20},transportStatus:'CONNECTED'});
+  return {data:page.cursor?[box(channel,'WhatsApp Comercial'),box(otherChannel,'WhatsApp Suporte'),box('66666666-6666-4666-8666-666666666666','Outra empresa','77777777-7777-4777-8777-777777777777')]:[box(channel,'WhatsApp Comercial')],nextCursor:page.cursor?null:'next-box-page'} as never;
+ });
+ render(h.element());
+ expect(await screen.findByRole('option',{name:/WhatsApp Comercial/})).toBeVisible();
+ fireEvent.click(await screen.findByRole('button',{name:'Carregar mais caixas'}));
+ expect(await screen.findByRole('option',{name:/WhatsApp Suporte/})).toBeVisible();
+ expect(screen.getAllByRole('option',{name:/WhatsApp Comercial/})).toHaveLength(1);
+ expect(screen.queryByRole('option',{name:/Outra empresa/})).toBeNull();
+ expect(screen.queryByRole('alert')).toBeNull();
+});
 it('configures a department and activates the selected box from Flow with real-name preview and revisions',async()=>{
  const h=setup();render(h.element());
  fireEvent.change(await screen.findByLabelText('Automação para esta caixa'),{target:{value:automation}});

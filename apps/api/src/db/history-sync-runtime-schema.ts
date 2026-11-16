@@ -2,7 +2,8 @@
  * candidate binary must not claim the new schema without its isolation guards.
  */
 import {historySourceRuntimeSql} from './history-source-runtime-schema.js';
-export const historySyncRuntimeSql = `(${historySourceRuntimeSql}) AND NOT EXISTS(
+import {historyLifecycleRuntimeSql} from './history-lifecycle-runtime-schema.js';
+export const historySyncRuntimeSql = `(${historySourceRuntimeSql}) AND (${historyLifecycleRuntimeSql}) AND NOT EXISTS(
  SELECT 1 FROM (VALUES ('history_account_identities',false),('history_sync_runs',true),
  ('history_sync_chunks',true),('history_sync_receipts',false),('history_sync_peers',false),
  ('history_sync_catalogue_pages',false),('history_sync_native_peers',false),('history_sync_record_results',false),

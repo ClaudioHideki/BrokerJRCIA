@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { createHistorySyncStore } from '../../src/modules/history-sync/store.js';
+import { historySyncRecordsDigest, type HistorySyncScope } from '../../src/modules/history-sync/contract.js';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -273,6 +275,48 @@ it('drains a real channel deletion only after exact absence and preserves anothe
   await store.runCleanupOnce(deletion.id, deletion.lease); await purge(deletion, 'channel');
   expect((await db.database.pool.query('SELECT id FROM messaging_channels WHERE id=$1', [t.channel])).rows).toEqual([]);
   expect(await store.read(survivor.org, keep)).toEqual(file);
+});
+
+it('retains a legacy PREPARED private DELETE when historical delivery becomes uncertain before dispatch', async () => {
+  const t = await tenant(), media = await pending(t), h = transport(), store = core(h);
+  const staged = await store.stage(t.org,media,file);
+  await store.dispatchPut(t.org,staged.objectId);
+  const objectsBefore = new Map(h.bodies);
+  expect(objectsBefore.size).toBe(1);
+
+  const now = new Date(), chunk = randomUUID(), delivery = randomUUID();
+  const scope: HistorySyncScope = { organizationId: t.org,channelId: t.channel,instanceId: t.instance,
+    engineId: 'synthetic-engine',engineGeneration: 1,sessionGeneration: randomUUID(),bindingFingerprint: 'a'.repeat(64),
+    historyAccountIdentity: randomUUID(),identityScopeId: randomUUID(),ownerFingerprint: 'b'.repeat(64) };
+  const history = createHistorySyncStore({ transact: db.transact,encryptionKey: Buffer.alloc(32,79),maxStagedBytes: 1000000,
+    assertCurrentScope: async()=>{} });
+  const run = await history.admit(scope,randomUUID(),{ mode: 'FULL_AVAILABLE',categories: ['INDIVIDUAL'] },now);
+  const records = [{ kind: 'CHAT',recipientKind: 'INDIVIDUAL',chatJid: '15550000001@s.whatsapp.net',
+    displayName: 'Synthetic retained chat',lastMessageAt: 1600000000,unreadCount: 0 }];
+  await history.acceptChunk(scope,run.id,{ schemaVersion: 2,provenance: 'SOCKET',scope,chunkId: chunk,ordinal: 0,
+    capturedAt: now.toISOString(),isLast: false,progress: null,records,checksum: historySyncRecordsDigest(records) },now);
+  await history.catalogNext(scope,run.id,now);
+  await history.command(scope,run.id,1,'CANCEL');
+  await db.database.pool.query(`INSERT INTO history_sync_record_results(organization_id,channel_id,run_id,chunk_id,record_index,disposition)
+    VALUES($1,$2,$3,$4,0,'PEER')`,[t.org,t.channel,run.id,chunk]);
+  await db.database.pool.query(`INSERT INTO history_sync_deliveries(organization_id,channel_id,run_id,chunk_id,record_index,id)
+    VALUES($1,$2,$3,$4,0,$5)`,[t.org,t.channel,run.id,chunk,delivery]);
+
+  const deletion = await channelDeletion(t);
+  await store.prepareCleanup(deletion.id,deletion.lease);
+  expect(await operation(staged.objectId,'DELETE')).toMatchObject({ state: 'PREPARED' });
+  // Model a persisted pre-upgrade operation discovering an unacknowledged POST.
+  // No triggers are disabled and no customer data or external calls are used.
+  await db.database.pool.query(`UPDATE history_sync_deliveries SET attempts=1,last_error='CHATWOOT_OUTCOME_UNKNOWN'
+    WHERE organization_id=$1 AND id=$2`,[t.org,delivery]);
+
+  await expect(store.runCleanupOnce(deletion.id,deletion.lease))
+    .rejects.toMatchObject({ code: '23514',constraint: 'lifecycle_pending_work' });
+  expect(h.actions).not.toContain('DELETE');
+  expect(h.bodies).toEqual(objectsBefore);
+  expect(await operation(staged.objectId,'DELETE')).toMatchObject({ state: 'PREPARED',lease_token: null });
+  expect((await db.database.pool.query('SELECT id FROM history_sync_deliveries WHERE organization_id=$1 AND id=$2',
+    [t.org,delivery])).rows).toEqual([{ id: delivery }]);
 });
 
 it('refuses cleanup with an expired lease or revoked nominative actor before DELETE', async () => {

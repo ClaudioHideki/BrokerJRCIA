@@ -3,6 +3,9 @@
 
 ## Em progresso (WIP)
 
+- [ ] **RELEASE-20261116:** Guard de retenção `0095` e proteção LAB2 implementados após RED em CI. Candidata LAB2 incorpora filtro de segmento e popup de propostas já validados; Call Center WIP preservado fora desta promoção. Revalidar GREEN, E2E, imagens e runtime antes de concluir. Publicação e deploy Grupo JRC/Broker autorizados; sem backup/dump/restore ou envio real.
+- [ ] **FLOW-20261116:** Auditoria autenticada e simulação sem envio realizadas; corrigido limite de paginação 200→100 no painel de vínculos. Regressão local aprovada. Ver `docs/implementation/flow-audit-20261116.md`; publicação de automações não realizada.
+
 - [ ] **RETENTION-20261116:** Antes de promover a migration LIVE, proteger os caminhos de hard delete contra remoção parcial de objetos com recibos/KEEP. Preflight antes do enqueue e antes da limpeza em lote; remoção de conexão preserva histórico, expurgo permanece separado. Não apagar provas nem usar CASCADE. Nenhuma exclusão foi executada.
 
 - [ ] **RELEASE-20261114:** Validar e promover a candidata com ACK histórico TEXT corrigido, mantendo captura desabilitada; atualizar main/imagens e verificar schema/containers no Dokploy. Ver CONTINUE-AQUI.md; implantação ainda não comprovada.

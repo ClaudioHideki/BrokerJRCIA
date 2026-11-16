@@ -76,6 +76,22 @@ it('refuses a forced-RLS catalogue that the existing explicit lifecycle definer 
     expect((await client.query(`SELECT (${historySyncRuntimeSql}) AS ready`)).rows[0].ready).toBe(false);
   } finally {await client.query('ROLLBACK');client.release();}
 });
+it('refuses missing or weakened history-retention cleanup guards before serving the candidate',async()=>{
+  const client=await db.database.pool.connect();
+  try {
+    for(const drift of [
+      'REVOKE EXECUTE ON FUNCTION lifecycle_assert_history_cleanup(uuid,uuid) FROM jrc_lifecycle',
+      'GRANT EXECUTE ON FUNCTION lifecycle_assert_history_cleanup(uuid,uuid) TO PUBLIC',
+      'GRANT EXECUTE ON FUNCTION lifecycle_assert_history_clear(uuid,uuid) TO jrc_app',
+      'ALTER TABLE media_private_operations DISABLE TRIGGER media_private_delete_dispatch_guard',
+      'DROP FUNCTION lifecycle_history_pending_count(uuid,uuid)',
+    ]) {
+      await client.query('BEGIN');await client.query(drift);
+      expect((await client.query(`SELECT (${historySyncRuntimeSql}) AS ready`)).rows[0].ready,drift).toBe(false);
+      await client.query('ROLLBACK');
+    }
+  } finally {await client.query('ROLLBACK');client.release();}
+});
 async function seed() {
   const t = await seedAttendanceTenant(db.database), instance = randomUUID();
   await db.database.pool.query(`INSERT INTO instances(id,organization_id,provider_account_id,name,upstream_instance_key)

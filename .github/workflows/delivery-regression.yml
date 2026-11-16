@@ -45,6 +45,8 @@ jobs:
           apps/api/tests/integration/qr-chatwoot-storage.test.ts
           apps/api/tests/integration/qr-outbound-observation.test.ts
           apps/api/tests/integration/history-sync-catalogue-lifecycle.test.ts
+          apps/api/tests/integration/durable-private-media.test.ts
+          apps/api/tests/integration/history-sync-schema.test.ts
       - name: Verify private object bytes and revoked access against real MinIO
         run: npm run test:storage:ci
       - run: git diff --exit-code && git diff --check

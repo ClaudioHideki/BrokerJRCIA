@@ -659,6 +659,13 @@
       "when": 1794782400010,
       "tag": "0094_history_lifecycle_compatibility",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1794868800000,
+      "tag": "0095_history_retention_guard",
+      "breakpoints": true
     }
   ]
 }

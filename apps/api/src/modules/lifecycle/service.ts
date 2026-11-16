@@ -47,6 +47,8 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
   const translateError=(error:unknown):LifecycleError=>{
     if(error instanceof LifecycleError)return error;
     const candidate=error as {code?:string;constraint?:string};
+    if(candidate?.constraint==='lifecycle_cleanup_lease')return new LifecycleError('LIFECYCLE_LEASE_LOST',409);
+    if(candidate?.constraint==='lifecycle_cleanup_actor')return new LifecycleError('LIFECYCLE_ACTOR_REVOKED',403);
     if(candidate?.code==='P0002')return new LifecycleError('LIFECYCLE_RESOURCE_NOT_FOUND',404);
     if(candidate?.code==='42501')return new LifecycleError('LIFECYCLE_FORBIDDEN',403);
     if(candidate?.constraint==='lifecycle_pending_work')return new LifecycleError('LIFECYCLE_PENDING_WORK',409);
@@ -120,7 +122,12 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
           FROM lifecycle_deletions d WHERE d.id=$1 AND d.lease_token=$2 AND d.lease_expires_at>clock_timestamp()`,[claimed.id,lease]);
         return result.rows[0]?.authorized===true;
       };
-      const authorized=await options.transact(async tx=>{await lockCurrentLease(tx);return actorAuthorized(tx);});
+      const authorized=await options.transact(async tx=>{
+        await lockCurrentLease(tx);
+        const allowed=await actorAuthorized(tx);
+        if(allowed)await tx.query('SELECT public.lifecycle_assert_history_cleanup($1,$2)',[claimed.id,lease]);
+        return allowed;
+      });
       if(!authorized){
         await options.transact(tx=>tx.query("UPDATE lifecycle_deletions SET status='ACTION_REQUIRED',error_code='LIFECYCLE_ACTOR_REVOKED',lease_token=NULL,lease_expires_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND lease_token=$2",[claimed.id,lease]).then(()=>undefined));
         return true;
@@ -135,7 +142,10 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
           await lockCurrentLease(tx);
           const refreshed=await tx.query('UPDATE lifecycle_deletions SET lease_expires_at=clock_timestamp()+interval \'10 minutes\',updated_at=clock_timestamp() WHERE id=$1 AND lease_token=$2 AND lease_expires_at>clock_timestamp() RETURNING id',[claimed.id,lease]);
           if(!refreshed.rowCount)throw new LifecycleError('LIFECYCLE_LEASE_LOST',409);
-          if(await actorAuthorized(tx))return true;
+          if(await actorAuthorized(tx)){
+            await tx.query('SELECT public.lifecycle_assert_history_cleanup($1,$2)',[claimed.id,lease]);
+            return true;
+          }
           await tx.query("UPDATE lifecycle_deletions SET status='ACTION_REQUIRED',error_code='LIFECYCLE_ACTOR_REVOKED',lease_token=NULL,lease_expires_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND lease_token=$2",[claimed.id,lease]);
           return false;
         });
@@ -185,6 +195,7 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
         await options.transact(async tx=>{
           await lockCurrentLease(tx);
           if(!await actorAuthorized(tx))throw new LifecycleError('LIFECYCLE_ACTOR_REVOKED',403);
+          await tx.query('SELECT public.lifecycle_assert_history_cleanup($1,$2)',[claimed.id,lease]);
         });
         let result:{state:'COMPLETE'|'PENDING'|'UNKNOWN'};
         try { result=await options.cleanupPrivateMedia(claimed.id,lease); }
@@ -209,8 +220,10 @@ export function createLifecycleService(options:{transact:LifecycleTransaction;
         await tx.query(`SELECT public.${purge}($1,$2)`,[claimed.id,lease]);
       });
     }catch(error){
-      const code=error instanceof LifecycleError&&error.code==='LIFECYCLE_ACTOR_REVOKED'?error.code:
-        error instanceof LifecycleError&&error.code==='LIFECYCLE_LEASE_LOST'?'EVOLUTION_CLEANUP_UNVERIFIED':'LIFECYCLE_PURGE_FAILED';
+      const translated=translateError(error);
+      const code=translated.code==='LIFECYCLE_PENDING_WORK'?'LIFECYCLE_PENDING_WORK':
+        translated.code==='LIFECYCLE_ACTOR_REVOKED'?translated.code:
+        translated.code==='LIFECYCLE_LEASE_LOST'?'EVOLUTION_CLEANUP_UNVERIFIED':'LIFECYCLE_PURGE_FAILED';
       await options.transact(tx=>tx.query("UPDATE lifecycle_deletions SET status='ACTION_REQUIRED',error_code=$3,reconciliation_requested=false,lease_token=NULL,lease_expires_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND lease_token=$2",[claimed.id,lease,code]).then(()=>undefined));
     }
     return true;

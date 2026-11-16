@@ -18,7 +18,7 @@ import {centralMediaRuntimeSql} from './central-media-runtime-schema.js';
 import {guidedSetupRuntimeSql} from './guided-setup-runtime-schema.js';
 import {boxRoutingRuntimeSql} from './box-routing-runtime-schema.js';
 import {historySyncRuntimeSql} from './history-sync-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0094_history_lifecycle_compatibility';
+export const RUNTIME_SCHEMA_BASELINE = '0095_history_retention_guard';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 

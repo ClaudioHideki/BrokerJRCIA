@@ -44,6 +44,7 @@ const deliveryCases = [
   { label: 'expired HTTP claim with no confirmed ACK',state: 'PENDING',lease: 'EXPIRED' },
   { label: 'retry after an uncertain HTTP outcome',state: 'PENDING',lease: 'NONE' },
   { label: 'receiver still waiting for private media',state: 'WAITING_MEDIA',lease: 'NONE' },
+  { label: 'legacy DONE flag without a durable receiver receipt',state: 'DONE',lease: 'NONE' },
 ] as const;
 
 async function uncertainDelivery(testCase: typeof deliveryCases[number]) {
@@ -57,6 +58,21 @@ async function uncertainDelivery(testCase: typeof deliveryCases[number]) {
   [target.org,target.channel,target.run,target.chunk,id,testCase.state,testCase.lease === 'NONE' ? null : randomUUID(),
     testCase.lease === 'NONE' ? null : new Date(Date.now() + (testCase.lease === 'ACTIVE' ? 120000 : -120000))]);
   return { ...target,delivery: id };
+}
+
+async function legacyDeletion(target: Awaited<ReturnType<typeof uncertainDelivery>>,kind: 'CHANNEL'|'ORGANIZATION') {
+  await db.database.pool.query("UPDATE lifecycle_deletions SET status='ACTION_REQUIRED' WHERE status='REQUESTED'");
+  const deletion = randomUUID();
+  await db.database.pool.query(`INSERT INTO lifecycle_deletions(id,organization_id,kind,resource_id,resource_name,messaging_channel_id,
+    provider,upstream_key,actor_kind,actor_id,reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Synthetic legacy deletion')`,
+  [deletion,target.org,kind,kind === 'CHANNEL' ? target.instance : target.org,kind === 'CHANNEL' ? 'Synthetic catalogue QR' : 'Attendance',
+    kind === 'CHANNEL' ? target.channel : null,kind === 'CHANNEL' ? 'QR' : null,kind === 'CHANNEL' ? target.instance : null,
+    kind === 'CHANNEL' ? 'TENANT' : 'PLATFORM',kind === 'CHANNEL' ? target.owner : actor]);
+  await db.database.pool.query(`INSERT INTO lifecycle_cleanup_items(deletion_id,instance_id,upstream_key) VALUES($1,$2,$3)`,
+  [deletion,target.instance,target.instance]);
+  await db.database.pool.query('UPDATE messaging_channels SET deleting_at=clock_timestamp() WHERE organization_id=$1 AND id=$2',
+  [target.org,target.channel]);
+  return deletion;
 }
 
 for (const kind of ['CHANNEL','ORGANIZATION'] as const) {
@@ -81,17 +97,7 @@ for (const kind of ['CHANNEL','ORGANIZATION'] as const) {
   it.each(deliveryCases)(`rechecks legacy ${kind} deletion before external cleanup for $label`,async testCase=>{
     // Old releases could admit deletion despite a history delivery. Seed only
     // that persisted legacy state; real restricted worker/SQL paths run below.
-    await db.database.pool.query("UPDATE lifecycle_deletions SET status='ACTION_REQUIRED' WHERE status='REQUESTED'");
-    const target = await uncertainDelivery(testCase), deletion = randomUUID();
-    await db.database.pool.query(`INSERT INTO lifecycle_deletions(id,organization_id,kind,resource_id,resource_name,messaging_channel_id,
-      provider,upstream_key,actor_kind,actor_id,reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Synthetic legacy deletion')`,
-    [deletion,target.org,kind,kind === 'CHANNEL' ? target.instance : target.org,kind === 'CHANNEL' ? 'Synthetic catalogue QR' : 'Attendance',
-      kind === 'CHANNEL' ? target.channel : null,kind === 'CHANNEL' ? 'QR' : null,kind === 'CHANNEL' ? target.instance : null,
-      kind === 'CHANNEL' ? 'TENANT' : 'PLATFORM',kind === 'CHANNEL' ? target.owner : actor]);
-    await db.database.pool.query(`INSERT INTO lifecycle_cleanup_items(deletion_id,instance_id,upstream_key) VALUES($1,$2,$3)`,
-    [deletion,target.instance,target.instance]);
-    await db.database.pool.query('UPDATE messaging_channels SET deleting_at=clock_timestamp() WHERE organization_id=$1 AND id=$2',
-    [target.org,target.channel]);
+    const target = await uncertainDelivery(testCase), deletion = await legacyDeletion(target,kind);
     const deprovision = vi.fn(async()=>{}), cleanupPrivateMedia = vi.fn(async()=>({ state: 'COMPLETE' as const }));
     const service = createLifecycleService({ transact: work=>withLifecycleWorkerTransaction(worker,work),deprovision,cleanupPrivateMedia });
     expect(await service.processOne()).toBe(true);
@@ -105,6 +111,17 @@ for (const kind of ['CHANNEL','ORGANIZATION'] as const) {
       [target.org,target.channel])).rows).toEqual([{ id: target.channel }]);
   });
 }
+
+it('refuses engine deprovision at the SQL boundary even if an older worker skips the new preflight',async()=>{
+  const target = await uncertainDelivery(deliveryCases[1]), deletion = await legacyDeletion(target,'CHANNEL'), lease = randomUUID();
+  await db.database.pool.query(`UPDATE lifecycle_deletions SET status='CLEANING_EXTERNAL',lease_token=$2,
+    lease_expires_at=clock_timestamp()+interval '10 minutes' WHERE id=$1`,[deletion,lease]);
+  await db.database.pool.query("UPDATE lifecycle_cleanup_items SET status='IN_FLIGHT' WHERE deletion_id=$1",[deletion]);
+  await expect(worker.query('SELECT * FROM public.evolution_cleanup_snapshot($1,$2,$3,true)',[deletion,lease,target.instance]))
+    .rejects.toMatchObject({ code: '23514',constraint: 'lifecycle_pending_work' });
+  expect((await db.database.pool.query('SELECT id FROM history_sync_deliveries WHERE organization_id=$1 AND id=$2',
+    [target.org,target.delivery])).rowCount).toBe(1);
+});
 
 it('preserves another tenant while explicitly deleting a channel with populated catalogue and page receipts',async()=>{
   const target = await populated(), other = await populated();
