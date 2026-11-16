@@ -134,8 +134,9 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('keeps live human intents, outb
         const downloaded=await client.downloadAttachment(consumer.accountId,consumer.inboxId,groupConversation,id,attachmentId);
         expect(createHash('sha256').update(downloaded.bytes).digest('hex')).toBe(createHash('sha256').update(bytes).digest('hex'));
         const stored=await lab('attachment-read',{protocol:'attachment-read/v1',accountId:consumer.accountId,messageId:id});
+        expect(stored.message.content.replace(/\r\n/gu,'\n')).toBe(presentationText);
         expect(stored).toMatchObject({protocol:'attachment-read/v1',byteHashes:[createHash('sha256').update(bytes).digest('hex')],filenames:[media.file],
-          message:{id,inboxId:consumer.inboxId,conversationId:groupConversation,content:presentationText}});
+          message:{id,inboxId:consumer.inboxId,conversationId:groupConversation}});
       }
     }
     expect(sends).toEqual(['Synthetic live human intent','Synthetic live human intent']);

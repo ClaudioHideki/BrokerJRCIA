@@ -15,6 +15,7 @@ test('disposable Rails and Sidekiq enable the Broker receiver for the synthetic 
  for(const name of ['rails','sidekiq']){
   assert.equal(c.services[name].environment.RAILS_ENV,'test');
   assert.equal(c.services[name].environment.JRC_BROKER_ENABLED,'true');
+  assert.equal(c.services[name].environment.JRC_HISTORY_SYNC_V2_ENABLED,'true');
   assert.equal(c.services[name].environment.JRC_BROKER_ALLOWED_ORIGINS,'https://synthetic.example.test');
  }
 });

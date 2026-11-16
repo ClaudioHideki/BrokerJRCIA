@@ -82,7 +82,8 @@ export function createLiveIngressConsumer(request:Request,failure:Failure){
     throw error;
    }
    const parsed=scopeSchema.extend({protocol:z.literal(LIVE_INGRESS_PROTOCOL),account_id:integer,inbox_id:integer,
-    supports_text:z.literal(true),supports_media:z.literal(true),max_media_bytes:integer.min(16*1024*1024)}).safeParse(result);
+    supports_text:z.literal(true),supports_media:z.literal(true),supports_occurred_at:z.literal(true).optional(),
+    max_media_bytes:integer.min(16*1024*1024)}).safeParse(result);
    if(!parsed.success||parsed.data.account_id!==accountId||parsed.data.inbox_id!==inboxId
     ||Object.keys(scopeSchema.shape).some(key=>parsed.data[key as keyof LiveIngressScope]!==scope[key as keyof LiveIngressScope]))
     throw failure('CHATWOOT_LIVE_CAPABILITY_UNPROVEN');

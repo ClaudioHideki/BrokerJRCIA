@@ -47,6 +47,20 @@ it.each([404,405])('selects stock compatibility only for an absent capability en
  expect(await client.liveIngress().capability(7,9,scope)).toBe(false);
 });
 
+it('accepts the LAB2 capability with its explicit canonical-clock support',async()=>{
+ const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch:async()=>Response.json({
+  protocol:'jrc-live-ingress/1',...scope,account_id:7,inbox_id:9,supports_text:true,supports_media:true,
+  supports_occurred_at:true,max_media_bytes:16*1024*1024})});
+ expect(await client.liveIngress().capability(7,9,scope)).toBe(true);
+});
+
+it.each([{supports_occurred_at:false},{supports_occurred_at:'true'},{unexpected_capability:true}])('rejects unsupported or unknown capability fields %j',async extra=>{
+ const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch:async()=>Response.json({
+  protocol:'jrc-live-ingress/1',...scope,account_id:7,inbox_id:9,supports_text:true,supports_media:true,
+  max_media_bytes:16*1024*1024,...extra})});
+ await expect(client.liveIngress().capability(7,9,scope)).rejects.toMatchObject({code:'CHATWOOT_LIVE_CAPABILITY_UNPROVEN'});
+});
+
 it.each([401,403,409,422,429,500])('does not downgrade after capability failure %s',async status=>{
  const fetch=vi.fn(async()=>new Response('',{status}));
  const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch});
