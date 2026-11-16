@@ -17,6 +17,8 @@ not remove FactoryBot definitions and synthetic media. Neither checkout is
 modified.
 
 ```bash
+npm ci
+npx tsc -b --pretty false
 node --test labs/history-sync-lab2/ci-harness.test.mjs
 bash labs/history-sync-lab2/run-ci.sh --check
 bash labs/history-sync-lab2/run-ci.sh all
@@ -46,7 +48,13 @@ existing repository digest pins. MinIO uses the same release, size provenance
 and SHA256-verified Linux binary as `scripts/ci/storage-minio.mjs`, packaged in
 a scratch image. Rails HTTP binds only `127.0.0.1:54141`; PostgreSQL and MinIO
 use dynamically assigned loopback ports. Redis has no published port. The
-network is internal; all service labels identify this disposable laboratory.
+network is a project-owned bridge, with a loopback default binding and explicit
+loopback bindings on every published port. Internal-only bridges on the runner
+did not materialize those bindings (Actions run 43945663273). Egress is available
+on this bridge; the fixture uses only synthetic identities and controlled local
+endpoints, not production credentials or recipients. All service labels identify
+this disposable laboratory. The compiled Broker dependency graph is checked
+before Docker starts, because storage fixtures import the built API modules.
 PostgreSQL has separate Rails and per-test Broker databases. Its trust auth is
 confined to this synthetic local service, allowing the existing test-role/RLS
 fixtures. PostgreSQL and MinIO use project-owned named volumes, so container
@@ -70,7 +78,7 @@ defaults; the workflow owns any resource admission threshold.
 
 Artifacts are `provenance.txt`, `build.log`, `start.log`, `schema.log`, one log
 per selected suite, and `status.tsv`. Failure cleanup adds only the last 200
-Rails/Sidekiq log lines, sanitized against generated secret values and
+PostgreSQL/Redis/MinIO/Rails/Sidekiq log lines, sanitized against generated secret values and
 credential-bearing fields. Temporary random credentials live in a mode-0600
 environment file outside the evidence directory, are never echoed, and are
 removed on exit. Do not upload that temporary directory, Docker inspect output,

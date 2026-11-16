@@ -95,7 +95,11 @@ services:
     mem_limit: 1024m
 networks:
   lab:
-    internal: true
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: '127.0.0.1'
+    labels:
+      com.jrc.purpose: broker-lab2-github-e2e
 volumes:
   postgres-data:
     labels: *lab-labels

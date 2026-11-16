@@ -21,6 +21,11 @@ for file in Gemfile Gemfile.lock db/schema.rb spec/assets/sample.png spec/assets
 done
 grep -q "ruby '3.4.12'" "$source_path/Gemfile" || die 'LAB2 Ruby version mismatch'
 [[ $(node --version) == v24.19.0 ]] || die 'Node24.19.0 required'
+# BEGIN COMPILED PREREQUISITES
+for compiled in apps/api/dist/modules/messaging/private-object-store.js packages/contracts/dist/index.js packages/providers/dist/index.js packages/security/dist/index.js; do
+  [[ -f $root/$compiled ]] || die "Compiled Broker prerequisite missing: $compiled; run npx tsc -b first"
+done
+# END COMPILED PREREQUISITES
 if [[ $selection == --check ]]; then echo 'Exact LAB2 source and CI preflight verified'; exit 0; fi
 [[ $(uname -s) == Linux ]] || die 'Linux runner required'
 [[ -z ${DOCKER_HOST:-} && -z ${DOCKER_CONTEXT:-} ]] || die 'Remote Docker overrides prohibited'
@@ -45,7 +50,7 @@ cleanup() {
   trap - EXIT
   if [[ $started == true ]]; then
     if [[ $status != 0 ]]; then
-      "${compose[@]}" logs --no-color --tail 200 rails sidekiq 2>&1 | node "$root/labs/history-sync-lab2/sanitize-ci-logs.mjs" > "$evidence/failure-startup.log" || true
+      "${compose[@]}" logs --no-color --tail 200 postgres redis minio rails sidekiq 2>&1 | node "$root/labs/history-sync-lab2/sanitize-ci-logs.mjs" > "$evidence/failure-startup.log" || true
     fi
     "${compose[@]}" down --volumes --timeout 20 >/dev/null 2>&1 || true
   fi

@@ -1,6 +1,6 @@
 import{test}from'node:test';
 import assert from'node:assert/strict';
-import{readFileSync,existsSync,mkdtempSync,rmSync}from'node:fs';
+import{readFileSync,existsSync,mkdtempSync,rmSync,mkdirSync,writeFileSync}from'node:fs';
 import{spawnSync}from'node:child_process';
 import{join,resolve}from'node:path';
 import{homedir,tmpdir}from'node:os';
@@ -80,4 +80,41 @@ test('workflow prepares runner-scoped evidence at execution time and shares it w
   assert.equal(job.steps.find(step=>step.uses?.startsWith('actions/upload-artifact@')).with.path,'${{ env.HISTORY_LAB_EVIDENCE_DIR }}/');
   assert.match(read('run-ci.sh'),/evidence=\$\{HISTORY_LAB_EVIDENCE_DIR:-/);
  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('both workflows compile the API dependency graph before storage or cross-repository execution',()=>{
+ for(const [file,jobName,execute] of [
+  ['delivery-regression.yml','transport',/npm run test:storage:ci/],
+  ['delivery-lab2-e2e.yml','rails-sidekiq-private-media',/run-ci[.]sh (?:--check|all)/],
+ ]){
+  const steps=parse(readFileSync(resolve('.github/workflows',file),'utf8')).jobs[jobName].steps;
+  const install=steps.findIndex(s=>s.run?.trim()==='npm ci'),compile=steps.findIndex(s=>/npx(?: --no-install)? tsc -b/.test(s.run??''));
+  const execution=steps.findIndex(s=>execute.test(s.run??''));
+  assert.ok(install>=0&&compile>install&&execution>compile,file+' must compile after install and before runtime consumers');
+ }
+});
+
+test('compiled Broker prerequisites fail before Docker and accept a complete fixture graph',()=>{
+ const script=read('run-ci.sh'),block=script.match(/# BEGIN COMPILED PREREQUISITES\r?\n([\s\S]*?)# END COMPILED PREREQUISITES/)?.[1];
+ assert.ok(block,'compiled prerequisites missing');
+ assert.ok(script.indexOf('# BEGIN COMPILED PREREQUISITES')<script.indexOf('docker_cmd='),'must reject before Docker');
+ const dir=mkdtempSync(join(tmpdir(),'jrc-ci-compiled-'));
+ try{
+  const portable=value=>process.platform==='win32'?value.replace(/\\/g,'/'):value;
+  const code='set -euo pipefail\nroot=$TEST_COMPILED_ROOT\ndie(){ echo "$1" >&2; exit 64; }\n'+block;
+  const runGuard=()=>spawnSync(bash,['-c',code],{encoding:'utf8',env:{...process.env,TEST_COMPILED_ROOT:portable(dir)}});
+  const missing=runGuard();assert.equal(missing.status,64);assert.match(missing.stderr,/Compiled Broker prerequisite missing/);
+  for(const relative of ['apps/api/dist/modules/messaging/private-object-store.js','packages/contracts/dist/index.js','packages/providers/dist/index.js','packages/security/dist/index.js']){
+   const target=join(dir,relative);mkdirSync(resolve(target,'..'),{recursive:true});writeFileSync(target,'export {};\n');
+  }
+  const ready=runGuard();assert.equal(ready.status,0,ready.stderr);assert.equal(ready.stdout,'');
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('runner bridge supports explicit loopback publications and captures sanitized startup diagnostics',()=>{
+ const c=parse(read('compose.ci.yml'),{merge:true});assert.equal(c.networks.lab.driver,'bridge');assert.ok(!c.networks.lab.internal);
+ assert.equal(c.networks.lab.driver_opts['com.docker.network.bridge.host_binding_ipv4'],'127.0.0.1');
+ assert.equal(c.networks.lab.labels['com.jrc.purpose'],'broker-lab2-github-e2e');
+ for(const service of Object.values(c.services))for(const port of service.ports??[])assert.match(port,/^127[.]0[.]0[.]1:/);
+ const s=read('run-ci.sh');assert.match(s,/logs --no-color --tail 200 postgres redis minio rails sidekiq[^\n]*sanitize-ci-logs[.]mjs/);
 });

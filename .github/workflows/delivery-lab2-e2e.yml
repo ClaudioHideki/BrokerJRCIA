@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 60
     env:
       # A branch name or main is never accepted by the laboratory entrypoint.
-      HISTORY_LAB2_SHA: c180ad735dcf6777d0ddf308a0ce02422068e565
+      HISTORY_LAB2_SHA: 982f1541ca79639c289c39b840819df3ba787dda
       HISTORY_LAB2_CHECKOUT: ${{ github.workspace }}/lab2-consumer
     steps:
       - name: Prepare runner evidence directory
@@ -49,6 +49,9 @@ jobs:
 
       - name: Install the locked Broker dependencies
         run: npm ci
+
+      - name: Compile workspace modules used by storage and origin fixtures
+        run: npx tsc -b --pretty false
 
       - name: Validate the isolated laboratory boundary
         run: |

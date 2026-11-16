@@ -34,6 +34,8 @@ jobs:
           node-version: 24.19.0
           cache: npm
       - run: npm ci
+      - name: Compile workspace modules used by physical storage fixtures
+        run: npx tsc -b --pretty false
       - name: Exercise generic compatibility and physical media confirmation
         run: >-
           npm test -- --config vitest.integration.config.ts --maxWorkers=1
