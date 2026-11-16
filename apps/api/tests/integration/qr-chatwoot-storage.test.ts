@@ -53,6 +53,7 @@ describe('QR e integração JRC Conversas no PostgreSQL real', () => {
       async resolveIntegration(id) { return (await pool.query<{ organization_id: string }>('SELECT * FROM resolve_chatwoot_integration($1)', [id])).rows[0]?.organization_id; },
       async fetch(input, init) {
         const path = new URL(String(input)).pathname, method = init?.method ?? 'GET';
+        if (path.endsWith('/live-ingress/v1/capability')) return new Response('{}', { status: 404 });
         const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {};
         externalCalls.push({ path, method, body });
         let response: unknown;

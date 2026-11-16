@@ -51,6 +51,8 @@ beforeAll(async () => {
     async resolveIntegration(id) { return (await pool.query('SELECT * FROM resolve_chatwoot_integration($1)', [id])).rows[0]?.organization_id; },
     async fetch(input, init) {
       const url = new URL(String(input)), method = init?.method ?? 'GET';
+      // This matrix exercises the stock Chatwoot transport, without the additive LAB2 receiver.
+      if (url.pathname.endsWith('/live-ingress/v1/capability')) return new Response('{}', { status: 404 });
       if (url.origin === 'https://media.example.test') {
         expect(new Headers(init?.headers).has('api_access_token')).toBe(false);
         return new Response(new Uint8Array(mediaBytes()), { headers: { 'Content-Type': types[kind as MediaKind] } });

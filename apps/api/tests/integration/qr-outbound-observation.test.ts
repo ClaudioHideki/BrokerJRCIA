@@ -495,6 +495,7 @@ describe('P4.1 saída QR observada no PostgreSQL isolado', () => {
       controlEnabled:false,embedEnabled:false,transact:(org,work)=>withOrganizationTransaction(pool,org,work),resolveIntegration:async()=>h.org,
       async fetch(input,init) {
         const path=new URL(String(input)).pathname,method=init?.method??'GET';
+        if(path.endsWith('/live-ingress/v1/capability'))return new Response('{}',{status:404});
         if(init?.body instanceof FormData) {
           sent.push({text:String(init.body.get('content')),bytes:new Uint8Array(await (init.body.get('attachments[]') as Blob).arrayBuffer()),attributes:JSON.parse(String(init.body.get('content_attributes')))});
           return Response.json({id:++nextMessageId});

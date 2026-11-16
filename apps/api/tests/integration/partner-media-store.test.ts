@@ -88,7 +88,9 @@ function preparedPrivateHarness(){
  const binding=createS3PrivateObjectStore({endpoint:'https://objects.example.test',bucket:'broker-private',region:'us-east-1',profile:'private-v1',accessKeyId:'SYNTHETICACCESS',secretAccessKey:'synthetic-only',dedicatedBucket:true});
  const objectStore:PrivateObjectStore={destinationFingerprint:binding.destinationFingerprint,
   async put(ref,body){actions.push('PUT');bodies.set(ref.operationId,new Uint8Array(body));return {outcome:'CONFIRMED'};},
-  async inspect(){actions.push('INSPECT');return {outcome:'MISSING'};},
+  async inspect(ref){actions.push('INSPECT');const body=bodies.get(ref.operationId);return body
+   ?{outcome:'CONFIRMED',byteLength:body.length,sha256:createHash('sha256').update(body).digest('hex')}
+   :{outcome:'MISSING'};},
   async read(ref){actions.push('GET');return {outcome:'CONFIRMED',bytes:bodies.get(ref.operationId)!};},
   async remove(){throw new Error('No cleanup');}};
  const create=(transact:PrivateMediaTransaction=db.transact)=>createDurablePrivateMediaStore({encryptionKey,profile:'private-v1',objectStore,maxStorageBytes:1024,requestTimeoutMs:1000,transact,cleanupTransact:async()=>{throw new Error('No cleanup');}});
@@ -118,7 +120,7 @@ it('keeps READY bytes readable through a current rotated key after revoking the 
  await db.database.pool.query('UPDATE api_keys SET revoked_at=now() WHERE id=$1',[t.key]);
  await db.database.pool.query("INSERT INTO api_keys(id,organization_id,name,prefix,key_hmac,scopes) VALUES($1,$2,'Synthetic rotated',$3,$4,ARRAY['media:upload'])",[rotated,t.org,randomUUID(),'e'.repeat(64)]);
  expect(await h.create().read(t.org,staged.id,{authorize:tx=>requireCurrentPartnerKey(tx as TenantTransaction,t.org,rotated,['media:upload'])})).toEqual(file);
- expect(h.actions).toEqual(['PUT','GET']);
+ expect(h.actions).toEqual(['PUT','INSPECT','GET']);
 });
 it.each([
  ['Meta',"UPDATE messaging_channels SET provider='META',instance_id=NULL,phone_number_id='synthetic-meta',waba_id='synthetic' WHERE organization_id=$1 AND id=$2"],

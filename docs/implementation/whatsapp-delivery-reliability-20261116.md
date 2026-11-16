@@ -116,3 +116,8 @@ O relógio de publicação servidor `published_at` do recibo é diferente do rel
 ## Fechamento das verificações
 
 Em atualização ao término dos processos locais. Nenhuma execução pendente será registrada como aprovada.
+# Retomada da CI em 16/11/2026
+
+A candidata Broker `730ff44240a1f891855bd83d3cae476117be0196` foi enviada somente à branch de testes. A execução GitHub Actions `43936822804` aprovou build/tipos, 4479 testes gerais em 579 arquivos, 9 testes PDF e 884 testes web (baterias sobrepostas). PostgreSQL terminou com 1900 aprovações, 14 falhas e 3 E2Es ignorados por exigirem o laboratório dedicado. A execução inteira **não passou**.
+
+Rastreamento das falhas: quatro simuladores do Chatwoot genérico lançavam erro de transporte na nova consulta de capacidade, em vez de representar a ausência do endpoint com HTTP 404; o simulador de armazenamento retornava MISSING mesmo depois de armazenar bytes. Correção restrita às fixtures: ausência explícita da capacidade e inspeção de tamanho/SHA dos bytes armazenados. Os guardas produtivos não foram afrouxados. Regressão PostgreSQL independente foi acrescentada à CI para verificar essas cinco suítes; resultado ainda pendente. Nenhum deploy, pareamento, envio real ou rotina de backup/dump/restore.
