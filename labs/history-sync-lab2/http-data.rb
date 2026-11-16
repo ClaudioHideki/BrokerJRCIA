@@ -85,11 +85,16 @@ class HistoryLabData
     receipt = JrcBrokerLiveReceipt.find_by!(account_id: input['accountId'], broker_message_id: input['brokerMessageId'])
     message = receipt.message
     attachments = message ? message.attachments.order(:id).to_a : []
+    # Message.store can persist the JSON column as a serialized JSON string.
+    # Match the production identity check for both representations; a plain
+    # ->> lookup falsely reports zero even when the immutable receipt is linked.
+    metadata = "CASE json_typeof(content_attributes) WHEN 'string' THEN (content_attributes #>> '{}')::jsonb " \
+               "WHEN 'object' THEN content_attributes::jsonb ELSE '{}'::jsonb END"
     { protocol: 'native-read/v1', receipt: receipt.receipt_payload,
       publishedAt: receipt.published_at&.to_i,
       stagedBytes: receipt.staged_bytes&.bytesize,
       messages: Message.where(account_id: receipt.account_id, inbox_id: receipt.inbox_id)
-                       .where("content_attributes->>'jrc_broker_message_id'=?", receipt.broker_message_id.to_s).count,
+                       .where("lower((#{metadata})->>'jrc_broker_message_id')=?", receipt.broker_message_id.to_s.downcase).count,
       outboundObligations: message ? JrcBrokerWebhookObligation.where(account_id: receipt.account_id, inbox_id: receipt.inbox_id, message_id: message.id).count : 0,
       byteHashes: attachments.map { |attachment| Digest::SHA256.hexdigest(attachment.file.download) },
       message: message && { id: message.id, inboxId: message.inbox_id, conversationId: message.conversation.display_id,
