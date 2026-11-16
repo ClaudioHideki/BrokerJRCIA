@@ -21,7 +21,7 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('reconciles two isolated consum
   const origin=process.env.HISTORY_LAB2_ORIGIN,endpoint=process.env.HISTORY_LAB_MINIO_ENDPOINT;
   if(origin!=='http://127.0.0.1:54141' || !/^http:\/\/127[.]0[.]0[.]1:\d+$/u.test(endpoint??'')
     || process.env.HISTORY_LAB_RAILS_CONTAINER!=='jrc-history-v2-http-20261112')throw Error('Only dedicated synthetic laboratory permitted');
-  const docker=(args:string[])=>execFileSync('docker',['--context','desktop-linux',...args],{encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
+  const docker=(args:string[])=>execFileSync('docker',['--context',process.env.HISTORY_LAB_DOCKER_CONTEXT??'desktop-linux',...args],{encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
   const label=docker(['inspect','--format','{{index .Config.Labels "com.jrc.test"}}',process.env.HISTORY_LAB_RAILS_CONTAINER]).trim();
   if(label!=='jrc-history-v2-complete-20261112')throw Error('Invalid synthetic container label');
   const storageName='jrc-history-v2-e2e-minio-20261112';

@@ -1,0 +1,103 @@
+name: jrc-history-ci
+x-labels: &lab-labels
+  com.jrc.test: jrc-history-v2-complete-20261112
+  com.jrc.purpose: broker-lab2-github-e2e
+x-rails: &rails
+  image: jrc-history-ci-rails:local
+  build:
+    context: ../..
+    dockerfile: labs/history-sync-lab2/Dockerfile.ci
+    target: rails
+    additional_contexts:
+      lab2: ${HISTORY_LAB_CI_SOURCE:?Exact exported LAB2 checkout required}
+  labels: *lab-labels
+  env_file: ${HISTORY_LAB_CI_ENV:?Temporary synthetic environment required}
+  environment:
+    RAILS_ENV: test
+    HISTORY_LAB_MODE: 'true'
+    HISTORY_LAB_CI: 'true'
+    POSTGRES_HOST: postgres
+    POSTGRES_DATABASE: jrc_history_order_test
+    POSTGRES_USERNAME: postgres
+    REDIS_URL: redis://redis:6379/15
+    FRONTEND_URL: http://127.0.0.1:54141
+    STORAGE_ENDPOINT: http://jrc-history-v2-e2e-minio-20261112:9000
+    STORAGE_BUCKET_NAME: synthetic-jrc-history-20261112
+    STORAGE_REGION: us-east-1
+    STORAGE_FORCE_PATH_STYLE: 'true'
+    SIDEKIQ_CONCURRENCY: '1'
+    RAILS_MAX_THREADS: '2'
+    DB_POOL_SIZE: '5'
+    LOG_LEVEL: warn
+    RAILS_LOG_TO_STDOUT: 'true'
+    DISABLE_SPRING: '1'
+    TZ: UTC
+  networks: [lab]
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+    minio: {condition: service_started}
+  restart: 'no'
+services:
+  postgres:
+    image: pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+    container_name: broker-history-native-pg-20261112
+    labels: *lab-labels
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: jrc_history_order_test
+    command: [postgres, -c, shared_buffers=64MB, -c, max_connections=100, -c, shared_preload_libraries=pg_stat_statements]
+    ports: ['127.0.0.1::5432']
+    volumes: ['postgres-data:/var/lib/postgresql/data']
+    mem_limit: 768m
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postgres -d jrc_history_order_test']
+      interval: 2s
+      timeout: 3s
+      retries: 40
+    networks: [lab]
+  redis:
+    image: redis:7.4.0-alpine@sha256:c35af3bbcef51a62c8bae5a9a563c6f1b60d7ebaea4cb5a3ccbcc157580ae098
+    labels: *lab-labels
+    command: [redis-server, --save, '', --appendonly, 'no']
+    mem_limit: 128m
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [lab]
+  minio:
+    image: jrc-history-ci-minio:local
+    build:
+      context: ../..
+      dockerfile: labs/history-sync-lab2/Dockerfile.ci
+      target: minio
+    container_name: jrc-history-v2-e2e-minio-20261112
+    labels: *lab-labels
+    env_file: ${HISTORY_LAB_CI_ENV:?Temporary synthetic environment required}
+    command: [server, /data, --address, ':9000', --console-address, ':9001']
+    ports: ['127.0.0.1::9000']
+    volumes: ['minio-data:/data']
+    tmpfs: [/tmp]
+    mem_limit: 512m
+    networks: [lab]
+  rails:
+    <<: *rails
+    container_name: jrc-history-v2-http-20261112
+    command: [rails]
+    ports: ['127.0.0.1:54141:3000']
+    mem_limit: 1536m
+  sidekiq:
+    <<: *rails
+    container_name: jrc-history-v2-sidekiq-20261112
+    command: [sidekiq]
+    mem_limit: 1024m
+networks:
+  lab:
+    internal: true
+volumes:
+  postgres-data:
+    labels: *lab-labels
+  minio-data:
+    labels: *lab-labels

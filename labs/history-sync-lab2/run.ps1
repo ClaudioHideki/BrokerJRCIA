@@ -1,6 +1,6 @@
 #requires -Version 7
 param([Parameter(Mandatory=$true)][string]$EvidencePath,
-  [ValidateSet('apps/api/tests/integration/history-sync-lab2.test.ts','apps/api/tests/integration/history-sync-operational-lab2.test.ts')]
+  [ValidateSet('apps/api/tests/integration/history-sync-lab2.test.ts','apps/api/tests/integration/history-sync-operational-lab2.test.ts','apps/api/tests/integration/chatwoot-live-lab2.test.ts')]
   [string]$TestFile='apps/api/tests/integration/history-sync-lab2.test.ts')
 $ErrorActionPreference = 'Stop'
 $taskContext = 'desktop-linux'
@@ -17,7 +17,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Synthetic storage fixture copy failed' }
 & docker --context $taskContext exec -w /testapp 'jrc-history-v2-http-20261112' bundle exec rails runner ./jrc_history_prepare_storage.rb *> ($EvidencePath + '.storage.log')
 if ($LASTEXITCODE -ne 0) { throw 'Synthetic Rails bucket initialization failed' }
 $taskPort = $taskPg.NetworkSettings.Ports.'5432/tcp'[0].HostPort
-$env:TEST_DATABASE_ADMIN_URL = "postgres://postgres@127.0.0.1:$taskPort/jrc_test_history_admin"
+$env:TEST_DATABASE_ADMIN_URL = "postgres://postgres@127.0.0.1:$taskPort/postgres"
 $env:NODE_OPTIONS = '--max-old-space-size=384'
 $env:HISTORY_LAB2_E2E = 'true'
 $env:HISTORY_LAB2_ORIGIN = 'http://127.0.0.1:54141'
