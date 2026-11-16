@@ -40,7 +40,13 @@ test('start process refuses a production environment before touching application
  const r=spawnSync(bash,[join(root,'start-ci.sh'),'rails'],{encoding:'utf8',env:{...process.env,RAILS_ENV:'production',HISTORY_LAB_MODE:'true',HISTORY_LAB_CI:'true'}});assert.notEqual(r.status,0);assert.equal(r.stdout,'');assert.ok(!r.stderr.includes('/testapp'));
 });
 test('all and live selections include the independent outbound-media E2E',()=>{
- const s=read('run-ci.sh');assert.match(s,/all\|live\|history\|operational\|outbound\|--check/);assert.match(s,/selection == all \|\| \$selection == live \|\| \$selection == outbound.*files\+=\(chatwoot-outbound-media-lab2\)/);
+ const s=read('run-ci.sh');assert.match(s,/all\|live\|group\|history\|operational\|outbound\|--check/);assert.match(s,/selection == all \|\| \$selection == live \|\| \$selection == outbound.*files\+=\(chatwoot-outbound-media-lab2\)/);
+});
+
+test('GROUP live travels through its independent worker HTTP suite',()=>{
+ const s=read('run-ci.sh');
+ assert.match(s,/all\|live\|group\|history\|operational\|outbound\|--check/);
+ assert.match(s,/selection == all \|\| \$selection == live \|\| \$selection == group.*files\+=\(chatwoot-group-live-lab2\)/);
 });
 
 test('PG and private MinIO persist through container restarts in owned project volumes',()=>{
@@ -54,12 +60,12 @@ test('failure log sanitizer removes generated keys and credential-bearing lines'
  assert.equal(r.status,0,r.stderr);assert.ok(!r.stdout.includes('secret-fixture-value'));assert.ok(!r.stdout.includes('dynamically-created-token'));assert.match(r.stdout,/ordinary startup failure/);
 });
 
-test('suite runner collects all four results and fails overall when one independent suite fails',()=>{
+test('suite runner collects all five results and fails overall when one independent suite fails',()=>{
  const block=read('run-ci.sh').match(/# BEGIN E2E SUITE RUNNER\r?\n([\s\S]*?)# END E2E SUITE RUNNER/)?.[1];assert.ok(block,'independent suite runner missing');
  const dir=mkdtempSync(join(tmpdir(),'jrc-lab-ci-results-'));
  try{const script='set -euo pipefail\nselection=all\nevidence=$TEST_EVIDENCE\nnpm(){ if [[ $4 == *chatwoot-live-lab2* ]]; then return 9; fi; return 0; }\n'+block+'\nrun_selected_suites';
   const r=spawnSync(bash,['-c',script],{encoding:'utf8',env:{...process.env,TEST_EVIDENCE:dir}});assert.equal(r.status,1,r.stderr);
-  const rows=readFileSync(join(dir,'status.tsv'),'utf8').trim().split('\n');assert.equal(rows.length,5);assert.match(rows[1],/chatwoot-live-lab2\t9\t\d+/);assert.match(rows[4],/history-sync-operational-lab2\t0\t\d+/);
+  const rows=readFileSync(join(dir,'status.tsv'),'utf8').trim().split('\n');assert.equal(rows.length,6);assert.match(rows[1],/chatwoot-live-lab2\t9\t\d+/);assert.match(rows[2],/chatwoot-group-live-lab2\t0\t\d+/);assert.match(rows[5],/history-sync-operational-lab2\t0\t\d+/);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
 

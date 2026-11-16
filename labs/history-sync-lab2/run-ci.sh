@@ -4,7 +4,7 @@ set -euo pipefail
 die() { echo "$1" >&2; exit 64; }
 [[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_ENVIRONMENT:-} == github-hosted ]] || die 'GitHub-hosted CI required'
 selection=${1:-all}
-case "$selection" in all|live|history|operational|outbound|--check) ;; *) die 'Unknown test selection';; esac
+case "$selection" in all|live|group|history|operational|outbound|--check) ;; *) die 'Unknown test selection';; esac
 [[ ${HISTORY_LAB2_SHA:-} =~ ^[0-9a-f]{40}$ ]] || die 'An exact LAB2 SHA is required'
 [[ -n ${HISTORY_LAB2_CHECKOUT:-} && -d $HISTORY_LAB2_CHECKOUT ]] || die 'An external LAB2 checkout is required'
 source_path=$(cd "$HISTORY_LAB2_CHECKOUT" && pwd -P)
@@ -110,6 +110,7 @@ run_selected_suites() {
   local file status start failed=0
   local files=()
   [[ $selection == all || $selection == live ]] && files+=(chatwoot-live-lab2)
+  [[ $selection == all || $selection == live || $selection == group ]] && files+=(chatwoot-group-live-lab2)
   [[ $selection == all || $selection == live || $selection == outbound ]] && files+=(chatwoot-outbound-media-lab2)
   [[ $selection == all || $selection == history ]] && files+=(history-sync-lab2)
   [[ $selection == all || $selection == operational ]] && files+=(history-sync-operational-lab2)

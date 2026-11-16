@@ -31,15 +31,18 @@ Docker overrides are refused. The default evidence directory is
 `artifacts/history-lab2`; the caller may set `HISTORY_LAB_EVIDENCE_DIR`, preferably
 to a directory under `RUNNER_TEMP`.
 
-Selections are `all`, `live`, `outbound`, `history`, and `operational`. `all` runs
+Selections are `all`, `live`, `group`, `outbound`, `history`, and `operational`. `all` runs
 the following files serially, each with one Vitest worker:
 
 - `chatwoot-live-lab2.test.ts`
+- `chatwoot-group-live-lab2.test.ts`
 - `chatwoot-outbound-media-lab2.test.ts`
 - `history-sync-lab2.test.ts`
 - `history-sync-operational-lab2.test.ts`
 
-`live` includes both live files. Independent suites continue after a test
+`live` includes all three live files. The GROUP test crosses the Broker group
+worker and native HTTP receiver in both directions; the final provider port
+is synthetic, not a physical Baileys socket. Independent suites continue after a test
 failure, recording each exit code and duration in `status.tsv`; any failure
 makes the final process fail. A guard/setup failure aborts immediately.
 
@@ -71,7 +74,7 @@ production endpoint, pairing or physical WhatsApp send is invoked.
 The runtime container memory limits total about 3.9 GiB, plus the Node test
 process (512 MiB heap cap), Docker/build overhead and the host. Bundle builds
 use two jobs. A 60-minute job budget allows cold Ruby/gem/image builds and all
-four suites; this is a planning allowance, not a measured runtime guarantee.
+five suites; this is a planning allowance, not a measured runtime guarantee.
 `provenance.txt` records the actual CPU count, memory and free disk observed on
 the runner alongside both source SHAs. Do not infer runner capacity from these
 defaults; the workflow owns any resource admission threshold.
