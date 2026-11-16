@@ -74,10 +74,10 @@ Files: `durable-private-media.ts`, corresponding integration tests and narrowly 
 
 ## Task 5 — Integrated verification and handoff (root)
 
-- [ ] Run relevant PostgreSQL/Redis/MinIO/Rails HTTP/Sidekiq E2E harnesses using independent synthetic IDs and byte hashes.
-- [ ] Exercise both directions, group/media, lost ACK, duplicate callback, restart/concurrency and exact inbox/Minhas membership.
-- [ ] Run typecheck, builds where supported, frontend/Rails regressions and `npm test` excluding the explicitly out-of-scope backup/recovery operational tests; document every failure/skip.
-- [ ] Review security/compatibility diff, update checkpoints and record exact RED/GREEN counts, remaining operational blocks and next verifiable step. User requested GitHub Actions verification on16/11: push only the test candidate; no automatic merge/image publication/deploy.
+- [x] Run relevant PostgreSQL/Redis/MinIO/Rails HTTP/Sidekiq E2E harnesses using independent synthetic IDs and byte hashes. Actions43957172112:5 suites/6 scenarios green; no handset proof.
+- [x] Exercise both directions, group/media, lost ACK, duplicate callback, restart/concurrency and exact inbox/Minhas membership. Real Rails/Sidekiq/MinIO, synthetic provider ports.
+- [x] Run typecheck, builds where supported, frontend/Rails regressions and `npm test` excluding the explicitly out-of-scope backup/recovery operational tests; document every failure/skip. Broker productda899085/Actions43954196859 green; subsequent E2E-only repairs verified separately; LAB2982f1541/Actions43946749039 complete green.
+- [x] Review security/compatibility diff, update checkpoints and record exact RED/GREEN counts, remaining operational blocks and next verifiable step. User requested GitHub Actions verification on16/11: push only the test candidate; no automatic merge/image publication/deploy. Hard-delete/KEEP preflight remains a separate release gate.
 
 ## Execution ledger
 
@@ -96,4 +96,4 @@ Contract: `docs/implementation/live-ingress-receipt-v1-20261116.md`. This fulfil
 - [x] Private media custody stays pending until hash-verified physical bytes; durable recovery covers missing enqueue/crash.
 - [x] Broker records native protocol/hash before dispatch; exact receipt read can confirm a lost ACK without another POST or editable-marker proof.
 - [x] Individual/group reconciliation respects current identity/ownership/credentials; no blind generic fallback after native selection.
-- [ ] RED/GREEN and real local Rails/PostgreSQL/MinIO E2E with two Accounts, loss/crash, concurrency, files and negative isolation cases.
+- [x] RED/GREEN and real Rails/PostgreSQL/MinIO E2E on GitHub with two Accounts, loss/crash, concurrency, files and negative isolation cases. Native LIVE scenario passed in43957172112 after the capability-contract fix and fixture repairs; no production activation.

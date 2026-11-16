@@ -1,4 +1,18 @@
-# Correção de entrega em laboratório — 16/11/2026
+# Validação concluída da candidata de entrega — 16/11/2026
+
+Branch `codex/whatsapp-delivery-reliability-20261116`. E2E completo aprovado em [43957172112](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/43957172112): Broker `e26e5f7596f03daa611367dd617d4aa9d5e6f8a8` + LAB2 `982f1541ca79639c289c39b840819df3ba787dda`, cinco suítes/seis cenários, todos exit0. Rails HTTP, PostgreSQL, Redis, Sidekiq e MinIO reais em runner descartável; origens/provedores sintéticos. Foram comprovados os casos de histórico, grupos, mídias, Minhas/isolamento, callbacks repetidos, perda de ACK e parada/reinício de worker, preservando a contagem e os hashes esperados.
+
+CI ampla Broker [43954196859](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/43954196859) aprovada no código produtivo `da899085`:4483 gerais,1914PG/Redis,5MinIO,47navegador, builds e segurança. Deltas atée26e5f7 são só testes/relatório, sem mudança em apps/src, packages, infra ou workflows. CI LAB2 [43946749039](https://github.com/ClaudioHideki/jrc-conversas-lab2/actions/runs/43946749039) integralmente aprovada, incluindo frontend. Não somar baterias sobrepostas; captura grande opt-in e aceite físico não estão cobertos por esta conclusão.
+
+O E2E descobriu/corrigiu uma incompatibilidade real do parser Broker com `supports_occurred_at: true` anunciado pelo LAB2. Demais reparos foram no laboratório: flags explícitas dos receptores, origem correta de anexos, comparação LF/CRLF, leitura JSON string/object e campos canônicos obrigatórios das amostras de mídia. As validações produtivas de origem, escopo, hashes, recibos e UNKNOWN foram preservadas.
+
+**Próximo gate, antes de promover produção:** proteger hard deletes com preflight antes do enqueue e da limpeza em lote. DeleteObjectJob pode remover associações antes de encontrar FKs restritivas dos recibos; não aplicar CASCADE nem apagar provas/KEEP. Remover conexão preserva histórico; expurgo é separado. A migration LAB220261116190000 continua candidata, irreversível em DOWN; rollback exige binário compatível e retenção de schema/recibos/arquivos. Não houve merge, imagem publicada, deploy, migração produtiva, replay, envio real ou backup/dump/restore. Docker local não foi forçado. A validação física das caixas e do S3 produtivo permanece separada.
+
+Fontes atuais: [relatório](docs/implementation/whatsapp-delivery-reliability-20261116.md), [plano](docs/superpowers/plans/2026-11-16-whatsapp-delivery-reliability.md) e [tarefas](TASKS.md). As notas abaixo preservam o percurso e os resultados intermediários; o resultado vigente é este cabeçalho.
+
+---
+
+# Registro intermediário da correção de entrega — 16/11/2026
 
 Checkpoint Actions: LAB2 `982f1541`, execução `43946749039`, está integralmente verde (Rails, interface e build frontend). Broker `9bfd7ee`, CI ampla `43945663271`, terminou verde; `c696e423`, regressão focal `43948844938`, também verde. Isso não aprova o E2E conjunto: `43948844963` executou os cinco cenários e falhou. O laboratório omitia `JRC_BROKER_ENABLED=true`, provocando recusa nativa/histórica; Rails test também gerava anexos em `localhost:3000`, diferente da origem autorizada `127.0.0.1:54141`. Reparos restritos ao laboratório em validação, preservando guardas de produto. Usar este checkpoint em preferência aos estados intermediários abaixo. Nenhum merge, imagem publicada, deploy ou teste com aparelho real.
 
