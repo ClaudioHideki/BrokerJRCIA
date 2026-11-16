@@ -62,3 +62,22 @@ test('suite runner collects all four results and fails overall when one independ
   const rows=readFileSync(join(dir,'status.tsv'),'utf8').trim().split('\n');assert.equal(rows.length,5);assert.match(rows[1],/chatwoot-live-lab2\t9\t\d+/);assert.match(rows[4],/history-sync-operational-lab2\t0\t\d+/);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+test('workflow prepares runner-scoped evidence at execution time and shares it with harness and artifact',()=>{
+ const workflow=parse(readFileSync(resolve('.github/workflows/delivery-lab2-e2e.yml'),'utf8'));
+ const job=workflow.jobs['rails-sidekiq-private-media'];
+ for(const value of Object.values(job.env??{}))assert.doesNotMatch(String(value),/\$\{\{\s*runner\./,'runner context is unavailable in jobs.<job_id>.env');
+ const setup=job.steps.find(step=>step.id==='evidence');assert.ok(setup?.run,'runtime evidence setup missing');
+ assert.equal(job.steps[0],setup,'evidence must exist before checkout or test failures');
+ const dir=mkdtempSync(join(tmpdir(),'jrc-ci-evidence space-'));
+ try{
+  const runner=join(dir,'runner temp'),envFile=join(dir,'github.env');
+  const portable=value=>process.platform==='win32'?value.replace(/\\/g,'/'):value;
+  const result=spawnSync(bash,['-c',setup.run],{encoding:'utf8',env:{...process.env,RUNNER_TEMP:portable(runner),GITHUB_ENV:portable(envFile)}});
+  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,'');
+  const line=readFileSync(envFile,'utf8').trim();assert.equal(line,'HISTORY_LAB_EVIDENCE_DIR='+portable(join(runner,'broker-lab2-delivery-evidence')));
+  assert.ok(existsSync(join(runner,'broker-lab2-delivery-evidence')));
+  assert.equal(job.steps.find(step=>step.uses?.startsWith('actions/upload-artifact@')).with.path,'${{ env.HISTORY_LAB_EVIDENCE_DIR }}/');
+  assert.match(read('run-ci.sh'),/evidence=\$\{HISTORY_LAB_EVIDENCE_DIR:-/);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});

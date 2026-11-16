@@ -18,10 +18,15 @@ jobs:
     timeout-minutes: 60
     env:
       # A branch name or main is never accepted by the laboratory entrypoint.
-      HISTORY_LAB2_SHA: e815567922fb0e4d7e040466a44220e537cf8586
+      HISTORY_LAB2_SHA: c180ad735dcf6777d0ddf308a0ce02422068e565
       HISTORY_LAB2_CHECKOUT: ${{ github.workspace }}/lab2-consumer
-      HISTORY_LAB_EVIDENCE_DIR: ${{ runner.temp }}/broker-lab2-delivery-evidence
     steps:
+      - name: Prepare runner evidence directory
+        id: evidence
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/broker-lab2-delivery-evidence"
+          printf 'HISTORY_LAB_EVIDENCE_DIR=%s/broker-lab2-delivery-evidence\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Check out the exact Broker revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
