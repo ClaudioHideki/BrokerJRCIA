@@ -36,6 +36,11 @@ jobs:
       - run: npm ci
       - name: Compile workspace modules used by physical storage fixtures
         run: npx tsc -b --pretty false
+      - name: Prove durable human reply isolation before the wider regressions
+        run: >-
+          npm test -- --config vitest.integration.config.ts --maxWorkers=1
+          apps/api/tests/integration/chatwoot-human-intents.test.ts
+          apps/api/tests/integration/chatwoot-worker-isolation.test.ts
       - name: Exercise generic compatibility and physical media confirmation
         run: >-
           npm test -- --config vitest.integration.config.ts --maxWorkers=1

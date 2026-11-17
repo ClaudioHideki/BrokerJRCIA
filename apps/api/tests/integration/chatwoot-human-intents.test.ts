@@ -10,7 +10,7 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
   beforeAll(async () => { db = await attendanceDatabase(); }, 600_000);
   afterAll(async () => { await db?.dispose(); });
 
-  async function fixture() {
+  async function fixture(sameConversation = false) {
     const t = await seedAttendanceTenant(db.database);
     const next = randomUUID(), intent = randomUUID();
     const contact = (await db.database.pool.query(`INSERT INTO messaging_contacts(organization_id,external_id)
@@ -25,10 +25,16 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
     await db.transact(t.org, tx => initializeChatwootAttendanceMap(tx,scope,{conversationId:next,remoteConversationId:52,
       canonical:{id:52,account_id:7,inbox_id:9,status:'open',updated_at:100,meta:{assignee:{id:12,type:'user'},assignee_type:'User',team:null}}}));
     const incoming = (await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)
-      VALUES($1,$2,$3,'INCOMING','CONTACT','{"type":"TEXT","text":"Synthetic pending mirror"}','DELIVERED') RETURNING id`,[t.org,t.channel,t.conversation])).rows[0].id;
+      VALUES($1,$2,$3,'INCOMING','CONTACT','{"type":"TEXT","text":"Synthetic pending mirror"}','DELIVERED') RETURNING id`,[t.org,t.channel,sameConversation?next:t.conversation])).rows[0].id;
     const unknown = (await db.database.pool.query(`UPDATE integration_jobs SET status='UNKNOWN',attempts=1,
       payload='{"operation":"SEND_MESSAGE","conversationId":51}',last_error='CHATWOOT_OUTCOME_UNKNOWN'
       WHERE organization_id=$1 AND message_id=$2 RETURNING id`,[t.org,incoming])).rows[0].id;
+    if(sameConversation){
+      await db.database.pool.query(`UPDATE integration_jobs SET payload=jsonb_set(payload,'{conversationId}','52') WHERE id=$1`,[unknown]);
+      await db.database.pool.query(`INSERT INTO chatwoot_mirror_attempts(organization_id,channel_id,integration_id,destination_revision,
+        account_id,inbox_id,conversation_id,remote_conversation_id,cycle,message_id,job_id,lease_token,state)
+        VALUES($1,$2,$3,1,7,9,$4,52,1,$5,$6,$7,'UNKNOWN')`,[t.org,t.channel,t.integration,next,incoming,unknown,randomUUID()]);
+    }
     const marker={version:1,state:'PENDING',intent_id:intent,integration_id:t.integration,inbox_id:9};
     const message={event:'message_created',id:701,account:{id:7},inbox:{id:9},conversation:{id:52,inbox_id:9},
       message_type:'outgoing',private:false,sender:{id:12,type:'user'},content:'New independently authorized human reply',
@@ -71,6 +77,47 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
       .toEqual([{status:'PENDING',attempts:0}]);
     expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows).toEqual([]);
     expect(t.calls).toEqual([]);
+  });
+
+  it('dispatches one proven human reply in the same conversation without replaying its uncertain inbound mirror',async()=>{
+    const t=await fixture(true);await t.ingest(t.message);await t.ingest(t.message);
+    await Promise.all([createChatwootWorker(t.options).runOnce(t.org),createChatwootWorker(t.options).runOnce(t.org)]);
+    await createChatwootWorker(t.options).runOnce(t.org);
+    expect((await db.database.pool.query('SELECT count(*)::int AS n FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows[0].n).toBe(1);
+    expect((await db.database.pool.query("SELECT status FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows)
+      .toEqual([{status:'SUCCEEDED'}]);
+    expect((await db.database.pool.query('SELECT status,attempts,last_error FROM integration_jobs WHERE id=$1',[t.unknown])).rows[0])
+      .toEqual({status:'UNKNOWN',attempts:1,last_error:'CHATWOOT_OUTCOME_UNKNOWN'});
+    expect((await db.database.pool.query('SELECT state,remote_message_id FROM chatwoot_mirror_attempts WHERE job_id=$1',[t.unknown])).rows)
+      .toEqual([{state:'UNKNOWN',remote_message_id:null}]);
+    expect(t.calls).toEqual(['GET /api/v1/accounts/7/conversations/52/messages']);
+  });
+
+  it.each(['missing-attempt','outgoing-mirror','different-cycle','different-inbox','paused-control'] as const)
+    ('keeps a same-conversation reply fenced for %s',async change=>{
+      const t=await fixture(true);await t.ingest(t.message);
+      if(change==='missing-attempt')await db.database.pool.query('DELETE FROM chatwoot_mirror_attempts WHERE job_id=$1',[t.unknown]);
+      if(change==='outgoing-mirror')await db.database.pool.query("UPDATE messaging_messages SET direction='OUTGOING',source='OPERATOR' WHERE id=(SELECT message_id FROM integration_jobs WHERE id=$1)",[t.unknown]);
+      if(change==='different-cycle')await db.database.pool.query('UPDATE chatwoot_mirror_attempts SET cycle=2 WHERE job_id=$1',[t.unknown]);
+      if(change==='different-inbox')await db.database.pool.query('UPDATE chatwoot_mirror_attempts SET inbox_id=10 WHERE job_id=$1',[t.unknown]);
+      if(change==='paused-control')await db.database.pool.query("UPDATE chatwoot_attendance_controls SET state='PAUSED' WHERE organization_id=$1 AND conversation_id=$2",[t.org,t.next]);
+      await createChatwootWorker(t.options).runOnce(t.org);
+      expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows).toEqual([]);
+      expect(t.calls).toEqual([]);
+    });
+
+  it('revalidates the same-conversation control after the canonical read',async()=>{
+    const t=await fixture(true);await t.ingest(t.message);
+    const options:ChatwootOptions={...t.options,async fetch(input,init){
+      const result=await t.options.fetch!(input,init);
+      await db.database.pool.query("UPDATE chatwoot_attendance_controls SET state='PAUSED' WHERE organization_id=$1 AND conversation_id=$2",[t.org,t.next]);
+      return result;
+    }};
+    await createChatwootWorker(options).runOnce(t.org);
+    expect(t.calls).toEqual(['GET /api/v1/accounts/7/conversations/52/messages']);
+    expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows).toEqual([]);
+    expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE id=$1',[t.unknown])).rows[0])
+      .toEqual({status:'UNKNOWN',attempts:1});
   });
 
   it('deduplicates signed callback redelivery and concurrent workers',async()=>{
