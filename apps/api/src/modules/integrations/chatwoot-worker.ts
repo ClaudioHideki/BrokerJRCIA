@@ -179,6 +179,29 @@ export function createChatwootWorker(options: ChatwootOptions) {
               WHERE blocked_map.organization_id=blocked.organization_id AND blocked_map.integration_id=blocked.integration_id
                 AND blocked_map.conversation_id=blocked_conversation.id
                 AND blocked_map.remote_conversation_id::text=blocked.payload->>'conversationId'))))`;
+  // Returning a provider receipt to the exact central message is an idempotent
+  // PATCH, not another message POST. Require the successful durable human reply
+  // and its current map so an uncertain inbound copy cannot hide delivery state.
+  const provenHumanStatus = `j.kind='MIRROR_MESSAGE' AND
+    (j.payload->>'operation' IS NULL OR j.payload->>'operation'='UPDATE_STATUS') AND EXISTS(
+      SELECT 1 FROM messaging_messages status_message
+      JOIN chatwoot_messages status_map ON status_map.organization_id=status_message.organization_id
+        AND status_map.message_id=status_message.id AND status_map.integration_id=j.integration_id
+      JOIN chatwoot_conversations status_conversation ON status_conversation.organization_id=status_message.organization_id
+        AND status_conversation.conversation_id=status_message.conversation_id AND status_conversation.integration_id=j.integration_id
+      JOIN integration_jobs human_reply ON human_reply.organization_id=j.organization_id AND human_reply.integration_id=j.integration_id
+        AND human_reply.kind='CHATWOOT_REPLY' AND human_reply.status='SUCCEEDED' AND human_reply.message_id=status_message.id
+        AND human_reply.payload->>'attendanceKind'='HUMAN_PUBLIC' AND human_reply.payload->>'outboundIntentId' IS NOT NULL
+        AND human_reply.payload->>'messageId'=status_map.remote_message_id::text
+        AND human_reply.payload->>'conversationId'=status_conversation.remote_conversation_id::text
+      JOIN chatwoot_accounts status_account ON status_account.organization_id=j.organization_id AND status_account.status='READY'
+      JOIN chatwoot_destinations status_destination ON status_destination.organization_id=status_account.organization_id
+        AND status_destination.base_url=status_account.base_url AND status_destination.approval_status='APPROVED'
+        AND status_destination.revision::text=human_reply.payload->>'destinationRevision'
+      WHERE status_message.organization_id=j.organization_id AND status_message.id=j.message_id
+        AND status_message.channel_id=c.channel_id AND status_message.direction='OUTGOING' AND status_message.source='OPERATOR'
+        AND status_message.is_historical=false AND (status_message.state='FAILED'
+          OR status_message.state IN ('SENT','DELIVERED','READ') AND status_message.upstream_message_id IS NOT NULL))`;
   const eligibleJob = `j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now()
     AND j.payload->>'historySyncVersion' IS DISTINCT FROM '2'
     AND (NOT EXISTS(SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=j.organization_id
@@ -195,7 +218,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
             AND blocked_conversation.channel_id=blocked_message.channel_id AND blocked_conversation.id=blocked_message.conversation_id
           WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
              AND (blocked_conversation.contact_id IS NULL OR blocked_conversation.contact_id=candidate_conversation.contact_id))))
-    OR (${independentCampaignReply}) OR (${independentHumanReply}))`;
+    OR (${independentCampaignReply}) OR (${independentHumanReply}) OR (${provenHumanStatus}))`;
   async function claim(org: string): Promise<Job | undefined> {
     return tx(org, async (t) => {
       // An expired POST might have succeeded remotely. Replies are local, idempotent transactions.

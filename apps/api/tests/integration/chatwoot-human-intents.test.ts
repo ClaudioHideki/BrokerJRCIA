@@ -126,6 +126,32 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
       .toEqual({status:'UNKNOWN',attempts:1});
   });
 
+  it('returns the final sibling receipt for a human reply with multiple attachments',async()=>{
+    const t=await fixture(true),raw={...t.message,content:'Synthetic multi-attachment reply',
+      attachments:[{id:801,file_type:'image'},{id:802,file_type:'audio'}]};
+    t.setCanonical({content:raw.content,attachments:raw.attachments});await t.ingest(raw);
+    await createChatwootWorker(t.options).runOnce(t.org);
+    const first=(await db.database.pool.query("SELECT message_id FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows[0].message_id;
+    const second=(await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1 AND message_id<>$2',[t.org,first])).rows[0].message_id;
+    const patches:Record<string,unknown>[]=[];
+    const options:ChatwootOptions={...t.options,async fetch(input,init){
+      if(init?.method==='PATCH'&&new URL(String(input)).pathname==='/api/v1/accounts/7/conversations/52/messages/701'){
+        patches.push(JSON.parse(String(init.body)));return Response.json({id:701});
+      }
+      return t.options.fetch!(input,init);
+    }};
+    await db.database.pool.query("UPDATE messaging_messages SET state='SENT',upstream_message_id='synthetic-first-receipt' WHERE id=$1",[first]);
+    for(let n=0;n<3;n++)await createChatwootWorker(options).runOnce(t.org);
+    expect(patches).toEqual([]);
+    await db.database.pool.query("UPDATE messaging_messages SET state='SENT',upstream_message_id='synthetic-second-receipt' WHERE id=$1",[second]);
+    await createChatwootWorker(options).runOnce(t.org);
+    expect(patches).toEqual([expect.objectContaining({status:'sent',broker_delivery:expect.objectContaining({state:'SENT'})})]);
+    expect((await db.database.pool.query('SELECT count(*)::int AS n FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows[0].n).toBe(2);
+    expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE id=$1',[t.unknown])).rows[0])
+      .toEqual({status:'UNKNOWN',attempts:1});
+    expect(t.calls).toEqual(['GET /api/v1/accounts/7/conversations/52/messages']);
+  });
+
   it.each(['control','attempt-cycle','remote-map'] as const)('revalidates same-conversation %s after the canonical read',async drift=>{
     const t=await fixture(true);await t.ingest(t.message);
     const options:ChatwootOptions={...t.options,async fetch(input,init){
