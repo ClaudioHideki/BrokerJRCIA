@@ -917,11 +917,26 @@ export class ChatwootClient {
           response.status === 429 || response.status >= 500,
         );
       }
-      const mimeType = (response.headers.get("content-type") ?? "")
+      let mimeType = (response.headers.get("content-type") ?? "")
         .split(";")[0]!
         .trim()
         .toLowerCase();
       const bytes = await readMediaBytes(response);
+      // Active Storage identifies Ogg/Opus as audio/opus. Providers consume
+      // audio/ogg; normalize only this scoped audio asset with a complete
+      // mono/stereo Opus identification packet on the first Ogg BOS page.
+      if (mimeType === "audio/opus") {
+        const signature = Buffer.from(bytes);
+        if (
+          asset.file_type !== "audio" || bytes.length < 47 ||
+          signature.toString("latin1", 0, 4) !== "OggS" ||
+          bytes[4] !== 0 || bytes[5] !== 2 ||
+          bytes[26] !== 1 || bytes[27] !== 19 ||
+          signature.toString("latin1", 28, 36) !== "OpusHead" ||
+          bytes[36] !== 1 || ![1, 2].includes(bytes[37]!) || bytes[46] !== 0
+        ) throw new MediaError("MEDIA_TYPE_UNSUPPORTED");
+        mimeType = "audio/ogg";
+      }
       const kind = mediaKind(mimeType);
       const fileName = safeMediaName(
         decodeURIComponent(url.pathname.split("/").pop() ?? "arquivo"),
