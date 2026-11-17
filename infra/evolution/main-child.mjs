@@ -2,6 +2,8 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readBuildAdmission } from './entrypoint.mjs';
 import { fileHash } from './artifacts.mjs';
+import {openOriginDatabaseHost} from './database-host.mjs';
+import {registerRuntimeDrain} from './runtime-lifecycle.mjs';
 
 // This is an internal IPC loader, not an ownership approval switch. The parent
 // inventories every runtime file first; this process independently refuses
@@ -23,6 +25,7 @@ if (process.argv.length !== 2 || typeof process.send !== 'function' || !process.
   const admissionDeadline = setTimeout(() => { console.error('ORIGIN_ENGINE_MAIN_REFUSED'); process.exit(1); }, 5000);
   process.once('message', async message => {
     clearTimeout(admissionDeadline);
+    let databaseHost;
     try {
       if (message?.kind !== 'JRC_ENGINE_VERIFIED_START_V1') throw Error();
       async function verify() {
@@ -31,12 +34,17 @@ if (process.argv.length !== 2 || typeof process.send !== 'function' || !process.
           receipt.artifacts.find(file => file.path === 'dist/main.js')?.sha256 !== await fileHash(join(process.cwd(), 'dist/main.js'))) throw Error();
       }
       await verify();
+      if(process.env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED==='true'){
+        databaseHost=await openOriginDatabaseHost(process.cwd(),process.env);
+        registerRuntimeDrain(()=>databaseHost.close());
+      }
       // The IPC channel must not keep a fully drained child alive. In Docker,
       // PID1 loss ends the entire namespace even while a synchronous import
       // prevents this JS disconnect handler from running.
       process.channel.unref();
       await import(pathToFileURL(join(process.cwd(), 'dist/main.js')).href);
     } catch {
+      await databaseHost?.close().catch(()=>undefined);
       refusing = true;
       console.error(process.env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED === 'true' ? 'ORIGIN_ENGINE_OWNERSHIP_UNPROVEN' : 'ORIGIN_ENGINE_MAIN_REFUSED');
       process.exitCode = 1;

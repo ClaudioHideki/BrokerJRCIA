@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { humanOutboundIntent } from './chatwoot-human-intent.js';
 
 const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const scopeId = z.object({ id });
@@ -27,6 +28,7 @@ export type ChatwootAttendanceEvent = {
   remoteMessageId: number;
   senderId?: number;
   campaignIntentId?: string;
+  outboundIntentId?: string;
   mayForwardReply: boolean;
   interruptsBot: boolean;
 } | {
@@ -110,7 +112,10 @@ export function classifyChatwootAttendanceEvent(raw: unknown, scope: ChatwootEve
       const intent=z.uuid().safeParse(attributes.jrc_campaign_intent_id);
       return intent.success?{...classified,campaignIntentId:intent.data}:classified;
     }
-    return result(message.private ? 'HUMAN_PRIVATE' : 'HUMAN_PUBLIC', true, !message.private, senderId.data);
+    const human=result(message.private ? 'HUMAN_PRIVATE' : 'HUMAN_PUBLIC', true, !message.private, senderId.data);
+    const intent=!message.private&&!record(message.additional_attributes).jrc_broker_historical
+      ?humanOutboundIntent(contentAttributes,scope):undefined;
+    return intent?{...human,outboundIntentId:intent}:human;
   }
   if (event !== 'conversation_created' && event !== 'conversation_updated' && event !== 'conversation_status_changed') return null;
   const conversation = controlSchema.parse(raw);

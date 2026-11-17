@@ -6,6 +6,7 @@ Disponibilidade significa criação no Studio. A definição é versionada e dis
 | --- | --- | --- | --- |
 | start | AVAILABLE | FlowCanvas: nome | engine: início sem efeito |
 | message | AVAILABLE | FlowCanvas: mensagem | engine: SEND_TEXT simulado |
+| directory-menu | AVAILABLE | DirectoryMenuEditor: departamento lógico, idioma, textos, tentativas e prazo; agentes no painel por caixa | engine: snapshot autorizado e escolha fixa; simulação com diretório fictício identificado |
 | input | AVAILABLE | InputEditor: pergunta, variável e prazo opcional explícito | engine: espera/resposta; prazo persistido e saída timeout |
 | menu | AVAILABLE | FlowCanvas: texto/opções/variável | engine: espera/opção numerada |
 | condition | AVAILABLE | FlowCanvas: campo/comparação/valor | engine: yes/no |

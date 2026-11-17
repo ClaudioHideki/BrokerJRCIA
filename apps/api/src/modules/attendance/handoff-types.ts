@@ -11,6 +11,7 @@ export interface HandoffSnapshot {
   automationId:string; version:number; ownerRevision:number; controlRevision:number;
   sessionId:string; sessionRevision:number; cycle:number; remoteConversationId:number; target:HumanTarget;
   intakeRequest?:IntakeHandoffRequest;intakeDispatchProof?:string;
+  routeTeamId?:number;
 }
 export interface HandoffOperation {
   id:string; organizationId:string; outboxId:string; executionId:string; channelId:string; conversationId:string;

@@ -14,7 +14,7 @@ describe('runtime schema probe', () => {
     const query=vi.fn(async (_sql:string)=>({rows:[{ready:true}]}));
     expect(await probeRequiredRuntimeSchema(query)).toBe(true);
     expect(query.mock.calls[0]?.[0]).not.toContain('ELSE public.campaign_catalogue_ready()');
-    expect(query.mock.calls[1]?.[0]).toBe('SELECT public.partner_event_catalogue_ready() AND public.campaign_catalogue_ready() AND public.audit_corrections_catalogue_ready() AS ready');
+    expect(query.mock.calls[1]?.[0]).toBe('SELECT public.partner_event_catalogue_ready() AND public.campaign_catalogue_ready() AND public.audit_corrections_catalogue_ready() AND public.history_source_lifecycle_ready() AS ready');
   });
   it('returns false if a checked catalogue function disappears before invocation, without masking other failures',async()=>{
     const missing=vi.fn().mockResolvedValueOnce({rows:[{ready:true}]}).mockRejectedValueOnce(Object.assign(new Error('Missing function'),{code:'42883'}));
@@ -36,6 +36,14 @@ describe('runtime schema probe', () => {
   it('keeps the required baseline aligned with the newest migration', async () => {
     const migrations = await loadExpectedMigrations();
     expect(RUNTIME_SCHEMA_BASELINE).toBe(migrations.at(-1)?.name);
+  });
+
+  it('requires the private historical ledger and immutable admission receipt structure', async () => {
+    const query = vi.fn(async (_sql:string) => ({rows:[{ready:true}]}));
+    await probeRequiredRuntimeSchema(query);
+    const sql = query.mock.calls[0]?.[0] ?? '';
+    for (const name of ['history_account_identities','history_sync_runs','history_sync_chunks','history_sync_receipts',
+      'history_sync_tenant','admission_kind','history_sync_chunk_guard','history_sync_run_guard']) expect(sql).toContain(name);
   });
 
   it('refuses an older schema even when the observability table exists', async () => {
@@ -86,4 +94,10 @@ describe('runtime schema probe', () => {
       expect(await probeRequiredRuntimeSchema(query)).toBe(false);
     }
   });
+});
+
+it('requires immutable tenant-private box routing profiles before serving the new release', async () => {
+ const query=vi.fn(async (_sql:string)=>({rows:[{ready:false}]}));
+ await probeRequiredRuntimeSchema(query);
+ for(const marker of ['automation_box_profile_versions','automation_box_profile_heads','box_profile_tenant','automation_box_profile_immutable','lifecycle_box_profile_head_block']) expect(query.mock.calls[0]?.[0]).toContain(marker);
 });

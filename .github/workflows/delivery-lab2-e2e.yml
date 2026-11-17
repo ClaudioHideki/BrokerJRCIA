@@ -1,0 +1,74 @@
+name: Broker and LAB2 durable delivery E2E
+
+on:
+  push:
+    branches: [codex/whatsapp-delivery-reliability-20261116]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: delivery-lab2-e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  rails-sidekiq-private-media:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      # A branch name or main is never accepted by the laboratory entrypoint.
+      HISTORY_LAB2_SHA: d468beb8744856c4bcaa972ecde4d885b60ee432
+      HISTORY_LAB2_CHECKOUT: ${{ github.workspace }}/lab2-consumer
+    steps:
+      - name: Prepare runner evidence directory
+        id: evidence
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/broker-lab2-delivery-evidence"
+          printf 'HISTORY_LAB_EVIDENCE_DIR=%s/broker-lab2-delivery-evidence\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Check out the exact Broker revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Check out the independently pinned LAB2 consumer
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ClaudioHideki/jrc-conversas-lab2
+          ref: ${{ env.HISTORY_LAB2_SHA }}
+          path: lab2-consumer
+          persist-credentials: false
+
+      - name: Use the pinned Node.js runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Install the locked Broker dependencies
+        run: npm ci
+
+      - name: Compile workspace modules used by storage and origin fixtures
+        run: npx tsc -b --pretty false
+
+      - name: Validate the isolated laboratory boundary
+        run: |
+          node --test labs/history-sync-lab2/ci-harness.test.mjs
+          bash labs/history-sync-lab2/run-ci.sh --check
+
+      - name: Exercise Rails, Sidekiq, PostgreSQL, Redis and private MinIO
+        run: bash labs/history-sync-lab2/run-ci.sh all
+
+      - name: Retain synthetic evidence tied to both revisions
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: broker-lab2-delivery-${{ github.sha }}
+          path: ${{ env.HISTORY_LAB_EVIDENCE_DIR }}/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Preserve tracked source and whitespace
+        run: git diff --exit-code && git diff --check

@@ -52,3 +52,7 @@ export * from './automation-domain-command.js';
 export * from './media-custody.js';
 
 export * from './flow-executions.js';
+export * from './automation-box-routing.js';
+export * from './automation-box-template.js';
+
+export * from './history-sync-v2.js';

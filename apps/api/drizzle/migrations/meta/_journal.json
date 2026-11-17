@@ -596,6 +596,76 @@
       "when": 1794782400001,
       "tag": "0085_guided_setup",
       "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1794782400002,
+      "tag": "0086_automation_box_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1794782400003,
+      "tag": "0087_history_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1794782400004,
+      "tag": "0088_history_catalogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1794782400005,
+      "tag": "0089_history_materialization",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1794782400006,
+      "tag": "0090_history_source_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1794782400007,
+      "tag": "0091_history_source_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1794782400008,
+      "tag": "0092_history_source_journal",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1794782400009,
+      "tag": "0093_group_media_facts",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1794782400010,
+      "tag": "0094_history_lifecycle_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1794868800000,
+      "tag": "0095_history_retention_guard",
+      "breakpoints": true
     }
   ]
 }

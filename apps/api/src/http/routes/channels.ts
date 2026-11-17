@@ -18,11 +18,14 @@ import { tenantOperationalProblem } from '../../modules/tenancy/operational-limi
 import {HistoryImportError,type HistoryImportService} from '../../modules/history-import/types.js';
 import {HistoryImportCapabilitySchema,HistoryImportOperationSchema,HistoryImportSelectionSchema} from '@jrc/contracts';
 import { IntegrationError } from '../../modules/integrations/integration-error.js';
+import { HistorySyncProgressSchema } from '@jrc/contracts';
+import type { HistorySyncProgressService } from '../../modules/history-sync/progress-service.js';
 
 export interface ChannelRouteOptions extends AuthenticationOptions {
   service: ChannelFacade;
   lifecycle?: LifecycleService;
   historyImport?: HistoryImportService;
+  historySyncProgress?: HistorySyncProgressService;
   resolveCurrentRole(userId: string, organizationId: string): Promise<Role | null>;
   now?: () => Date;
   requestTimeoutMs?: number;
@@ -63,6 +66,11 @@ export async function registerChannelRoutes(app: FastifyInstance, options: Chann
     requestId: request.id, deadline: request.operationDeadline, signal: request.operationSignal });
   const central=()=>{if(!options.service.central)throw new ChannelFacadeError('CHATWOOT_NOT_CONFIGURED',503);return options.service.central;};
   const centralErrors={400:ProblemDetailsSchema,401:ProblemDetailsSchema,403:ProblemDetailsSchema,404:ProblemDetailsSchema,409:ProblemDetailsSchema,503:ProblemDetailsSchema};
+  // V2 uses messaging_channels.id, never the V1 public instance ID.
+  api.get('/v1/channels/:id/history-sync/v2/progress',{preHandler:read,schema:{params,querystring:empty,response:{200:HistorySyncProgressSchema,...centralErrors}}},async request=>{
+    if(!options.historySyncProgress)throw new IntegrationError('HISTORY_SYNC_PROGRESS_UNAVAILABLE',503);
+    return options.historySyncProgress.latest(org(request),actor(request),request.params.id);
+  });
   const history=()=>{if(!options.historyImport)throw new HistoryImportError('HISTORY_SOURCE_NOT_CONFIGURED',503);return options.historyImport;};
   const historyParams=params.extend({operationId:z.uuid()});
   api.get('/v1/channels/:id/history-import/capability',{preHandler:manage,schema:{params,querystring:empty,response:{200:HistoryImportCapabilitySchema,...centralErrors}}},async request=>{

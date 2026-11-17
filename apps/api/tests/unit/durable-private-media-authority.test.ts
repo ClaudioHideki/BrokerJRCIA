@@ -33,7 +33,7 @@ function preparedUpload({partner=true,allowed=false,channel=true,active=true,sta
  }})) as PrivateMediaTransaction;
  const transport:PrivateObjectStore={destinationFingerprint:object.destination_fingerprint,
   async put(){actions.push('PUT');return {outcome:'CONFIRMED'};},
-  async inspect(){actions.push('INSPECT');return {outcome:'MISSING'};},
+  async inspect(){actions.push('INSPECT');return {outcome:'CONFIRMED',byteLength:object.cipher_byte_length,sha256:object.cipher_sha256};},
   async read(){throw new Error('Not a read test');},async remove(){throw new Error('Not cleanup');}};
  const create=()=>createDurablePrivateMediaStore({encryptionKey:Buffer.alloc(32,7).toString('base64'),transact,cleanupTransact:async()=>{throw new Error('No cleanup');},objectStore:transport,profile:'private-v1'});
  return {create,org,id,object,operation,media,actions,queries};
@@ -50,7 +50,7 @@ it.each([{active:false},{channel:false}])('rejects resumed partner storage when 
  const h=preparedUpload({...values,allowed:true});expect(await h.create().dispatchPut(h.org,h.id)).toBe('REJECTED');expect(h.actions).toEqual([]);
 });
 it('keeps an authorized partner and a legacy automation upload dispatchable',async()=>{
- for(const options of [{allowed:true},{partner:false}]){const h=preparedUpload(options);expect(await h.create().dispatchPut(h.org,h.id)).toBe('CONFIRMED');expect(h.actions).toEqual(['PUT']);}
+ for(const options of [{allowed:true},{partner:false}]){const h=preparedUpload(options);expect(await h.create().dispatchPut(h.org,h.id)).toBe('CONFIRMED');expect(h.actions).toEqual(['PUT','INSPECT']);}
 });
 it('does not make a terminal or uncertain PUT depend on the original upload key',async()=>{
  for(const state of ['CONFIRMED','UNKNOWN']){const h=preparedUpload({state});expect(await h.create().dispatchPut(h.org,h.id)).toBe(state);expect(h.actions).toEqual([]);expect(h.queries.some(q=>q.includes('from api_keys'))).toBe(false);}

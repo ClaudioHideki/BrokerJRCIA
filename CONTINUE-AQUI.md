@@ -1,3 +1,161 @@
+# Reparo outbound publicado; áudio ainda pendente — 17/11/2026
+
+Estado vigente: [recibo e limites de 17/11](docs/implementation/outbound-repair-20261117-result.md). Código funcional Broker4919ace na main e imagem API8af6 publicada/assinada; Dokploy DONE. LAB2 integrado d468 restaurado por imagem21dfe, main8977 sem novidade. Intenção original e texto sintético READ; imagem/PDF READ. Áudio Ogg FAILED/MEDIA_TYPE_UNSUPPORTED e sem providerID. Não repetir o lote já parcialmente entregue nem tocar UNKNOWN antigo. Segundo contato autorizado ainda não testado. Controle do navegador travou durante diagnóstico do MIME; recuperar acesso e ler consulta Rails pendente antes de supor causa ou fazer novo envio. Nenhum banco restaurado, backup/dump/restore ou maintenance/provision executado.
+
+Os registros abaixo preservam o histórico das fases anteriores.
+
+---
+
+# Publicação e deploy concluídos — 16/11/2026
+
+Estado vigente: [recibo de publicação e limites operacionais](docs/implementation/release-20261116-result.md). Broker API/web fonte966, main funcionala6 e LAB2d468 publicados e verificados em runtime. Migração0095 aplicada; nove serviços API/worker e web nos digests esperados, operacionalREADY. Receptor LAB2 promovido primeiro, schema20261116190000, Rails/Sidekiq conferidos. Seis capabilities200 e paginação Minhas25→34 confirmadas. Engine e PostgreSQL preservados. Nenhum novo reciboLIVE na observação; aceite físico, grupos, distribuição, histórico legado e arquivos antigos permanecem pendentes. Não interpretar este deploy como sincronização100%.
+
+Os registros abaixo documentam fases anteriores e não substituem o estado vigente acima.
+
+---
+
+# Validação concluída da candidata de entrega — 16/11/2026
+
+Branch `codex/whatsapp-delivery-reliability-20261116`. E2E completo aprovado em [43957172112](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/43957172112): Broker `e26e5f7596f03daa611367dd617d4aa9d5e6f8a8` + LAB2 `982f1541ca79639c289c39b840819df3ba787dda`, cinco suítes/seis cenários, todos exit0. Rails HTTP, PostgreSQL, Redis, Sidekiq e MinIO reais em runner descartável; origens/provedores sintéticos. Foram comprovados os casos de histórico, grupos, mídias, Minhas/isolamento, callbacks repetidos, perda de ACK e parada/reinício de worker, preservando a contagem e os hashes esperados.
+
+CI ampla Broker [43954196859](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/43954196859) aprovada no código produtivo `da899085`:4483 gerais,1914PG/Redis,5MinIO,47navegador, builds e segurança. Deltas atée26e5f7 são só testes/relatório, sem mudança em apps/src, packages, infra ou workflows. CI LAB2 [43946749039](https://github.com/ClaudioHideki/jrc-conversas-lab2/actions/runs/43946749039) integralmente aprovada, incluindo frontend. Não somar baterias sobrepostas; captura grande opt-in e aceite físico não estão cobertos por esta conclusão.
+
+O E2E descobriu/corrigiu uma incompatibilidade real do parser Broker com `supports_occurred_at: true` anunciado pelo LAB2. Demais reparos foram no laboratório: flags explícitas dos receptores, origem correta de anexos, comparação LF/CRLF, leitura JSON string/object e campos canônicos obrigatórios das amostras de mídia. As validações produtivas de origem, escopo, hashes, recibos e UNKNOWN foram preservadas.
+
+**Próximo gate, antes de promover produção:** proteger hard deletes com preflight antes do enqueue e da limpeza em lote. DeleteObjectJob pode remover associações antes de encontrar FKs restritivas dos recibos; não aplicar CASCADE nem apagar provas/KEEP. Remover conexão preserva histórico; expurgo é separado. A migration LAB220261116190000 continua candidata, irreversível em DOWN; rollback exige binário compatível e retenção de schema/recibos/arquivos. Não houve merge, imagem publicada, deploy, migração produtiva, replay, envio real ou backup/dump/restore. Docker local não foi forçado. A validação física das caixas e do S3 produtivo permanece separada.
+
+Fontes atuais: [relatório](docs/implementation/whatsapp-delivery-reliability-20261116.md), [plano](docs/superpowers/plans/2026-11-16-whatsapp-delivery-reliability.md) e [tarefas](TASKS.md). As notas abaixo preservam o percurso e os resultados intermediários; o resultado vigente é este cabeçalho.
+
+---
+
+# Registro intermediário da correção de entrega — 16/11/2026
+
+Checkpoint Actions: LAB2 `982f1541`, execução `43946749039`, está integralmente verde (Rails, interface e build frontend). Broker `9bfd7ee`, CI ampla `43945663271`, terminou verde; `c696e423`, regressão focal `43948844938`, também verde. Isso não aprova o E2E conjunto: `43948844963` executou os cinco cenários e falhou. O laboratório omitia `JRC_BROKER_ENABLED=true`, provocando recusa nativa/histórica; Rails test também gerava anexos em `localhost:3000`, diferente da origem autorizada `127.0.0.1:54141`. Reparos restritos ao laboratório em validação, preservando guardas de produto. Usar este checkpoint em preferência aos estados intermediários abaixo. Nenhum merge, imagem publicada, deploy ou teste com aparelho real.
+
+Branch corrente `codex/whatsapp-delivery-reliability-20261116`, base Broker `c3bae632` e LAB2 `a24adc6d`; alterações locais preservadas. Em 16/11 o usuário pediu executar a verificação no GitHub Actions, autorizando a candidata de testes. A CI Broker `43941913864` aprovou 1914 testes PostgreSQL/Redis (3 E2Es reservados ao laboratório dedicado), mas falhou na expectativa de contagem de GET do teste MinIO; correção da fixture publicada em `9bfd7ee`. A CI dedicada posterior expôs ausência de compilação prévia do executor, em correção. LAB2 `e65c7adf` passou interface, 72 nativos, 6 badges, 437 genéricos e 156 histórico/saída; busca 37/38, RED avançado corrigido em `982f1541` e ainda aguardando GREEN/build. O E2E conjunto ainda não passou: primeiro bloqueio no contexto YAML corrigido; segundo no mapeamento de portas da rede Docker interna em diagnóstico. Commit/push nessa branch não autorizam merge, imagens ou deploy. Ver [relatório corrente](docs/implementation/whatsapp-delivery-reliability-20261116.md) e [plano](docs/superpowers/plans/2026-11-16-whatsapp-delivery-reliability.md).
+
+Corrigidos com RED→GREEN: intenção humana durável que pode ultrapassar somente UNKNOWN comprovadamente de outro contato; claim concorrente; escopo retido até COMMIT; status com recibo do provedor, monotonicidade e retry genérico bloqueado no LAB2; inspeção física antes do recibo de mídia; entrada de mídia de grupo e diagnóstico específico de política. E2E Rails real revelou consulta `before=id+1` sem cursor existente: consulta canônica e reconciliação por ID conhecido agora usam intervalo exato `after=id&before=id+1`, sem alterar o finder ou aceitar mensagem vizinha.
+
+Subincremento nativo LIVE implementado nos dois working trees: mensagem/recibo imutável PostgreSQL, escrow privado pendente até hash físico, recovery/consulta sem segundo POST, protocolo fixado, retry apenas REJECTED com mesmo corpo/hash/contexto/mapa, lease antes/depois de I/O, lock normativo e convergência LIVE/histórico por prova imutável. Grupo inclui entrada/saída MEDIA com participante/LID e portas explícitas; engine produtiva não foi modificada. Relógio canônico opcional fixa ordem; LAB2 fecha regressão de unread para chegada atrasada, distinta de importação histórica silenciosa.
+
+Provas adicionais: geral Broker4487/4487 em581 arquivos, exit0; depois dos dois últimos deltas, unidades85/85 e PG native+isolamento32/32. PG ampliado193/193 em7 arquivos precede o último delta de bootstrap. Build/typecheck finais exit0. Rails native/publicação/interop/concorrência66/66 e badges/cursor6/6; genéricos12arquivos exit0, JSON exato ainda não recuperado. E2Es históricos/host/saída humana anteriores passaram; novo E2E HTTP native receipt/MinIO/Sidekiq final permanece pendente. Docker Desktop local travou: somente restart gracioso tentado, sem encerramento forçado autorizado. Migrar execução para Actions Linux isolado com Ruby3.4.12. Não somar baterias sobrepostas nem usar CI antiga para aprovar SHA novo.
+
+Não reenviar UNKNOWN antigo; não apagar bot authority, habilitar captura V2/UNPROVEN, mudar políticas produtivas nem tratar testes sintéticos como entrega física. Os testes locais antigos usaram Ruby3.4.4; os novos runners GitHub usam3.4.12, igual ao produto. LAB2 adiciona migration20261116190000 (recibo LIVE/escrow, origin_context imutável e clock de publicação servidor para unread); Broker não tem migration nova. **Gate pré-release:** FKs RESTRICT podem bloquear hard delete antigo; revisar lifecycle/expurgo sem CASCADE/apagar prova. Down irreversível; rollback preserva schema/recibos/KEEP. Build frontend LAB2 bloqueado localmente pelo guard Linux≥8GiB: host7,84GiB totais/Docker3,74GiB; tentativa4096MiB OOM. Exigir CI/runtime exato e build elegível. Imagens e servidor permanecem como estavam antes deste incremento; somente branch de testes publicada, sem merge/deploy ou envios reais.
+
+---
+
+# Preparação de release autorizada — 14/11/2026
+
+Base preservada `9199b9aa` (funcional `f8e730e`); main remota reconferida `29095bea`. CI43593190599 aprovada para a base, não para as alterações posteriores. O usuário autorizou atualizar main e produção dos dois produtos; nenhuma alteração produtiva foi executada neste checkpoint.
+
+A revisão reproduziu um P2: a ingestão reutilizava texto já importado por histórico, mas o ACK V2 exigia observação/fato live que esse caminho não cria. Correção estreita em `origin-receipt.ts`: exigir o mesmo recibo histórico imutável, com escopo e hash, antes do ACK TEXT V2. V1 e mídia preservados. Regressão unitária:7 falhas/1 aprovação RED,8/8 GREEN, incluindo hashes divergentes; typecheck aprovado. Quatro regressões PostgreSQL acrescentadas em `history-sync-writer.test.ts` para entrada/saída individual/grupo e reconexão do mesmo dono; execução real depende do gate isolado, não é provada pelo teste unitário.
+
+Migrations0087–0094 permanecem aditivas e inalteradas neste incremento. Após0090, o binário da main antiga não passa o probe de schema: planejar troca coordenada migrate/binário e eventual reversão somente para uma imagem comprovadamente compatível. Nunca executar DOWN, exclusão de registros ou replay para compensar uma falha de release. Captura V2 continua default off/UNPROVEN; deploy não autoriza ativá-la.
+
+Fechamento local:4362/4362 testes regulares em573 arquivos, mais9/9 testes PDF em2 arquivos, sem falhas; backup/recovery explicitamente excluídos. Typecheck aprovado; revisão da correção confirmou4/4 ACKs e11 recusas negativas estreitas. Esses testes não substituem PostgreSQL: exigir integração PG/Redis/MinIO/origem, CI e imagem do novo SHA antes da main. Conferir o runtime real antes de aplicar. Dokploy e Computer Use falharam na inicialização com os error3; recuperação do acesso solicitada. Backup/dump/restore, sessões e dados reais permanecem preservados.
+
+---
+
+# Continuação operacional — 12/11/2026
+
+Fechamento da fixture E2E: a recarga de classes Rails descartava a escolha S3 atribuída somente à classe Blob e voltava ao disco local. A configuração explícita do serviço foi preservada também no initializer descartável versionado, sem alterar storage de produto. Os dois E2Es voltaram a passar (host59,11s; histórico94,98s), mais lote sintético10001/101 páginas183,88s. API/web01407daf publicadas/assinadas, CI43347776029 verde; este follow-up deve receber sua própria CI/imagem antes da publicação final. LAB2A–G0606d0ff continua na matriz nativa; conexões600Rails/397UI/14navegador e frontend2495 verdes. Dokploy novamente falhou antes do acesso; nenhuma implantação ou captura produtiva.
+
+Fechamento adicional da CI ampla: migration aditiva 0094 registra o catálogo de origem e corrige a limpeza dos dois escopos no expurgo explicitamente confirmado de canal/empresa. O probe composto foi reconciliado com a constraint de mídia 0090, preservando parceiro e histórico. RED reproduzido e 59 testes/3 arquivos PG verdes; revisão independente sem P1/P2 nesses trechos. Não reescrever migrations anteriores. Detalhes em `docs/implementation/history-operational-host-20261112.md`. Revalidar a CI do próximo SHA antes da imagem API/web.
+
+Engine `20704a6711c36bb5914b963904b16676d1128fb6` publicada/assinada após gate próprio, digest `sha256:ebfbadb53409f3ec5db87ee8ef0ab508aa4cdc401dcc38385a1cc9986963bc41`; sem ativação produtiva. LAB2 avançou para `0606d0ff17ba6d495c667f723bd0756e8ec62b18`, incorporando schema corrigido e guardas de memória/output do build; CI própria em andamento. Nenhuma produção alterada; acesso Dokploy segue indisponível.
+
+Incremento atual sobre `6522938097781d099e46f594eefc51e9149e783c`, na branch `codex/whatsapp-history-sync-20261111`. Host privado PostgreSQL, principal por engine, capability por socket/epoch, admissão de nova conexão autorizada, journal live+mídia atômico, recuperação física e convergência live/histórico implementados. Migrations novas e ainda não produtivas:0091–0093. Autoridade, revogação até COMMIT, LID, grupos e dedupe nas duas ordens têm regressões. Captura produtiva continua default off/UNPROVEN; não inferir homologação de telefone.
+
+Provas atuais:4363/574 gerais verdes (backup/recovery excluídos);86PG/6 arquivos mais25/25 do host após último ajuste;116 origem; E2E operacional final de duas imagens/tenants com PG/MinIO/Rails/Sidekiq aprovado. Revisão independente confirmou fechamento dos oito achados. CI/imagens/deploy do novo SHA precisam da própria evidência. Detalhes, infraestrutura, migrações, limites e rollback: `docs/implementation/history-operational-host-20261112.md`.
+
+LAB2 consolidou histórico + A–G `cad427d4` + runtime/Scout `d11c879a`, candidata `a3c10814fae79ccea86315d24fc27c231c803422`. CI própria em andamento, com falha do fixture antigo de paginação sendo corrigida sem afrouxar membership. Mains preservadas; nenhuma produção alterada. Controle Dokploy segue indisponível mesmo após reabertura. Usuário autorizou publicação/deploy final, mas nenhum envio, replay ou pareamento real. Backup/dump/restore excluídos.
+
+---
+
+# Continuação local: mídia de origem e progresso, 12/11/2026
+
+Este registro substitui as pendências já implementadas dos checkpoints abaixo, sem transformar evidência antiga em aprovação do novo candidato. Bases preservadas: Broker ece27d13584b8eee661ccc2e8a792308c7fcd827 e LAB2 e919b0ac7eaa95f844880e6f60bb8092d603f94b. Mains reconferidas nesta rodada: Broker29095bea e LAB2d8a83b82, ambas ancestrais; sem merge/push/deploy.
+
+Implementado neste working tree: descritor mínimo de mídia cifrado e atômico com a página no journal; opt-in conservado pelo bootstrap compilado; download estreito abortável e autenticado; hash/tamanho/recibo/lease/retry/KEEP; normalização Opus e separação do upload público; migration Broker0090 aditiva; contagem distinta de chats; progresso somente leitura React/Vue PT-BR, com inbox/revisão/permissão revalidadas e descarte de resposta tardia. LAB2 não recebeu nova migration nesta rodada.
+
+Evidências novas já concluídas: origem/engine113 (inclui SIGKILL após COMMIT de página/mídia), PostgreSQL60 mais8 de estrutura0090, contratos/HTTP/UI Broker38, gates OpenAPI/documentação43, Rails progresso34 e regressão silenciosa/mídia/Minhas63; UI LAB2 focal6 e InboxView4; artefato/empacotamento da engine31. São suítes sobrepostas, não somar como total. E2E HTTP com PostgreSQL/MinIO/Rails/Redis/Sidekiq:12 mensagens/8 mídias, áudio Opus com parâmetro, grupos/LID, ACKs perdidos e recaptura sem duplicidade; Minhas retorna somente as duas conversas da caixa correta. Duas Accounts na mesma instalação, não duas instalações independentes ou WhatsApp real. Componente React também validado em Chromium desktop/mobile com API sintética: sem overflow, mutações ou violações automáticas de acessibilidade; não é navegador E2E operacional.
+
+A execução geral final passou 4363/4363 testes em572 arquivos, sem falhas/skips; somente tests/backup.test.mjs foi excluído por escopo. Também passaram typecheck/build Broker e build LAB2 (5640 módulos,11m41s). A primeira execução ampla teve10 falhas/7 skips: PDF/catálogo anteriores, baseline runtime0089 e restrições de spawn Git/OpenSSL; preservada como tentativa falha, corrigida e substituída pela execução geral completa verde. O runtime agora exige0090 e recusa estruturas/permissões ausentes, com RED PostgreSQL e GREEN. ESLint novo2 arquivos sem erros/avisos;10 avisos antigos de i18n nos arquivos existentes. RuboCop novo parser/spec limpos;9 métricas/nomeações antigas de controller/client/control, incluindo ClassLength ainda acima do limite, não são lint global limpo.
+
+A imagem local da engine pinada foi construída nesta rodada, sem publicação. O gate executado dentro dela passou com a Baileys 7.0.0-rc.9 efetivamente instalada: derivação HKDF independente, download autenticado e rejeição de MAC corrompido para imagem, áudio, vídeo, documento e figurinha. O transporte desse teste é sintético e sem rede; não é sessão WhatsApp real nem host produtivo homologado.
+
+**Não habilitar captura em produção:** host operacional de autoridade/ownership continua pendente e LAB/UNPROVEN. Faltam admissão/política automática persistida por conexão, composição operacional do downloader, convergência live de saída/mídia/grupos e prova de fechamento de cobertura. O painel observa operações admitidas; não implementa start/resume/cancel públicos V2. isLatest/progress100 não provam o telefone completo.
+
+Detalhes e rollback: docs/implementation/history-source-media-progress-20261112.md no Broker. Registros privados em .superpowers/sdd/2026-11-05-whatsapp-history-sync/; relatório e pacote de evidências do workspace serão atualizados ao fechar. Nenhum número/sessão real, credencial produtiva, imagem ou banco de produção foi alterado. Nenhuma rotina de backup/dump/restore executada.
+
+---
+
+# Checkpoint ativo - sincronizacao WhatsApp, 12/11/2026
+
+Implementacao local sobre Broker bb438150060a418a7aa36a04beacf0a81a88bc3d e LAB2 ca6e7824842022bcfe4db04d6d5a359994f8540b. Preservados os incrementos e as branches atuais. Nenhum push, merge, imagem publicada, deploy, envio/pareamento/replay real, credencial alterada ou rotina de backup/dump/restore nesta rodada.
+
+## Implementado e exercitado neste incremento
+
+- Broker: writer nativo, peers canonicos e prova do dono; pagina e recibos/obrigacoes de projecao transacionais; migration0089 aditiva com RLS; consumidor HTTP V2 com capability, recibo correlacionado e bootstrap imutavel; lease/retry e reparo da mesma midia. V2 nunca cai no worker/live V1.
+- Driver privado headless: uma pagina de origem/nativa e uma entrega por tick; filtro por runId, gate, pausa/cancelamento e ACK somente apos COMMIT. Falha da origem nao congela dados ja persistidos.
+- Hook compilado da engine: resolver privado de midia persistida congelado na captura, exigindo persisted=true e scopeKey original; URL/key da origem nao entra no lote. Nao implementa download da midia nem ownership produtivo.
+- Recaptura: dedupe exclui somente UUID do objeto do hash do fato; SHA/tamanho/tipo/MIME/nome/legenda continuam estritos. Projecao reutiliza mediaId canonico para manter o request imutavel e evitar anexos duplicados.
+- LAB2: multipart privado, reserva antes do PUT, SHA256/MIME/leitura fisica, ATTACH_PENDING PostgreSQL e job/scheduler Sidekiq. Token original e revisao de destino continuam obrigatorios; KEEP preservado.
+- Minhas: historico resolvido comprovado por recibo CHAT em caixas de membership nao exclusivas; revisao de prova invalida paginas revogadas. URA/exclusividade/supervisao e responsaveis preservados.
+
+## Evidencias atuais
+
+A suite geral final passou **4355/4355 testes em 570 arquivos**, com um worker. Backup.test foi explicitamente excluido por escopo; nenhuma rotina operacional dessa area foi executada.
+
+Writer/catalogo PostgreSQL24; unidade focada16; origem/journal/engine pinada96; Rails63/7 arquivos; UI43: zero falhas nessas rodadas. Typecheck e build Broker passaram. Vite LAB2 passou com heap4096MiB em8m18s; tentativa anterior3072MiB falhou e permanece registrada. ESLint2 arquivos sem ocorrencias. RuboCop20 arquivos: uma ClassLength preexistente no Finder (208 no HEAD anterior/214 atual; limite175). A nova ocorrencia MethodLength foi corrigida. Nao se declara lint global limpo.
+
+E2E passou com PostgreSQL de origem/Broker, Rails HTTP, Redis/Sidekiq e MinIO reais: duas Accounts/tenants isoladas na mesma instalacao Rails,12 mensagens/8 anexos (imagem+legenda, audio, PDF, video), texto incoming/outgoing e grupos/LID. Compara IDs independentes, texto/direcao/data e hashes dos bytes. Perda de ACK em ambas as fronteiras e recaptura com novas referencias convergem para os mesmos registros/anexos. Minhas retorna somente as duas conversas da caixa do membro e nega acesso cruzado. Nao e navegador E2E, duas instalacoes Chatwoot independentes nem WhatsApp real.
+
+Lote sintetico10001 mensagens individuais/grupos em101 paginas reconciliou todos os IDs em175,14s de teste; origem reconstruida entre leituras e KEEP mantido. Nao mede SLA, projecao em larga escala ou capacidade50/400/900 sessoes. progress100/isLatest nao fabricam fechamento de cobertura.
+
+## Bloqueios internos restantes - nao habilitar em producao
+
+1. Host/ownership operacional e autoridade/revogacao reais ate COMMIT; o host atual e de laboratorio e deliveryOwnership=UNPROVEN.
+2. Obter/descriptografar e persistir os bytes de midias da origem antes de fornecer referencias READY. Os testes fisicos iniciam com bytes sinteticos fornecidos ao storage privado.
+3. Convergencia completa live/history para outbound/midia e interoperabilidade CENTRAL dos grupos. Texto incoming individual/grupo tem prova/reuso, o restante nao esta homologado.
+4. Composicao/scheduler operacional, admissao por conexao e rotas/painel publico V2 de status/retomada/cancelamento. Driver e ports privados nao sao esses endpoints.
+5. Browser E2E, duas instalacoes independentes, imagem efetiva da engine/CI do novo SHA e sessao real autorizada com inventario da cobertura disponivel. Nao prometer copia integral do celular.
+
+Mains reconferidas em12/11: Broker29095bea35702893e1a5b80f5131bdd13b901a7e e LAB2d8a83b824b11cc68ddbbce7c79681f368051fb70 continuam ancestrais. Broker compartilhado; LAB2 base completa; Branef/GLPI e GoPure nao alterados. Producao nao inspecionada nem modificada neste incremento.
+
+Relatorio/evidencias locais: C:/Users/DEV02/Documents/ChatGPT/New project/output/broker-whatsapp-sync-20261112.
+
+## Checkpoint anterior de11/11
+
+## Continuação: catálogo e receptor LAB2
+
+Núcleo de origem/staging registrado no commit local `5a396fd1961b341867a4f67884f1e01009ada824`. Subincremento posterior na mesma branch acrescenta `0088_history_catalogue`, catálogo privado de peers e checkpoint atômico por página. A0087 não foi alterada; ambas as migrations foram aplicadas somente em bancos descartáveis. Catálogo não é mensagem persistida, mídia copiada ou histórico entregue ao JRC. Writer canônico, transporte operacional de origem, projeção e custódia física continuam pendentes.
+
+Gates deste subincremento: **35 testes PostgreSQL/7 arquivos** passaram; typecheck e build passaram; contratos/licenças/submódulo passaram; binário compilado1 passou/1 skipped (sem alvo de container smoke). A suíte geral com `tests/backup.test.mjs` explicitamente excluído terminou com **4338 passados/1 falha**, apenas pela expectativa antiga de migrations em repository-baseline. Corrigido o fixture para incluir0088 e executados novamente **38 focais/5 arquivos, zero falhas**. A aplicação não foi alterada depois desse resultado geral; não se repetiu toda a suíte após a correção apenas do fixture e não se declara uma nova execução integral verde. Uma rodada anterior do mesmo subincremento foi interrompida para aplicar a exclusão de escopo e não conta como aprovação. Nenhuma rotina operacional de backup/dump/restore foi executada.
+
+A revisão reproduziu nome de participante como nome do grupo, nome vazio persistido e policy RLS ausente no definer do lifecycle. Corrigidos com RED→GREEN, inclusive exclusão explícita populada de canal/empresa preservando outro tenant. Não há P1/P2 restante no recorte revisado. Os catálogos novos não alteram mensagens, bots, envio, campanhas, relógios ou atribuições live. Guard de identidade e revogação do host precisa permanecer válido até COMMIT antes de qualquer composição operacional.
+
+LAB2: código em `3f3e2f27c6d84d0722062be718f4686e126f8479`, documentação complementar em `ca6e7824842022bcfe4db04d6d5a359994f8540b`, branch `codex/whatsapp-history-order-20261111`. **228 Rails/15 arquivos e65 JS/5 arquivos, zero falhas**; RuboCop12 arquivos novos e ESLint7 arquivos alterados sem ocorrências. Código UI é o mesmo do build Vite já verificado. Receptor V2 local de texto/grupos, sem mídia V2 anunciada, default off. Documentos correntes: `CONTINUE-AQUI.md` e `docs/jrc-broker/history-sync-v2.md` no LAB2.
+
+Main Broker `29095bea35702893e1a5b80f5131bdd13b901a7e` e main LAB2 `d8a83b824b11cc68ddbbce7c79681f368051fb70` foram reconferidas e já são ancestrais das candidatas; conferir novamente antes de publicação futura. Sem push, merge, imagem publicada, deploy, migration produtiva, credencial nova, pareamento, envio real ou replay. Bancos/Redis e rede descartáveis dos testes foram removidos por seus rótulos; nenhum volume ou container de outros projetos foi removido.
+
+Próximo passo executável: Task3 writer canônico, deduplicação live/history e adoção legada comprovada; depois mídia privada física/KEEP, projeção/capability/recibos, progresso/API/UI e E2E. Não promover estes testes sintéticos a homologação de sessão real. Não usar downgrade de imagem incompatível com schema0088 nem descartar os filtros de privacidade dos grupos no LAB2.
+
+## Evidência anterior do núcleo5a396fd
+
+Branch local `codex/whatsapp-history-sync-20261111`, base preservada `1fed8ffcc68859c717f64a8aae50f29e8345e05b`. Main `29095bea35702893e1a5b80f5131bdd13b901a7e` reconferida após os testes e já ancestral. Checkouts antigos e alterações de áudio alheias preservados. Nenhum push, merge, deploy, alteração produtiva, credencial, pareamento, envio/replay ou backup/dump/restore neste incremento.
+
+Plano aprovado: `docs/superpowers/plans/2026-11-05-whatsapp-history-sync.md`. Ledger privado `.superpowers/sdd/2026-11-05-whatsapp-history-sync/progress.md`. Núcleo recuperado seletivamente do commit `608aee7`; migration nova e ainda não aplicada em produção `0087_history_sync`, depois de `0085_guided_setup`/`0086_automation_box_routing`. Nenhuma migration aplicada foi renumerada.
+
+Implementado localmente: contratos e staging cifrado V2; catálogo de identidade; journal de origem com páginas limitadas; CHAT/CONTACT/MESSAGE/GAP, individuais, grupos, participantes e referências privadas de mídia. Snapshot síncrono cifrado antes de await, sequência transacional, ACK do envelope completo, reserva de memória limitada, retry privado, continuidade após promoção e gates físicos de schema. Ownership da engine continua UNPROVEN e o host é de laboratório.
+
+Gates atuais do Broker: **4.340 testes/567 arquivos passaram**, sem falhas; `npm run typecheck` e `npm run build` passaram. Script real `test:origin-journal`: **93/93**; integração PostgreSQL descartável: **16/16**; contratos focais: **28/28**. `test:compiled`: **1 passou/1 skipped**, pois não houve imagem/container para o teste dependente de CONTAINER_SMOKE_URL. A suíte global foi repetida sequencialmente após duas correções de fixtures/baseline; uma tentativa paralela intermediária foi interrompida por pressão de memória e não conta como aprovação. CI remota e imagens não executadas/publicadas.
+
+LAB2: worktree `C:/Users/DEV02/.codex/worktrees/whatsapp-history-order/consolidacao-core-20261109`, branch `codex/whatsapp-history-order-20261111`, base `126d251dd5d5179783706f4934ba4fabc9d12b19`; main `d8a83b824b11cc68ddbbce7c79681f368051fb70` já incorporada. Preservado o escopo Minhas por membership antes da paginação, relógio monotônico, agrupamento por caixa e permissões exclusivas/URA. Acrescentado receptor Rails V2 local, gated, texto/grupos/LID e recibos pós-commit, sem callbacks, com proteção de grupos no diretório/busca/rotas e reuso comprovado de mensagens. Mídia V2 ainda não é anunciada como suportada. A rodada ampla inicial desse receptor passou **226 exemplos Rails**; ver o checkpoint LAB2 para a revisão exata posterior.
+
+Próximas tarefas internas, sem reiniciar: writer canônico e deduplicação live/history; transporte/autoridade e coverage-close da origem (isLatest não é término); mídias físicas/S3 e custódia KEEP; worker de projeção com negociação V2 e recibos; progresso/API/UI; imagem efetiva da engine e E2E/CI no novo SHA. Nunca habilitar captura produtiva nem afirmar que todo o telefone foi espelhado com esses testes sintéticos.
+---
+
 # Continuação ativa — conexões e histórico, 04/11/2026
 
 ## Incremento posterior — sessão humana e visibilidade, 05/11/2026

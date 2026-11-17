@@ -26,6 +26,7 @@ function readinessRequirements(catalog:AttendanceCatalog,teamId:unknown):string[
 }
 
 export function HandoffEditor(props: Props) {
+  if(props.node.data.handoffVersion===3)return <p>O destino de {props.node.label} é configurado na página Flow, em Caixas vinculadas. Este modelo usa os times e agentes autorizados da caixa.</p>;
   return <DestinationEditor key={`${props.organizationId}:${props.node.id}`} {...props}/>;
 }
 function DestinationEditor(props: Props) {

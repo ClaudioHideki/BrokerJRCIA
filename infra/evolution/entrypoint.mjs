@@ -4,13 +4,14 @@ import { pathToFileURL } from 'node:url';
 import { DEPENDENCY_INVENTORY, fileHash, readSourceManifest, runtimeInventory, sha } from './artifacts.mjs';
 import { installRuntimeLifecycle, runtimeClosing, runtimeShutdownSignal, recordRuntimeFailure } from './runtime-lifecycle.mjs';
 import { superviseEngineMain } from './supervisor.mjs';
+import {parseOriginDatabaseHost} from './database-host.mjs';
 
 export function validateEnvironment(env) {
   const capture = env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED ?? 'false';
-  if (capture === 'true') throw Error('ORIGIN_ENGINE_OWNERSHIP_UNPROVEN');
-  if (capture !== 'false') throw Error('ORIGIN_ENGINE_CAPTURE_FLAG_INVALID');
+  if (capture === 'true') parseOriginDatabaseHost(env);
+  if (!['true','false'].includes(capture)) throw Error('ORIGIN_ENGINE_CAPTURE_FLAG_INVALID');
   if (env.DATABASE_PROVIDER !== undefined && env.DATABASE_PROVIDER !== 'postgresql') throw Error('ORIGIN_ENGINE_PROVIDER_UNSUPPORTED');
-  env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED = 'false';
+  env.JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED = capture;
   env.DATABASE_PROVIDER = 'postgresql';
 }
 

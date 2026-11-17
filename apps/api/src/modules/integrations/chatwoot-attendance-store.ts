@@ -70,7 +70,8 @@ async function queueReply(tx:TenantTransaction,s:ChatwootObservationScope,observ
     VALUES($1,$2,'CHATWOOT_REPLY',$3,$4::jsonb) ON CONFLICT(organization_id,integration_id,dedupe_key) DO NOTHING`,
     [s.organizationId,s.integrationId,`reply:${s.destinationRevision}:${s.accountId}:${s.inboxId}:${observation.event.remoteMessageId}`,JSON.stringify({...observation.reply_payload,
       attendanceObservationId:observation.id,attendanceKind:observation.event.kind,destinationRevision:s.destinationRevision,
-      ...('campaignIntentId' in observation.event&&observation.event.campaignIntentId?{campaignIntentId:observation.event.campaignIntentId}:{})})]);
+      ...('campaignIntentId' in observation.event&&observation.event.campaignIntentId?{campaignIntentId:observation.event.campaignIntentId}:{}),
+      ...('outboundIntentId' in observation.event&&observation.event.outboundIntentId?{outboundIntentId:observation.event.outboundIntentId}:{})})]);
   await tx.query('UPDATE chatwoot_attendance_observations SET reply_payload=null WHERE organization_id=$1 AND id=$2',[s.organizationId,observation.id]);
 }
 async function applyObservation(tx:TenantTransaction,s:ChatwootObservationScope,observation:Observation,control:Control) {

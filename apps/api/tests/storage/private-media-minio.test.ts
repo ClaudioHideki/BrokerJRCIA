@@ -175,6 +175,8 @@ it('reconciles a lost real PUT receipt after restart and suspension, then reads 
 
 it('blocks foreign refs, a changed destination and revoked read authority after real I/O', async () => {
   const t = await tenant(), other = await tenant(), id = await pending(t), h = setup(); await h.facade().runOnce(t.org);
+  // READY requires a physical GET after PUT; it is distinct from the authorized read below.
+  expect(h.http.filter(event => event.method === 'GET' && event.status === 200)).toHaveLength(1);
   const prior = h.http.length;
   await expect(h.facade().read(other.org, id)).rejects.toMatchObject({ code: 'MEDIA_NOT_FOUND' });
   let wrongCalls = 0;
@@ -188,7 +190,7 @@ it('blocks foreign refs, a changed destination and revoked read authority after 
     if (!current) throw new Error('SYNTHETIC_READ_AUTHORITY_REVOKED');
   } }))
     .rejects.toThrow('SYNTHETIC_READ_AUTHORITY_REVOKED');
-  expect(checks).toBe(2); expect(h.http.filter(event => event.method === 'GET' && event.status === 200)).toHaveLength(1);
+  expect(checks).toBe(2); expect(h.http.slice(prior).filter(event => event.method === 'GET' && event.status === 200)).toHaveLength(1);
   await drainAndPurge(t, h.privateStore); await drainAndPurge(other, h.privateStore);
 });
 

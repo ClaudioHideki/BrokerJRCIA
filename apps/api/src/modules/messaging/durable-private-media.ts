@@ -196,8 +196,11 @@ export function createDurablePrivateMediaStore(options: DurablePrivateMediaOptio
     let result: ObjectStoreMutation;
     try { result = await objectStore.put(ref(claimed.object), new Uint8Array(Buffer.from(claimed.object.staging_ciphertext!, 'utf8')), expected(claimed.object), control(claimed.operation.lease_expires_at)); }
     catch { result = { outcome: 'UNKNOWN', code: 'OBJECT_REQUEST_UNVERIFIED' }; }
+    // A successful PUT is only a transport ACK. Retain staging and the same
+    // obligation until an independent bounded read verifies the physical bytes.
+    if (result.outcome === 'CONFIRMED') return inspectPut(org, claimed);
     const outcome = result.outcome === 'REJECTED' && result.code === 'OBJECT_CONFLICT' ? 'UNKNOWN' : result.outcome;
-    return finishPut(org, claimed, outcome, result.outcome === 'CONFIRMED' ? null : staticCode(result.code, 'MEDIA_OBJECT_REQUEST_UNVERIFIED'));
+    return finishPut(org, claimed, outcome, staticCode(result.code, 'MEDIA_OBJECT_REQUEST_UNVERIFIED'));
   }
   async function recoverExpired(org: string): Promise<number> {
     return transact(org, async tx => (await tx.query(`UPDATE media_private_operations SET state='UNKNOWN',last_error_code='MEDIA_OBJECT_LEASE_EXPIRED',
@@ -216,6 +219,9 @@ export function createDurablePrivateMediaStore(options: DurablePrivateMediaOptio
       return { object, operation, token };
     });
     if ('state' in claimed) return claimed.state;
+    return inspectPut(org, claimed);
+  }
+  async function inspectPut(org: string, claimed: Claim): Promise<PrivateMediaOperationState> {
     try {
       const result = await objectStore.inspect(ref(claimed.object), expected(claimed.object), control(claimed.operation.lease_expires_at));
       if (result.outcome === 'CONFIRMED') {

@@ -1,10 +1,12 @@
 import type {EvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
 import type {OrganizationTransaction,TenantTransaction} from '../../db/tenant-transaction.js';
 import type {QrEvent} from '../messaging/qr-events.js';
-import type {ProviderContext} from '@jrc/providers';
+import {MediaError,validateMedia,type BinaryMedia,type ProviderContext} from '@jrc/providers';
+import type {MediaStore} from '../messaging/media-store.js';
 import {createHash,createHmac,randomUUID} from 'node:crypto';
 import {lockAttendanceChannel} from '../attendance/repository.js';
 import {createEventRouter,createExecutionService} from '../automations/service.js';
+import type {BoxRoutingService} from '../automations/box-routing-service.js';
 import {createPostgresAutomationRepository} from '../automations/repository.js';
 import {createPostgresMessagingRepository} from '../messaging/repository.js';
 import {beginQrDispatchAttempt,recordQrOutboundObservation,recoverQrOutboundObservations,listQrDispatchAttempts,listQrOutboundObservations,abandonQrDispatchAttempt,abandonQrOutboundObservation} from '../messaging/qr-outbound-observation.js';
@@ -13,12 +15,20 @@ import {readGroupHumanDispatch} from './central-group-dispatch.js';
 import {readChatwootAttendanceGate} from '../attendance/control-service.js';
 import {hasAmbiguousGroupProviderId} from './provider-scope.js';
 import {canAdvanceMessageState,lockMessageStatusKey} from '../messaging/message-state.js';
+import {recordLiveHistoryFact,reuseHistoryForLive} from '../history-sync/live-fact.js';
+import {registerPendingMedia} from '../messaging/media-store.js';
+import type {MessageContent} from '../messaging/types.js';
+import type {HistorySyncRecord} from '../history-sync/contract.js';
+import type {LiveMediaFact} from '../history-sync/writer.js';
 import {AUTOMATION_ORIGIN,type AbandonQrDispatchAttemptRequest,type AbandonQrOutboundObservationRequest} from '@jrc/contracts';
 import {WhatsAppGroupAutomationViewSchema,type WhatsAppGroupAutomationView} from '@jrc/contracts';
 export interface GroupPrincipal {organizationId:string;actorId:string}
 export interface GroupControlInput {groupJid:string;triggerText:string;expectedOwnerRevision:number;expectedBindingId:string;
   expectedBindingRevision:number;expectedIdentityRevision:number;expectedIdentityFingerprint:string;expectedRevision?:number|undefined}
 export interface GroupRuntimeOptions {
+  boxRouting?:BoxRoutingService|undefined;
+  media?:Pick<MediaStore,'read'>|undefined;
+  sendMedia?(context:ProviderContext,instanceKey:string,recipient:{kind:'GROUP';groupJid:string},media:BinaryMedia):Promise<{upstreamMessageId:string}>;
   captureBinding?:EvolutionFleetRuntime['capture'];assertBinding?:EvolutionFleetRuntime['assert'];
   encryptionKey:string;configurationScope:string;requestTimeoutMs?:number;enabled?:boolean;runtimeReady?(organizationId:string):Promise<boolean>;
   refreshCatalogs?(organizationId:string):Promise<unknown>;
@@ -39,7 +49,7 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
   const key=Buffer.from(options.encryptionKey,'base64');
   if(key.length!==32||key.toString('base64')!==options.encryptionKey||!options.configurationScope)throw new Error('INVALID_INTEGRATION_ENCRYPTION_KEY');
   const automation=createPostgresAutomationRepository(options),messaging=createPostgresMessagingRepository();
-  const serviceOptions={transact:options.transact,repository:automation,messaging,enabled:options.enabled??true};
+  const serviceOptions={transact:options.transact,repository:automation,messaging,enabled:options.enabled??true,get boxRouting(){return options.boxRouting;}};
   const router=createEventRouter(serviceOptions),executor=createExecutionService(serviceOptions);
   const fingerprint=(org:string,channel:string,phone:string)=>createHmac('sha256',key).update(`whatsapp-group-identity:v1:${org}:${channel}:${phone}`).digest('hex');
   const ready=async(org:string)=>options.enabled!==false&&(!options.runtimeReady||await options.runtimeReady(org));
@@ -263,7 +273,7 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
       });
     },
     view:(principal:GroupPrincipal,channel:string,group:string)=>options.transact(principal.organizationId,async tx=>{await member(tx,principal);return viewWithin(tx,principal.organizationId,channel,jid(group));}),
-    async ingestWithinTransaction(tx:TenantTransaction,org:string,channel:string,event:Extract<QrEvent,{kind:'group-text'|'group-status'}>){
+    async ingestWithinTransaction(tx:TenantTransaction,org:string,channel:string,event:Extract<QrEvent,{kind:'group-text'|'group-media'|'group-status'}>){
       await lockAttendanceChannel(tx,org,channel);jid(event.groupJid);
       if(event.kind==='group-status'){
         await lockMessageStatusKey(tx,org,channel,event.upstreamMessageId);
@@ -284,11 +294,19 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
       }
       const identity=(await tx.query<{identity_revision:string;identity_fingerprint:string|null}>(`SELECT identity_revision,identity_fingerprint FROM whatsapp_group_catalogs WHERE organization_id=$1 AND channel_id=$2 FOR UPDATE`,[org,channel])).rows[0];
       if(!identity?.identity_fingerprint)return{duplicate:false,executionId:null,reason:'GROUP_IDENTITY_REQUIRED'};
+      const content:MessageContent=event.kind==='group-media'?{type:'MEDIA',mediaId:await registerPendingMedia(tx,org,channel,event.media),
+        kind:event.media.kind,fileName:event.media.fileName,caption:event.caption}:event.content;
+      const historyFact={kind:'MESSAGE' as const,recipientKind:'GROUP' as const,chatJid:event.groupJid,providerMessageId:event.upstreamMessageId,
+        fromMe:event.fromMe,participantJid:event.participantJid,displayName:null,messageTimestamp:Math.floor(event.occurredAt.getTime()/1000),
+        content:event.kind==='group-media'?{type:'LIVE_MEDIA',mediaType:event.media.kind.toUpperCase(),filename:event.media.fileName,caption:event.caption}:event.content,
+        state:'DELIVERED' as const} as Extract<HistorySyncRecord,{kind:'MESSAGE'}>|LiveMediaFact;
+      if(await reuseHistoryForLive(tx,org,channel,historyFact,content.type==='MEDIA'?content.mediaId:undefined))
+        return{duplicate:true,executionId:null,reason:'HISTORY_ALREADY_PERSISTED'};
       const conversation=(await tx.query<{id:string}>(`INSERT INTO messaging_conversations(organization_id,channel_id,recipient_kind,group_jid,contact_id)
         VALUES($1,$2,'GROUP',$3,NULL) ON CONFLICT(organization_id,channel_id,group_jid) WHERE recipient_kind='GROUP' DO UPDATE SET group_jid=EXCLUDED.group_jid RETURNING id`,[org,channel,event.groupJid])).rows[0]!;
       const inserted=(await tx.query<{id:string}>(`INSERT INTO whatsapp_group_transport_facts(organization_id,channel_id,conversation_id,group_jid,identity_revision,identity_fingerprint,provider_message_id,from_me,participant_jid,participant_jid_alt,content,occurred_at)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(organization_id,channel_id,identity_revision,group_jid,provider_message_id,from_me) DO NOTHING RETURNING id`,
-        [org,channel,conversation.id,event.groupJid,identity.identity_revision,identity.identity_fingerprint,event.upstreamMessageId,event.fromMe,event.participantJid,event.participantJidAlt,event.content,event.occurredAt])).rows[0];
+        [org,channel,conversation.id,event.groupJid,identity.identity_revision,identity.identity_fingerprint,event.upstreamMessageId,event.fromMe,event.participantJid,event.participantJidAlt,content,event.occurredAt])).rows[0];
       if(!inserted)return{duplicate:true,executionId:null,reason:null};
       const g=await control(tx,org,channel,event.groupJid);
       const ignored=async(reason:string)=>{await tx.query("UPDATE whatsapp_group_transport_facts SET disposition='IGNORED',reason=$3 WHERE organization_id=$1 AND id=$2",[org,inserted.id,reason]);return{duplicate:false,executionId:null,reason};};
@@ -299,14 +317,18 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
       const session=(await tx.query<{execution_id:string;initiator_jid:string;started_at:Date}>(`SELECT execution_id,initiator_jid,started_at FROM whatsapp_group_automation_sessions WHERE organization_id=$1 AND channel_id=$2 AND group_jid=$3 AND closed_at IS NULL FOR UPDATE`,[org,channel,event.groupJid])).rows[0];
       if(session&&event.occurredAt.getTime()<Math.floor(session.started_at.getTime()/1000)*1000)return ignored('GROUP_BEFORE_SESSION');
       if(event.fromMe){
-        await recordQrOutboundObservation(tx,{organizationId:org,channelId:channel,conversationId:conversation.id,upstreamMessageId:event.upstreamMessageId,content:event.content,occurredAt:event.occurredAt});
+        const created=await recordQrOutboundObservation(tx,{organizationId:org,channelId:channel,conversationId:conversation.id,upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt});
+        if(created)await recordLiveHistoryFact(tx,org,channel,created,historyFact);
         const observed=(await tx.query<{id:string;disposition:string;message_id:string|null}>(`SELECT id,disposition,message_id FROM qr_outbound_observations WHERE organization_id=$1 AND conversation_id=$2 AND provider_message_id=$3 AND provider_scope=whatsapp_group_provider_scope($1,$2)`,[org,conversation.id,event.upstreamMessageId])).rows[0]!;
         await tx.query(`UPDATE whatsapp_group_transport_facts SET disposition=$3,observation_id=$4,message_id=$5 WHERE organization_id=$1 AND id=$2`,[org,inserted.id,observed.disposition,observed.id,observed.message_id]);
         return{duplicate:false,executionId:null,reason:observed.disposition};
       }
-      const message=(await messaging.recordIncoming(tx,{id:randomUUID(),organizationId:org,channelId:channel,conversationId:conversation.id,upstreamMessageId:event.upstreamMessageId,
-        webhookEventKey:`group:${identity.identity_revision}:${event.groupJid}:${event.upstreamMessageId}`,content:event.content,occurredAt:event.occurredAt,scheduleBot:false})).message;
+      const outcome=await messaging.recordIncoming(tx,{id:randomUUID(),organizationId:org,channelId:channel,conversationId:conversation.id,upstreamMessageId:event.upstreamMessageId,
+        webhookEventKey:`group:${identity.identity_revision}:${event.groupJid}:${event.upstreamMessageId}`,content,occurredAt:event.occurredAt,scheduleBot:false});
+      const message=outcome.message;
+      if(outcome.kind==='created')await recordLiveHistoryFact(tx,org,channel,message.id,historyFact);
       await tx.query('UPDATE whatsapp_group_transport_facts SET message_id=$3 WHERE organization_id=$1 AND id=$2',[org,inserted.id,message.id]);
+      if(event.kind==='group-media')return ignored('GROUP_MEDIA_CAPTURED');
       if(!g?.enabled)return ignored('GROUP_NOT_ENABLED');if(g.pause_reason)return ignored('GROUP_PAUSED');
       if(!await ready(org)||!await authoritative(tx,org,channel,g))return ignored('GROUP_AUTHORITY_CHANGED');
       const participant=normalizedAuthor(event.participantJid!);
@@ -341,7 +363,7 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
     async dispatchOnce(org:string){
       if(options.runtimeReady&&!await options.runtimeReady(org))return{processed:false};
       await options.transact(org,tx=>recoverQrOutboundObservations(tx,org));
-      const candidates=await options.transact(org,async tx=>(await tx.query<{id:string;source:string;channel_id:string;conversation_id:string;group_jid:string;instance_id:string;instance_key:string}>(`SELECT m.id,m.source,m.channel_id,m.conversation_id,c.group_jid,i.id AS instance_id,i.upstream_instance_key AS instance_key
+      const candidates=await options.transact(org,async tx=>(await tx.query<{id:string;source:string;content:MessageContent;channel_id:string;conversation_id:string;group_jid:string;instance_id:string;instance_key:string}>(`SELECT m.id,m.source,m.content,m.channel_id,m.conversation_id,c.group_jid,i.id AS instance_id,i.upstream_instance_key AS instance_key
         FROM messaging_outbox o JOIN messaging_messages m ON m.organization_id=o.organization_id AND m.id=o.message_id
         JOIN messaging_conversations c ON c.organization_id=m.organization_id AND c.id=m.conversation_id
         JOIN messaging_channels ch ON ch.organization_id=m.organization_id AND ch.id=m.channel_id
@@ -369,6 +391,29 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
       });
       if(local==='RETIRED')return{processed:true,status:'FAILED',messageId:candidate.id};
       if(local!=='CURRENT'){await defer();continue;}
+      let preparedMedia:BinaryMedia|undefined;
+      if(candidate.content.type==='MEDIA'){
+        const content={...candidate.content};
+        if(candidate.source!=='OPERATOR'){await defer();continue;}
+        const authorize=async(tx:TenantTransaction)=>{
+          await lockAttendanceChannel(tx,org,candidate.channel_id);
+          if(!await human(tx))throw new GroupRuntimeError('GROUP_MEDIA_AUTHORITY_REVOKED');
+          const current=(await tx.query<{content:MessageContent}>('SELECT content FROM messaging_messages WHERE organization_id=$1 AND id=$2 AND channel_id=$3 AND state=\'ACCEPTED\'',[org,candidate.id,candidate.channel_id])).rows[0];
+          if(!current||JSON.stringify(current.content)!==JSON.stringify(content))throw new GroupRuntimeError('GROUP_MEDIA_CONTEXT_CHANGED');
+        };
+        try{
+          if(!options.media||!options.sendMedia)throw new MediaError('GROUP_MEDIA_NOT_CONFIGURED');
+          const file=await options.media.read(org,content.mediaId,{signal:ctx.signal,deadline:ctx.deadline,authorize:tx=>authorize(tx as TenantTransaction)});
+          preparedMedia={...file,bytes:new Uint8Array(file.bytes),...(content.caption?{caption:content.caption}:{})};validateMedia(preparedMedia);
+          if(preparedMedia.kind==='sticker'&&preparedMedia.caption)throw new MediaError('MEDIA_CAPTION_UNSUPPORTED');
+          await options.transact(org,authorize);
+        }catch(error){
+          await defer();
+          if(error instanceof MediaError){await options.transact(org,tx=>tx.query('UPDATE messaging_messages SET canonical_error_code=$3 WHERE organization_id=$1 AND id=$2 AND state=\'ACCEPTED\'',[org,candidate.id,error.code]));
+            return{processed:true,status:error.retrySafe?'PENDING':'BLOCKED',messageId:candidate.id,code:error.code};}
+          if(error instanceof GroupRuntimeError)continue;throw error;
+        }
+      } else if(candidate.content.type!=='TEXT'){await defer();continue;}
       let engine:Awaited<ReturnType<EvolutionFleetRuntime['capture']>>|undefined;
       let observed:Awaited<ReturnType<GroupRuntimeOptions['readIdentity']>>;
       try{engine=await options.captureBinding?.(org,candidate.instance_key);observed=await options.readIdentity(ctx,candidate.instance_key);}catch{await defer();if(ctx.signal.aborted)break;continue;}
@@ -390,14 +435,16 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
         const timing=(await tx.query<{current:boolean}>('SELECT clock_timestamp()<$1::timestamptz AS current',[ctx.deadline])).rows[0]!;
         if(!timing.current||ctx.signal.aborted)return null;
         await tx.query('UPDATE messaging_outbox SET lease_token=$3,lease_expires_at=$4,attempt_count=attempt_count+1 WHERE organization_id=$1 AND message_id=$2',[org,candidate.id,token,new Date(ctx.deadline.getTime()+1000)]);
-        const message=(await tx.query<{content:{type:'TEXT';text:string}}>("UPDATE messaging_messages SET state='SENDING' WHERE organization_id=$1 AND id=$2 AND state='ACCEPTED' RETURNING content",[org,candidate.id])).rows[0];
+        const message=(await tx.query<{content:MessageContent}>("UPDATE messaging_messages SET state='SENDING',canonical_error_code=NULL WHERE organization_id=$1 AND id=$2 AND state='ACCEPTED' AND content=$3::jsonb RETURNING content",[org,candidate.id,JSON.stringify(candidate.content)])).rows[0];
         if(!message)throw new GroupRuntimeError('GROUP_CLAIM_CHANGED');
         await beginQrDispatchAttempt(tx,{organizationId:org,channelId:candidate.channel_id,conversationId:candidate.conversation_id,messageId:candidate.id,leaseToken:token});
         return message;
       });
       if(!dispatched){await defer();continue;}
       let outcome:Parameters<typeof messaging.completeSend>[1]['outcome'];
-      try{ctx.signal.throwIfAborted();const receipt=await options.sendText({...ctx,engineIntent:{kind:'QR_DISPATCH',messageId:candidate.id,leaseToken:token}},candidate.instance_key,{kind:'GROUP',groupJid:candidate.group_jid},dispatched.content.text);
+      try{ctx.signal.throwIfAborted();const physicalContext={...ctx,engineIntent:{kind:'QR_DISPATCH' as const,messageId:candidate.id,leaseToken:token}},recipient={kind:'GROUP' as const,groupJid:candidate.group_jid};
+        const receipt=preparedMedia?await options.sendMedia!(physicalContext,candidate.instance_key,recipient,preparedMedia)
+          :await options.sendText(physicalContext,candidate.instance_key,recipient,dispatched.content.type==='TEXT'?dispatched.content.text:'');
         if(!receipt.upstreamMessageId||receipt.upstreamMessageId.length>256)throw new Error('QR_SEND_UNKNOWN');outcome={state:'SENT',upstreamMessageId:receipt.upstreamMessageId};}
       catch(error){const code=(error as {code?:string;uncertain?:boolean})?.code;
         outcome=(error as {uncertain?:boolean})?.uncertain===false&&typeof code==='string'&&code.startsWith('EVOLUTION_ENGINE_')

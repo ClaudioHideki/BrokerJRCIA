@@ -1,7 +1,7 @@
 import {normalizeEvolutionDatabaseError} from './errors.js';
 import {randomUUID} from 'node:crypto';
-import {EvolutionProviderAdapter,EvolutionWorkspaceClient,EvolutionGroupsClient,EvolutionMessagingClient,createEvolutionGroupTextSender,
- type ProviderContext,type WhatsAppProvider,type WhatsAppProviderAdmin} from '@jrc/providers';
+import {EvolutionProviderAdapter,EvolutionWorkspaceClient,EvolutionGroupsClient,EvolutionMessagingClient,createEvolutionGroupTextSender,createEvolutionGroupMediaSender,
+ type BinaryMedia,type ProviderContext,type WhatsAppProvider,type WhatsAppProviderAdmin} from '@jrc/providers';
 import type {TenantTransaction,OrganizationTransaction} from '../../db/tenant-transaction.js';
 import {loadEvolutionFleet,resolveBoundEngine,type EvolutionEngine,type EngineBinding} from './config.js';
 export type FleetTransaction=<T>(org:string,work:OrganizationTransaction<T>)=>Promise<T>;
@@ -17,7 +17,8 @@ type Factories={provider:(engine:EvolutionEngine)=>WhatsAppProvider&WhatsAppProv
  workspace:(engine:EvolutionEngine)=>Pick<EvolutionWorkspaceClient,'read'|'updateSettings'>;
  groups:(engine:EvolutionEngine)=>Pick<EvolutionGroupsClient,'list'>;
  messaging:(engine:EvolutionEngine,key:string)=>EvolutionMessagingClient;
- groupText:(engine:EvolutionEngine,key:string)=>ReturnType<typeof createEvolutionGroupTextSender>};
+ groupText:(engine:EvolutionEngine,key:string)=>ReturnType<typeof createEvolutionGroupTextSender>;
+ groupMedia:(engine:EvolutionEngine,key:string)=>ReturnType<typeof createEvolutionGroupMediaSender>};
 const fault=(code:string)=>Object.assign(new Error(code),{code,uncertain:false});
 function rowSnapshot(row:Record<string,unknown>,org:string,key:string):EngineSnapshot{
  const generation=Number(row.generation);
@@ -69,7 +70,8 @@ export function createEvolutionFleetRuntime(environment:Record<string,string|und
  const factories:Factories={provider:engine=>new EvolutionProviderAdapter(engine.providerOptions()),
   workspace:engine=>new EvolutionWorkspaceClient(engine.providerOptions()),groups:engine=>new EvolutionGroupsClient(engine.providerOptions()),
   messaging:(engine,key)=>new EvolutionMessagingClient({...engine.providerOptions(),instanceKey:key}),
-  groupText:(engine,key)=>createEvolutionGroupTextSender({...engine.providerOptions(),instanceKey:key}),...options.factories};
+  groupText:(engine,key)=>createEvolutionGroupTextSender({...engine.providerOptions(),instanceKey:key}),
+  groupMedia:(engine,key)=>createEvolutionGroupMediaSender({...engine.providerOptions(),instanceKey:key}),...options.factories};
  const capture=(org:string,key:string,operationId?:string,tx?:TenantTransaction)=>store.resolve(org,key,operationId,tx);
  const same=(a:EngineSnapshot,b:EngineSnapshot)=>a.instanceId===b.instanceId&&a.organizationId===b.organizationId&&a.engineId===b.engineId&&a.generation===b.generation&&a.destinationFingerprint===b.destinationFingerprint&&a.traditional===b.traditional;
  const execute=async<T>(context:ProviderContext,key:string,mutation:boolean,invoke:(engine:EvolutionEngine)=>Promise<T>,pinned?:EngineSnapshot,reconciliation=false):Promise<T>=>{
@@ -135,6 +137,7 @@ export function createEvolutionFleetRuntime(environment:Record<string,string|und
  };
  return{provider,workspace,groups,messaging,webhook,capture,assert:store.assert,guardOperation,
   groupText:(c:ProviderContext,k:string,r:{kind:'GROUP';groupJid:string},text:string)=>execute(c,k,true,e=>factories.groupText(e,k).sendText(c,r,text)),
+  groupMedia:(c:ProviderContext,k:string,r:{kind:'GROUP';groupJid:string},media:BinaryMedia)=>execute(c,k,true,e=>factories.groupMedia(e,k).sendMedia(c,r,media)),
   // Preserve G3's historical configuration fingerprint when fleet is absent.
   configurationScope:(origin:string)=>fleet.size===1?JSON.stringify([environment.EVOLUTION_BASE_URL,origin,environment.QR_WEBHOOK_SIGNING_KEY]):JSON.stringify(['evolution-fleet:v1',origin,[...fleet.values()].map(engine=>engine.metadata())]),
  };

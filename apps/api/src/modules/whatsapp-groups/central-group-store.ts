@@ -22,6 +22,42 @@ export interface GroupCentralSnapshot{
  envelope:ReturnType<typeof groupCentralEnvelope>;
 }
 export interface GroupCentralQuery{query(sql:string,values:unknown[]):Promise<{rows:any[];rowCount:number|null}>}
+/** A failure observation, never authority to mirror, select or retry a job.
+ * The authoritative snapshot below remains the sole admission gate. Return
+ * only fixed codes: no catalog metadata, participant or private binding value. */
+export async function readGroupCentralScopeBlocker(tx:GroupCentralQuery,input:{organizationId:string;channelId:string;conversationId:string;integrationId:string;expectedWebhookBinding:string|null}):Promise<string>{
+ const row=(await tx.query(`/* GROUP_CENTRAL_SCOPE_BLOCKER */ SELECT CASE
+  WHEN (org.status='ACTIVE' AND m.recipient_kind='GROUP' AND m.contact_id IS NULL
+   AND c.provider='BAILEYS' AND c.transport='BROKER_TRANSPORT' AND c.deleting_at IS NULL
+   AND i.archived_at IS NULL AND i.status='CONNECTED' AND x.id=$4 AND x.status='READY'
+   AND a.status='READY' AND d.approval_status='APPROVED' AND x.inbox_id IS NOT NULL AND a.account_id IS NOT NULL
+   AND chatwoot_channel_identity_ready(c.organization_id,c.id)) IS NOT TRUE THEN 'GROUP_CONTEXT_UNAVAILABLE'
+  WHEN k.snapshot_id IS NULL THEN 'GROUP_CATALOG_UNAVAILABLE'
+  WHEN (k.last_error_code IS NULL AND k.valid_until>clock_timestamp()) IS NOT TRUE THEN 'GROUP_CATALOG_STALE'
+  WHEN item.selected IS NOT TRUE THEN 'GROUP_NOT_SELECTED'
+  WHEN (p.own_state='PRESENT_FROM_CATALOG' AND p.identity_fingerprint=k.identity_fingerprint
+   AND p.source_snapshot_id=k.snapshot_id) IS NOT TRUE THEN 'GROUP_PARTICIPATION_UNVERIFIED'
+  WHEN EXISTS(SELECT 1 FROM whatsapp_group_events e WHERE e.organization_id=c.organization_id AND e.channel_id=c.id
+   AND e.group_jid=m.group_jid AND e.identity_revision=k.identity_revision AND e.identity_fingerprint=k.identity_fingerprint
+   AND e.received_at>k.observed_at) THEN 'GROUP_CATALOG_OBSERVATION_PENDING'
+  WHEN (w.phase='CONFIRMED' AND w.instance_id=i.id AND w.identity_revision=k.identity_revision
+   AND w.identity_fingerprint=k.identity_fingerprint AND w.binding_fingerprint=$5) IS NOT TRUE THEN 'GROUP_WEBHOOK_UNCONFIRMED'
+  ELSE 'GROUP_SCOPE_REVALIDATION_REQUIRED' END AS blocker
+  FROM messaging_channels c JOIN organizations org ON org.id=c.organization_id
+  LEFT JOIN instances i ON i.organization_id=c.organization_id AND i.id=c.instance_id
+  LEFT JOIN messaging_conversations m ON m.organization_id=c.organization_id AND m.channel_id=c.id AND m.id=$3
+  LEFT JOIN whatsapp_group_catalogs k ON k.organization_id=c.organization_id AND k.channel_id=c.id
+  LEFT JOIN whatsapp_group_catalog_items item ON item.organization_id=k.organization_id AND item.channel_id=k.channel_id AND item.group_jid=m.group_jid
+  LEFT JOIN whatsapp_group_participation p ON p.organization_id=k.organization_id AND p.channel_id=k.channel_id
+   AND p.group_jid=m.group_jid AND p.identity_revision=k.identity_revision
+  LEFT JOIN chatwoot_connections x ON x.organization_id=c.organization_id AND x.channel_id=c.id
+  LEFT JOIN chatwoot_accounts a ON a.organization_id=x.organization_id
+  LEFT JOIN chatwoot_destinations d ON d.organization_id=a.organization_id AND d.base_url=a.base_url
+  LEFT JOIN LATERAL(SELECT * FROM whatsapp_group_webhook_operations o WHERE o.organization_id=c.organization_id AND o.channel_id=c.id
+   ORDER BY (o.phase IN('PREPARED','DISPATCHED','UNKNOWN')) DESC,o.created_at DESC,o.id DESC LIMIT 1)w ON true
+  WHERE c.organization_id=$1 AND c.id=$2`,[input.organizationId,input.channelId,input.conversationId,input.integrationId,input.expectedWebhookBinding])).rows[0];
+ return row?.blocker??'GROUP_CONTEXT_UNAVAILABLE';
+}
 /** Runs within the caller's tenant transaction and channel lock. The expected
  * webhook binding is derived by the runtime from private server configuration. */
 export async function readGroupCentralSnapshot(tx:GroupCentralQuery,input:{organizationId:string;channelId:string;conversationId:string;expectedWebhookBinding:string|null;providerScope?:string}):Promise<GroupCentralSnapshot|null>{

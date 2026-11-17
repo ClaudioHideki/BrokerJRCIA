@@ -63,6 +63,14 @@ jobs:
         run: |
           export JRC_ENGINE_IMAGE_GATE_ID=$(cat .sessions/engine-release/image-id.txt)
           node --max-old-space-size=128 integrations/evolution-origin-journal/tests/engine-image-gates.mjs > .sessions/engine-release/admission.json
+      - name: Verify media crypto against the installed pinned Baileys without network
+        run: |
+          tested=$(cat .sessions/engine-release/image-id.txt)
+          docker --context desktop-linux run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --memory 256m --cpus 1 \
+            -e JRC_EVOLUTION_ORIGIN_JOURNAL_ENABLED=false \
+            --mount "type=bind,src=$PWD/integrations/evolution-origin-journal/tests/engine-history-media-gate.mjs,dst=/evolution/jrc-history-media-gate.mjs,readonly" \
+            --entrypoint node "$tested" /evolution/jrc-history-media-gate.mjs > .sessions/engine-release/media.json
       - name: Prepare pinned disposable PostgreSQL and Redis images
         run: |
           docker --context desktop-linux pull postgres@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c

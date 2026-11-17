@@ -1,5 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { createHistorySyncStore } from '../../src/modules/history-sync/store.js';
+import { historySyncRecordsDigest, type HistorySyncScope } from '../../src/modules/history-sync/contract.js';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join, relative } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import type { BinaryMedia } from '@jrc/providers';
@@ -272,17 +277,59 @@ it('drains a real channel deletion only after exact absence and preserves anothe
   expect(await store.read(survivor.org, keep)).toEqual(file);
 });
 
+it('retains a legacy PREPARED private DELETE when historical delivery becomes uncertain before dispatch', async () => {
+  const t = await tenant(), media = await pending(t), h = transport(), store = core(h);
+  const staged = await store.stage(t.org,media,file);
+  await store.dispatchPut(t.org,staged.objectId);
+  const objectsBefore = new Map(h.bodies);
+  expect(objectsBefore.size).toBe(1);
+
+  const now = new Date(), chunk = randomUUID(), delivery = randomUUID();
+  const scope: HistorySyncScope = { organizationId: t.org,channelId: t.channel,instanceId: t.instance,
+    engineId: 'synthetic-engine',engineGeneration: 1,sessionGeneration: randomUUID(),bindingFingerprint: 'a'.repeat(64),
+    historyAccountIdentity: randomUUID(),identityScopeId: randomUUID(),ownerFingerprint: 'b'.repeat(64) };
+  const history = createHistorySyncStore({ transact: db.transact,encryptionKey: Buffer.alloc(32,79),maxStagedBytes: 1000000,
+    assertCurrentScope: async()=>{} });
+  const run = await history.admit(scope,randomUUID(),{ mode: 'FULL_AVAILABLE',categories: ['INDIVIDUAL'] },now);
+  const records = [{ kind: 'CHAT',recipientKind: 'INDIVIDUAL',chatJid: '15550000001@s.whatsapp.net',
+    displayName: 'Synthetic retained chat',lastMessageAt: 1600000000,unreadCount: 0 }];
+  await history.acceptChunk(scope,run.id,{ schemaVersion: 2,provenance: 'SOCKET',scope,chunkId: chunk,ordinal: 0,
+    capturedAt: now.toISOString(),isLast: false,progress: null,records,checksum: historySyncRecordsDigest(records) },now);
+  await history.catalogNext(scope,run.id,now);
+  await history.command(scope,run.id,1,'CANCEL');
+  await db.database.pool.query(`INSERT INTO history_sync_record_results(organization_id,channel_id,run_id,chunk_id,record_index,disposition)
+    VALUES($1,$2,$3,$4,0,'PEER')`,[t.org,t.channel,run.id,chunk]);
+  await db.database.pool.query(`INSERT INTO history_sync_deliveries(organization_id,channel_id,run_id,chunk_id,record_index,id)
+    VALUES($1,$2,$3,$4,0,$5)`,[t.org,t.channel,run.id,chunk,delivery]);
+
+  const deletion = await channelDeletion(t);
+  await store.prepareCleanup(deletion.id,deletion.lease);
+  expect(await operation(staged.objectId,'DELETE')).toMatchObject({ state: 'PREPARED' });
+  // Model a persisted pre-upgrade operation discovering an unacknowledged POST.
+  // No triggers are disabled and no customer data or external calls are used.
+  await db.database.pool.query(`UPDATE history_sync_deliveries SET attempts=1,last_error='CHATWOOT_OUTCOME_UNKNOWN'
+    WHERE organization_id=$1 AND id=$2`,[t.org,delivery]);
+
+  await expect(store.runCleanupOnce(deletion.id,deletion.lease))
+    .rejects.toMatchObject({ code: '23514',constraint: 'lifecycle_pending_work' });
+  expect(h.actions).not.toContain('DELETE');
+  expect(h.bodies).toEqual(objectsBefore);
+  expect(await operation(staged.objectId,'DELETE')).toMatchObject({ state: 'PREPARED',lease_token: null });
+  expect((await db.database.pool.query('SELECT id FROM history_sync_deliveries WHERE organization_id=$1 AND id=$2',
+    [t.org,delivery])).rows).toEqual([{ id: delivery }]);
+});
+
 it('refuses cleanup with an expired lease or revoked nominative actor before DELETE', async () => {
   const t = await tenant(), media = await pending(t), h = transport(), store = core(h), staged = await store.stage(t.org, media, file);
   await store.dispatchPut(t.org, staged.objectId); const deletion = await organizationDeletion(t);
   await store.prepareCleanup(deletion.id, deletion.lease);
   await db.database.pool.query('UPDATE platform_users SET active=false WHERE id=$1', [deletion.actor]);
   await expect(store.runCleanupOnce(deletion.id, deletion.lease)).rejects.toThrow('LIFECYCLE_ACTOR_REVOKED');
-  expect(h.actions).toEqual(['PUT']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT']);
   await db.database.pool.query('UPDATE platform_users SET active=true WHERE id=$1', [deletion.actor]);
   await db.database.pool.query("UPDATE lifecycle_deletions SET lease_expires_at=now()-interval '1 second' WHERE id=$1", [deletion.id]);
   await expect(store.runCleanupOnce(deletion.id, deletion.lease)).rejects.toThrow('LIFECYCLE_LEASE_LOST');
-  expect(h.actions).toEqual(['PUT']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT']);
 });
 
 it('preserves a committed DISPATCHED claim after losing its commit receipt without issuing PUT', async () => {
@@ -318,7 +365,7 @@ it('rolls back failed persistence after confirmed PUT and recovers its exact obj
   expect((await operation(staged.objectId)).state).toBe('DISPATCHED'); expect((await object(staged.objectId)).state).toBe('STAGED');
   await db.database.pool.query("UPDATE media_private_operations SET lease_expires_at=dispatched_at+interval '1 microsecond' WHERE object_id=$1", [staged.objectId]);
   await store.runOnce(t.org);
-  expect((await operation(staged.objectId)).state).toBe('CONFIRMED'); expect(h.actions).toEqual(['PUT', 'INSPECT']);
+  expect((await operation(staged.objectId)).state).toBe('CONFIRMED'); expect(h.actions).toEqual(['PUT', 'INSPECT', 'INSPECT']);
   expect(await store.read(t.org, media)).toEqual(file);
 });
 
@@ -397,7 +444,7 @@ it('does not widen cleanup of a QR instance without a channel to other READY and
   expect((await db.database.pool.query('SELECT id FROM instances WHERE id=$1',[orphan])).rows).toEqual([]);
   expect({readyObject:await object(ready.objectId),unknownObject:await object(unknown.objectId),readyOperation:await operation(ready.objectId),unknownOperation:await operation(unknown.objectId),
     media:(await db.database.pool.query('SELECT * FROM messaging_media WHERE id=ANY($1::uuid[]) ORDER BY id',[[readyMedia,unknownMedia]])).rows}).toEqual(before);
-  expect(h.actions).toEqual(['PUT','PUT_UNKNOWN']);
+  expect(h.actions).toEqual(['PUT','INSPECT','PUT_UNKNOWN']);
   expect((await db.database.pool.query('SELECT id FROM messaging_channels WHERE id=$1',[t.channel])).rowCount).toBe(1);
 });
 
@@ -465,7 +512,7 @@ it('keeps pending private media safely retriable for existing readers without mu
 it('commits expired DELETE recovery before locking its object and inspects instead of replaying', async () => {
   const t = await tenant(), media = await pending(t), h = transport(), base = core(h), staged = await base.stage(t.org, media, file);
   await base.dispatchPut(t.org, staged.objectId); const d = await organizationDeletion(t); await base.prepareCleanup(d.id, d.lease);
-  await db.database.pool.query(`UPDATE media_private_operations SET state='DISPATCHED',dispatched_at=clock_timestamp()-interval '2 minutes',
+  await lifecycle.query(`UPDATE media_private_operations SET state='DISPATCHED',dispatched_at=clock_timestamp()-interval '2 minutes',
     lease_token=$2,lease_expires_at=clock_timestamp()-interval '1 second' WHERE object_id=$1 AND kind='DELETE'`, [staged.objectId, randomUUID()]);
   const deleteId = (await operation(staged.objectId, 'DELETE')).id;
   const store = core(h, 100, { cleanupTransact: work => withLifecycleWorkerTransaction(lifecycle, async tx => {
@@ -484,7 +531,7 @@ it('commits expired DELETE recovery before locking its object and inspects inste
   }) });
   await store.runCleanupOnce(d.id, d.lease);
   expect((await operation(staged.objectId, 'DELETE')).state).toBe('UNKNOWN');
-  expect(h.actions).toEqual(['PUT', 'INSPECT']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT', 'INSPECT']);
 });
 
 it('rejects admission in a SUSPENDED tenant before staging or reserving private media', async () => {
@@ -536,7 +583,7 @@ it('authorizes read before channel locks so lifecycle can take instance then cha
     await channelDeletion(t);
     await lockAttendanceChannel(tx as TenantTransaction, t.org, t.channel);
   } })).rejects.toThrow('RESOURCE_DELETING');
-  expect(h.actions).toEqual(['PUT']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT']);
 });
 
 it('schedules a PREPARED PUT despite an older UNKNOWN missing object without replaying the latter', async () => {
@@ -552,7 +599,7 @@ it('schedules a PREPARED PUT despite an older UNKNOWN missing object without rep
   await store.runOnce(t.org); await store.runOnce(t.org);
   expect((await operation(next.objectId)).state).toBe('CONFIRMED');
   expect((await operation(unknownId)).state).toBe('UNKNOWN');
-  expect(h.actions).toEqual(['UNKNOWN_PUT', 'INSPECT', 'PUT']);
+  expect(h.actions).toEqual(['UNKNOWN_PUT', 'INSPECT', 'PUT', 'INSPECT']);
 });
 
 it('rejects DELETE authorization whose lease expires while the SQL trigger waits for its deletion lock', async () => {
@@ -582,7 +629,7 @@ it('rejects DELETE authorization whose lease expires while the SQL trigger waits
     await holder.query('ROLLBACK'); await actor.query('ROLLBACK'); await pendingInsert;
     holder.release(); actor.release();
   }
-  expect(h.actions).toEqual(['PUT']);
+  expect(h.actions).toEqual(['PUT', 'INSPECT']);
 });
 
 it('bounds DELETE lease and adapter preflight to current lifecycle authorization without sending after expiry', async () => {
@@ -689,3 +736,63 @@ it('blocks DELETE preparation and UNKNOWN absence inspection against a changed d
   expect((await operation(staged.objectId, 'DELETE')).state).toBe('UNKNOWN');
   expect((await object(staged.objectId)).reserved_bytes).toBe(5); expect(b.actions).toEqual([]);
 });
+
+
+it.each(['missing', 'corrupt', 'truncated', 'stalled'] as const)(
+  'retains staged bytes after a real HTTP PUT ACK with %s physical bytes, then reconciles without PUT replay', async mode => {
+    const directory = await mkdtemp(join(tmpdir(), 'jrc-media-custody-'));
+    const path = join(directory, 'object.cipher');
+    let healthy = false, puts = 0, gets = 0;
+    const server = createServer(async (request, reply) => {
+      const url = new URL(request.url!, 'http://localhost');
+      if (url.searchParams.has('versioning')) return reply.end('<VersioningConfiguration/>');
+      if (url.searchParams.has('object-lock') || url.searchParams.has('policy')) {
+        reply.statusCode = 404;
+        return reply.end('<Error><Code>' + (url.searchParams.has('policy') ? 'NoSuchBucketPolicy' : 'ObjectLockConfigurationNotFoundError') + '</Code></Error>');
+      }
+      if (url.searchParams.has('acl')) return reply.end('<AccessControlPolicy><AccessControlList><Grant><Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="CanonicalUser"><Type>CanonicalUser</Type></Grantee><Permission>FULL_CONTROL</Permission></Grant></AccessControlList></AccessControlPolicy>');
+      if (request.method === 'PUT') {
+        puts++;
+        const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        await writeFile(path, Buffer.concat(chunks));
+        return reply.end(); // Deliberately acknowledge before a usable physical read.
+      }
+      gets++;
+      if (!healthy && mode === 'missing') { reply.statusCode = 404; return reply.end('<Error><Code>NoSuchKey</Code></Error>'); }
+      if (!healthy && mode === 'stalled') { reply.writeHead(200); reply.flushHeaders(); return; }
+      const bytes = await readFile(path);
+      if (!healthy && mode === 'corrupt') bytes[0] = bytes[0]! ^ 1;
+      return reply.end(!healthy && mode === 'truncated' ? bytes.subarray(0, bytes.length - 1) : bytes);
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address(); if (!address || typeof address === 'string') throw new Error('missing listener');
+      const objectStore = createS3PrivateObjectStore({ endpoint: 'http://127.0.0.1:' + address.port, bucket: 'broker-private',
+        profile: 'private-v1', region: 'us-east-1', accessKeyId: 'SYNTHETICACCESS', secretAccessKey: 'synthetic-only',
+        dedicatedBucket: true, allowLoopbackHttpForTests: true, requestTimeoutMs: 5_000 });
+      const t = await tenant(), other = await tenant(), media = await pending(t);
+      const store = core(transport(), 100, { objectStore, requestTimeoutMs: 5_000 });
+      const staged = await store.stage(t.org, media, file), original = await object(staged.objectId);
+      expect(await store.dispatchPut(t.org, staged.objectId)).toBe('UNKNOWN');
+      const expectedError = { missing: 'MEDIA_OBJECT_NOT_OBSERVED', corrupt: 'OBJECT_INTEGRITY_FAILED',
+        truncated: 'OBJECT_INTEGRITY_FAILED', stalled: 'OBJECT_DEADLINE_EXCEEDED' }[mode];
+      expect(await operation(staged.objectId)).toMatchObject({ state: 'UNKNOWN', lease_token: null, last_error_code: expectedError });
+      expect(await object(staged.objectId)).toMatchObject({ state: 'STAGED', reserved_bytes: 5, staging_ciphertext: original.staging_ciphertext });
+      expect((await db.database.pool.query('SELECT status FROM messaging_media WHERE id=$1', [media])).rows).toEqual([{ status: 'STORING' }]);
+      await expect(store.read(t.org, media)).rejects.toThrow('MEDIA_NOT_READY');
+      await expect(store.read(other.org, media)).rejects.toThrow('MEDIA_NOT_FOUND');
+      healthy = true;
+      const restarted = core(transport(), 100, { objectStore, requestTimeoutMs: 5_000 });
+      expect(await restarted.reconcilePut(t.org, staged.objectId)).toBe('CONFIRMED');
+      expect(await restarted.read(t.org, media)).toEqual(file);
+      expect(await object(staged.objectId)).toMatchObject({ state: 'READY', reserved_bytes: 5, staging_ciphertext: null });
+      expect(puts).toBe(1); expect(gets).toBe(3);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      const within = relative(tmpdir(), directory);
+      if (!within || isAbsolute(within) || within.startsWith('..') || !within.startsWith('jrc-media-custody-')) throw new Error('UNSAFE_MEDIA_TMP_CLEANUP');
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);

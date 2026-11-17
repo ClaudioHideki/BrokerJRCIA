@@ -10,7 +10,7 @@ function fixture(){
  const store:FleetStore={resolve:vi.fn(async()=>snapshot),acquire:vi.fn(async()=>({token:'lease',snapshot})),assert:vi.fn(async()=>undefined),settle:vi.fn(async()=>undefined)};
  const calls:Array<{engine:string;method:string}>=[];
  const factory=(engine: {id:string})=>new Proxy({}, {get:(_t,method)=>method==='then'?undefined:async()=>{calls.push({engine:engine.id,method:String(method)});return method==='lookupInstance'?{exists:false}:method==='getStatus'?'CONNECTED':undefined;}}) as any;
- const runtime=createEvolutionFleetRuntime(env,undefined,{store,factories:{provider:factory,workspace:factory,groups:factory,messaging:factory}});
+ const runtime=createEvolutionFleetRuntime(env,undefined,{store,factories:{provider:factory,workspace:factory,groups:factory,messaging:factory,groupMedia:factory}});
  return{snapshot,store,calls,runtime};
 }
 describe('fleet router',()=>{
@@ -45,4 +45,16 @@ describe('fleet router',()=>{
  it('allows the provider-only legacy installation without inventing a webhook signing key',()=>{
   const legacy=loadEvolutionFleet({...env,EVOLUTION_ENGINES_JSON:undefined,QR_WEBHOOK_SIGNING_KEY:undefined}).get('legacy')!;expect(legacy.providerOptions().baseUrl).toBe('http://legacy:8080');expect(()=>legacy.webhookToken({organizationId:'org',instanceId:'i',upstreamKey:'u',channelId:'c'})).toThrow();
  });
+});
+
+it('routes dedicated GROUP media on the persisted engine with its QR dispatch intent and post-I/O fence',async()=>{
+ const f=fixture(),intent={kind:'QR_DISPATCH' as const,messageId:'synthetic-message',leaseToken:'synthetic-lease'};
+ expect(typeof (f.runtime as any).groupMedia).toBe('function');
+ await(f.runtime as any).groupMedia({...context,engineIntent:intent},'upstream-a',{kind:'GROUP',groupJid:'120363999000001@g.us'},{bytes:new Uint8Array([1]),mimeType:'application/pdf',fileName:'synthetic.pdf',kind:'document'});
+ expect(f.calls).toEqual([{engine:'east',method:'sendMedia'}]);expect(f.store.acquire).toHaveBeenCalledWith(f.snapshot,true,context.deadline,undefined,intent);expect(f.store.assert).toHaveBeenCalledTimes(2);
+});
+it('does not confirm GROUP media after engine binding changes and never retries the provider call',async()=>{
+ const f=fixture();vi.mocked(f.store.assert).mockResolvedValueOnce(undefined).mockRejectedValueOnce(Object.assign(Error('changed'),{code:'EVOLUTION_ENGINE_BINDING_CHANGED'}));
+ expect(typeof (f.runtime as any).groupMedia).toBe('function');
+ await expect((f.runtime as any).groupMedia(context,'upstream-a',{kind:'GROUP',groupJid:'120363999000001@g.us'},{})).rejects.toMatchObject({code:'EVOLUTION_ENGINE_BINDING_CHANGED',uncertain:true});expect(f.calls).toHaveLength(1);
 });

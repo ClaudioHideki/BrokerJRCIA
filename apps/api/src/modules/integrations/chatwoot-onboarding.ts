@@ -23,6 +23,7 @@ export interface OnboardingOptions {
   transact<T>(org: string, work: OrganizationTransaction<T>): Promise<T>;
   auth: ChatwootControlAuth; instances: InstanceService; chatwoot: ChatwootService;
   activateQr(org: string, instanceId: string): Promise<{ id: string }>;
+  admitHistory?(principal:ChatwootControlPrincipal,channel:string,request:string,validate:(tx:TenantTransaction)=>Promise<void>):Promise<void>;
 }
 const nextStage = { INSTANCE: 'ACTIVATE_CHANNEL', ACTIVATE_CHANNEL: 'LINK_INBOX', LINK_INBOX: 'ASSIGN_AGENTS', ASSIGN_AGENTS: 'VERIFY', VERIFY: 'DONE', DONE: 'DONE' } as const;
 const uncertain = () => new IntegrationError('ONBOARDING_RECONCILIATION_REQUIRED', 409);
@@ -95,6 +96,7 @@ export function createOnboardingService(options: OnboardingOptions) {
     } else if (row.stage === 'ACTIVATE_CHANNEL') {
       // Repeating this PUT-like configuration uses the existing unique channel and same callback/secret.
       row.channel_id = (await options.activateQr(org, row.instance_id!)).id;
+      await options.admitHistory?.(principal,row.channel_id,row.id,t=>validateLease(t,row));
     } else if (row.stage === 'LINK_INBOX') {
       let c = await connection(row);
       if (!c) {

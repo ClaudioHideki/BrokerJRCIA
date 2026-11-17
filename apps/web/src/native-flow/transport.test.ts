@@ -72,3 +72,15 @@ it('drops a late response when the editor was closed', async () => {
   controller.abort(); finish({ id: root, scopeRevision: 1 });
   await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
 });
+
+it('maps box routing only within the pinned automation and rejects authority/query injection', async () => {
+ const {client,request}=transport();
+ await client.request('/v1/automations/'+root+'/channels/'+channel+'/box-routing?version=2&teamId=7');
+ await client.request('/v1/automations/'+root+'/channels/'+channel+'/box-routing',{method:'PUT',body:JSON.stringify({version:2,expectedRevision:1,config:{schemaVersion:1,routes:[]}})});
+ expect(request.mock.calls.map(a=>a.slice(0,3))).toEqual([
+ ['get',prefix+'/'+root+'/channels/'+channel+'/box-routing?teamId=7&version=2',undefined],
+ ['put',prefix+'/'+root+'/channels/'+channel+'/box-routing',{version:2,expectedRevision:1,config:{schemaVersion:1,routes:[]}}],
+ ]);
+ for(const suffix of ['?version=2&organizationId='+other,'?version=2&version=3','?version=0'])await expect(client.request('/v1/automations/'+root+'/channels/'+channel+'/box-routing'+suffix)).rejects.toThrow();
+ await expect(client.request('/v1/automations/'+other+'/channels/'+channel+'/box-routing?version=2')).rejects.toThrow('FLOW_ROOT_MISMATCH');
+});

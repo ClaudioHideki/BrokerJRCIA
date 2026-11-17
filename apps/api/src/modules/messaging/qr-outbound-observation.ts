@@ -22,11 +22,11 @@ export async function recordQrOutboundObservation(tx: TenantTransaction, input: 
     VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(organization_id,channel_id,provider_scope,provider_message_id)
     DO UPDATE SET provider_message_id=EXCLUDED.provider_message_id RETURNING id`,
     [input.organizationId,input.channelId,input.conversationId,input.upstreamMessageId,input.content,input.occurredAt])).rows[0]!;
-  await settleQrOutboundObservation(tx,input.organizationId,row.id);
+  return settleQrOutboundObservation(tx,input.organizationId,row.id);
 }
 
 /** Exact provider ID is the only positive correlation. Sender hints, text and dates are never evidence. */
-export async function settleQrOutboundObservation(tx: TenantTransaction, org: string, id: string) {
+export async function settleQrOutboundObservation(tx: TenantTransaction, org: string, id: string):Promise<string|undefined> {
   const o = (await tx.query<Observation>(`SELECT id,channel_id,conversation_id,provider_scope,provider_message_id,content,occurred_at,disposition
     FROM qr_outbound_observations WHERE organization_id=$1 AND id=$2 FOR UPDATE`,[org,id])).rows[0];
   if (!o || o.disposition !== 'RECONCILE') return;
@@ -90,6 +90,9 @@ export async function settleQrOutboundObservation(tx: TenantTransaction, org: st
       pause_actor_id=CASE WHEN pause_reason='HUMAN_ACTION' THEN pause_actor_id ELSE NULL END,revision=revision+1 WHERE organization_id=$1 AND conversation_id=$2`,[org,o.conversation_id]);
     await tx.query("UPDATE whatsapp_group_transport_facts SET disposition='EXTERNAL_OBSERVED',message_id=$3 WHERE organization_id=$1 AND observation_id=$2",[org,id,messageId]);
   }
+  // Only this newly inserted fact may receive a capture proof from the caller.
+  // Existing/uncertain observations above must never be stamped retrospectively.
+  return messageId;
 }
 
 export async function beginQrDispatchAttempt(tx: TenantTransaction, input: Scope & { messageId: string; leaseToken: string }) {

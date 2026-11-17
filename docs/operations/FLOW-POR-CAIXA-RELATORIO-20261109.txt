@@ -1,0 +1,80 @@
+FLOW POR CAIXA — RELATÓRIO DO INCREMENTO
+Data: 09/11/2026
+Estado: implementação local para consolidação; não é release implantada.
+
+1. RESULTADO
+Foi implementado o desenho aprovado: a página Flow concentra criação/importação, publicação, escolha da caixa, associação de departamentos a times, seleção/ordenação de atendentes e ativação. O editor modela a conversa; os destinos reais pertencem ao perfil de cada caixa.
+O mesmo modelo pode ser reutilizado em caixas diferentes, com os respectivos times e agentes. Uma pessoa só é elegível se pertencer ao time E à caixa do JRC Conversas.
+
+2. ESCOPO E PRESERVAÇÃO
+Repositório do incremento: BrokerJRCIA, branch codex/flow-por-caixa-20261109.
+Base isolada: 2d30a5a544aa0eae12c208867e4912c369626787.
+Esta base serve para preservar/revisar o incremento. Não deve substituir a release funcional mais recente.
+A coordenação informou a consolidação de d1ae956 + e75a952 no Broker e LAB2 35976b, mantendo GLPI na extensão Branef. Esses estados são referências da coordenação, não inspeção de runtime feita nesta etapa.
+Núcleo comum: JRC Conversas LAB2 / Grupo JRC. Não houve edição de repositório, imagem ou ambiente da GoPure nesta etapa. Não houve mudança de runtime LAB2/Branef.
+Fluxos estáticos V1/V2 continuam nos contratos anteriores. O vínculo legado no detalhe da caixa permanece identificado como avançado; o novo modo reutilizável é configurado na área Flow.
+
+3. EXPERIÊNCIA DE CONFIGURAÇÃO
+O administrador cria/importa a automação, revisa e publica o modelo.
+Na mesma página Flow, escolhe a caixa integrada, associa cada departamento ao time JRC, seleciona todos os membros elegíveis ou um subconjunto ordenado e confere os nomes reais na prévia.
+Salvar gera uma revisão de configuração. Ativar grava o vínculo e a revisão ativa atomicamente. Revisão salva e ativa aparecem separadamente.
+Retomar novas entradas usa a revisão ativa, sem promover alterações apenas salvas. Não retoma conversas humanas.
+Cada menu suporta nove atendentes mais retorno. Lista vazia, nomes ambíguos ou excesso não são truncados nem ativados silenciosamente.
+O editor ganhou configuração do menu dinâmico, departamento lógico, idiomas, textos, retorno, tentativas e limite de espera.
+A conversão OIA cria outro rascunho, inclusive a partir de fonte não publicada; nunca substitui o original. Textos/estruturas desconhecidos exigem revisão.
+Importar JSON não significa executar qualquer recurso Typebot. Este modo opera no Flow nativo; não depende operacionalmente de Typebot, Bot Bridge ou Budibase.
+
+4. BACKEND E DADOS
+Contratos estritos: rotas lógicas, configuração por caixa, diretório de agentes e menu dinâmico. Handoff lógico V3 é resolvido para o protocolo canônico de destino existente; o contrato público V1/V2 não foi relaxado.
+Perfis imutáveis por empresa/automação/versão/caixa, com CAS de revisão, escopo de integração/conta/caixa/credencial e ponteiro ativo separado do último salvo.
+Catálogo usa a integração JRC existente, sem segundo cadastro de usuários ou credenciais dentro do JSON.
+Consulta remota e preparação ocorrem fora das transações de gravação. O commit revalida o contexto local.
+Uma sessão captura seu diretório; mudanças no perfil não trocam a pessoa já apresentada como opção numérica.
+Novos endpoints GET/PUT de box-routing têm autorização administrativa e escopo de empresa; inventário de segurança e OpenAPI foram atualizados.
+Persistência proposta: duas tabelas com FKs de escopo, RLS forçada, políticas de acesso, histórico imutável e barreiras canônicas de ciclo de vida da empresa/canal.
+O SQL está retido em apps/api/drizzle/pending/automation_box_routing.sql. Não está no journal e não é aplicado automaticamente.
+0085 já pertence a guided_setup em outra candidata. A consolidação deve atribuir o próximo identificador verificado, sem renumerar migrations aplicadas, atualizar o baseline/probe da release e testar no PostgreSQL.
+
+5. ATRIBUIÇÃO, PAUSA E RECUPERAÇÃO
+A elegibilidade do agente é revalidada antes da transferência. A atribuição efetiva usa as verificações canônicas existentes; pausas humanas, NICO e resultados incertos continuam protegidos.
+Para remoção conhecida do agente antes de qualquer alteração remota, há recuperação restrita: só a operação pendente proprietária, menu oferecido comprovado, aresta direta para o handoff e conversa canônica ainda pendente/sem agente.
+O menu reoferece somente candidatos já exibidos que ainda pertencem ao time e à caixa. Preserva os números originais; não muda o significado de uma resposta antiga. Sem candidatos, só usa retorno anterior explicitamente seguro.
+A gravação da recuperação exige CAS do estado e verifica novamente as barreiras de controle humano/ciclo. O aviso e a retomada são enfileirados com a liquidação da operação anterior.
+Não recupera automaticamente operações DISPATCHED/UNKNOWN, atendimento humano real ou ações intermediárias. Fora do caso seguro, mantém pausa/ação necessária.
+Enfileirado não significa entregue. A atomicidade da implementação SQL/outbox ainda exige o gate PostgreSQL real.
+Limite externo preservado: a API remota do JRC/Chatwoot não oferece CAS conjunto entre última leitura e atribuição. As revalidações reduzem essa janela, mas não permitem prometer atomicidade entre serviços.
+
+6. VERIFICAÇÃO DESTA ETAPA
+Os resultados finais e o SHA local estão no CHECKPOINT-FLOW-POR-CAIXA-20261109.txt entregue junto deste relatório.
+Última execução completa: 525 arquivos aprovados de 526; 4.103 testes aprovados e três sem executar porque o beforeAll da auditoria excedeu 90 segundos sob quatro workers. Reexecução isolada desse arquivo: seis testes aprovados em 28,45 segundos, sem mudar código, testes ou limite. As asserções pendentes foram exercitadas nessa reexecução; não foi obtida uma execução completa única com exit code zero. A CI final continua obrigatória.
+Foram exercitados contratos, catálogo, escopo, perfil/revisões, publicação/vínculo, runtime, recuperação, rotas HTTP, editor e jornada administrativa.
+Os 26 caminhos de idioma/departamento/opção OIA e retorno/opção inválida passaram no motor local. Isso não equivale a 26 entregas físicas de WhatsApp.
+Typecheck e build passaram. O build apresenta aviso de chunks maiores que 500 kB; não foi tratado como falha nem como comprovação de desempenho em produção.
+O editor nativo também compilou em prévia local com --allow-dirty, 224 entradas e zero findings do verificador. O manifesto registra sourceCommitted=false e a base isolada; esse bundle não foi instalado no LAB2 nem publicado como release.
+A mudança do OpenAPI invalidou corretamente a procedência do PDF público da API. Foi regenerado pelo gerador existente, mantendo 37 operações públicas e a edição editorial. Nove testes específicos passaram; as páginas 1–7 são idênticas em pixels à base, e a página 8 mudou somente no hash do contrato. Não houve alteração dos testes de procedência para acomodar o resultado.
+A simulação usa diretório fictício marcado SIMULATION_ONLY; não injeta agentes em execução real.
+Prévia local do componente real em Chromium: desktop 1280x900 e celular 390x844, sem erros de página ou rolagem horizontal, com perfil fictício salvo. É evidência visual sintética, não validação autenticada do servidor ou da atribuição real.
+A revisão fresca encontrou problemas importantes de revisão ativa, retomada, conversão, textos, simulação, editor, conversão de rascunho, recuperação e atualização inicial do formulário. Foram corrigidos em uma rodada com testes RED/GREEN e regressão.
+Nenhuma mensagem, pareamento ou novo teste WhatsApp foi realizado nesta etapa.
+
+7. GATES EXTERNOS E LIMITES
+Não foi disponibilizado TEST_DATABASE_ADMIN_URL de banco descartável: o harness PostgreSQL parou na pré-condição, sem executar os casos de RLS/concorrência/imutabilidade/rollback. Não foi usado banco de produção para compensar essa ausência.
+O E2E completo depende de PostgreSQL e Redis de teste, ausentes neste ambiente. A prévia local não substitui esse gate.
+Faltam consolidar sobre a base funcional atual, registrar a migration livre, validar o protocolo de recuperação no banco, rodar CI do SHA consolidado e conferir o consumidor/editor embarcado do LAB2.
+Imagens imutáveis, publicação, implantação e validação operacional por empresa/caixa são etapas posteriores. Nenhuma imagem nova foi publicada ou implantada por este incremento.
+Os controles de retomada de conversa no JRC são independentes deste painel administrativo; a evolução dessa interface não foi incluída.
+Pendência menor conhecida: um modelo legado pai que referencia um subflow reutilizável falha de modo fechado ao vincular, mas deveria receber diagnóstico localizado já na validação/publicação. Esse tipo de composição não deve ser promovido até receber suporte explícito.
+CSAT, expediente real, regras concorrentes, membros finais e paridade de outros bots dependem das configurações/evidências específicas da empresa. Não foi declarada paridade integral de OIA, CRF ou outros bots.
+
+8. ROTEIRO PARA CONSOLIDAÇÃO
+Preservar o commit local e integrar seletivamente na branch consolidada atual. Não copiar uma árvore em edição sobre outra release.
+Resolver contratos, migrations, catálogo de ciclo de vida e runtime nativo em conjunto com guided_setup e branding, preservando os patches do Compose e flags das demais frentes.
+Registrar SQL no próximo número livre, conferir baseline estrutural e executar a suíte de integração em banco descartável, incluindo recuperação e rollback.
+Executar CI e testes do consumidor LAB2 no SHA final. Produzir imagens/digests somente depois desses gates e conforme autorização da release compartilhada.
+Após implantação autorizada, seguir o manual operacional e verificar separadamente configuração, admissão, execução, atribuição, pausa, entrega e CSAT.
+
+9. ARQUIVOS DE REFERÊNCIA
+Manual: FLOW-POR-CAIXA-CONFIGURACAO-20261109.txt.
+Checkpoint: CHECKPOINT-FLOW-POR-CAIXA-20261109.txt.
+Desenho e plano: docs/superpowers/specs/2026-11-09-flow-centralizado-por-caixa-design.md e docs/superpowers/plans/2026-11-09-flow-centralizado-por-caixa.md.
+Os artefatos de fonte são um incremento sobre a base indicada, não uma imagem pronta para substituir o servidor.

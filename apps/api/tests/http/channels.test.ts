@@ -19,6 +19,21 @@ const channel = { schemaVersion: 1 as const, id, organizationId: org, provider: 
 describe('canonical channel routes', () => {
   const apps: Array<ReturnType<typeof buildApp>> = [];
   afterEach(async () => Promise.all(apps.splice(0).map(app => app.close())));
+  it('reads V2 progress using canonical channel and current tenant membership without starting work',async()=>{
+    let role:'OWNER'|'OPERATOR'|null='OPERATOR';
+    const latest=vi.fn(async()=>({schemaVersion:2,organizationId:org,channelId:id,run:null}));
+    const app=buildApp({nodeEnv:'test',passwordVerifierInitializer:async()=>({verifyPasswordOrDummy:async()=>false}),
+      channels:{jwtSecret:secret,authenticateApiKey:async()=>null,resolveCurrentRole:async()=>role,
+        service:{} as ChannelFacade,historySyncProgress:{latest}}});apps.push(app);
+    const authorization=`Bearer ${await issueAccessToken({userId:user,organizationId:org,role:'OPERATOR'},secret)}`;
+    const path=`/v1/channels/${id}/history-sync/v2/progress`;
+    const result=await app.inject({method:'GET',url:path,headers:{authorization}});
+    expect(result.statusCode).toBe(200);expect(result.headers['cache-control']).toBe('no-store');
+    expect(latest).toHaveBeenCalledWith(org,user,id);
+    role=null;expect((await app.inject({method:'GET',url:path,headers:{authorization}})).statusCode).toBe(403);
+    expect(latest).toHaveBeenCalledOnce();
+    expect((await app.inject({method:'GET',url:path,headers:{'x-api-key':'synthetic'}})).statusCode).not.toBe(200);
+  });
   it('forwards the authenticated administrator when binding a channel destination', async () => {
     const bindDestination = vi.fn().mockResolvedValue(channel);
     const app = buildApp({ nodeEnv: 'test', passwordVerifierInitializer: async () => ({ verifyPasswordOrDummy: async () => false }),

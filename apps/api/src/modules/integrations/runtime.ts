@@ -1,4 +1,6 @@
 import {createEvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
+import {createHistoryConnectionAdmission} from '../history-sync/connection-admission.js';
+import {createHistoryLiveMediaRecovery} from '../history-sync/live-media-recovery.js';
 import { createRedactedLogger } from '@jrc/security';
 import type { Pool } from "pg";
 import {createCentralCutoverService} from '../channels/central-cutover-service.js';
@@ -15,7 +17,7 @@ import {
 } from "./chatwoot-service.js";
 import { createChatwootWorker } from "./chatwoot-worker.js";
 import { createChatwootProvisioner } from "./chatwoot-provisioner.js";
-import { createMediaStore, type MediaStore } from "../messaging/media-store.js";
+import { createMediaStore, assertChatwootMediaSnapshot, type MediaStore } from "../messaging/media-store.js";
 import { createPrivateMediaRuntime } from "../messaging/private-media-runtime.js";
 import { createPostgresMessagingRepository } from "../messaging/repository.js";
 import {
@@ -44,6 +46,9 @@ import { createWhatsAppGroupCatalog } from '../whatsapp-groups/service.js';
 import {createConversationEffectRuntime} from '../automations/conversation-runtime.js';
 import {assertQueuedMediaAuthority} from '../automations/conversation-media.js';
 import {assertPartnerMessageAuthority} from '../messaging/partner-authority.js';
+import {createBoxRoutingService,type BoxRoutingService} from '../automations/box-routing-service.js';
+import {createHandoffReadiness} from '../attendance/handoff-readiness.js';
+import {resolveAttendanceScope} from '../attendance/repository.js';
 import type {TenantTransaction} from '../../db/tenant-transaction.js';
 
 type QrConfig = Pick<
@@ -140,7 +145,11 @@ export function createIntegrationRuntime(
       return{connected:snapshot.profile.state==='open',phone:snapshot.profile.phone};},
     readGroups:(context,key)=>fleet!.groups.list(context,key),
   }):undefined;
+  let boxRouting:BoxRoutingService|undefined;
   const groupAutomation=groupPolicy&&config.qr?createGroupAutomationRuntime({
+    get boxRouting(){return boxRouting;},
+    get media(){return media;},
+    sendMedia:(context,instanceKey,recipient,file)=>fleet!.groupMedia(context,instanceKey,recipient,file),
     ...groupPolicy,transact,captureBinding:fleet!.capture,assertBinding:fleet!.assert,enabled:automationRuntimeEnabled(environment),
     ...(groupCatalog?{refreshCatalogs:groupCatalog.refreshDueForAutomation}:{}),
     async readIdentity(context,instanceKey){
@@ -214,6 +223,7 @@ export function createIntegrationRuntime(
     : undefined;
   const privateMedia=createPrivateMediaRuntime(environment,{transact,
     cleanupTransact:async()=>{throw new Error("PRIVATE_MEDIA_CLEANUP_REQUIRES_LIFECYCLE_ROLE");}});
+  let liveMediaRecovery:ReturnType<typeof createHistoryLiveMediaRecovery>|undefined;
   const media: MediaStore | undefined = environment.INTEGRATION_ENCRYPTION_KEY
     ? createMediaStore({
         encryptionKey: environment.INTEGRATION_ENCRYPTION_KEY,
@@ -232,6 +242,8 @@ export function createIntegrationRuntime(
           );
           if (!channel) throw new MediaError("MEDIA_CHANNEL_NOT_FOUND");
           if (asset.source === "QR") {
+            if(fleet)liveMediaRecovery??=createHistoryLiveMediaRecovery({environment,transact,fleet});
+            const recovered=await(await liveMediaRecovery)?.download(asset);if(recovered)return recovered;
             if (!qr) throw new MediaError("MEDIA_NOT_CONFIGURED");
             return qr.downloadMedia(
               channel,
@@ -260,7 +272,9 @@ export function createIntegrationRuntime(
             !context.connection.inbox_id
           )
             throw new MediaError("CHATWOOT_BINDING_MISMATCH");
-          return chatwootEnvironment(options)
+          if(asset.descriptor.groupReply===true&&(context.account.status!=='READY'||context.connection.status!=='READY'))throw new MediaError('MEDIA_CONTEXT_CHANGED');
+          assertChatwootMediaSnapshot(asset,{destinationRevision:context.account.destination?.revision,credentialRevision:context.account.credential_version});
+          const file=await chatwootEnvironment(options)
             .client(context.account)
             .downloadAttachment(
               Number(context.account.account_id),
@@ -269,6 +283,14 @@ export function createIntegrationRuntime(
               Number(asset.descriptor.messageId),
               Number(asset.descriptor.attachmentId),
             );
+          if(asset.descriptor.groupReply===true){
+            const after=await transact(asset.organization_id,async t=>({account:await readChatwootAccount(t,asset.organization_id),
+              connection:await readChatwootConnection(t,asset.organization_id,String(asset.descriptor.integrationId))}));
+            if(!after.account||after.account.status!=='READY'||after.connection?.status!=='READY'||after.connection.channel_id!==channel.id||after.connection.inbox_id!==context.connection.inbox_id
+              ||after.account.account_id!==context.account.account_id)throw new MediaError('MEDIA_CONTEXT_CHANGED');
+            assertChatwootMediaSnapshot(asset,{destinationRevision:after.account.destination?.revision,credentialRevision:after.account.credential_version});
+          }
+          return file;
         },
       })
     : undefined;
@@ -304,6 +326,9 @@ export function createIntegrationRuntime(
       });
   }
   const chatwoot = options ? createChatwootService(options) : undefined;
+  if(chatwoot)boxRouting=createBoxRoutingService({transact,catalog:chatwoot.attendanceCatalog,teamMembers:chatwoot.attendanceTeamMembers,
+    integration:async(org,channel)=>{const scope=await transact(org,tx=>resolveAttendanceScope(tx,org,channel));if(!scope)throw Error('FLOW_BOX_INTEGRATION_REQUIRED');return scope.integrationId;},
+    readiness:createHandoffReadiness({transact,catalog:chatwoot.attendanceCatalog,validateTarget:chatwoot.validateHumanDestination})});
   const centralEnvironment=options?chatwootEnvironment(options):undefined;
   const centralIngress=options&&centralEnvironment?createChatwootRuntimeIngress({transact,secrets:centralEnvironment.vault,
     enabled:automationRuntimeEnabled(environment),router:createEventRouter({transact,enabled:automationRuntimeEnabled(environment)}),
@@ -330,6 +355,7 @@ export function createIntegrationRuntime(
     qr,
     fleet,
     groupAutomation,
+    boxRouting,
     refreshCentralGroupCatalogs:groupCatalog?.refreshDueForCentral,
     groupPolicy,
     chatwoot,
@@ -346,7 +372,8 @@ export function createIntegrationRuntime(
       ...options, ...control, chatwoot, health: identity,
       ...(control.pairActionRedis ? { pairActions: createPairActionStore({ client: control.pairActionRedis, encryptionKey: options.encryptionKey }) } : {}),
     }) : undefined,
-    onboarding: control && chatwoot && qr ? createOnboardingService({ transact, ...control, chatwoot, activateQr: qr.activate }) : undefined,
+    onboarding: control && chatwoot && qr ? createOnboardingService({ transact, ...control, chatwoot, activateQr: qr.activate,
+      ...(environment.HISTORY_SYNC_V2_ENABLED==='true'&&fleet?{admitHistory:createHistoryConnectionAdmission({transact,auth:control.auth,fleet,signingKey:config.qr!.signingKey})}:{}) }) : undefined,
     chatwootWorker: options ? createChatwootWorker(options) : undefined,
     provisioner: options ? createChatwootProvisioner(options) : undefined,
     media,

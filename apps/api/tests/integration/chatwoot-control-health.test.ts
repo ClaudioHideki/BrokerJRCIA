@@ -26,6 +26,12 @@ describe('authorized pairing, identity continuity and transport evidence', () =>
   let principal: ChatwootControlPrincipal, agent: ChatwootControlPrincipal, auth: ReturnType<typeof createChatwootControlAuth>;
   let control: ReturnType<typeof createChatwootControlService>, health: ReturnType<typeof createChatwootHealth>;
   let chatwoot: ReturnType<typeof createChatwootService>;
+  it('reads history progress through the exact authorized central mapping without admitting or mutating a run',async()=>{
+    expect(await control.historyProgress(principal,integration)).toEqual({schemaVersion:2,organizationId:org,channelId:channel,
+      integrationId:integration,accountId:1,inboxId:31,destinationRevision:1,run:null});
+    await expect(control.historyProgress({...principal,accountId:2},integration)).rejects.toThrow();
+    await expect(control.historyProgress(principal,randomUUID())).rejects.toThrow();
+  });
   const transact = <T>(id: string, fn: OrganizationTransaction<T>) => withOrganizationTransaction(pool, id, fn);
   const pair = vi.fn(async () => ({ type: 'QR_CODE', encoding: 'BASE64', value: 'synthetic-ephemeral-qr', expiresAt: new Date(Date.now() + 60000).toISOString() }));
   const disconnect = vi.fn(async () => undefined);

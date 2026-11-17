@@ -20,7 +20,11 @@ import {
   createIntegrationSecrets,
   verifyChatwootSignature,
 } from "./secrets.js";
-import { recordChatwootAttendanceEvent } from './chatwoot-attendance-store.js';
+import { recordChatwootAttendanceEvent,confirmChatwootMirrorAttempt,type ChatwootObservationScope } from './chatwoot-attendance-store.js';
+import {LIVE_INGRESS_PROTOCOL,liveIngressProofSchema,type LiveIngressProof} from './chatwoot-live-ingress.js';
+import {assertChatwootMirrorContext} from './chatwoot-mirror-context.js';
+import {readGroupCentralSnapshot,readGroupRemoteMap} from '../whatsapp-groups/central-group-store.js';
+import {currentGroupWebhookBinding} from '../whatsapp-groups/automation-authority.js';
 import { createChatwootRuntimeIngress } from './chatwoot-runtime-ingress.js';
 import type { MediaStore } from "../messaging/media-store.js";
 import { createChatwootDestinationService, lockChatwootDestination } from './chatwoot-destination.js';
@@ -238,6 +242,7 @@ export function createChatwootService(options: ChatwootOptions) {
   return {
     destinations,
     attendanceCatalog:attendance.catalog,
+    attendanceTeamMembers:attendance.teamMembers,
     validateHumanDestination:attendance.validateTarget,
     validateGuidedHumanDestination:attendance.validateGuidedTarget,
     async status(org: string) {
@@ -773,6 +778,7 @@ export function createChatwootService(options: ChatwootOptions) {
       reason: string,
       remoteId?: number,
       actorId?: string,
+      receiptReadTimeoutMs?: number,
     ) {
       const context = await tx(org, async (t) => {
         await requireActiveOrganization(t, org);
@@ -796,12 +802,13 @@ export function createChatwootService(options: ChatwootOptions) {
         if (!a || !c?.inbox_id)
           throw new IntegrationError("INTEGRATION_NOT_FOUND", 404);
         const contact = (
-          await t.query<{ external_id: string }>(
-            `SELECT contact.external_id FROM messaging_messages m
+          await t.query<{ external_id:string|null;conversation_id:string;recipient_kind:string;provider_scope:string|null;instance_id:string|null }>(
+            `SELECT contact.external_id,conversation.id AS conversation_id,conversation.recipient_kind,m.provider_scope,ch.instance_id FROM messaging_messages m
           JOIN messaging_conversations conversation ON conversation.organization_id=m.organization_id AND conversation.id=m.conversation_id
-          JOIN messaging_contacts contact ON contact.organization_id=conversation.organization_id AND contact.id=conversation.contact_id
-          WHERE m.organization_id=$1 AND m.id=$2`,
-            [org, job.message_id],
+          JOIN messaging_channels ch ON ch.organization_id=m.organization_id AND ch.id=m.channel_id
+          LEFT JOIN messaging_contacts contact ON contact.organization_id=conversation.organization_id AND contact.id=conversation.contact_id
+          WHERE m.organization_id=$1 AND m.id=$2 AND m.channel_id=$3`,
+            [org, job.message_id,c.channel_id],
           )
         ).rows[0];
         if (!contact)
@@ -813,8 +820,38 @@ export function createChatwootService(options: ChatwootOptions) {
         accountId = Number(a.account_id),
         inboxId = Number(c.inbox_id);
       const patch: Record<string, unknown> = {};
+      let nativeProof:LiveIngressProof|undefined;
+      const assertNativeProof=async(t:TenantTransaction,proof:LiveIngressProof)=>{
+        await assertChatwootMirrorContext(t,a,c,contact.instance_id);
+        if(proof.organization_id!==org||proof.integration_id!==c.id||proof.instance_id!==contact.instance_id
+          ||proof.destination_revision!==a.destination?.revision||proof.account_id!==accountId||proof.inbox_id!==inboxId
+          ||proof.credential_revision!==a.credential_version||proof.base_url!==a.base_url
+          ||proof.broker_message_id!==job.message_id||proof.conversation_id!==job.payload.conversationId)
+          throw new IntegrationError('CHATWOOT_LIVE_CONTEXT_CHANGED',409);
+        const attempt=(await t.query<{state:string;remote_message_id:string|null}>(`SELECT state,remote_message_id FROM chatwoot_mirror_attempts
+          WHERE organization_id=$1 AND id=$2 AND job_id=$3 AND integration_id=$4 AND channel_id=$5
+            AND destination_revision=$6 AND account_id=$7 AND inbox_id=$8 AND message_id=$9 AND conversation_id=$10
+            AND remote_conversation_id=$11 AND state IN('DISPATCHED','UNKNOWN','CONFIRMED') FOR UPDATE`,
+          [org,proof.attempt_id,id,c.id,c.channel_id,proof.destination_revision,accountId,inboxId,job.message_id,
+            contact.conversation_id,proof.conversation_id])).rows[0];
+        if(!attempt)throw new IntegrationError('CHATWOOT_MIRROR_EVIDENCE_REQUIRED',409);
+        if(contact.recipient_kind==='GROUP'){
+          if(!options.groupPolicy||job.payload.operation!=='GROUP_SEND_MESSAGE')throw new IntegrationError('GROUP_CENTRAL_SCOPE_CHANGED',409);
+          await lockAttendanceChannel(t,org,c.channel_id);
+          const group=await readGroupCentralSnapshot(t,{organizationId:org,channelId:c.channel_id,conversationId:contact.conversation_id,
+            expectedWebhookBinding:await currentGroupWebhookBinding(t,org,c.channel_id,options.groupPolicy),
+            ...(contact.provider_scope?{providerScope:contact.provider_scope}:{})});
+          const map=group?await readGroupRemoteMap(t,group):null;
+          if(!group||!map||group.envelope.scopeKey!==job.payload.groupScopeKey||group.scope.integrationId!==c.id
+            ||group.credentialRevision!==proof.credential_revision||group.accountId!==accountId||group.inboxId!==inboxId
+            ||Number(map.remote_conversation_id)!==proof.conversation_id)
+            throw new IntegrationError('GROUP_CENTRAL_SCOPE_CHANGED',409);
+        }else if(job.payload.operation!=='SEND_MESSAGE')throw new IntegrationError('CHATWOOT_LIVE_CONTEXT_CHANGED',409);
+        return attempt;
+      };
       switch (job.payload.operation) {
         case "CREATE_CONTACT": {
+          if(!contact.external_id)throw new IntegrationError('CHATWOOT_CONTACT_NOT_CONFIRMED',409);
           const found = await client.findContact(
             accountId,
             contact.external_id,
@@ -857,7 +894,35 @@ export function createChatwootService(options: ChatwootOptions) {
           patch.conversationId = found.id;
           break;
         }
+        case 'GROUP_SEND_MESSAGE':
         case "SEND_MESSAGE": {
+          if(job.payload.mirrorProtocol===LIVE_INGRESS_PROTOCOL){
+            const parsed=liveIngressProofSchema.safeParse(job.payload.liveIngressProof);
+            if(!parsed.success)throw new IntegrationError('CHATWOOT_MIRROR_EVIDENCE_REQUIRED',409);
+            const proof=parsed.data;
+            await tx(org,t=>assertNativeProof(t,proof));
+            const receiptClient=receiptReadTimeoutMs===undefined?client:client.withRequestTimeout(receiptReadTimeoutMs);
+            const receipt=await receiptClient.liveIngress().receipt(accountId,inboxId,proof);
+            if(!receipt)throw new IntegrationError('CHATWOOT_LIVE_RECEIPT_NOT_FOUND',409);
+            if(proof.receipt_id!==undefined&&proof.receipt_id!==receipt.receipt_id)
+              throw new IntegrationError('CHATWOOT_LIVE_RECEIPT_ID_CHANGED',409);
+            nativeProof={...proof,receipt_id:receipt.receipt_id};
+            if(receipt.state!=='PERSISTED'){
+              if(proof.receipt_id===undefined)await tx(org,async t=>{
+                await assertNativeProof(t,proof);
+                const pinned=await t.query(`UPDATE integration_jobs SET payload=payload||$4::jsonb,updated_at=now()
+                  WHERE organization_id=$1 AND id=$2 AND status='UNKNOWN' AND payload=$3::jsonb RETURNING id`,
+                  [org,id,JSON.stringify(job.payload),JSON.stringify({liveIngressProof:nativeProof})]);
+                if(!pinned.rowCount)throw new IntegrationError('JOB_REQUIRES_RECONCILIATION',409);
+              });
+              throw new IntegrationError('CHATWOOT_LIVE_CUSTODY_PENDING',409);
+            }
+            if(remoteId!==undefined&&remoteId!==receipt.message_id)throw new IntegrationError('CHATWOOT_MESSAGE_NOT_CONFIRMED',409);
+            patch.remoteMessageId=receipt.message_id;patch.liveIngressProof=nativeProof;
+            break;
+          }
+          if(job.payload.operation==='GROUP_SEND_MESSAGE'||job.payload.liveIngressProof!==undefined)
+            throw new IntegrationError('CHATWOOT_MIRROR_EVIDENCE_REQUIRED',409);
           // An editable marker is not proof of a Broker POST. New attempts require its persisted response ID.
           const evidence=await tx(org,async t=>(await t.query<{state:string;remote_message_id:string|null}>(`SELECT state,remote_message_id FROM chatwoot_mirror_attempts
             WHERE organization_id=$1 AND job_id=$2 AND integration_id=$3 AND destination_revision=$4 AND account_id=$5 AND inbox_id=$6
@@ -917,6 +982,14 @@ export function createChatwootService(options: ChatwootOptions) {
         );
         if (!result.rowCount)
           throw new IntegrationError("JOB_REQUIRES_RECONCILIATION", 409);
+        if(nativeProof){
+          const attempt=await assertNativeProof(t,nativeProof);
+          if(attempt.remote_message_id!==null&&Number(attempt.remote_message_id)!==patch.remoteMessageId)
+            throw new IntegrationError('CHATWOOT_MIRROR_EVIDENCE_CONFLICT',409);
+          const scope:ChatwootObservationScope={organizationId:org,channelId:c.channel_id,integrationId:c.id,
+            destinationRevision:nativeProof.destination_revision,credentialRevision:nativeProof.credential_revision,accountId,inboxId};
+          await confirmChatwootMirrorAttempt(t,scope,{attemptId:nativeProof.attempt_id,remoteMessageId:patch.remoteMessageId as number});
+        }
         await integrationAudit(t, org, "JOB_RECONCILED", id, reason, actorId);
       });
       return { ok: true as const };

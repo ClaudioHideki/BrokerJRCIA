@@ -13,7 +13,13 @@ export async function readGroupHumanDispatch(tx:TenantTransaction,input:{organiz
   JOIN chatwoot_group_scopes s ON s.organization_id=r.organization_id AND s.scope_key=r.scope_key
   JOIN whatsapp_group_catalog_items i ON i.organization_id=c.organization_id AND i.channel_id=c.channel_id AND i.group_jid=c.group_jid
   WHERE r.organization_id=$1 AND r.channel_id=$2 AND r.conversation_id=$3 AND r.message_id=$4 AND r.scope_key=$5
-   AND m.source='OPERATOR' AND m.direction='OUTGOING' AND m.content->>'type'='TEXT' AND m.provider_scope=$6
+   AND m.source='OPERATOR' AND m.direction='OUTGOING' AND m.provider_scope=$6
+   AND (m.content->>'type'='TEXT' OR (m.content->>'type'='MEDIA' AND o.event->>'outboundIntentId' IS NOT NULL
+    AND EXISTS(SELECT 1 FROM messaging_media asset WHERE asset.organization_id=m.organization_id AND asset.channel_id=m.channel_id
+     AND asset.id=m.media_id AND asset.id::text=m.content->>'mediaId' AND asset.source='CHATWOOT'
+     AND asset.descriptor->>'integrationId'=s.integration_id::text AND asset.descriptor->>'conversationId'=s.remote_conversation_id::text
+     AND asset.descriptor->>'messageId'=o.event->>'remoteMessageId' AND asset.descriptor->>'groupReply'='true'
+     AND asset.descriptor->>'destinationRevision'=s.destination_revision::text AND asset.descriptor->>'credentialRevision'=$7::text AND o.credential_revision=$7::integer AND o.channel_id=r.channel_id)))
    AND c.mode='HUMAN' AND c.attendance_revision>=r.attendance_revision AND o.disposition='APPLIED' AND o.event->>'kind'='HUMAN_PUBLIC'
    AND o.event->>'mayForwardReply'='true' AND o.integration_id=s.integration_id AND o.destination_revision=s.destination_revision
    AND o.account_id=s.remote_account_id AND o.inbox_id=s.remote_inbox_id AND o.remote_conversation_id=s.remote_conversation_id
@@ -22,6 +28,6 @@ export async function readGroupHumanDispatch(tx:TenantTransaction,input:{organiz
    AND s.retired_at IS NULL AND i.announce IS FALSE AND i.is_community IS FALSE AND i.is_community_announce IS FALSE
    AND NOT EXISTS(SELECT 1 FROM qr_dispatch_attempts q WHERE q.organization_id=r.organization_id AND q.conversation_id=r.conversation_id AND q.state IN('DISPATCHED','UNKNOWN'))
    AND NOT EXISTS(SELECT 1 FROM qr_outbound_observations q WHERE q.organization_id=r.organization_id AND q.conversation_id=r.conversation_id AND q.blocking)`,
-  [input.organizationId,input.channelId,input.conversationId,input.messageId,current.envelope.scopeKey,`g3:${current.scope.groupJid}:${current.scope.identityRevision}`])).rowCount;
+  [input.organizationId,input.channelId,input.conversationId,input.messageId,current.envelope.scopeKey,`g3:${current.scope.groupJid}:${current.scope.identityRevision}`,current.credentialRevision])).rowCount;
  return evidence?{identity_fingerprint:current.scope.identityFingerprint}:null;
 }

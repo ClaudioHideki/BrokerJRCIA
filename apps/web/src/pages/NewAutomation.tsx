@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import {channelSetupNavigation} from '../channels/setup-navigation.js';
-import { welcomeFlow,operatorReceptionFlow,oiaVisualReconstructionFlow, type AutomationGraphV1 } from '@jrc/contracts';
+import { welcomeFlow,operatorReceptionFlow,oiaVisualReconstructionFlow,oiaBoxTemplateFlow, type AutomationGraphV1 } from '@jrc/contracts';
 import { useApiClient, useSession } from '../auth/SessionProvider.js';
 import { createAutomation } from '../automations/api.js';
 import { ImportReview, type ImportReport } from '../automations/ImportReview.js';
@@ -48,7 +48,7 @@ export function NewAutomationPage(){
       // An import may finish after leaving this route or changing the tenant.
       // Do not start a second mutation with an obsolete UI context.
       if(current!==generation.current)return;
-      const graph=confirmed?.graph??(template==='OPERATOR_RECEPTION'?operatorReceptionFlow():template==='OIA_VISUAL_HML'?oiaVisualReconstructionFlow():welcomeFlow()),creationName=name.trim();
+      const graph=confirmed?.graph??(template==='OPERATOR_RECEPTION'?operatorReceptionFlow():template==='OIA_VISUAL_HML'?oiaVisualReconstructionFlow():template==='OIA_BOX'?oiaBoxTemplateFlow():welcomeFlow()),creationName=name.trim();
       const signature=JSON.stringify({name:creationName,graph});
       if(pendingCreation.current?.signature!==signature)pendingCreation.current={signature,idempotencyKey:crypto.randomUUID()};
       const item=await createAutomation(client,creationName,graph,pendingCreation.current.idempotencyKey);
@@ -66,8 +66,9 @@ export function NewAutomationPage(){
       <p>O formato é identificado automaticamente. Arquivos com recursos externos podem exigir adaptação.</p>
       {preview&&<ImportReview report={preview.report}/>}
       {!preview&&<><label>Modelo inicial<select disabled={busy||!canCreate} value={template} onChange={event=>setTemplate(event.target.value)}>
-        <option value="WELCOME">Boas-vindas simples</option><option value="OPERATOR_RECEPTION">Recepção da operadora: Comercial, Suporte e Financeiro</option><option value="OIA_VISUAL_HML">OIA — RECONSTRUÇÃO VISUAL HML — PARIDADE PARCIAL</option>
+        <option value="OIA_BOX">URA por caixa — Português e English</option><option value="WELCOME">Boas-vindas simples</option><option value="OPERATOR_RECEPTION">Recepção da operadora: Comercial, Suporte e Financeiro</option><option value="OIA_VISUAL_HML">OIA — RECONSTRUÇÃO VISUAL HML — PARIDADE PARCIAL</option>
       </select></label>{template==='OPERATOR_RECEPTION'&&<p>Inclui seis assuntos e captura da solicitação com prazo de 15 minutos. No editor, escolha a caixa e o time ou agente de cada transferência antes de publicar. Não consulta ERP e não vincula nem ativa o bot automaticamente.</p>}</>}
+      {!preview&&template==='OIA_BOX'&&<p>Modelo reutilizável com quatro departamentos. Revise textos e expediente, publique e configure times e atendentes em Flow → Caixas vinculadas. Os nomes virão da caixa JRC selecionada; não há destinatários de teste predefinidos.</p>}
       {!preview&&template==='OIA_VISUAL_HML'&&<p>Português e inglês, quatro departamentos e 26 caminhos. Horários e nomes iniciais são dados de teste: confirme o expediente e selecione os 13 destinos no catálogo da HML antes de publicar. Tentativas: 3; prazo de cada menu: 300 segundos. Paridade integral depende dos exports e configurações originais.</p>}
       <form onSubmit={event=>void submit(event)}><label>Nome da automação<input required maxLength={120} value={name} onChange={event=>setName(event.target.value)}/></label>
         <div className="flows-actions"><button className="flows-primary" disabled={busy||!canCreate||!name.trim()}>{busy?'Processando…':preview?'Importar rascunho e abrir editor':'Criar e abrir editor'}</button>

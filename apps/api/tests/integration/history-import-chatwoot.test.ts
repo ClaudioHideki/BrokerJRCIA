@@ -18,6 +18,7 @@ async function fixture(supported=true){
  const options:ChatwootOptions={baseUrl:`https://${tenant.org}.example.test`,publicOrigin:'https://broker.test',encryptionKey:Buffer.alloc(32,7).toString('base64'),
   transact:db.transact,resolveIntegration:async()=>tenant.org,async fetch(input,init){
    const path=new URL(String(input)).pathname,method=init?.method??'GET',body=init?.body?JSON.parse(String(init.body)):{};calls.push({path,method,body});
+   if(path.endsWith('/live-ingress/v1/capability'))return new Response('{}',{status:404});
    if(path==='/api/v1/profile')return Response.json({accounts:[{id:1,role:'administrator'}]});
    if(path.endsWith('/inboxes')&&method==='POST')return Response.json({id:31,name:'History',channel_type:'Channel::Api',secret:'synthetic-callback',webhook_url:body.channel.webhook_url});
    if(path.endsWith('/jrc_history_import/inboxes/31'))return supported?Response.json({protocol:'jrc-history-import/1',account_id:1,inbox_id:31,organization_id:tenant.org,integration_id:integration,supports_text:true,supports_silent_bootstrap:true}):new Response('{}',{status:404});

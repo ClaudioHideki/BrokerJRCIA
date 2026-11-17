@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CompatibleAutomationHandoffConfigSchema } from './automation-handoff-v1.js';
+import {DirectoryMenuSchema} from './automation-box-routing.js';
 import { ScheduleNodeConfigSchema } from './automation-schedule.js';
 import { menuOptions, type FlowNode } from './flows.js';
 import {DATA_NODE_TYPES,compatibleDataNodeSchema,dataNodePorts} from './automation-data-v2.js';
@@ -44,6 +45,7 @@ const define = (type: string, label: string, category: string, schema: z.ZodType
 export const AUTOMATION_NODE_DEFINITIONS: readonly AutomationNodeDefinition[] = [
   define('start', 'Mensagem recebida', 'TRIGGERS', compatibleAutomationEntrySchema(config())),
   define('message', 'Enviar texto', 'CONVERSATION', config({ text })),
+  define('directory-menu','Atendentes da caixa','INPUTS',DirectoryMenuSchema,node=>['selected','back','exhausted',...(node.data.timeoutSeconds===undefined?[]:['timeout'])]),
   define('input', 'Capturar resposta', 'INPUTS', compatibleInputCaptureSchema(config({ variable: safeKey,
     text: z.unknown().refine(input => value(input).length <= 4096, 'Pergunta muito longa.').optional(),
     timeout: z.unknown().refine(input => !(Number(input ?? 0) > 0), 'Timeout importado ainda não suportado.').optional() })),inputCapturePorts),

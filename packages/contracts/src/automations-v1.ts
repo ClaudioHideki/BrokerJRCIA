@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AttendanceDiagnosticSchema } from './attendance-resume-v1.js';
 import { MenuWaitConfigV2Schema } from './automation-menu.js';
+import {boxTemplateRoutes} from './automation-box-routing.js';
 
 import { FlowGraphSchema, type FlowGraph } from './flows.js';
 import { type FlowNode } from './flows.js';
@@ -41,6 +42,7 @@ export function validateAutomationGraph(input: unknown): NodeDiagnostic[] {
   const parsed = AutomationGraphV1Schema.safeParse(input);
   if (!parsed.success) return parsed.error.issues.map(issue => ({ nodeId: null, field: issue.path.join('.'), code: 'INVALID_GRAPH', message: issue.message }));
   const graph = parsed.data, diagnostics: NodeDiagnostic[] = [];
+  try{boxTemplateRoutes(graph);}catch(error){diagnostics.push({nodeId:null,field:'data.boxRoutes',code:'FLOW_BOX_TEMPLATE_INVALID',message:error instanceof Error?error.message:'FLOW_BOX_TEMPLATE_INVALID'});}
   const add = (nodeId: string | null, field: string, code: string, message: string) => {
     const node = graph.nodes.find(item => item.id === nodeId);
     diagnostics.push({ nodeId, field, code, message: node ? `${node.label}: ${message}` : message });
@@ -84,7 +86,7 @@ export function validateAutomationGraph(input: unknown): NodeDiagnostic[] {
     visited.add(id); active.add(id);
     // V2 menus explicitly opt into durable event waits. Historical menus keep their original validation rule.
     const node=graph.nodes.find(node => node.id === id);
-    const waitsForInput=node?.type==='input'||node?.type==='menu'&&MenuWaitConfigV2Schema.safeParse(node.data).success;
+    const waitsForInput=node?.type==='input'||node?.type==='directory-menu'||node?.type==='menu'&&MenuWaitConfigV2Schema.safeParse(node.data).success;
     if (!waitsForInput) for (const edge of graph.edges.filter(item => item.source === id)) if (cycles(edge.target)) return true;
     active.delete(id); return false;
   };

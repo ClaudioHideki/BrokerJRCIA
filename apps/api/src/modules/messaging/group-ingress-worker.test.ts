@@ -6,7 +6,8 @@ vi.mock('../attendance/repository.js',()=>({lockAttendanceChannel:vi.fn()}));
 import {createQrMessagingService} from './qr-service.js';
 import {createMessagingWorker} from './worker.js';
 const org='11111111-1111-4111-8111-111111111111',channel='33333333-3333-4333-8333-333333333333',instance='44444444-4444-4444-8444-444444444444',key='synthetic-g3',group='120000000000001@g.us',participant='5511000000001@s.whatsapp.net',signing='g3-synthetic-signing-key-at-least-32-bytes';
-const tx={query:vi.fn(async()=>({rows:[{upstream_instance_key:key}],rowCount:1}))};
+const tx={query:vi.fn(async(sql:string)=>sql.includes('SELECT s.scope_id,s.binding_fingerprint')
+  ?{rows:[],rowCount:0}:{rows:[{upstream_instance_key:key}],rowCount:1})};
 beforeEach(()=>{vi.clearAllMocks();calls.findChannel.mockResolvedValue({id:channel,organizationId:org,instanceId:instance});calls.upsertContact.mockResolvedValue({id:instance});calls.getOrCreateConversation.mockResolvedValue({id:instance});calls.recordIncoming.mockResolvedValue({});calls.claimBotTurn.mockResolvedValue(null);calls.claimOutgoing.mockResolvedValue([]);});
 function qr(groupAutomation:any){return createQrMessagingService({baseUrl:'https://engine.invalid',apiKey:'synthetic-engine',webhookOrigin:'https://broker.invalid',signingKey:signing,resolveChannel:async()=>({organizationId:org,instanceId:instance}),transact:async(_org:string,work:(tx:any)=>Promise<unknown>)=>work(tx as any),groupAutomation} as any);}
 const auth='Bearer '+createHmac('sha256',signing).update('qr-webhook\0'+org+'\0'+channel).digest('base64url');

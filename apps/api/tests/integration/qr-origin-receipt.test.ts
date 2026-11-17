@@ -3,6 +3,8 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
 import {createQrMessagingService,ensureQrChannel} from '../../src/modules/messaging/qr-service.js';
 import {probeRequiredRuntimeSchema} from '../../src/db/runtime-schema.js';
+import {projectLiveBatch} from '../../../../integrations/evolution-origin-journal/src/live-projection.mjs';
+import {createGroupAutomationRuntime} from '../../src/modules/whatsapp-groups/automation-runtime.js';
 
 let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 const signingKey='synthetic-origin-signing-key-'.repeat(2);
@@ -27,6 +29,36 @@ it('returns a correlated durable receipt only after the message transaction comm
   const ingest=t.service().ingest as (...args:unknown[])=>Promise<unknown>;
   expect(await ingest(t.channel,t.auth,t.payload,t.receipt)).toEqual({status:'accepted',sourceEventId:t.receipt.sourceEventId,durablyAccepted:true});
   expect((await db.transact(t.org,tx=>tx.query('SELECT count(*)::int AS n FROM messaging_messages WHERE channel_id=$1',[t.channel]))).rows[0].n).toBe(1);
+});
+
+it.each([false,true])('accepts internal V2 media only after its registration and message commit (group=%s)',async group=>{
+  const t=await fixture();
+  const groupRuntime=createGroupAutomationRuntime({transact:db.transact,encryptionKey:Buffer.alloc(32,43).toString('base64'),configurationScope:'synthetic',
+    readIdentity:async()=>({connected:true,phone:null,groupsIgnore:false}),sendText:async()=>{throw Error('No synthetic sends');}});
+  if(group)await db.database.pool.query(`INSERT INTO whatsapp_group_catalogs(organization_id,channel_id,identity_fingerprint,catalog_revision,snapshot_id,observed_at,valid_until)
+    VALUES($1,$2,$3,1,$4,clock_timestamp(),clock_timestamp()+interval '1 hour')`,[t.org,t.channel,'e'.repeat(64),randomUUID()]);
+  const binding={instanceName:t.payload.instance},key={...t.payload.data.key,...(group?{remoteJid:'12345@g.us',participant:'123456789@lid'}:{})};
+  const [payload]=projectLiveBatch(binding,{'messages.upsert':{type:'notify',messages:[{key,messageTimestamp:1600000000,
+    message:{imageMessage:{caption:'Synthetic durable media',fileName:'synthetic.png',mimetype:'image/png'}}}]}});
+  const receipt={projectionVersion:2 as const,sourceEventId:randomUUID(),contentSha256:createHash('sha256').update(JSON.stringify(payload)).digest('hex')};
+  const service=createQrMessagingService({baseUrl:'https://engine.test',apiKey:'synthetic',signingKey,webhookOrigin:'https://broker.test',
+    transact:db.transact,groupAutomation:groupRuntime,resolveChannel:async()=>({organizationId:t.org,instanceId:t.instance})});
+  expect(await service.ingest(t.channel,t.auth,payload,receipt)).toMatchObject({durablyAccepted:true,sourceEventId:receipt.sourceEventId});
+  expect(await service.ingest(t.channel,t.auth,payload,receipt)).toMatchObject({durablyAccepted:true,status:'duplicate'});
+  expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_messages WHERE channel_id=$1',[t.channel])).rows[0].n).toBe(1);
+  expect((await db.database.pool.query('SELECT count(*)::int n FROM messaging_media WHERE channel_id=$1',[t.channel])).rows[0].n).toBe(1);
+});
+
+it('does not ACK an unpersisted V2 group before the catalog identity is available',async()=>{
+  const t=await fixture(),[payload]=projectLiveBatch({instanceName:t.payload.instance},{'messages.upsert':{type:'notify',messages:[{
+    key:{...t.payload.data.key,remoteJid:'12345@g.us',participant:'123456789@lid'},messageTimestamp:1600000000,message:{conversation:'Synthetic waiting group'}}]}});
+  const receipt={projectionVersion:2 as const,sourceEventId:randomUUID(),contentSha256:createHash('sha256').update(JSON.stringify(payload)).digest('hex')};
+  const groupRuntime=createGroupAutomationRuntime({transact:db.transact,encryptionKey:Buffer.alloc(32,43).toString('base64'),configurationScope:'synthetic',
+    readIdentity:async()=>({connected:true,phone:null,groupsIgnore:false}),sendText:async()=>{throw Error('No synthetic sends');}});
+  const service=createQrMessagingService({baseUrl:'https://engine.test',apiKey:'synthetic',signingKey,webhookOrigin:'https://broker.test',
+    transact:db.transact,groupAutomation:groupRuntime,resolveChannel:async()=>({organizationId:t.org,instanceId:t.instance})});
+  await expect(service.ingest(t.channel,t.auth,payload,receipt)).rejects.toMatchObject({code:'ORIGIN_EVENT_CONFLICT'});
+  expect((await db.database.pool.query('SELECT count(*)::int n FROM qr_origin_receipts WHERE channel_id=$1',[t.channel])).rows[0].n).toBe(0);
 });
 it.each([false,true])('deduplicates concurrent and restarted deliveries without duplicate effects (outgoing=%s)',async fromMe=>{
   const t=await fixture();t.payload.data.key.fromMe=fromMe;

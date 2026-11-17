@@ -71,6 +71,18 @@ export function createNativeEditorTransport(options: NativeEditorOptions): Pick<
       const parsed=FlowExecutionQuerySchema.safeParse(Object.fromEntries(uri.searchParams));if(!parsed.success)invalid();
       return await call('get',`/${id}/executions${uri.search}`,undefined,init.signal) as T;
     }
+    const routing=/^\/v1\/automations\/([^/]+)\/channels\/([^/]+)\/box-routing$/.exec(uri.pathname);
+    if(routing){
+      const id=routing[1]!,channel=routing[2]!;if(!root||!uuid.test(id)||!uuid.test(channel))invalid();assertRoot(id);
+      const query=uri.searchParams;
+      if(method==='GET'&&body===undefined){
+        for(const key of query.keys())if(!['version','teamId'].includes(key)||query.getAll(key).length!==1)invalid();
+        if(!query.has('version')||[...query.values()].some(v=>!/^([1-9][0-9]{0,8})$/.test(v)))invalid();
+        return await call('get', '/'+id+'/channels/'+channel+'/box-routing?'+new URLSearchParams([...query].sort(([a],[b])=>a.localeCompare(b))),undefined,init.signal) as T;
+      }
+      if(method==='PUT'&&!uri.search&&record(body))return await call('put','/'+id+'/channels/'+channel+'/box-routing',body,init.signal) as T;
+      invalid();
+    }
     const query = uri.searchParams;
     for (const key of query.keys()) if (!['cursor', 'pageSize'].includes(key) || query.getAll(key).length !== 1) invalid();
     const cursor = query.get('cursor'), size = query.get('pageSize');
