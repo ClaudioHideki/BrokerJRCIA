@@ -17,6 +17,7 @@ import { renderAuditMarkdown } from '../scripts/security/render-markdown.mjs';
 const ROOT = resolve(import.meta.dirname, '..');
 const EPOCH = CURRENT_AUDIT_PROFILE.sourceDateEpoch;
 const FINGERPRINT_SECRET = 'reproducible-audit-fingerprint-test-key';
+const AUDIT_GENERATION_TIMEOUT_MS = 90_000;
 const temporaryDirectories = [];
 
 async function removeOwnedDirectories(directories) {
@@ -99,7 +100,8 @@ describe('artefatos reproduzíveis da auditoria de segurança', () => {
 
     // The same real repository/history, scans and PDF pipeline run twice.
     // Sharing their immutable results removes two duplicate full scans from
-    // the layout/canary checks, using the existing two-generation budget.
+    // the layout/canary checks. Budget each of the two serial full generations;
+    // CI raster verification of a single generation takes about 75 seconds.
     beforeAll(async () => {
       const first = await outputDirectory(sharedDirectories);
       const second = await outputDirectory(sharedDirectories);
@@ -109,7 +111,7 @@ describe('artefatos reproduzíveis da auditoria de segurança', () => {
       const result = await generateSecurityAudit({ rootDirectory: ROOT, outputDirectory: first, sourceDateEpoch: EPOCH, fingerprintSecret: FINGERPRINT_SECRET, auditData: source });
       await generateSecurityAudit({ rootDirectory: ROOT, outputDirectory: second, sourceDateEpoch: EPOCH, fingerprintSecret: FINGERPRINT_SECRET, auditData: source });
       artifacts = { first, second, result };
-    }, 90_000);
+    }, 2 * AUDIT_GENERATION_TIMEOUT_MS);
 
     afterAll(() => removeOwnedDirectories(sharedDirectories));
 
