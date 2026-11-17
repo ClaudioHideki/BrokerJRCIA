@@ -1,7 +1,15 @@
 <!-- jrc-operational-init:v1 -->
 # Backlog operacional — Broker JRC
 
-## Em progresso (WIP)
+## Estado vigente — publicação de 16/11/2026
+
+- [x] **RELEASE-20261116:** CI final, E2E Broker/LAB2, imagens e deploy dos dois produtos concluídos. Runtime e schema conferidos; [evidências e digests](docs/implementation/release-20261116-result.md).
+- [x] **RETENTION-20261116:** Proteção de histórico/recibos implementada, testada e publicada; migração0095 aplicada sem expurgo.
+- [x] **FLOW-20261116:** Paginação do seletor corrigida, regressão aprovada e19 caixas carregadas na interface publicada; nenhuma automação ativada.
+- [ ] **ACCEPTANCE-20261116:** Conferir entrega física e conciliar grupos, distribuição, histórico e mídia antiga. Capability200 e Minhas25→34 não provam completude do WhatsApp.
+- [ ] **META-20261116:** Separar consulta opcional de faturamento da prontidão; concluir vínculo do canal existente com JRC. Autorização Meta válida na inspeção; não pedir novo login por esse erro.
+
+## Registro anterior da preparação (histórico)
 
 - [ ] **RELEASE-20261116:** Guard de retenção `0095` e proteção LAB2 implementados após RED em CI. Candidata LAB2 incorpora filtro de segmento e popup de propostas já validados; Call Center WIP preservado fora desta promoção. Revalidar GREEN, E2E, imagens e runtime antes de concluir. Publicação e deploy Grupo JRC/Broker autorizados; sem backup/dump/restore ou envio real.
 - [ ] **FLOW-20261116:** Auditoria autenticada e simulação sem envio realizadas; corrigido limite de paginação 200→100 no painel de vínculos. Regressão local aprovada. Ver `docs/implementation/flow-audit-20261116.md`; publicação de automações não realizada.

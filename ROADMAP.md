@@ -23,3 +23,10 @@ Referência inicial: INIT solicitado pelo usuário em 2026-11-13. É uma trilha 
 - [ ] Revisar proveniência, isolamento e versões a cada candidata de release.
 
 Veja [TASKS.md](TASKS.md). Roadmaps e planos anteriores continuam válidos no seu escopo.
+
+## Incremento de publicação — 16/11/2026
+
+- [x] Proteção de retenção, protocolo de persistência e correção do seletor Flow publicados após CI/E2E e verificação de runtime.
+- [ ] Aceite físico e reconciliação operacional de grupos, distribuição, acervo antigo e Meta oficial. Não ativar captura ou reenviar UNKNOWN por inferência.
+
+[Recibo da publicação](docs/implementation/release-20261116-result.md).

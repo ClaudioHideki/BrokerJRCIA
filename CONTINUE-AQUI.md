@@ -1,3 +1,11 @@
+# Publicação e deploy concluídos — 16/11/2026
+
+Estado vigente: [recibo de publicação e limites operacionais](docs/implementation/release-20261116-result.md). Broker API/web fonte966, main funcionala6 e LAB2d468 publicados e verificados em runtime. Migração0095 aplicada; nove serviços API/worker e web nos digests esperados, operacionalREADY. Receptor LAB2 promovido primeiro, schema20261116190000, Rails/Sidekiq conferidos. Seis capabilities200 e paginação Minhas25→34 confirmadas. Engine e PostgreSQL preservados. Nenhum novo reciboLIVE na observação; aceite físico, grupos, distribuição, histórico legado e arquivos antigos permanecem pendentes. Não interpretar este deploy como sincronização100%.
+
+Os registros abaixo documentam fases anteriores e não substituem o estado vigente acima.
+
+---
+
 # Validação concluída da candidata de entrega — 16/11/2026
 
 Branch `codex/whatsapp-delivery-reliability-20261116`. E2E completo aprovado em [43957172112](https://github.com/ClaudioHideki/BrokerJRCIA/actions/runs/43957172112): Broker `e26e5f7596f03daa611367dd617d4aa9d5e6f8a8` + LAB2 `982f1541ca79639c289c39b840819df3ba787dda`, cinco suítes/seis cenários, todos exit0. Rails HTTP, PostgreSQL, Redis, Sidekiq e MinIO reais em runner descartável; origens/provedores sintéticos. Foram comprovados os casos de histórico, grupos, mídias, Minhas/isolamento, callbacks repetidos, perda de ACK e parada/reinício de worker, preservando a contagem e os hashes esperados.
