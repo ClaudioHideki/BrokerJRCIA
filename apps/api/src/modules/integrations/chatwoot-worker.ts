@@ -82,8 +82,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
   // current map can pass a proven unrelated mirror. An incoming mirror in that
   // exact human-controlled conversation can remain uncertain while a separately
   // proven human intent is dispatched once; the mirror itself is never retried.
-  // Legacy replies and ambiguous
-  // context stay stopped; the uncertain operation itself is never replayed.
+  // Legacy replies and ambiguous context stay stopped; the uncertain operation
+  // itself is never replayed.
   // Both claim queries use the same predicate so a blocked connection cannot
   // starve another connection that has eligible work.
   const independentCampaignReply = `j.kind='CHATWOOT_REPLY' AND j.payload->>'attendanceKind'='AUTOMATED_REPLY' AND EXISTS(

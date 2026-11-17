@@ -106,11 +106,13 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
       expect(t.calls).toEqual([]);
     });
 
-  it('revalidates the same-conversation control after the canonical read',async()=>{
+  it.each(['control','attempt-cycle','remote-map'] as const)('revalidates same-conversation %s after the canonical read',async drift=>{
     const t=await fixture(true);await t.ingest(t.message);
     const options:ChatwootOptions={...t.options,async fetch(input,init){
       const result=await t.options.fetch!(input,init);
-      await db.database.pool.query("UPDATE chatwoot_attendance_controls SET state='PAUSED' WHERE organization_id=$1 AND conversation_id=$2",[t.org,t.next]);
+      if(drift==='control')await db.database.pool.query("UPDATE chatwoot_attendance_controls SET state='PAUSED' WHERE organization_id=$1 AND conversation_id=$2",[t.org,t.next]);
+      if(drift==='attempt-cycle')await db.database.pool.query('UPDATE chatwoot_mirror_attempts SET cycle=2 WHERE job_id=$1',[t.unknown]);
+      if(drift==='remote-map')await db.database.pool.query('UPDATE chatwoot_conversations SET remote_conversation_id=53 WHERE organization_id=$1 AND conversation_id=$2',[t.org,t.next]);
       return result;
     }};
     await createChatwootWorker(options).runOnce(t.org);
@@ -118,6 +120,25 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
     expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows).toEqual([]);
     expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE id=$1',[t.unknown])).rows[0])
       .toEqual({status:'UNKNOWN',attempts:1});
+  });
+
+  it('does not isolate a second uncertain physical conversation for the same contact',async()=>{
+    const t=await fixture(true),other=randomUUID();
+    await db.database.pool.query(`INSERT INTO messaging_conversations(id,organization_id,channel_id,contact_id,remote_conversation_key)
+      SELECT $1,organization_id,channel_id,contact_id,$2 FROM messaging_conversations WHERE organization_id=$3 AND id=$4`,
+      [other,`chatwoot-cycle:${t.integration}:54`,t.org,t.next]);
+    await db.database.pool.query(`INSERT INTO chatwoot_conversations(organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id)
+      VALUES($1,$2,$3,44,'third-source',54)`,[t.org,t.integration,other]);
+    const incoming=(await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)
+      VALUES($1,$2,$3,'INCOMING','CONTACT','{"type":"TEXT","text":"Another physical cycle"}','DELIVERED') RETURNING id`,[t.org,t.channel,other])).rows[0].id;
+    const blocked=(await db.database.pool.query(`UPDATE integration_jobs SET status='UNKNOWN',attempts=1,
+      payload='{"operation":"SEND_MESSAGE","conversationId":54}' WHERE organization_id=$1 AND message_id=$2 RETURNING id`,[t.org,incoming])).rows[0].id;
+    await db.database.pool.query(`INSERT INTO chatwoot_mirror_attempts(organization_id,channel_id,integration_id,destination_revision,
+      account_id,inbox_id,conversation_id,remote_conversation_id,cycle,message_id,job_id,lease_token,state)
+      VALUES($1,$2,$3,1,7,9,$4,54,1,$5,$6,$7,'UNKNOWN')`,[t.org,t.channel,t.integration,other,incoming,blocked,randomUUID()]);
+    await t.ingest(t.message);await createChatwootWorker(t.options).runOnce(t.org);
+    expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows).toEqual([]);
+    expect(t.calls).toEqual([]);
   });
 
   it('deduplicates signed callback redelivery and concurrent workers',async()=>{
