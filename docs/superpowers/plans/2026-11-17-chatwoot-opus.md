@@ -41,3 +41,16 @@ checkout isolado preservou esse incremento e o reparo de áudio no mesmo
 cliente. Nove arquivos de testes, 87 casos aprovados após a composição;
 typecheck e diff check aprovados. CI da candidata anterior a485840 não
 substitui CI desta composição. Revalidar também LAB2 e runtime antes de release.
+
+## Prova de cadeia e runtime
+
+E2E ampliado com o fixture Opus real nas duas contas descartáveis: exigir
+Content-Type audio/opus servido pelo Rails, custódia READY, MIME de saída
+audio/ogg, hash preservado e um envio sintético por obrigação. O provedor
+continua simulado. Aguardando execução desta revisão no GitHub.
+
+Inspeção somente leitura às 14:58 São Paulo: nove serviços API/worker no
+digest 8af6b58036ae79f8 e running; web 64df750728c785e7; engine 1bd8afc4a6cf4882;
+Redis c35af3bbcef51a62; PostgreSQL 5660c2cbfea50c7a. operational-status:
+READY, readiness HTTP 200, schema 0095_history_retention_guard compatível,
+PostgreSQL 16.4 acessível, errors vazio. Nenhuma troca de imagem nesta etapa.

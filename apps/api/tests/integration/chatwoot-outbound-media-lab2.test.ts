@@ -20,9 +20,10 @@ import {assertQueuedMediaAuthority} from '../../src/modules/automations/conversa
 import {initializeHistoryLabBucket} from '../../../../labs/history-sync-lab2/storage-fixture.mjs';
 
 type Consumer={accountId:number;inboxId:number;agentId:number;adminToken:string;agentToken:string};
-const fixtures=[{file:'sample.png',mime:'image/png',kind:'image' as const},
-  {file:'sample.ogg',mime:'audio/ogg',kind:'audio' as const},
-  {file:'sample.pdf',mime:'application/pdf',kind:'document' as const}];
+const fixtures=[{file:'sample.png',mime:'image/png',outputMime:'image/png',kind:'image' as const},
+  {file:'sample.ogg',mime:'audio/ogg',outputMime:'audio/ogg',kind:'audio' as const},
+  {file:'sample.pdf',mime:'application/pdf',outputMime:'application/pdf',kind:'document' as const},
+  {file:'synthetic-opus.ogg',mime:'audio/opus',outputMime:'audio/ogg',kind:'audio' as const}];
 const sha=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
 
 // Real Rails HTTP, committed webhook obligations, PostgreSQL and private MinIO.
@@ -72,12 +73,15 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('delivers committed human PNG/O
       await api(`/conversations/${remoteId}/assignments`,'POST',{assignee_id:consumer.agentId});
       // Only the fixture's real signed-blob proxy is substituted for its Docker-only redirect host.
       // API responses and attachment bytes still come from Rails/ActiveStorage/MinIO.
+      const servedTypes:string[]=[];
       const proxyFetch:typeof fetch=async(input,init)=>{
         const url=new URL(String(input));
         if(url.origin!==origin)throw Error('Synthetic download escaped the Rails laboratory');
         if(url.pathname.startsWith('/rails/active_storage/blobs/redirect/'))
           url.pathname=url.pathname.replace('/blobs/redirect/','/blobs/proxy/');
-        return fetch(url,init);
+        const response=await fetch(url,init);
+        if(url.pathname.startsWith('/rails/active_storage/'))servedTypes.push(response.headers.get('content-type')??'');
+        return response;
       };
       const options:ChatwootOptions={baseUrl:origin,publicOrigin:'https://synthetic.example.test',allowLocal:true,encryptionKey,
         transact:db.transact,resolveIntegration:async id=>id===t.integration?t.org:undefined,fetch:proxyFetch};
@@ -108,7 +112,7 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('delivers committed human PNG/O
       options.media=media;
       const service=createChatwootService(options),mirror=createChatwootWorker(options);
       for(const [ordinal,fixture]of fixtures.entries()){
-        const bytes=readFileSync(join(checkout,'spec/assets',fixture.file)),digest=sha(bytes),prefix=`Synthetic ${index}/${ordinal} `;
+        const bytes=readFileSync(fixture.file==='synthetic-opus.ogg'?new URL('../unit/synthetic-opus.ogg',import.meta.url):join(checkout,'spec/assets',fixture.file)),digest=sha(bytes),prefix=`Synthetic ${index}/${ordinal} `;
         const caption=prefix+'c'.repeat(1024-prefix.length);
         const form=new FormData();form.set('message_type','outgoing');form.set('private','false');form.set('content',caption);
         form.append('attachments[]',new Blob([new Uint8Array(bytes)],{type:fixture.mime}),fixture.file);
@@ -135,6 +139,7 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('delivers committed human PNG/O
         const queued=await lab('outbound-read',{protocol:'outbound-read/v1',accountId:consumer.accountId,messageId:outgoing.id});
         expect(queued.message.contentAttributes.jrc_broker_outbound.state).toBe('PENDING');
         await media.runOnce(t.org);
+        if(fixture.mime==='audio/opus')expect(servedTypes.at(-1)?.split(';')[0]).toBe('audio/opus');
         const custody=(await db.database.pool.query(`SELECT asset.status,asset.sha256,asset.storage_backend,obj.state AS object_state,
           obj.staging_ciphertext,op.state AS operation_state FROM messaging_media asset
           JOIN media_private_objects obj ON obj.organization_id=asset.organization_id AND obj.id=asset.private_object_id
@@ -142,7 +147,7 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('delivers committed human PNG/O
           WHERE asset.organization_id=$1 AND asset.id=$2`,[t.org,canonical.media_id])).rows;
         expect(custody).toEqual([{status:'READY',sha256:digest,storage_backend:'PRIVATE_OBJECT',object_state:'READY',staging_ciphertext:null,operation_state:'CONFIRMED'}]);
         const stored=await media.read(t.org,canonical.media_id);
-        expect(sha(stored.bytes)).toBe(digest);expect(stored.mimeType).toBe(fixture.mime);expect(stored.kind).toBe(fixture.kind);
+        expect(sha(stored.bytes)).toBe(digest);expect(stored.mimeType).toBe(fixture.outputMime);expect(stored.kind).toBe(fixture.kind);
         await expect(media.read(other.org,canonical.media_id)).rejects.toThrow('MEDIA_NOT_FOUND');
         const providerId=`synthetic-outbound-${index}-${ordinal}`,uploads:BinaryMedia[]=[];
         const worker=createMessagingWorker({repository:createPostgresMessagingRepository(),transact:db.transact,
@@ -156,7 +161,7 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('delivers committed human PNG/O
               await assertPartnerMessageAuthority(tx as TenantTransaction,t.org,claim.message.id);await assertQueuedMediaAuthority(tx as TenantTransaction,t.org,claim.message.id);
             }})),...(content.caption?{caption:content.caption}:{})};
             // Provider upload is stubbed, with actual private bytes inspected before the final lease validation.
-            uploads.push(file);expect(sha(file.bytes)).toBe(digest);expect(file.caption).toBe(caption);expect(file.mimeType).toBe(fixture.mime);
+            uploads.push(file);expect(sha(file.bytes)).toBe(digest);expect(file.caption).toBe(caption);expect(file.mimeType).toBe(fixture.outputMime);
             return async()=>{sent.push({organizationId:t.org,messageId:canonical.id,recipient:claim.contact.externalId,providerId,hash:sha(file.bytes),caption:file.caption});return{upstreamMessageId:providerId};};
           }});
         await worker.runOnce(t.org);await worker.runOnce(t.org);expect(uploads).toHaveLength(1);
@@ -180,6 +185,6 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('delivers committed human PNG/O
       const foreign=await fetch(`${origin}/api/v1/accounts/${consumers[1-index]!.accountId}/conversations`,{headers:{api_access_token:consumer.agentToken},signal:AbortSignal.timeout(60000)});
       expect([401,403]).toContain(foreign.status);
     }
-    expect(sent).toHaveLength(6);
+    expect(sent).toHaveLength(8);
   }finally{await db.dispose();}
 },420000);
