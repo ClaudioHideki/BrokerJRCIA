@@ -106,6 +106,26 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
       expect(t.calls).toEqual([]);
     });
 
+  it('returns the mapped provider delivery status without replaying the uncertain incoming mirror',async()=>{
+    const t=await fixture(true);await t.ingest(t.message);await createChatwootWorker(t.options).runOnce(t.org);
+    const outgoing=(await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows[0].message_id;
+    await db.database.pool.query("UPDATE messaging_messages SET state='SENT',upstream_message_id='synthetic-provider-receipt' WHERE id=$1",[outgoing]);
+    const patches:Record<string,unknown>[]=[];
+    const options:ChatwootOptions={...t.options,async fetch(input,init){
+      if(init?.method==='PATCH'&&new URL(String(input)).pathname==='/api/v1/accounts/7/conversations/52/messages/701'){
+        patches.push(JSON.parse(String(init.body)));return Response.json({id:701});
+      }
+      return t.options.fetch!(input,init);
+    }};
+    await createChatwootWorker(options).runOnce(t.org);
+    expect(patches).toEqual([{status:'sent',broker_delivery:{version:1,canonical_message_id:outgoing,
+      provider_message_id:'synthetic-provider-receipt',state:'SENT'}}]);
+    expect(t.calls).toEqual(['GET /api/v1/accounts/7/conversations/52/messages']);
+    expect((await db.database.pool.query('SELECT count(*)::int AS n FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows[0].n).toBe(1);
+    expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE id=$1',[t.unknown])).rows[0])
+      .toEqual({status:'UNKNOWN',attempts:1});
+  });
+
   it.each(['control','attempt-cycle','remote-map'] as const)('revalidates same-conversation %s after the canonical read',async drift=>{
     const t=await fixture(true);await t.ingest(t.message);
     const options:ChatwootOptions={...t.options,async fetch(input,init){
