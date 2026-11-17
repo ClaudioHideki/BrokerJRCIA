@@ -42,7 +42,7 @@ it('selects Meta by the transport accessible role and sends the selected transpo
   render(<MemoryRouter><GuidedSetupSurface client={{ request } as unknown as ApiClient} organizationId={org} organizationName="Empresa B" /></MemoryRouter>);
   fireEvent.change(await screen.findByLabelText('Nome da configuração'), { target: { value: 'Atendimento Meta' } });
   // Use the same accessible role as the real-browser journey.
-  fireEvent.change(screen.getByRole('combobox', { name: 'Conexão WhatsApp' }), { target: { value: 'META' } });
+  fireEvent.change(screen.getByRole('combobox', { name: /^Conexão WhatsApp$/ }), { target: { value: 'META' } });
   fireEvent.click(screen.getByRole('button', { name: 'Iniciar configuração' }));
   await waitFor(() => expect(request).toHaveBeenCalledWith('/v1/guided-setups', expect.objectContaining({ method: 'POST',
     body: JSON.stringify({ name: 'Atendimento Meta', transport: 'META' }) })));

@@ -18,6 +18,15 @@ const intakeInput=z.strictObject({system:code,location:code,reason:code,subject:
 const intakeInputTemplate=z.strictObject({system:text(200),location:text(200),reason:text(200),subject:text(200),
  profile:text(200).optional(),severity:text(200).optional(),impact:text(1000).optional(),urgency:text(1000).optional(),
  identifier:text(200),email:text(300),description:text(6000)});
+export const IntakeHandoffTemplateSchema=z.strictObject({configurationId:owner,configurationRevision:owner,input:intakeInputTemplate});
+// Capture validation belongs to the JRC admission, so a bad e-mail cannot prevent human service.
+export const IntakeHandoffCaptureSchema=z.strictObject({configuration_id:owner,configuration_revision:owner,
+ input:z.strictObject({system:z.string().max(200),location:z.string().max(200),reason:z.string().max(200),subject:z.string().max(200),
+  profile:z.string().max(200).optional(),severity:z.string().max(200).optional(),impact:z.string().max(1000).optional(),urgency:z.string().max(1000).optional(),
+  identifier:z.string().max(200),email:z.string().max(300),description:z.string().max(6000)}).partial(),
+ capture_error:z.enum(['intake_capture_too_large','intake_capture_invalid']).optional()});
+export const IntakeHandoffRequestSchema=IntakeHandoffCaptureSchema.extend({episode_key:z.uuid()});
+export type IntakeHandoffRequest=z.infer<typeof IntakeHandoffRequestSchema>;
 export const DomainCommandConfigSchema=z.discriminatedUnion('command',[
  z.strictObject({...shared,command:z.literal('create_lead')}),
  z.strictObject({...shared,command:z.literal('create_task'),ownerId:owner,title,dueAt}),
@@ -28,6 +37,8 @@ export const DomainCommandConfigSchema=z.discriminatedUnion('command',[
 ]);
 export type DomainCommandConfig=z.infer<typeof DomainCommandConfigSchema>;
 export const DomainCommandArgumentsSchema=z.discriminatedUnion('command',[
+ z.strictObject({command:z.literal('service_desk_handoff'),phase:z.literal('handoff'),...IntakeHandoffRequestSchema.shape,
+  target:z.strictObject({team_id:owner.nullable(),agent_id:owner.nullable()}).refine(v=>(v.team_id===null)!==(v.agent_id===null))}),
  z.strictObject({command:z.literal('create_lead')}),
  z.strictObject({command:z.literal('create_task'),owner_id:owner,title,due_at:date}),
  z.strictObject({command:z.literal('create_meeting'),owner_id:owner,title,due_at:date}),
@@ -53,4 +64,9 @@ const intakeResult=z.strictObject({command:z.enum(['service_desk_intake','servic
  resource_type:z.literal('JrcServiceDesk::IntakeDemand'),resource_id:owner,created:z.boolean(),delivery:z.literal('NOT_APPLICABLE'),
  event:z.strictObject({id:z.uuid(),causation_id:z.uuid(),type:z.literal('service_desk.intake.recorded')}),intake:IntakeDemandReceiptSchema,
 }).refine(value=>String(value.resource_id)===value.intake.id&&value.created===value.intake.created);
-export const DomainCommandResultSchema=z.union([crmResult,intakeResult]);
+const handoffResult=z.strictObject({command:z.literal('service_desk_handoff'),resource_type:z.literal('Conversation'),resource_id:owner,
+ created:z.literal(false),delivery:z.literal('NOT_APPLICABLE'),episode_key:z.uuid(),configuration_id:z.string().regex(/^[1-9]\d*$/u),
+ handoff:z.strictObject({conversation_id:owner,inbox_id:owner,team_id:owner.nullable(),agent_id:owner.nullable()}),
+ intake:IntakeDemandReceiptSchema.nullable(),error_code:z.string().max(100).nullable(),
+ event:z.strictObject({id:z.uuid(),causation_id:z.uuid(),type:z.literal('service_desk.handoff.recorded')})});
+export const DomainCommandResultSchema=z.union([crmResult,intakeResult,handoffResult]);

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { FlowGraphSchema, AutomationHandoffConfigSchema, hasNativeHandoffConfig, automationNodePorts, menuOptions,InputCaptureConfigSchema,parseInputCapture,parseMediaInputCapture,
-  ConversationEffectConfigSchema, MediaEffectConfigSchema, ConversationEffectWaitSchema,MenuAttemptConfigSchema,
+  ConversationEffectConfigSchema, MediaEffectConfigSchema, ConversationEffectWaitSchema,MenuAttemptConfigSchema,IntakeHandoffCaptureSchema,
   type AutomationGraphV1, type FlowNode } from '@jrc/contracts';
 import type { PublishedAutomation, RuntimeInput, RuntimeResult, RuntimeState } from './types.js';
 import { executeDataNode } from './data-nodes.js';
@@ -249,7 +249,18 @@ export async function executeAutomation(
       }
       const native=hasNativeHandoffConfig(node.data),parsed=native?AutomationHandoffConfigSchema.safeParse(node.data):null;
       if(parsed&&!parsed.success)throw new Error('AUTOMATION_HANDOFF_CONFIG_INVALID');
-      const payload=parsed?.success?parsed.data:{};
+      let payload:Record<string,unknown>=parsed?.success?{...parsed.data}:{};
+      if(parsed?.success&&parsed.data.handoffVersion===1&&parsed.data.intake){
+        const intake=parsed.data.intake;
+        delete payload.intake;
+        const capture=IntakeHandoffCaptureSchema.safeParse({configuration_id:intake.configurationId,configuration_revision:intake.configurationRevision,
+          input:Object.fromEntries(Object.entries(intake.input).map(([key,value])=>[key,renderFlowText(value,variables)])
+           .filter(([key,value])=>!['profile','severity','impact','urgency'].includes(key!)||value!==''))});
+        // Keep the full text in the mirrored conversation, not a silently shortened ticket.
+        const error=!capture.success?'intake_capture_invalid':
+          new TextEncoder().encode(JSON.stringify(capture.data)).byteLength>6500?'intake_capture_too_large':null;
+        payload.intakeRequest=error?{configuration_id:intake.configurationId,configuration_revision:intake.configurationRevision,input:{},capture_error:error}:capture.data;
+      }
       record.output=parsed?.success?{status:'HANDOFF_PENDING',destination:parsed.data.destination,target:parsed.data.target}
         :{status:'ACTION_REQUIRED',reason:'HANDOFF_DESTINATION_REQUIRED'};
       effects.push({nodeId:node.id,ordinal:effects.length,kind:'HANDOFF',payload});state.nodeId=null;return finish({status:'HANDOFF',state,effects,trace});

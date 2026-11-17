@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { humanTargetSchema } from './attendance-v1.js';
 import { AutomationLocalHandoffConfigV2Schema } from './attendance-destination-v2.js';
+import {IntakeHandoffTemplateSchema,IntakeHandoffCaptureSchema} from './automation-domain-command.js';
 import {RouteHandoffV3Schema} from './automation-box-routing.js';
 
 const revision = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -15,7 +16,9 @@ export const AutomationHandoffConfigV1Schema = z.strictObject({
   // Chatwoot ignores team_id when assignee_id is present. Select one unambiguous target.
   target: humanTargetSchema.refine(target => (target.teamId === null) !== (target.agentId === null),
     'Selecione somente um time ou um agente.'),
+  intake:IntakeHandoffTemplateSchema.optional(),
 });
+export const AutomationHandoffDispatchV1Schema=AutomationHandoffConfigV1Schema.omit({intake:true}).extend({intakeRequest:IntakeHandoffCaptureSchema.optional()});
 export type AutomationHandoffConfigV1 = z.infer<typeof AutomationHandoffConfigV1Schema>;
 export const AutomationHandoffConfigSchema=z.union([AutomationHandoffConfigV1Schema,AutomationLocalHandoffConfigV2Schema]);
 

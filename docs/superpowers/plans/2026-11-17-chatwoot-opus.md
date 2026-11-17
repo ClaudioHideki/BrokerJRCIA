@@ -32,3 +32,12 @@ image/png e application/pdf. O Broker rejeita audio/opus em mediaKind.
 O fixture synthetic-opus.ogg é o tom sintético anteriormente autorizado,
 sem conteúdo de cliente. Não aceitar octet-stream ou application/ogg por
 inferência. A normalização não amplia mediaKind globalmente.
+
+## Reconciliação concorrente
+
+Durante o envio da candidata a main avançou para f6b9ce010dbe92b27462f68eab96cbb019198c9f
+(handoff humano genérico e contratos intake). Merge seletivo automático no
+checkout isolado preservou esse incremento e o reparo de áudio no mesmo
+cliente. Nove arquivos de testes, 87 casos aprovados após a composição;
+typecheck e diff check aprovados. CI da candidata anterior a485840 não
+substitui CI desta composição. Revalidar também LAB2 e runtime antes de release.
