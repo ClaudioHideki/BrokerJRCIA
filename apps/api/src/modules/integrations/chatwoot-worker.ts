@@ -79,7 +79,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
   // An uncertain mirror must fence its contact, including later physical cycles,
   // without stopping inbound mirrors for unrelated contacts. Only a separately
   // authenticated campaign or canonical durable human intent with an exact
-  // current map can pass a proven unrelated mirror. Legacy replies and ambiguous
+  // current map can pass a proven unrelated mirror. An incoming mirror in that
+  // exact human-controlled conversation can remain uncertain while a separately
+  // proven human intent is dispatched once; the mirror itself is never retried.
+  // Legacy replies and ambiguous
   // context stay stopped; the uncertain operation itself is never replayed.
   // Both claim queries use the same predicate so a blocked connection cannot
   // starve another connection that has eligible work.
@@ -120,7 +123,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
               WHERE blocked_map.organization_id=blocked.organization_id AND blocked_map.integration_id=blocked.integration_id
                 AND blocked_map.conversation_id=blocked_conversation.id
                 AND blocked_map.remote_conversation_id::text=blocked.payload->>'conversationId'))))`;
-  // Only the new durable human-intent protocol can isolate an unrelated mirror.
+  // Only the new durable human-intent protocol can isolate an uncertain mirror.
   // Legacy replies have no such proof and retain the integration-wide fence.
   const independentHumanReply = `j.kind='CHATWOOT_REPLY' AND j.payload->>'attendanceKind'='HUMAN_PUBLIC' AND EXISTS(
     SELECT 1 FROM chatwoot_conversations human_map
@@ -151,7 +154,27 @@ export function createChatwootWorker(options: ChatwootOptions) {
           AND blocked_conversation.id=blocked_message.conversation_id AND blocked_conversation.channel_id=blocked_message.channel_id
         WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
           AND (blocked.kind<>'MIRROR_MESSAGE' OR blocked.payload->>'operation' IS DISTINCT FROM 'SEND_MESSAGE'
-            OR blocked_conversation.contact_id IS NULL OR blocked_conversation.contact_id=human_conversation.contact_id
+            OR blocked_conversation.contact_id IS NULL
+            OR (blocked_conversation.contact_id=human_conversation.contact_id AND NOT EXISTS(
+              SELECT 1 FROM chatwoot_mirror_attempts incoming_attempt
+              JOIN chatwoot_attendance_controls human_control ON human_control.organization_id=incoming_attempt.organization_id
+                AND human_control.channel_id=incoming_attempt.channel_id AND human_control.integration_id=incoming_attempt.integration_id
+                AND human_control.destination_revision=incoming_attempt.destination_revision
+                AND human_control.account_id=incoming_attempt.account_id AND human_control.inbox_id=incoming_attempt.inbox_id
+                AND human_control.conversation_id=incoming_attempt.conversation_id
+                AND human_control.remote_conversation_id=incoming_attempt.remote_conversation_id
+                AND human_control.cycle=incoming_attempt.cycle AND human_control.state='HUMAN'
+              WHERE incoming_attempt.organization_id=blocked.organization_id AND incoming_attempt.job_id=blocked.id
+                AND incoming_attempt.integration_id=j.integration_id AND incoming_attempt.channel_id=c.channel_id
+                AND incoming_attempt.destination_revision=human_destination.revision
+                AND incoming_attempt.account_id=human_account.account_id AND incoming_attempt.inbox_id=c.inbox_id
+                AND incoming_attempt.message_id=blocked.message_id AND incoming_attempt.state='UNKNOWN'
+                AND incoming_attempt.remote_message_id IS NULL AND incoming_attempt.cycle=human_observation.cycle
+                AND incoming_attempt.conversation_id=human_conversation.id
+                AND incoming_attempt.remote_conversation_id=human_map.remote_conversation_id
+                AND incoming_attempt.remote_conversation_id::text=blocked.payload->>'conversationId'
+                AND blocked_conversation.id=human_conversation.id
+                AND blocked_message.direction='INCOMING' AND blocked_message.source='CONTACT'))
             OR NOT EXISTS(SELECT 1 FROM chatwoot_conversations blocked_map
               WHERE blocked_map.organization_id=blocked.organization_id AND blocked_map.integration_id=blocked.integration_id
                 AND blocked_map.conversation_id=blocked_conversation.id
@@ -459,6 +482,15 @@ export function createChatwootWorker(options: ChatwootOptions) {
           requireCanonicalHumanIntent(humanCanonical,{intentId:data.outboundIntentId,integrationId:job.integration_id,accountId:scope.accountId,
             inboxId:scope.inboxId,conversationId:data.conversationId,messageId:data.messageId,senderId:event.senderId,
             ...(data.content?{content:data.content}:{}),...(data.caption!==undefined?{caption:data.caption}:{}),...(data.attachments?{attachments:data.attachments}:{})});
+          // A canonical GET happens outside this transaction. Re-check the
+          // uncertain-mirror proof under the channel lock before any enqueue.
+          const isolated=await t.query(`SELECT 1 FROM integration_jobs j
+            JOIN chatwoot_connections c ON c.organization_id=j.organization_id AND c.id=j.integration_id
+            WHERE j.organization_id=$1 AND j.id=$2 AND
+              (NOT EXISTS(SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=j.organization_id
+                AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN') OR (${independentHumanReply}))`,
+            [job.organization_id,job.id]);
+          if(!isolated.rowCount)throw new IntegrationError('ATTENDANCE_CONTROL_RECONCILIATION_REQUIRED',409);
         }
         if(nativeCsat&&(observation.credential_revision!==scope.credentialRevision||observation.channel_id!==scope.channelId||
           !('remoteMessageId' in observation.event)||observation.event.remoteMessageId!==data.messageId||observation.event.remoteConversationId!==data.conversationId))
