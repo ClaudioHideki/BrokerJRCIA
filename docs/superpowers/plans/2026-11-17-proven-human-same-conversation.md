@@ -17,6 +17,7 @@
 - [ ] GREEN: ampliar somente independentHumanReply em chatwoot-worker.ts com prova restrita ADR0004; revalidar antes do enqueue após GET canônico. Não alterar a regra de campanhas ou a tentativa antiga.
 - [x] RED adicional do retorno de status: a3325f8/run44086163883/job134049024387 teve45 aprovados e1falha esperada, nenhum PATCH recebido. A candidata intermediária de imagem02df64c foi cancelada antes da publicação; não foi implantada.
 - [ ] GREEN do status: permitir somente PATCH de recibo de uma resposta humana durável já SUCCEEDED e mapeada; não liberar POST, histórico ou mensagem sem confirmação do provedor.
+- [x] Revisão independente identificou recibo do segundo anexo bloqueado pelo vínculo ao firstId. RED b08c80d/run44087251041/job134052783218:46 aprovados/1falha esperada. Corrigir o vínculo dos irmãos pelo mapa do primeiro anexo para a mesma mensagem central e conversa física.
 - [ ] Rodar npm test, integração focada/ampla, typecheck/build e E2E com LAB2d468. Rever diff/segredos/licenças e main concorrente.
 - [ ] Publicar imagem Broker por SHA/digest; aplicar somente serviços de produto no Dokploy, sem maintenance/provision.
 - [ ] Conferir uma única saída para a intenção original nunca despachada, confirmação do provedor e presença no WhatsApp. Preservar UNKNOWN antigo e provar ausência de duplicata.

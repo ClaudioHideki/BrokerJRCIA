@@ -190,10 +190,17 @@ export function createChatwootWorker(options: ChatwootOptions) {
       JOIN chatwoot_conversations status_conversation ON status_conversation.organization_id=status_message.organization_id
         AND status_conversation.conversation_id=status_message.conversation_id AND status_conversation.integration_id=j.integration_id
       JOIN integration_jobs human_reply ON human_reply.organization_id=j.organization_id AND human_reply.integration_id=j.integration_id
-        AND human_reply.kind='CHATWOOT_REPLY' AND human_reply.status='SUCCEEDED' AND human_reply.message_id=status_message.id
+        AND human_reply.kind='CHATWOOT_REPLY' AND human_reply.status='SUCCEEDED'
         AND human_reply.payload->>'attendanceKind'='HUMAN_PUBLIC' AND human_reply.payload->>'outboundIntentId' IS NOT NULL
         AND human_reply.payload->>'messageId'=status_map.remote_message_id::text
         AND human_reply.payload->>'conversationId'=status_conversation.remote_conversation_id::text
+      JOIN chatwoot_messages first_status_map ON first_status_map.organization_id=human_reply.organization_id
+        AND first_status_map.integration_id=human_reply.integration_id AND first_status_map.message_id=human_reply.message_id
+        AND first_status_map.remote_message_id=status_map.remote_message_id
+      JOIN messaging_messages first_status_message ON first_status_message.organization_id=human_reply.organization_id
+        AND first_status_message.id=human_reply.message_id AND first_status_message.channel_id=c.channel_id
+        AND first_status_message.conversation_id=status_message.conversation_id
+        AND first_status_message.direction='OUTGOING' AND first_status_message.source='OPERATOR' AND first_status_message.is_historical=false
       JOIN chatwoot_accounts status_account ON status_account.organization_id=j.organization_id AND status_account.status='READY'
       JOIN chatwoot_destinations status_destination ON status_destination.organization_id=status_account.organization_id
         AND status_destination.base_url=status_account.base_url AND status_destination.approval_status='APPROVED'
