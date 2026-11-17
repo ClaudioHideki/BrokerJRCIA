@@ -118,7 +118,8 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('keeps live human intents, outb
       const groupSource=await client.linkContactInbox(consumer.accountId,groupContactId,consumer.inboxId,envelope.sourceId);
       const groupConversation=await client.createConversation(consumer.accountId,{inboxId:consumer.inboxId,contactId:groupContactId,sourceId:groupSource,status:'pending'});
       for(const media of [{file:'sample.png',mime:'image/png',kind:'image' as const},
-        {file:'sample.ogg',mime:'audio/ogg',kind:'audio' as const},{file:'sample.pdf',mime:'application/pdf',kind:'document' as const}]){
+        {file:'sample.ogg',mime:'audio/ogg',kind:'audio' as const},{file:'sample.pdf',mime:'application/pdf',kind:'document' as const},
+        {file:'synthetic-opus.ogg',mime:'audio/ogg',kind:'audio' as const}]){
         const bytes=readFileSync(join(process.env.HISTORY_LAB2_CHECKOUT!,'spec/assets',media.file));
         const caption='c'.repeat(1024),presentationText=`[Participante: 12345@lid]\n${caption}`,brokerMessageId=randomUUID();
         const id=await client.sendMedia(consumer.accountId,groupConversation,{bytes,mimeType:media.mime,kind:media.kind,fileName:media.file,caption},
@@ -211,7 +212,8 @@ it.skipIf(process.env.HISTORY_LAB2_E2E!=='true')('recovers native LIVE receipts 
    await db.database.pool.query('INSERT INTO chatwoot_conversations(organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id) VALUES($1,$2,$3,$4,$5,$6)',
     [t.org,t.integration,t.conversation,contactId,linked.source_id,remote.id]);
    const entries:({type:'TEXT';text:string}|{type:'MEDIA';mediaId:string;kind:'image'|'audio'|'document';fileName:string;caption:string;sourceKey:string})[]=[{type:'TEXT',text:'Olá, sincronização 🙂'}];
-   for(const fixture of [{file:'sample.png',mime:'image/png',kind:'image' as const},{file:'sample.ogg',mime:'audio/ogg',kind:'audio' as const},{file:'sample.pdf',mime:'application/pdf',kind:'document' as const}]){
+   for(const fixture of [{file:'sample.png',mime:'image/png',kind:'image' as const},{file:'sample.ogg',mime:'audio/ogg',kind:'audio' as const},
+    {file:'sample.pdf',mime:'application/pdf',kind:'document' as const},{file:'synthetic-opus.ogg',mime:'audio/ogg',kind:'audio' as const}]){
     const sourceKey=`synthetic-native-${randomUUID()}`,bytes=readFileSync(join(process.env.HISTORY_LAB2_CHECKOUT!,'spec/assets',fixture.file));
     const fileName=fixture.kind==='document'?'界'.repeat(100)+'.pdf':fixture.file;
     downloads.set(sourceKey,{bytes,mimeType:fixture.mime,kind:fixture.kind,fileName});

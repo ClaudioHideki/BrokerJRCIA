@@ -16,7 +16,7 @@ case $(git -C "$source_path" config --get remote.origin.url || true) in
 esac
 [[ $(git -C "$source_path" rev-parse HEAD) == "$HISTORY_LAB2_SHA" ]] || die 'LAB2 checkout SHA mismatch'
 [[ -z $(git -C "$source_path" status --porcelain) ]] || die 'LAB2 checkout must be clean'
-for file in Gemfile Gemfile.lock db/schema.rb spec/assets/sample.png spec/assets/sample.ogg spec/assets/sample.pdf; do
+for file in Gemfile Gemfile.lock db/schema.rb spec/assets/sample.png spec/assets/sample.ogg spec/assets/sample.pdf spec/assets/synthetic-opus.ogg; do
   [[ -f $source_path/$file ]] || die 'LAB2 source contract missing'
 done
 grep -q "ruby '3.4.12'" "$source_path/Gemfile" || die 'LAB2 Ruby version mismatch'
