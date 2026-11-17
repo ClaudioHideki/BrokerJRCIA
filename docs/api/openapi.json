@@ -4534,11 +4534,12 @@
                                   "create_task",
                                   "create_meeting",
                                   "service_desk_intake",
-                                  "service_desk_status"
+                                  "service_desk_status",
+                                  "service_desk_handoff"
                                 ],
                                 "type": "string"
                               },
-                              "maxItems": 5,
+                              "maxItems": 6,
                               "type": "array"
                             },
                             "owners": {
@@ -29241,11 +29242,12 @@
                                   "create_task",
                                   "create_meeting",
                                   "service_desk_intake",
-                                  "service_desk_status"
+                                  "service_desk_status",
+                                  "service_desk_handoff"
                                 ],
                                 "type": "string"
                               },
-                              "maxItems": 5,
+                              "maxItems": 6,
                               "type": "array"
                             },
                             "owners": {

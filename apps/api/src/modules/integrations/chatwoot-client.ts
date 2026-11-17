@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { ConversationAttributeDefinitionSchema } from '@jrc/contracts';
+import { ConversationAttributeDefinitionSchema,type AttendanceScope,type HumanTarget,type IntakeHandoffRequest } from '@jrc/contracts';
 import {
   CONVERSATION_EFFECT_PROTOCOL, ConversationEffectContextSchema,
-  ConversationEffectReceiptSchema, ConversationEffectRequestSchema,
+  ConversationEffectReceiptSchema, ConversationEffectRequestSchema,matchConversationEffectReceipt,
 } from '../automations/conversation-effect-protocol.js';
 import { createChatwootSafeFetch } from './chatwoot-safe-http.js';
 import {
@@ -252,10 +252,10 @@ export class ChatwootClient {
     if (data.account_id !== accountId || data.inbox_id !== inboxId) throw new ChatwootError('CHATWOOT_BINDING_MISMATCH', true);
     return data;
   }
-  async flowDomainCapabilities(accountId:number,inboxId:number,scope:{organizationId:string;integrationId:string}){
-    const query=new URLSearchParams({inbox_id:String(integer.parse(inboxId)),organization_id:effectIdentity.parse(scope.organizationId),integration_id:effectIdentity.parse(scope.integrationId),intake_protocol:'1'});
+  async flowDomainCapabilities(accountId:number,inboxId:number,scope:{organizationId:string;integrationId:string;intakeProtocol?:'1'|'2'}){
+    const query=new URLSearchParams({inbox_id:String(integer.parse(inboxId)),organization_id:effectIdentity.parse(scope.organizationId),integration_id:effectIdentity.parse(scope.integrationId),intake_protocol:scope.intakeProtocol??'1'});
     const data=parseEffect(z.strictObject({protocol:z.literal('jrc-domain-commands/1'),account_id:integer,inbox_id:integer,
-      organization_id:effectIdentity,integration_id:effectIdentity,commands:z.array(z.enum(['create_lead','create_task','create_meeting','service_desk_intake','service_desk_status'])).max(5),
+      organization_id:effectIdentity,integration_id:effectIdentity,commands:z.array(z.enum(['create_lead','create_task','create_meeting','service_desk_intake','service_desk_status','service_desk_handoff'])).max(6),
       owners:z.array(z.strictObject({id:integer,name:z.string().min(1).max(160)})).max(200)})
       .refine(value=>new Set(value.commands).size===value.commands.length&&new Set(value.owners.map(owner=>owner.id)).size===value.owners.length),
       await this.request('GET',`${this.account(accountId)}/jrc_domain_commands/capabilities?${query}`));
@@ -364,6 +364,23 @@ export class ChatwootClient {
   }
   async handoffFlowConversation(accountId: number, conversationId: number) {
     await this.request('POST', this.account(accountId) + `/conversations/${integer.parse(conversationId)}/toggle_status`, { status: 'open' });
+  }
+  async handoffIntakeConversation(accountId:number,conversationId:number,input:{scope:AttendanceScope;operationId:string;dispatchProof:string;
+    target:HumanTarget;intake:IntakeHandoffRequest;authorize:()=>Promise<unknown>}){
+    const capabilities=await this.flowDomainCapabilities(accountId,input.scope.inboxId,
+      {organizationId:input.scope.organizationId,integrationId:input.scope.integrationId,intakeProtocol:'2'});
+    if(!capabilities.commands.includes('service_desk_handoff'))throw new ChatwootError('CHATWOOT_INTAKE_HANDOFF_UNAVAILABLE');
+    const context=await this.flowEffectContext(accountId,input.scope.inboxId,conversationId);
+    if(context.status!=='pending'||context.assignee_id!==null||context.team_id!==null)throw new ChatwootError('CHATWOOT_HANDOFF_CONTROL_CHANGED');
+    const request=ConversationEffectRequestSchema.parse({organization_id:input.scope.organizationId,operation_id:input.operationId,
+      dispatch_proof:input.dispatchProof,inbox_id:String(input.scope.inboxId),remote_contact_id:String(context.remote_contact_id),
+      expected_control_revision:String(context.control_revision),operation:'domain',integration_id:input.scope.integrationId,
+      value_json:JSON.stringify({...input.intake,command:'service_desk_handoff',phase:'handoff',
+        target:{team_id:input.target.teamId,agent_id:input.target.agentId}})});
+    await input.authorize();
+    const receipt=await this.applyFlowEffect(accountId,conversationId,request);
+    if(!matchConversationEffectReceipt(receipt,{context,request}).matched)throw new ChatwootError('CHATWOOT_INVALID_RESPONSE',false,true);
+    return receipt;
   }
   async createDashboardApp(accountId: number, input: DashboardAppPayload): Promise<DashboardApp> {
     return dashboardApp.parse(await this.request('POST', this.account(accountId) + '/dashboard_apps', input));

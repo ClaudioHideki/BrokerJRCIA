@@ -88,6 +88,14 @@ export function createNativeHandoffService(options:Options) {
           const account=await repository.guard(t,op,true);op=await repository.stage(t,op,'OPEN_DISPATCHED');return account;
         });
         dispatched=true;
+        if(s.intakeRequest){
+          if(!s.intakeDispatchProof)throw new NativeHandoffError('HANDOFF_INTAKE_PROOF_MISSING');
+          await options.client(account).handoffIntakeConversation(s.scope.accountId,s.remoteConversationId,
+            {scope:s.scope,operationId:op.id,dispatchProof:s.intakeDispatchProof,target:s.target,intake:s.intakeRequest,authorize:()=>guard(op,true)});
+          await confirmObservedTarget(op,await canonical(op,true,true));
+          await options.transact(op.organizationId,t=>repository.confirm(t,op));
+          return {kind:'SENT',remoteReference:`chatwoot-handoff:${op.id}`};
+        }
         await options.client(account).handoffFlowConversation(s.scope.accountId,s.remoteConversationId);
         unassigned(op,await canonical(op,true),false);
         op=await options.transact(op.organizationId,t=>repository.stage(t,op,'OPENED'));

@@ -115,3 +115,15 @@ a migration por rollback destrutivo. Preservar operações incertas para investi
 
 Os testes sintéticos usam clientes HTTP falsos e PostgreSQL real isolado; não
 comprovam login, tokens, permissões, callbacks HTTPS ou atribuição da central real.
+
+## Intake local com transferência independente — 17/11/2026
+
+O HANDOFF nativo aceita `intake` opcional. O motor renderiza a coleta e persiste o pedido no snapshot durável; não executa IO GLPI antes de transferir. O destino JRC precisa anunciar `service_desk_handoff` no protocolo de intake 2.
+
+No JRC compatível, o comando registra a demanda local, abre/atribui a conversa e cria o recibo na mesma transação. Somente após o commit o job de entrega pode consultar/escrever no GLPI. Demora, recusa ou timeout GLPI não desfazem o atendimento humano. Configuração de coleta ausente/desabilitada ou dados inválidos produzem aviso privado, preservando a transferência e o histórico.
+
+A coleta renderizada tem limites por campo e 6.500 bytes agregados. Conteúdo que excede esses limites segue com marcador de revisão manual e não é truncado para fabricar chamado. Dados de configuração/alvo continuam validados no servidor; o usuário informado pelo contato não concede autoridade.
+
+Resposta perdida conserva UNKNOWN e usa a conciliação nativa por GET. Confirmar atribuição por leitura não comprova criação de demanda nem protocolo GLPI e não autoriza repetir POST. As garantias do handoff anterior permanecem para grafos sem `intake`.
+
+Validação local: 170 testes direcionados e typecheck aprovados. Publicação de imagem, implantação, vínculo da versão de Flow e homologação física são provas separadas. Nenhuma chamada ao GLPI do cliente foi autorizada nesses testes.

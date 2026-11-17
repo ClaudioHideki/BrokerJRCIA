@@ -1,4 +1,4 @@
-import type { AttendanceScope, HumanTarget } from '@jrc/contracts';
+import type { AttendanceScope, HumanTarget,IntakeHandoffRequest } from '@jrc/contracts';
 import type { OrganizationTransaction, TenantTransaction } from '../../db/tenant-transaction.js';
 import type { OutboxRow } from '../automations/repository.js';
 import type { OutboxDispatchResult } from '../automations/service.js';
@@ -10,6 +10,7 @@ export interface HandoffSnapshot {
   scope:AttendanceScope; origin:string; credentialRevision:number; bindingId:string; bindingRevision:number;
   automationId:string; version:number; ownerRevision:number; controlRevision:number;
   sessionId:string; sessionRevision:number; cycle:number; remoteConversationId:number; target:HumanTarget;
+  intakeRequest?:IntakeHandoffRequest;intakeDispatchProof?:string;
 }
 export interface HandoffOperation {
   id:string; organizationId:string; outboxId:string; executionId:string; channelId:string; conversationId:string;

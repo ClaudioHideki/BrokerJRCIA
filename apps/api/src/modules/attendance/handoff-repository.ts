@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { AUTOMATION_ORIGIN, AutomationHandoffConfigV1Schema } from '@jrc/contracts';
+import { AUTOMATION_ORIGIN, AutomationHandoffDispatchV1Schema } from '@jrc/contracts';
 import type { TenantTransaction } from '../../db/tenant-transaction.js';
 import type { OutboxRow } from '../automations/repository.js';
 import { readChatwootAccount } from '../integrations/chatwoot-context.js';
@@ -107,7 +107,7 @@ export function createPostgresHandoffRepository():HandoffRepository {
         [item.organizationId,item.id,item.executionId,item.leaseToken])).rows[0];
       if(!row)throw new NativeHandoffError('HANDOFF_LEASE_LOST');
       const bad=async(error:string)=>({operation:await insertFailure(tx,item,c,error),fresh:true});
-      const config=AutomationHandoffConfigV1Schema.safeParse(row.payload);
+      const config=AutomationHandoffDispatchV1Schema.safeParse(row.payload);
       if(!config.success)return bad('HANDOFF_DESTINATION_REQUIRED_REPUBLISH');
       if(!authority(c)||c.mode!=='BOT')return bad('HANDOFF_AUTHORITY_CHANGED');
       let scope;
@@ -149,7 +149,8 @@ export function createPostgresHandoffRepository():HandoffRepository {
         WHERE organization_id=$1 AND conversation_id=$2 RETURNING revision`,[item.organizationId,c.conversationId])).rows[0]!;
       const snapshot:HandoffSnapshot={scope,origin:account.base_url,credentialRevision:account.credential_version,bindingId:c.bindingId,bindingRevision:c.bindingRevision,
         automationId:c.automationId,version:c.version,ownerRevision:c.ownerRevision,controlRevision:control.revision,sessionId:session.id,sessionRevision:session.revision,
-        cycle:c.cycle!,remoteConversationId:Number(c.remoteId),target:config.data.target};
+        cycle:c.cycle!,remoteConversationId:Number(c.remoteId),target:config.data.target,
+        ...(config.data.intakeRequest?{intakeRequest:{...config.data.intakeRequest,episode_key:item.executionId},intakeDispatchProof:randomUUID()}:{})};
       const operation=(await tx.query<HandoffOperation>(`INSERT INTO attendance_handoff_operations(organization_id,outbox_id,execution_id,channel_id,conversation_id,integration_id,lease_token,snapshot)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING ${columns}`,[item.organizationId,item.id,c.executionId,c.channelId,c.conversationId,scope.integrationId,item.leaseToken,JSON.stringify(snapshot)])).rows[0]!;
       return {operation,fresh:true};

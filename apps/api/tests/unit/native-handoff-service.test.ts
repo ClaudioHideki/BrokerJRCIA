@@ -16,6 +16,7 @@ function fixture() {
   let canonical={id:21,account_id:7,inbox_id:9,status:'pending',meta:{sender:{id:8},assignee:null as null|{id:number;type:string},team:null as null|{id:number}}};
   const network=(event:string)=>{expect(locked).toBe(false);events.push(event);};
   const client={attendanceConversation:vi.fn(async()=>{network('read');return structuredClone(canonical);}),
+    handoffIntakeConversation:vi.fn(async()=>{network('intake-handoff');canonical.status='open';canonical.meta.team={id:3};}),
     assignAttendanceConversation:vi.fn(async()=>{network('assign');canonical.meta.team={id:3};}),
     handoffFlowConversation:vi.fn(async()=>{network('open');canonical.status='open';})};
   const repository:HandoffRepository={prepare:vi.fn(async()=>({operation:structuredClone(operation),fresh})),
@@ -30,6 +31,27 @@ function fixture() {
 }
 
 describe('durable native handoff',()=>{
+  it('uses one local atomic handoff with intake and never waits for a GLPI command',async()=>{
+    const f=fixture();
+    Object.assign(f.operation.snapshot!,{intakeRequest:{configuration_id:7,configuration_revision:2,episode_key:'11111111-1111-4111-8111-111111111111',
+      input:{system:'example',location:'south',reason:'request',subject:'access',identifier:'00000000000',email:'test@example.invalid',description:'Synthetic'}},
+      intakeDispatchProof:'22222222-2222-4222-8222-222222222222'});
+    expect(await f.service().dispatch(f.item)).toMatchObject({kind:'SENT'});
+    expect(f.client.handoffIntakeConversation).toHaveBeenCalledOnce();
+    expect(f.client.handoffFlowConversation).not.toHaveBeenCalled();
+    expect(f.client.assignAttendanceConversation).not.toHaveBeenCalled();
+    expect(f.canonical.status).toBe('open');expect(f.canonical.meta.team?.id).toBe(3);
+  });
+  it('reconciles a lost atomic handoff response by reads only',async()=>{
+    const f=fixture();
+    Object.assign(f.operation.snapshot!,{intakeRequest:{configuration_id:7,configuration_revision:2,
+      episode_key:'11111111-1111-4111-8111-111111111111',input:{}},intakeDispatchProof:'22222222-2222-4222-8222-222222222222'});
+    f.client.handoffIntakeConversation.mockImplementationOnce(async()=>{f.canonical.status='open';f.canonical.meta.team={id:3};throw Error('TIMEOUT');});
+    await expect(f.service().dispatch(f.item)).rejects.toThrow('HANDOFF_REMOTE_OUTCOME_UNKNOWN');
+    f.restart();expect(await f.service().reconcileOnce('tenant-a')).toMatchObject({state:'APPLIED'});
+    expect(f.client.handoffIntakeConversation).toHaveBeenCalledTimes(1);
+    expect(f.client.assignAttendanceConversation).not.toHaveBeenCalled();
+  });
   it('confirms a distributing team only after validating the actual human in that team and inbox',async()=>{
     const f=fixture(),catalog=await f.attendanceService.catalog();
     f.attendanceService.catalog.mockResolvedValue({...catalog,teams:[{id:3,name:'Synthetic',autoAssignment:true}]} as AttendanceCatalog);
