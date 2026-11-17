@@ -30,3 +30,9 @@ Veja [TASKS.md](TASKS.md). Roadmaps e planos anteriores continuam válidos no se
 - [ ] Aceite físico e reconciliação operacional de grupos, distribuição, acervo antigo e Meta oficial. Não ativar captura ou reenviar UNKNOWN por inferência.
 
 [Recibo da publicação](docs/implementation/release-20261116-result.md).
+
+## Incremento outbound — 17/11/2026
+
+- [x] Publicar admissão restrita da resposta humana comprovada e PATCH de recibos multipart após TDD/CI/E2E.
+- [x] Confirmar entrega real de texto, imagem e PDF; manter UNKNOWN antigo protegido.
+- [ ] Concluir diagnóstico de MIME do áudio, segundo contato e inspeção final de runtime. [Recibo parcial](docs/implementation/outbound-repair-20261117-result.md).

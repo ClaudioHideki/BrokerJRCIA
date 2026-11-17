@@ -1,6 +1,13 @@
 <!-- jrc-operational-init:v1 -->
 # Backlog operacional — Broker JRC
 
+## Estado vigente — reparo outbound de 17/11/2026
+
+- [x] **OUTBOUND-20261117:** Intenção humana comprovada e retorno de status multipart corrigidos por TDD; CI/E2E/imagem API e deploy DONE. Main4919ace preserva a base anterior. [Recibo e limites](docs/implementation/outbound-repair-20261117-result.md).
+- [x] **OUTBOUND-REAL-20261117:** Intenção original e novo texto chegaram; imagem e PDF sintéticos READ. UNKNOWN antigo preservado, sem replay manual.
+- [ ] **AUDIO-20261117:** Ogg sintético rejeitado MEDIA_TYPE_UNSUPPORTED antes de providerID. Identificar MIME HTTP real, reproduzir RED e corrigir; segundo contato autorizado ainda sem teste. Navegador travou durante diagnóstico. Não considerar mídia totalmente aceita.
+- [ ] **RUNTIME-20261117:** Reter inspeção final das nove réplicas e operational-status; deploy DONE e containers engine/PG/Redis/web preservados já observados.
+
 ## Estado vigente — publicação de 16/11/2026
 
 - [x] **RELEASE-20261116:** CI final, E2E Broker/LAB2, imagens e deploy dos dois produtos concluídos. Runtime e schema conferidos; [evidências e digests](docs/implementation/release-20261116-result.md).

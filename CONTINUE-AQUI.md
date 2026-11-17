@@ -1,3 +1,11 @@
+# Reparo outbound publicado; áudio ainda pendente — 17/11/2026
+
+Estado vigente: [recibo e limites de 17/11](docs/implementation/outbound-repair-20261117-result.md). Código funcional Broker4919ace na main e imagem API8af6 publicada/assinada; Dokploy DONE. LAB2 integrado d468 restaurado por imagem21dfe, main8977 sem novidade. Intenção original e texto sintético READ; imagem/PDF READ. Áudio Ogg FAILED/MEDIA_TYPE_UNSUPPORTED e sem providerID. Não repetir o lote já parcialmente entregue nem tocar UNKNOWN antigo. Segundo contato autorizado ainda não testado. Controle do navegador travou durante diagnóstico do MIME; recuperar acesso e ler consulta Rails pendente antes de supor causa ou fazer novo envio. Nenhum banco restaurado, backup/dump/restore ou maintenance/provision executado.
+
+Os registros abaixo preservam o histórico das fases anteriores.
+
+---
+
 # Publicação e deploy concluídos — 16/11/2026
 
 Estado vigente: [recibo de publicação e limites operacionais](docs/implementation/release-20261116-result.md). Broker API/web fonte966, main funcionala6 e LAB2d468 publicados e verificados em runtime. Migração0095 aplicada; nove serviços API/worker e web nos digests esperados, operacionalREADY. Receptor LAB2 promovido primeiro, schema20261116190000, Rails/Sidekiq conferidos. Seis capabilities200 e paginação Minhas25→34 confirmadas. Engine e PostgreSQL preservados. Nenhum novo reciboLIVE na observação; aceite físico, grupos, distribuição, histórico legado e arquivos antigos permanecem pendentes. Não interpretar este deploy como sincronização100%.
