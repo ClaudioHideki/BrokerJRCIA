@@ -28,3 +28,9 @@ The public API documentation includes Swagger UI 5.32.6, supplied by the pinned
 licensed under Apache-2.0. The upstream LICENSE, NOTICE and bundled dependency
 notices are preserved under `scripts/docs/vendor/` and served with the portal.
 No upstream API credentials, engine UI or proprietary source are included.
+# Local build/test dependency patch
+
+`vendor/picomatch` contains a local MIT-licensed fork of picomatch 4.0.7
+by Jon Schlinkert and contributors. The license and original package manifest
+are retained there. See `vendor/picomatch/JRC-PATCH.md` for provenance,
+GHSA-fc5q-39xc-vjpf mitigation, behavioral limits and replacement policy.

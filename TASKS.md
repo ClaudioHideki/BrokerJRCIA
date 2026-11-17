@@ -3,6 +3,9 @@
 
 ## Estado vigente — reparo outbound de 17/11/2026
 
+- [ ] **MEDIA-AUDIT-20261117:** Pesquisa confrontada com código/runtime: MIME Opus comprovado; histórico desativado, catálogo vencido e projeções bloqueadas. Ver docs/implementation/media-investigation-20261117.md. Candidata isolada preserva main f6b9ce0; publicação/aceite continuam pendentes.
+- [ ] **CI-SECURITY-20261117:** Falha do audit reproduzida; backport local do picomatch com RED/GREEN, licença e gate preservado. ADR0005; nova CI do SHA final necessária.
+
 - [x] **OUTBOUND-20261117:** Intenção humana comprovada e retorno de status multipart corrigidos por TDD; CI/E2E/imagem API e deploy DONE. Main4919ace preserva a base anterior. [Recibo e limites](docs/implementation/outbound-repair-20261117-result.md).
 - [x] **OUTBOUND-REAL-20261117:** Intenção original e novo texto chegaram; imagem e PDF sintéticos READ. UNKNOWN antigo preservado, sem replay manual.
 - [ ] **AUDIO-20261117:** Ogg sintético rejeitado MEDIA_TYPE_UNSUPPORTED antes de providerID. Identificar MIME HTTP real, reproduzir RED e corrigir; segundo contato autorizado ainda sem teste. Navegador travou durante diagnóstico. Não considerar mídia totalmente aceita.

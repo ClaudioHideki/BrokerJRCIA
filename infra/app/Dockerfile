@@ -2,6 +2,7 @@ FROM node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733cee
 
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY vendor/picomatch vendor/picomatch
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
