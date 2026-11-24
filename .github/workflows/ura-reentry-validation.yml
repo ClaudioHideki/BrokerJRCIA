@@ -1,0 +1,36 @@
+name: URA navigation and resolved attendance regression
+on:
+  push:
+    branches: [codex/broker-ura-navigation-20261124]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ura:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
+        env:
+          POSTGRES_DB: lab_broker_ci
+          POSTGRES_USER: lab_broker_admin
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U lab_broker_admin -d lab_broker_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_ADMIN_URL: postgresql://lab_broker_admin@127.0.0.1:5432/lab_broker_ci
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test -- apps/api/tests/unit/automation-menu-back.test.ts apps/web/src/automations/node-editors/EntryEditor.reentry.test.tsx tests/security-history-batches.test.ts --maxWorkers=2
+      - run: npm run test:integration -- apps/api/tests/integration/attendance-resolved-reentry.test.ts --maxWorkers=1

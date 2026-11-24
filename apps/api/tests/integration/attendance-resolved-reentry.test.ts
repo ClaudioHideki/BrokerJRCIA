@@ -35,6 +35,7 @@ describe('opt-in reentry after a resolved JRC attendance',()=>{
    VALUES($1::uuid,$2,$3,$4,'OUTGOING','OPERATOR','{"type":"TEXT","text":"Synthetic"}','UNKNOWN',$1::text,$5)`,[hold,resolved.org,resolved.channel,resolved.conversation,'b'.repeat(64)]);
   resolved.canonical.status='resolved';resolved.canonical.updated_at++;await resolved.record();await resolved.human();
   await db.database.pool.query("UPDATE messaging_messages SET state='SENT' WHERE id=$1",[hold]);
+  await db.database.pool.query("UPDATE integration_jobs SET status='SUCCEEDED' WHERE organization_id=$1 AND message_id=$2",[resolved.org,hold]);
   for(const t of [active,disabled,resolved])expect(await db.transact(t.org,tx=>settleResolvedPhysicalCycles(tx,t.org))).toBe(0);
  });
  it('preserves an uncertain outgoing message and closes only after its receipt is settled',async()=>{
@@ -44,6 +45,8 @@ describe('opt-in reentry after a resolved JRC attendance',()=>{
   t.canonical.status='resolved';t.canonical.updated_at++;await t.record();
   expect(await db.transact(t.org,tx=>settleResolvedPhysicalCycles(tx,t.org))).toBe(0);
   await db.database.pool.query("UPDATE messaging_messages SET state='SENT' WHERE id=$1",[id]);
+  expect(await db.transact(t.org,tx=>settleResolvedPhysicalCycles(tx,t.org))).toBe(0);
+  await db.database.pool.query("UPDATE integration_jobs SET status='SUCCEEDED' WHERE organization_id=$1 AND message_id=$2",[t.org,id]);
   const contact=(await db.database.pool.query('SELECT contact_id FROM messaging_conversations WHERE id=$1',[t.conversation])).rows[0].contact_id;
   const next=await db.transact(t.org,tx=>createPostgresMessagingRepository().getOrCreateConversation(tx,{id:randomUUID(),organizationId:t.org,channelId:t.channel,contactId:contact}));
   expect(next.id).not.toBe(t.conversation);expect(next.mode).toBe('BOT');
