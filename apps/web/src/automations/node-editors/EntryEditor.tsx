@@ -10,10 +10,13 @@ export function EntryEditor({node,editable,onChange}:Props){
   <p>Uma automação vinculada por caixa recebe mensagens. Conversas em andamento continuam na versão em que começaram.</p>
   {!modern?<button type="button" onClick={()=>patch({entryConfigVersion:1,trigger:'MESSAGE_RECEIVED',reentry:'ALWAYS'})}>Configurar condições de entrada</button>:<>
    <p>Gatilho: mensagem recebida. Outros eventos ainda não estão disponíveis neste executor.</p>
-   <label>Reexecução<select value={String(data.reentry)} onChange={event=>patch({reentry:event.target.value})}>
+   <label>Reexecução<select value={String(data.reentry)} onChange={event=>patch({reentry:event.target.value,...(event.target.value!=='ALWAYS'?{restartAfterResolution:false}:{})})}>
     <option value="ALWAYS">Após terminar, permitir nova execução</option><option value="ONCE_PER_CONVERSATION">Uma vez por conversa nesta caixa</option>
    </select></label>
    <p>O limite considera o histórico deste Flow, inclusive versões anteriores. O Playground começa uma conversa sintética nova.</p>
+   <label><input type="checkbox" checked={data.menuNavigationVersion===1} onChange={event=>{if(!editable)return;const next={...data};if(event.target.checked)next.menuNavigationVersion=1;else delete next.menuNavigationVersion;onChange(next);}}/>Permitir voltar ao menu anterior (0 ou voltar)</label>
+   <label><input type="checkbox" checked={data.restartAfterResolution===true} disabled={data.reentry!=='ALWAYS'} onChange={event=>patch({restartAfterResolution:event.target.checked})}/>Novo atendimento após resolver no JRC</label>
+   <p>Na conexão Broker, a próxima mensagem após a resolução confirmada inicia um novo atendimento. Atendimentos humanos em andamento são preservados.</p>
    <label><input type="checkbox" checked={Boolean(keywords)} onChange={event=>{if(!editable)return;if(event.target.checked)keyword({mode:'CONTAINS',terms:[''],quantifier:'ANY',ignoreCase:true,ignoreAccents:true});else{const next={...data};delete next.keywords;onChange(next);}}}/>Filtrar primeira mensagem da execução</label>
    {keywords&&<>
     <label>Palavras-chave (uma por linha)<textarea rows={4} value={Array.isArray(keywords.terms)?keywords.terms.join('\n'):''} onChange={event=>keyword({terms:event.target.value.split('\n')})}/></label>

@@ -1,6 +1,15 @@
 <!-- jrc-operational-init:v1 -->
 # Backlog operacional — Broker JRC
 
+## Incremento de 24/11/2026
+
+- [x] Implementar navegação opcional 0/voltar com histórico do caminho e contexto, sem renumerar opções.
+- [x] Implementar novo ciclo após resolução JRC comprovada, sem envio ou replay, preservando humanos e tenants.
+- [ ] Validar CI PostgreSQL do SHA final, publicar imagens e conferir runtime antes da ativação seletiva.
+- [ ] Homologar novo atendimento e retorno no WhatsApp com nova mensagem real.
+
+ADR0006 registra as políticas e limites.
+
 ## Estado vigente — reparo outbound de 17/11/2026
 
 - [ ] **MEDIA-AUDIT-20261117:** Pesquisa confrontada com código/runtime: MIME Opus comprovado; histórico desativado, catálogo vencido e projeções bloqueadas. Ver docs/implementation/media-investigation-20261117.md. Candidata isolada preserva main f6b9ce0; publicação/aceite continuam pendentes.

@@ -1,3 +1,4 @@
+import {settleResolvedPhysicalCycles} from '../attendance/resolved-cycle.js';
 import { isOrganizationActive } from "../tenancy/operational-limits.js";
 import { transitionChannelOwner } from '../attendance/transition.js';
 import { AttendanceError } from '../attendance/types.js';
@@ -655,6 +656,8 @@ export function createPostgresMessagingRepository(): MessagingRepository {
     },
 
     async getOrCreateConversation(transaction, input) {
+      const previous=(await transaction.query<{id:string}>(`SELECT id FROM messaging_conversations WHERE organization_id=$1 AND channel_id=$2 AND contact_id=$3 AND remote_conversation_key IS NULL`,[input.organizationId,input.channelId,input.contactId])).rows[0];
+      if(previous)await settleResolvedPhysicalCycles(transaction,input.organizationId,previous.id);
       const result = await transaction.query<ConversationDatabaseRow>(
         `INSERT INTO messaging_conversations
            (id, organization_id, channel_id, contact_id, bot_public_id, bot_origin_reference)

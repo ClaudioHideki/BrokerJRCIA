@@ -4,6 +4,8 @@ import type {FlowGraph} from './flows.js';
 export const AutomationEntryConfigSchema=z.object({
   entryConfigVersion:z.literal(1),trigger:z.literal('MESSAGE_RECEIVED'),
   reentry:z.enum(['ALWAYS','ONCE_PER_CONVERSATION']),
+  restartAfterResolution:z.boolean().optional(),
+  menuNavigationVersion:z.literal(1).optional(),
   keywords:z.strictObject({
     mode:z.enum(['EXACT','CONTAINS','STARTS_WITH','ENDS_WITH']),
     terms:z.array(z.string().trim().min(1).max(200)).min(1).max(50),

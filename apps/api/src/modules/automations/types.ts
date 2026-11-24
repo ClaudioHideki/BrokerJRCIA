@@ -8,6 +8,7 @@ export interface RuntimeState {
   runtimeStateVersion?:1|2;
   automationId:string; version:number; nodeId:string|null; variables:Record<string,RuntimeJson>; steps:number;
   stack:RuntimeFrame[]; waiting?:{kind:'EVENT'|'DELAY'|'IO';nodeId:string;wakeAt?:number;waitId?:string;deadlineAt?:number;invalidAttempts?:number;inputConfigVersion?:3};
+  menuTrail?:{automationId:string;version:number;nodeId:string;stack:RuntimeFrame[];variables:RuntimeState['variables']}[];
   boxDirectory?:BoxDirectorySnapshot;
   boxSelection?:{routeKey:string;agentId:number;language:'pt'|'en';menuNodeId:string};
 }

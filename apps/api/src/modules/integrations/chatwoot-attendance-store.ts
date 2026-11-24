@@ -1,3 +1,4 @@
+import {settleResolvedPhysicalCycles} from '../attendance/resolved-cycle.js';
 import {requireCampaignIntent} from './chatwoot-campaign-authority.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -99,6 +100,7 @@ async function applyObservation(tx:TenantTransaction,s:ChatwootObservationScope,
   await tx.query(`UPDATE chatwoot_attendance_observations SET conversation_id=$3,cycle=$4,disposition=$5,applied_at=now()
     WHERE organization_id=$1 AND id=$2`,[s.organizationId,observation.id,control.conversation_id,control.cycle,hasControl&&!stale||selectedExecutor||e.kind==='NATIVE_CSAT'&&e.mayForwardReply?'APPLIED':'IGNORED']);
   await queueReply(tx,s,observation);
+  if(e.kind==='CONVERSATION_CONTROL'&&e.status==='resolved'&&!stale)await settleResolvedPhysicalCycles(tx,s.organizationId,control.conversation_id);
 }
 
 /** Authenticated callback admission: no network and no dependency on transport queue progress. */

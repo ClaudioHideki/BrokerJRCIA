@@ -43,6 +43,14 @@ export function runtimeText(value: RuntimeJson | undefined): string {
 }
 
 export function assertRuntimeState(state: RuntimeState): void {
+  if(state.menuTrail!==undefined){
+    if(!Array.isArray(state.menuTrail)||state.menuTrail.length>100)throw new Error('AUTOMATION_MENU_HISTORY_INVALID');
+    for(const item of state.menuTrail){
+      if(!item||typeof item.automationId!=='string'||!Number.isSafeInteger(item.version)||item.version<1
+        ||typeof item.nodeId!=='string'||!item.nodeId.length||item.nodeId.length>150||!Array.isArray(item.stack)||!item.variables||typeof item.variables!=='object'||Array.isArray(item.variables))throw new Error('AUTOMATION_MENU_HISTORY_INVALID');
+      runtimeJson(item);
+    }
+  }
   for (const value of Object.values(state.variables)) runtimeJson(value);
   if (Buffer.byteLength(JSON.stringify(state), 'utf8') > RUNTIME_STATE_BYTES) throw new Error('AUTOMATION_STATE_TOTAL_LIMIT');
 }

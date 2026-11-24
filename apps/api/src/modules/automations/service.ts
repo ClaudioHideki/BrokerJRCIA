@@ -10,6 +10,7 @@ import { createPostgresMessagingRepository, type MessagingRepository } from '../
 import { claimIdempotency, completeIdempotencyRecord, hashIdempotencyRequest } from '../instances/idempotency.js';
 import { automationAvailability, readAutomationAccess } from './availability.js';
 import { lockOwnershipMutations,readOwnerRevision,transitionChannelOwner } from '../attendance/transition.js';
+import {settleResolvedPhysicalCycles} from '../attendance/resolved-cycle.js';
 import { lockAttendanceChannel } from '../attendance/repository.js';
 import type { HandoffReadiness, PreparedHandoffReadiness } from '../attendance/handoff-readiness.js';
 import { readAttendanceDiagnostic } from '../attendance/diagnostics.js';
@@ -267,7 +268,7 @@ export function createEventRouter(options:AutomationServiceOptions){
     const routed=await repository.routeEvent(tx,{org,eventId,executionId:randomUUID(),correlationId:randomUUID(),channelId:event.channelId,conversationId:event.conversationId??null,eventKey:event.eventKey,input});
     return routed?{duplicate:false,execution:execution(routed.execution),resumed:routed.resumed}:{duplicate:false,execution:null};
   };
-  return {routeWithinTransaction,route:(org:string,event:RouteAutomationEvent)=>options.enabled===false?Promise.resolve({duplicate:false,execution:null}):options.transact(org,tx=>routeWithinTransaction(tx,org,event))};
+  return {settleResolved:(org:string)=>options.enabled===false?Promise.resolve(0):options.transact(org,tx=>settleResolvedPhysicalCycles(tx,org)),routeWithinTransaction,route:(org:string,event:RouteAutomationEvent)=>options.enabled===false?Promise.resolve({duplicate:false,execution:null}):options.transact(org,tx=>routeWithinTransaction(tx,org,event))};
 }
 
 export function createExecutionService(options:AutomationServiceOptions){

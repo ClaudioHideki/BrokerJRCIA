@@ -13,7 +13,7 @@ export interface MessagingWorkerOptions {
   captureQrBinding?:(channel:MessagingChannel)=>Promise<{assert(tx:TenantTransaction):Promise<void>}|undefined>;
   groupAutomation?: Pick<ReturnType<typeof createGroupAutomationRuntime>, 'dispatchOnce'>;
   automationRuntimeEnabled?:boolean;
-  automations?:{route(organizationId:string,event:{channelId:string;conversationId:string;eventKey:string;text:string;payload?:Record<string,unknown>;mediaMessageId?:string}):Promise<unknown>};
+  automations?:{settleResolved?(org:string):Promise<number>;route(organizationId:string,event:{channelId:string;conversationId:string;eventKey:string;text:string;payload?:Record<string,unknown>;mediaMessageId?:string}):Promise<unknown>};
   flows?: Pick<ReturnType<typeof createFlowService>,'runTurn'|'settleHandoffs'>;
   prepareMedia?: DispatchPorts["prepareMedia"];
   repository: MessagingRepository;
@@ -42,6 +42,7 @@ export function createMessagingWorker(options: MessagingWorkerOptions) {
     async runOnce(organizationId: string): Promise<void> {
       if(repository.recoverQrOutboundObservations)await transact(organizationId,tx=>repository.recoverQrOutboundObservations!(tx,organizationId));
       await options.flows?.settleHandoffs(organizationId);
+      await options.automations?.settleResolved?.(organizationId);
       // The same worker/tenant turn dispatches the explicit GROUP recipient.
       // Its durable marker lives in the existing messaging outbox/QR ledger.
       await options.groupAutomation?.dispatchOnce(organizationId);

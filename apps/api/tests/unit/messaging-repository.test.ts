@@ -377,7 +377,7 @@ describe('PostgresMessagingRepository panel and provisioning operations', () => 
       consentStatus: CONTACT.consentStatus,
       consentUpdatedAt: CONTACT.consentUpdatedAt,
     })).resolves.toEqual(CONTACT);
-    await expect(repository.getOrCreateConversation(transactionReturning([CONVERSATION]), {
+    await expect(repository.getOrCreateConversation(transactionReturning([], [CONVERSATION]), {
       id: CONVERSATION_ID,
       organizationId: ORGANIZATION_ID,
       channelId: CHANNEL_ID,

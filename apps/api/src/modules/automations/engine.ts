@@ -41,6 +41,8 @@ export async function executeAutomation(
 ):Promise<RuntimeResult>{
   if(input.media&&!previous?.waiting)throw new Error('AUTOMATION_INPUT_MEDIA_VERSION_MISMATCH');
   const dependencyPolicy=publishedDependencyPolicy(root.graph);
+  const menuNavigation=root.graph.nodes.find(node=>node.type==='start')?.data.menuNavigationVersion===1;
+  const backHint=menuNavigation?'Digite 0 ou voltar para retornar ao menu anterior.':'';
   const stateVersion=runtimeStateVersion(previous,root.runtimeStateVersion);
   const variables:RuntimeState['variables']=Object.create(null) as RuntimeState['variables'];
   for(const [key,value] of Object.entries(previous?.variables??{}))if(safeKey(key))variables[key]=runtimeJson(stateVersion===1?string(value):value);
@@ -68,7 +70,22 @@ export async function executeAutomation(
     const waiting=published.graph.nodes.find(node=>node.id===state.waiting!.nodeId);
     if(!waiting)throw new Error('AUTOMATION_WAIT_NODE_MISSING');
     if(input.media&&(waiting.type!=='input'||waiting.data.inputConfigVersion!==3))throw new Error('AUTOMATION_INPUT_MEDIA_VERSION_MISMATCH');
-    if(state.waiting.kind==='DELAY'){
+    if(menuNavigation&&waiting.type==='menu'&&state.waiting.kind==='EVENT'&&acceptsMessage&&['voltar','0'].includes(input.text.trim().toLocaleLowerCase('pt-BR'))){
+      const trail=[...(state.menuTrail??[])];
+      if(trail.length>1)trail.pop();
+      const target=trail.at(-1);
+      if(target){
+        published=await getPublished(target.automationId,target.version);
+        const destination=published.graph.nodes.find(node=>node.id===target.nodeId);
+        if(destination?.type!=='menu')throw Error('AUTOMATION_MENU_HISTORY_INVALID');
+        state.automationId=target.automationId;state.version=target.version;state.stack=JSON.parse(JSON.stringify(target.stack));
+        current=target.nodeId;state.menuTrail=trail;
+        for(const key of Object.keys(variables))delete variables[key];
+        Object.assign(variables,JSON.parse(JSON.stringify(target.variables)),{message:runtimeJson(input.text)});
+        delete state.boxSelection;
+        trace.push({nodeId:waiting.id,type:waiting.type,label:waiting.label,input:{},output:{navigation:'previous_menu',target:current}});
+      }
+    }else if(state.waiting.kind==='DELAY'){
       const wakeAt=state.waiting.wakeAt===undefined?undefined:new Date(state.waiting.wakeAt);
       if(wakeAt&&!Number.isFinite(wakeAt.getTime()))throw new Error('AUTOMATION_DELAY_STATE_INVALID');
       if(input.eventType!=='TIMER'||(wakeAt&&input.now.getTime()<wakeAt.getTime()))return finish({status:'WAITING',state,effects,trace,wait:{kind:'DELAY',nodeId:waiting.id,...(wakeAt?{wakeAt}:{})}});
@@ -174,7 +191,7 @@ export async function executeAutomation(
               state.waiting={...saved,waitId:randomUUID(),invalidAttempts};
               const prompt=renderFlowText(waiting.data.text,variables),list=menuOptions(waiting).map(item=>`${item.value} - ${item.label}`).join('\n');
               effects.push({nodeId:waiting.id,ordinal:effects.length,kind:'SEND_TEXT',
-                payload:{text:[renderFlowText(config.errorMessage,variables),prompt,list].filter(Boolean).join('\n')}});
+                payload:{text:[renderFlowText(config.errorMessage,variables),prompt,list,backHint].filter(Boolean).join('\n')}});
               return pending();
             }
           }
@@ -200,7 +217,7 @@ export async function executeAutomation(
         }else{
           state.waiting={...saved,invalidAttempts};
           const prompt=renderFlowText(waiting.data.text,variables),list=menuOptions(waiting).map(item=>`${item.value} - ${item.label}`).join('\n');
-          effects.push({nodeId:waiting.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text:[prompt,list,'Responda com o número da opção.'].filter(Boolean).join('\n')}});
+          effects.push({nodeId:waiting.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text:[prompt,list,'Responda com o número da opção.',backHint].filter(Boolean).join('\n')}});
           return pending();
         }
       }
@@ -212,7 +229,7 @@ export async function executeAutomation(
       }else if(waiting.type==='menu'){
         const selected=input.text.trim(),option=menuOptions(waiting).find(item=>item.value===selected);
         if(!option){const prompt=renderFlowText(waiting.data.text,variables),list=menuOptions(waiting).map(item=>`${item.value} - ${item.label}`).join('\n');
-          effects.push({nodeId:waiting.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text:[prompt,list,'Responda com o número da opção.'].filter(Boolean).join('\n')}});
+          effects.push({nodeId:waiting.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text:[prompt,list,'Responda com o número da opção.',backHint].filter(Boolean).join('\n')}});
           return finish({status:'WAITING',state,effects,trace,wait:{kind:'EVENT',nodeId:waiting.id}});}
         const variable=string(waiting.data.variable)||'menu.choice';if(safeKey(variable))variables[variable]=selected;
         current=next(published.graph,waiting.id,`option-${option.value}`)??null;
@@ -281,8 +298,16 @@ export async function executeAutomation(
       const text=renderFlowText(node.data.text,variables);record.output={text};effects.push({nodeId:node.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text}});
     }
     if(node.type==='input'||node.type==='menu'){
+      if(menuNavigation&&node.type==='menu'){
+        const trail=[...(state.menuTrail??[])],last=trail.at(-1);
+        if(!last||last.automationId!==state.automationId||last.version!==state.version||last.nodeId!==node.id){
+          if(trail.length>=100)trail.shift();
+          trail.push({automationId:state.automationId,version:state.version,nodeId:node.id,stack:JSON.parse(JSON.stringify(state.stack)),variables:JSON.parse(JSON.stringify(variables))});
+        }
+        state.menuTrail=trail;
+      }
       const prompt=renderFlowText(node.data.text,variables),text=node.type==='menu'
-        ? [prompt,menuOptions(node).map(item=>`${item.value} - ${item.label}`).join('\n')].filter(Boolean).join('\n'):prompt;
+        ? [prompt,menuOptions(node).map(item=>`${item.value} - ${item.label}`).join('\n'),backHint].filter(Boolean).join('\n'):prompt;
       if(text.trim())effects.push({nodeId:node.id,ordinal:effects.length,kind:'SEND_TEXT',payload:{text}});
       if(node.type==='input'&&node.data.inputConfigVersion!==undefined){
         const config=InputCaptureConfigSchema.parse(node.data),waitId=randomUUID(),deadlineAt=config.timeoutSeconds===undefined?undefined:input.now.getTime()+config.timeoutSeconds*1000;
