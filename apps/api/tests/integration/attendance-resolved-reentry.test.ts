@@ -32,7 +32,7 @@ describe('opt-in reentry after a resolved JRC attendance',()=>{
   disabled.canonical.status='resolved';disabled.canonical.updated_at++;await disabled.record();
   const hold=randomUUID();
   await db.database.pool.query(`INSERT INTO messaging_messages(id,organization_id,channel_id,conversation_id,direction,source,content,state,idempotency_key,idempotency_body_hash)
-   VALUES($1,$2,$3,$4,'OUTGOING','OPERATOR','{"type":"TEXT","text":"Synthetic"}','UNKNOWN',$1::text,$5)`,[hold,resolved.org,resolved.channel,resolved.conversation,'b'.repeat(64)]);
+   VALUES($1::uuid,$2,$3,$4,'OUTGOING','OPERATOR','{"type":"TEXT","text":"Synthetic"}','UNKNOWN',$1::text,$5)`,[hold,resolved.org,resolved.channel,resolved.conversation,'b'.repeat(64)]);
   resolved.canonical.status='resolved';resolved.canonical.updated_at++;await resolved.record();await resolved.human();
   await db.database.pool.query("UPDATE messaging_messages SET state='SENT' WHERE id=$1",[hold]);
   for(const t of [active,disabled,resolved])expect(await db.transact(t.org,tx=>settleResolvedPhysicalCycles(tx,t.org))).toBe(0);
@@ -40,7 +40,7 @@ describe('opt-in reentry after a resolved JRC attendance',()=>{
  it('preserves an uncertain outgoing message and closes only after its receipt is settled',async()=>{
   const t=await fixture(),id=randomUUID();
   await db.database.pool.query(`INSERT INTO messaging_messages(id,organization_id,channel_id,conversation_id,direction,source,content,state,idempotency_key,idempotency_body_hash)
-   VALUES($1,$2,$3,$4,'OUTGOING','OPERATOR','{"type":"TEXT","text":"Synthetic"}','UNKNOWN',$1::text,$5)`,[id,t.org,t.channel,t.conversation,'a'.repeat(64)]);
+   VALUES($1::uuid,$2,$3,$4,'OUTGOING','OPERATOR','{"type":"TEXT","text":"Synthetic"}','UNKNOWN',$1::text,$5)`,[id,t.org,t.channel,t.conversation,'a'.repeat(64)]);
   t.canonical.status='resolved';t.canonical.updated_at++;await t.record();
   expect(await db.transact(t.org,tx=>settleResolvedPhysicalCycles(tx,t.org))).toBe(0);
   await db.database.pool.query("UPDATE messaging_messages SET state='SENT' WHERE id=$1",[id]);
