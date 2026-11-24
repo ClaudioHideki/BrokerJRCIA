@@ -47,9 +47,13 @@ export async function scanJrcHistory({ rootDirectory = process.cwd(), fingerprin
     ...Object.values(TEST_SECRET_CANARIES).map(escapeExtendedRegex),
     ...HIGH_CONFIDENCE_GREP_PATTERNS,
   ].flatMap((value) => ['-e', value]);
+  const findings = [];
+  // Bounded invocations retain every ref while avoiding one full-history timeout/argument list.
+  for (let offset = 0; offset < commits.length; offset += 64) {
+  const batch = commits.slice(offset, offset + 64);
   const result = spawnSync('git', [
     '-c', `safe.directory=${resolve(rootDirectory).replaceAll('\\', '/')}`,
-    'grep', '-n', '-I', '-E', ...patterns, ...commits, '--', '.', ':(exclude)upstream/evolution-api/**',
+    'grep', '-n', '-I', '-E', ...patterns, ...batch, '--', '.', ':(exclude)upstream/evolution-api/**',
   ], {
     cwd: rootDirectory,
     encoding: 'utf8',
@@ -60,7 +64,6 @@ export async function scanJrcHistory({ rootDirectory = process.cwd(), fingerprin
   if (result.error || (result.status !== 0 && result.status !== 1)) {
     throw new Error('Sanitized Git history scan failed');
   }
-  const findings = [];
   for (const line of (result.stdout ?? '').split(/\r?\n/u).filter(Boolean)) {
     const match = /^(?<sha>[0-9a-f]{40}):(?<path>.*?):(?<line>\d+):(?<content>.*)$/u.exec(line);
     if (!match?.groups || !isJrcPath(match.groups.path)) continue;
@@ -73,6 +76,7 @@ export async function scanJrcHistory({ rootDirectory = process.cwd(), fingerprin
       sha: match.groups.sha,
       canaries: match.groups.path === CANARY_DEFINITION_PATH ? {} : TEST_SECRET_CANARIES,
     }).map((finding) => ({ ...finding, line: lineNumber })));
+  }
   }
   const unique = new Map();
   for (const finding of findings) {
