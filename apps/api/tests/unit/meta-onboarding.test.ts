@@ -4,7 +4,8 @@ import { MetaSignupGraphClient, sealToken, openToken } from '../../src/modules/m
 describe('Meta authorization boundary', () => {
   it('allows READY only with all authoritative prerequisites and rejects OAuth revocation', async () => {
     const fetcher=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({status:'CONNECTED'})))
-      .mockResolvedValueOnce(new Response(JSON.stringify({account_review_status:'APPROVED',primary_funding_id:'123456',health_status:{can_send_message:'AVAILABLE'}})))
+      .mockResolvedValueOnce(new Response(JSON.stringify({account_review_status:'APPROVED',health_status:{can_send_message:'AVAILABLE'}})))
+      .mockResolvedValueOnce(new Response(JSON.stringify({primary_funding_id:'123456'})))
       .mockResolvedValueOnce(new Response(JSON.stringify({success:true})))
       .mockResolvedValueOnce(new Response(JSON.stringify({error:{code:190,message:'secret'}}),{status:400}));
     const client=new MetaSignupGraphClient({appId:'123',appSecret:'secret',graphVersion:'v25.0'},fetcher);
@@ -19,9 +20,41 @@ describe('Meta authorization boundary', () => {
   it('keeps missing payment evidence pending even with approved phone and review', async () => {
     const fetcher=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({status:'CONNECTED'})))
       .mockResolvedValueOnce(new Response(JSON.stringify({account_review_status:'APPROVED',health_status:{can_send_message:'AVAILABLE'}})))
+      .mockResolvedValueOnce(new Response(JSON.stringify({})))
       .mockResolvedValueOnce(new Response(JSON.stringify({success:true})));
     const client=new MetaSignupGraphClient({appId:'123',appSecret:'secret',graphVersion:'v25.0'},fetcher);
     expect(await client.checkReadiness('12345','67890','private')).toEqual(['META_PAYMENT_METHOD_REQUIRED']);
+  });
+  it.each([
+    { health: 'AVAILABLE', subscription: 200, pending: [] },
+    { health: 'BLOCKED', subscription: 200, pending: ['META_ACCOUNT_HEALTH_REVIEW_REQUIRED'] },
+    { health: 'AVAILABLE', subscription: 500, pending: ['WEBHOOK_SUBSCRIPTION_REQUIRED'] },
+  ])('checks health and subscription when billing access is restricted ($health, $subscription)', async ({ health, subscription, pending }) => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(Response.json({status:'CONNECTED'}))
+      .mockResolvedValueOnce(Response.json({account_review_status:'APPROVED',health_status:{can_send_message:health}}))
+      .mockResolvedValueOnce(Response.json({error:{code:10}}, {status:400}))
+      .mockResolvedValueOnce(Response.json({success:true}, {status:subscription}));
+    const client = new MetaSignupGraphClient({appId:'123',appSecret:'secret',graphVersion:'v25.0'},fetcher);
+    expect(await client.checkReadiness('12345','67890','private')).toEqual(pending);
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      'https://graph.facebook.com/v25.0/67890?fields=status',
+      'https://graph.facebook.com/v25.0/12345?fields=account_review_status,health_status',
+      'https://graph.facebook.com/v25.0/12345?fields=primary_funding_id',
+      'https://graph.facebook.com/v25.0/12345/subscribed_apps',
+    ]);
+  });
+  it.each([
+    { status: 400, code: 190, expected: 'META_TOKEN_REVOKED' },
+    { status: 500, code: 10, expected: 'META_GRAPH_UNAVAILABLE' },
+  ])('propagates billing read failures outside the permission exception ($status, $code)', async ({ status, code, expected }) => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(Response.json({status:'CONNECTED'}))
+      .mockResolvedValueOnce(Response.json({account_review_status:'APPROVED',health_status:{can_send_message:'AVAILABLE'}}))
+      .mockResolvedValueOnce(Response.json({error:{code}}, {status}));
+    const client = new MetaSignupGraphClient({appId:'123',appSecret:'secret',graphVersion:'v25.0'},fetcher);
+    await expect(client.checkReadiness('12345','67890','private')).rejects.toThrow(expected);
+    expect(fetcher).toHaveBeenCalledTimes(3);
   });
   it('binds encrypted token to tenant and connection', () => {
     const key = Buffer.alloc(32, 7);
