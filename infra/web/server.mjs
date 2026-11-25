@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { buildEmbedHeaders } from './frame-policy.mjs';
 
 const consoleHeaders = {
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' https://connect.facebook.net; connect-src 'self' https://www.facebook.com https://graph.facebook.com; frame-src https://www.facebook.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.facebook.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' https://connect.facebook.net; connect-src 'self' https://www.facebook.com https://graph.facebook.com https://connect.facebook.net/app_config/json/; frame-src https://www.facebook.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.facebook.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
 };
