@@ -55,4 +55,6 @@ Nenhuma execução funcional é iniciada por este bootstrap. As frentes já em a
 
 ## Como manter
 
+- Entrega independente de mensagens individuais novas com histórico incerto. Implementação e teste de regressão em PostgreSQL registrados na ADR 0007 e em `chatwoot-live-receipts.test.ts`. O aceite operacional exige conferir uma entrada real única na conversa vinculada.
+
 Uma tarefa deve registrar problema, escopo, critério de aceite, evidência/arquivo e limite. Só mover para Concluído com a prova correspondente; não converter publicação de imagem em aceite operacional.

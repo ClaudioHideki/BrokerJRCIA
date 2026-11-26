@@ -3,6 +3,7 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
 import {chatwootEnvironment,createChatwootService,type ChatwootOptions} from '../../src/modules/integrations/chatwoot-service.js';
 import {createChatwootWorker} from '../../src/modules/integrations/chatwoot-worker.js';
+import {createPostgresMessagingRepository} from '../../src/modules/messaging/repository.js';
 let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();},60_000);
 afterAll(async()=>{await db?.dispose();});
@@ -57,6 +58,57 @@ async function fixture(input:{lostAck?:boolean;pending?:boolean;unavailable?:boo
   input.pending=false;input.unavailable=false;if(stored){stored.state='PERSISTED';stored.message_id=901;}
  }};
 }
+async function fencedContact() {
+ const t=await fixture({legacy:true,lostAck:true});
+ const worker=createChatwootWorker(t.options);
+ await worker.runOnce(t.org);
+ expect(await t.read()).toMatchObject({status:'UNKNOWN'});
+ const repository=createPostgresMessagingRepository();
+ const event={id:randomUUID(),organizationId:t.org,channelId:t.channel,conversationId:t.conversation,webhookEventKey:randomUUID(),
+   upstreamMessageId:randomUUID(),content:{type:'TEXT' as const,text:'New entry'},scheduleBot:false};
+ return {t,worker,repository,event};
+}
+it('delivers a newly accepted contact message once past an older uncertain mirror, leaving the backlog intact',async()=>{
+ const {t,worker,repository,event}=await fencedContact();
+ const backlog=await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)
+   VALUES($1,$2,$3,'INCOMING','CONTACT','{"type":"TEXT","text":"Earlier entry"}','DELIVERED') RETURNING id`,[t.org,t.channel,t.conversation]);
+ await db.transact(t.org,tx=>repository.recordIncoming(tx,event));
+ await db.transact(t.org,tx=>repository.recordIncoming(tx,{...event,id:randomUUID(),webhookEventKey:randomUUID()}));
+ await worker.runOnce(t.org);
+ await worker.runOnce(t.org);
+ expect(t.nativeBodies).toHaveLength(1);
+ expect(t.nativeBodies[0]).toMatchObject({broker_message_id:event.id,conversation_id:51,message_type:'incoming'});
+ expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE message_id=$1',[backlog.rows[0].id])).rows)
+   .toEqual([{status:'PENDING',attempts:0}]);
+ expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE message_id=$1',[event.id])).rows)
+   .toEqual([{status:'SUCCEEDED',attempts:1}]);
+ expect(await t.read()).toMatchObject({status:'UNKNOWN'});
+});
+it('holds the fresh message when the mapped receiver cannot provide native receipts',async()=>{
+ const {t,repository,event}=await fencedContact();
+ await db.transact(t.org,tx=>repository.recordIncoming(tx,event));
+ const requests:string[]=[];
+ const worker=createChatwootWorker({...t.options,async fetch(url){
+   requests.push(new URL(String(url)).pathname);
+   return new Response('',{status:404});
+ }});
+ await worker.runOnce(t.org);
+ expect(requests).toHaveLength(1);
+ expect(requests[0]).toMatch(/\/capability$/);
+ expect((await db.database.pool.query('SELECT status,last_error FROM integration_jobs WHERE message_id=$1',[event.id])).rows)
+   .toEqual([{status:'PENDING',last_error:'CHATWOOT_NATIVE_RECEIPT_REQUIRED'}]);
+ expect(await t.read()).toMatchObject({status:'UNKNOWN'});
+});
+it('does not send or create a conversation when the captured mapping changes',async()=>{
+ const {t,worker,repository,event}=await fencedContact();
+ await db.transact(t.org,tx=>repository.recordIncoming(tx,event));
+ await db.database.pool.query('UPDATE chatwoot_conversations SET remote_conversation_id=52 WHERE organization_id=$1 AND integration_id=$2',[t.org,t.integration]);
+ const before=t.calls.length;
+ await worker.runOnce(t.org);
+ expect(t.calls).toHaveLength(before);
+ expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE message_id=$1',[event.id])).rows)
+   .toEqual([{status:'PENDING',attempts:0}]);
+});
 it('uses a bound native receipt for an individual mirror and durably records the selected protocol',async()=>{
  const t=await fixture();await createChatwootWorker(t.options).runOnce(t.org);
  expect(await t.read()).toMatchObject({status:'SUCCEEDED',payload:{mirrorProtocol:'jrc-live-ingress/1',remoteMessageId:901,

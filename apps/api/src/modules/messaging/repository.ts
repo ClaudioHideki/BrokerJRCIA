@@ -975,6 +975,27 @@ export function createPostgresMessagingRepository(): MessagingRepository {
       }
       if (!message)
         throw new MessagingRepositoryError("MESSAGE_NOT_FOUND", 404);
+      // Capture the existing destination only on first live ingress. Duplicate webhooks,
+      // imports and jobs already queued before this release cannot acquire this marker.
+      if (kind === "created" && !input.historical) {
+        await transaction.query(`
+          UPDATE integration_jobs job SET payload=job.payload || jsonb_build_object('admittedInboxTarget',
+            jsonb_build_object('revision',d.revision,'account',a.account_id::text,'inbox',c.inbox_id::text,
+              'instance',ch.instance_id,'conversation',map.remote_conversation_id::text,
+              'contact',map.contact_id::text,'sourceHash',encode(sha256(convert_to(map.source_id,'UTF8')),'hex')))
+          FROM chatwoot_connections c
+          JOIN messaging_channels ch ON ch.organization_id=c.organization_id AND ch.id=c.channel_id
+          JOIN chatwoot_accounts a ON a.organization_id=c.organization_id
+          JOIN chatwoot_destinations d ON d.organization_id=a.organization_id AND d.base_url=a.base_url
+          JOIN chatwoot_conversations map ON map.organization_id=c.organization_id AND map.integration_id=c.id
+          JOIN messaging_conversations cv ON cv.organization_id=map.organization_id AND cv.channel_id=c.channel_id AND cv.id=map.conversation_id
+          WHERE job.organization_id=$1 AND job.message_id=$2 AND job.integration_id=c.id AND c.organization_id=$1
+            AND ch.id=$3 AND cv.id=$4 AND cv.recipient_kind='INDIVIDUAL' AND ch.instance_id IS NOT NULL
+            AND job.dedupe_key='message:'||job.message_id::text||':DELIVERED'
+            AND job.kind='MIRROR_MESSAGE' AND job.status='PENDING' AND job.attempts=0
+            AND c.status='READY' AND a.status='READY' AND d.approval_status='APPROVED'`,
+          [input.organizationId, message.id, input.channelId, input.conversationId]);
+      }
       await transaction.query(
         `UPDATE messaging_inbox_events SET message_id = $4
           WHERE organization_id = $1 AND channel_id = $2 AND event_key = $3`,

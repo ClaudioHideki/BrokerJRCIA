@@ -224,7 +224,25 @@ export function createChatwootWorker(options: ChatwootOptions) {
           LEFT JOIN messaging_conversations blocked_conversation ON blocked_conversation.organization_id=blocked_message.organization_id
             AND blocked_conversation.channel_id=blocked_message.channel_id AND blocked_conversation.id=blocked_message.conversation_id
           WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
-             AND (blocked_conversation.contact_id IS NULL OR blocked_conversation.contact_id=candidate_conversation.contact_id))))
+             AND (blocked_conversation.contact_id IS NULL OR blocked_conversation.contact_id=candidate_conversation.contact_id)
+             AND NOT EXISTS (
+               SELECT 1 FROM chatwoot_mirror_attempts attempt
+               JOIN chatwoot_conversations map ON map.organization_id=attempt.organization_id AND map.integration_id=attempt.integration_id
+                 AND map.conversation_id=attempt.conversation_id AND map.remote_conversation_id=attempt.remote_conversation_id
+               WHERE j.payload ? 'admittedInboxTarget' AND candidate_conversation.recipient_kind='INDIVIDUAL'
+                 AND candidate_message.direction='INCOMING' AND candidate_message.source='CONTACT' AND NOT candidate_message.is_historical
+                 AND candidate_message.upstream_message_id IS NOT NULL AND blocked.message_id<>j.message_id
+                 AND blocked.kind='MIRROR_MESSAGE' AND blocked.payload->>'operation'='SEND_MESSAGE'
+                 AND blocked_message.direction='INCOMING' AND blocked_message.source='CONTACT' AND NOT blocked_message.is_historical
+                 AND blocked_conversation.id=candidate_conversation.id
+                 AND attempt.organization_id=j.organization_id AND attempt.integration_id=j.integration_id
+                 AND attempt.job_id=blocked.id AND attempt.message_id=blocked.message_id AND attempt.channel_id=c.channel_id
+                 AND attempt.conversation_id=candidate_conversation.id AND attempt.state IN ('DISPATCHED','UNKNOWN')
+                 AND attempt.remote_message_id IS NULL
+                 AND attempt.remote_conversation_id::text=j.payload->'admittedInboxTarget'->>'conversation'
+                 AND attempt.account_id::text=j.payload->'admittedInboxTarget'->>'account'
+                 AND attempt.inbox_id::text=j.payload->'admittedInboxTarget'->>'inbox'
+                 AND attempt.destination_revision::text=j.payload->'admittedInboxTarget'->>'revision'))))
     OR (${independentCampaignReply}) OR (${independentHumanReply}) OR (${provenHumanStatus}))`;
   async function claim(org: string): Promise<Job | undefined> {
     return tx(org, async (t) => {
@@ -252,8 +270,12 @@ export function createChatwootWorker(options: ChatwootOptions) {
       ).rows[0];
       if (!connection) return;
       const job = (
-        await t.query<{ id: string }>(
-          `SELECT j.id FROM integration_jobs j JOIN chatwoot_connections c ON c.organization_id=j.organization_id AND c.id=j.integration_id
+        await t.query<{ id: string; receipt_only: boolean }>(
+          `SELECT j.id, j.payload ? 'admittedInboxTarget' AND EXISTS (
+            SELECT 1 FROM integration_jobs blocked JOIN messaging_messages previous ON previous.organization_id=blocked.organization_id AND previous.id=blocked.message_id
+            JOIN messaging_messages candidate ON candidate.organization_id=j.organization_id AND candidate.id=j.message_id AND candidate.conversation_id=previous.conversation_id
+            WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
+          ) AS receipt_only FROM integration_jobs j JOIN chatwoot_connections c ON c.organization_id=j.organization_id AND c.id=j.integration_id
         WHERE j.organization_id=$1 AND j.integration_id=$2 AND ${eligibleJob}
           AND NOT EXISTS(SELECT 1 FROM integration_jobs busy WHERE busy.organization_id=j.organization_id
             AND busy.integration_id=j.integration_id AND busy.status='RUNNING')
@@ -268,9 +290,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
       );
       return (
         await t.query<Job>(
-          `UPDATE integration_jobs SET status='RUNNING',attempts=attempts+1,lease_token=$3,lease_expires_at=now()+interval '3 minutes',updated_at=now()
+          `UPDATE integration_jobs SET status='RUNNING',attempts=attempts+1,lease_token=$3,lease_expires_at=now()+interval '3 minutes',updated_at=now(),
+             payload=CASE WHEN $4 THEN payload||'{"requiresNativeReceipt":true}'::jsonb ELSE payload END
         WHERE organization_id=$1 AND id=$2 RETURNING *`,
-          [org, job.id, randomUUID()],
+          [org, job.id, randomUUID(), job.receipt_only],
         )
       ).rows[0];
     });
@@ -673,6 +696,16 @@ export function createChatwootWorker(options: ChatwootOptions) {
       accountId = Number(a.account_id),
       inboxId = Number(c.inbox_id);
     if(!a.destination)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
+    if (job.payload.requiresNativeReceipt === true) {
+      const target = z.object({ revision:z.number().int(), account:z.string(), inbox:z.string(),
+        instance:z.uuid(), conversation:z.string(), contact:z.string(), sourceHash:z.string() }).safeParse(job.payload.admittedInboxTarget);
+      if (!target.success || message.direction!=='INCOMING' || message.source!=='CONTACT' || message.is_historical
+        || !context.map || String(context.map.remote_conversation_id)!==target.data.conversation
+        || String(context.map.contact_id)!==target.data.contact || createHash('sha256').update(context.map.source_id).digest('hex')!==target.data.sourceHash
+        || String(a.account_id)!==target.data.account || String(c.inbox_id)!==target.data.inbox
+        || a.destination.revision!==target.data.revision || message.instance_id!==target.data.instance)
+        throw new IntegrationError('CHATWOOT_LIVE_CONTEXT_CHANGED',409);
+    }
     const attendanceScope:ChatwootObservationScope={organizationId:org,channelId:c.channel_id,integrationId:c.id,
       destinationRevision:a.destination.revision,credentialRevision:a.credential_version,accountId,inboxId};
     const priorNative=job.payload.liveIngressProof===undefined?undefined:liveIngressProofSchema.safeParse(job.payload.liveIngressProof);
@@ -833,7 +866,15 @@ export function createChatwootWorker(options: ChatwootOptions) {
       const nativeScope=message.instance_id?{organization_id:org,integration_id:c.id,instance_id:message.instance_id,
         destination_revision:attendanceScope.destinationRevision}:undefined;
       const protocol=await selectLiveMirrorProtocol({client,scope:nativeScope,accountId,inboxId,
-        recorded:job.payload.mirrorProtocol,hasPriorAttempt:message.has_mirror_attempt,operation:originalMirrorOperation});
+        recorded:job.payload.mirrorProtocol,hasPriorAttempt:message.has_mirror_attempt,operation:originalMirrorOperation})
+        .catch((error:unknown)=>{
+          // A failed capability probe has not sent the message. Keep its job retryable.
+          if (job.payload.requiresNativeReceipt === true && !message.has_mirror_attempt && error instanceof ChatwootError)
+            throw new IntegrationError('CHATWOOT_NATIVE_RECEIPT_REQUIRED',409);
+          throw error;
+        });
+      if (job.payload.requiresNativeReceipt === true && protocol !== LIVE_INGRESS_PROTOCOL)
+        throw new IntegrationError('CHATWOOT_NATIVE_RECEIPT_REQUIRED',409);
       const previousNativeProof=job.payload.liveIngressProof;
       const presentationText=media?(externalObserved?`${originLabel}${message.content.type==='MEDIA'&&message.content.caption?'\n'+message.content.caption:''}`:media.caption??''):text!;
       const nativeBody=protocol===LIVE_INGRESS_PROTOCOL?client.liveIngress().prepare(nativeScope!,{
@@ -843,8 +884,16 @@ export function createChatwootWorker(options: ChatwootOptions) {
           :{occurred_at:Math.floor(message.created_at.getTime()/1000)})},media):undefined;
       await beforeExternal(job, "SEND_MESSAGE");
       let proof:LiveIngressProof|undefined;
+      const assertInboxTarget = async (t:TenantTransaction) => {
+        if (job.payload.requiresNativeReceipt !== true) return;
+        const target = await t.query(`SELECT 1 FROM chatwoot_conversations WHERE organization_id=$1 AND integration_id=$2
+          AND conversation_id=$3 AND remote_conversation_id=$4 AND contact_id=$5 AND source_id=$6 FOR SHARE`,
+          [org,c.id,message.conversation_id,map!.remote_conversation_id,map!.contact_id,map!.source_id]);
+        if (!target.rowCount) throw new IntegrationError('CHATWOOT_LIVE_CONTEXT_CHANGED',409);
+      };
       const started=await tx(org,async t=>{
         await assertChatwootMirrorContext(t,a,c,message.instance_id);
+        await assertInboxTarget(t);
         if(previousNativeProof!==undefined){
           const prior=liveIngressProofSchema.safeParse(previousNativeProof);
           if(!prior.success||!nativeBody)throw new ChatwootError('CHATWOOT_LIVE_CONFIRMATION_PENDING',false,true);
@@ -875,6 +924,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
       const attempt=started.attempt;Object.assign(job.payload,started.patch);
       const assertCurrent=async(t:TenantTransaction)=>{
         await assertChatwootMirrorContext(t,a,c,message.instance_id);
+        await assertInboxTarget(t);
         const lease=await t.query(`SELECT id FROM integration_jobs WHERE organization_id=$1 AND id=$2 AND lease_token=$3
           AND status='RUNNING' AND lease_expires_at>clock_timestamp() FOR UPDATE`,[org,job.id,job.lease_token]);
         if(!lease.rowCount)throw new IntegrationError('INTEGRATION_LEASE_LOST',409);
@@ -1011,7 +1061,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
           (!(error instanceof ChatwootError) || error.uncertain);
         const retry =
           (error instanceof IntegrationError &&
-              ['INTEGRATION_PAUSED', 'IDENTITY_UNVERIFIED', 'IDENTITY_CONFIRMATION_REQUIRED'].includes(error.code)) ||
+              ['INTEGRATION_PAUSED', 'IDENTITY_UNVERIFIED', 'IDENTITY_CONFIRMATION_REQUIRED', 'CHATWOOT_NATIVE_RECEIPT_REQUIRED'].includes(error.code)) ||
           ((error instanceof ChatwootError || error instanceof MediaError) &&
             error.retrySafe &&
             job.attempts < 6);

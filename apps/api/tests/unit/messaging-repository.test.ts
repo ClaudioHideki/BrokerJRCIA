@@ -250,7 +250,7 @@ describe('PostgresMessagingRepository webhook dedupe', () => {
       upstreamMessageId: 'wamid.incoming',
       state: 'DELIVERED' as const,
     };
-    const transaction = transactionReturning([{ id: 'event-id' }], [incoming], [], [{ scheduled: true }]);
+    const transaction = transactionReturning([{ id: 'event-id' }], [incoming], [], [], [{ scheduled: true }]);
 
     const result = await createPostgresMessagingRepository().recordIncoming(transaction, {
       id: MESSAGE_ID,
