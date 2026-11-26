@@ -228,7 +228,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
         AND o.event->>'outboundIntentId'=j.payload->>'outboundIntentId'
         AND o.disposition='WAITING_MAP' AND o.conversation_id IS NULL AND o.cycle IS NULL)`;
   const inboxTarget = "COALESCE(j.payload->'admittedInboxTarget',j.payload->'reviewedInboxTarget')";
-  const eligibleJob = `j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now()
+  const dueJob = `j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now()
     AND j.payload->>'historySyncVersion' IS DISTINCT FROM '2'
     AND (NOT (j.payload ? 'reviewedStatusLeader') OR EXISTS (
       SELECT 1 FROM integration_jobs leader
@@ -241,10 +241,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
         AND leader.id::text=j.payload->>'reviewedStatusLeader' AND leader.status='SUCCEEDED'
         AND leader.payload->'reviewedInboxTarget'=j.payload->'reviewedInboxTarget'
         AND leader.payload->>'mirrorProtocol'='jrc-live-ingress/1' AND leader.payload->'liveIngressProof'->>'attempt_id'=receipt.id::text
-        AND receipt.state='CONFIRMED' AND receipt.channel_id=c.channel_id))
-    AND (NOT EXISTS(SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=j.organization_id
-      AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN')
-    OR (j.kind='MIRROR_MESSAGE' AND EXISTS(
+        AND receipt.state='CONFIRMED' AND receipt.channel_id=c.channel_id))`;
+  const noUnknown = `NOT EXISTS(SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=j.organization_id
+      AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN')`;
+  const independentMirror = `j.kind='MIRROR_MESSAGE' AND EXISTS(
       SELECT 1 FROM messaging_messages candidate_message
       JOIN messaging_conversations candidate_conversation ON candidate_conversation.organization_id=candidate_message.organization_id
         AND candidate_conversation.channel_id=candidate_message.channel_id AND candidate_conversation.id=candidate_message.conversation_id
@@ -266,7 +266,18 @@ export function createChatwootWorker(options: ChatwootOptions) {
                      AND candidate_message.source='EXTERNAL_OBSERVED')) AND NOT candidate_message.is_historical
                  AND candidate_message.upstream_message_id IS NOT NULL AND blocked.message_id<>j.message_id
                  AND blocked.kind='MIRROR_MESSAGE' AND blocked.payload->>'operation'='SEND_MESSAGE'
-                 AND blocked_message.direction='INCOMING' AND blocked_message.source='CONTACT' AND NOT blocked_message.is_historical
+                 AND NOT blocked_message.is_historical AND (
+                   (blocked_message.direction='INCOMING' AND blocked_message.source='CONTACT')
+                   OR (blocked_message.direction='OUTGOING' AND blocked_message.source='EXTERNAL_OBSERVED'
+                     AND blocked_message.state IN ('SENT','DELIVERED','READ')
+                     AND attempt.state='UNKNOWN' AND attempt.transport='BROKER_TRANSPORT'
+                     AND attempt.remote_conversation_id::text=blocked.payload->>'conversationId'
+                     AND length(blocked_message.upstream_message_id)>0 AND blocked_message.upstream_message_id !~ '[[:space:][:cntrl:]]'
+                     AND length(candidate_message.upstream_message_id)>0 AND candidate_message.upstream_message_id !~ '[[:space:][:cntrl:]]'
+                     AND blocked_message.upstream_message_id<>candidate_message.upstream_message_id
+                     AND NOT EXISTS(SELECT 1 FROM chatwoot_mirror_attempts conflicting WHERE conflicting.organization_id=attempt.organization_id
+                       AND conflicting.integration_id=attempt.integration_id AND conflicting.job_id=attempt.job_id
+                       AND conflicting.id<>attempt.id AND conflicting.state IN ('UNKNOWN','DISPATCHED','CONFIRMED'))))
                  AND blocked_conversation.id=candidate_conversation.id
                  AND attempt.organization_id=j.organization_id AND attempt.integration_id=j.integration_id
                  AND attempt.job_id=blocked.id AND attempt.message_id=blocked.message_id AND attempt.channel_id=c.channel_id
@@ -275,7 +286,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
                  AND attempt.remote_conversation_id::text=${inboxTarget}->>'conversation'
                  AND attempt.account_id::text=${inboxTarget}->>'account'
                  AND attempt.inbox_id::text=${inboxTarget}->>'inbox'
-                 AND attempt.destination_revision::text=${inboxTarget}->>'revision'))))
+                 AND attempt.destination_revision::text=${inboxTarget}->>'revision')))`;
+  const eligibleJob = `${dueJob} AND (${noUnknown} OR (${independentMirror})
     OR (${independentCampaignReply}) OR (${independentHumanReply}) OR (${waitingHumanCycle}) OR (${provenHumanStatus}))`;
   async function claim(org: string): Promise<Job | undefined> {
     return tx(org, async (t) => {
@@ -982,6 +994,13 @@ export function createChatwootWorker(options: ChatwootOptions) {
           AND conversation_id=$3 AND remote_conversation_id=$4 AND contact_id=$5 AND source_id=$6 FOR SHARE`,
           [org,c.id,message.conversation_id,map!.remote_conversation_id,map!.contact_id,map!.source_id]);
         if (!target.rowCount) throw new IntegrationError('CHATWOOT_LIVE_CONTEXT_CHANGED',409);
+        // Capability and media reads occur after claim. Recheck the positive
+        // isolation proof before recording a dispatch and before the native POST.
+        const isolated = await t.query(`SELECT 1 FROM integration_jobs j
+          JOIN chatwoot_connections c ON c.organization_id=j.organization_id AND c.id=j.integration_id
+          WHERE j.organization_id=$1 AND j.id=$2 AND j.integration_id=$3 AND j.message_id=$4
+            AND (${noUnknown} OR (${independentMirror}))`,[org,job.id,c.id,message.id]);
+        if (!isolated.rowCount) throw new IntegrationError('CHATWOOT_MIRROR_ISOLATION_CHANGED',409);
       };
       const started=await tx(org,async t=>{
         await assertChatwootMirrorContext(t,a,c,message.instance_id);

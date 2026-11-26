@@ -63,8 +63,10 @@ async function fixture(input:{lostAck?:boolean;pending?:boolean;unavailable?:boo
   input.pending=false;input.unavailable=false;if(stored){stored.state='PERSISTED';stored.message_id=901;}
  }};
 }
-async function fencedContact() {
+async function fencedContact(observedBlocker=false) {
  const t=await fixture({legacy:true,lostAck:true});
+ if(observedBlocker)await db.database.pool.query(`UPDATE messaging_messages SET direction='OUTGOING',source='EXTERNAL_OBSERVED',
+   upstream_message_id=$2 WHERE id=$1`,[t.message,randomUUID()]);
  const worker=createChatwootWorker(t.options);
  await worker.runOnce(t.org);
  expect(await t.read()).toMatchObject({status:'UNKNOWN'});
@@ -144,6 +146,49 @@ it('holds the fresh message when the mapped receiver cannot provide native recei
    .toEqual([{status:'PENDING',last_error:'CHATWOOT_NATIVE_RECEIPT_REQUIRED'}]);
  expect(await t.read()).toMatchObject({status:'UNKNOWN'});
 });
+it.each(['success','missing-old-provider','empty-new-provider','provider-collision','operator','bot','candidate-operator','historical','wrong-inbox','unknown-route','second-attempt','post-claim-drift'] as const)
+ ('isolates an observed outgoing mirror for a new received message (%s)',async scenario=>{
+  const {t,repository,event}=await fencedContact(true);
+  await db.transact(t.org,tx=>repository.recordIncoming(tx,event));
+  const change=async(sql:string,params:unknown[])=>db.database.pool.query(sql,params);
+  if(scenario==='missing-old-provider')await change('UPDATE messaging_messages SET upstream_message_id=NULL WHERE id=$1',[t.message]);
+  if(scenario==='empty-new-provider')await change("UPDATE messaging_messages SET upstream_message_id='   ' WHERE id=$1",[event.id]);
+  if(scenario==='provider-collision'){
+    await expect(change('UPDATE messaging_messages SET upstream_message_id=$2 WHERE id=$1',[t.message,event.upstreamMessageId])).rejects.toMatchObject({code:'23505'});
+    await change('UPDATE messaging_messages SET upstream_message_id=$2 WHERE id=$1',[t.message,' '+event.upstreamMessageId+' ']);
+  }
+  if(scenario==='operator')await change("UPDATE messaging_messages SET source='OPERATOR' WHERE id=$1",[t.message]);
+  if(scenario==='bot')await change("UPDATE messaging_messages SET source='AUTOMATION' WHERE id=$1",[t.message]);
+  if(scenario==='candidate-operator')await change("UPDATE messaging_messages SET direction='OUTGOING',source='OPERATOR' WHERE id=$1",[event.id]);
+  if(scenario==='historical')await change('UPDATE messaging_messages SET is_historical=true WHERE id=$1',[t.message]);
+  if(scenario==='wrong-inbox')await change('UPDATE chatwoot_mirror_attempts SET inbox_id=10 WHERE job_id=$1',[t.job]);
+  if(scenario==='unknown-route')await change("UPDATE integration_jobs SET payload=jsonb_set(payload,'{conversationId}','99') WHERE id=$1",[t.job]);
+  if(scenario==='second-attempt')await change(`INSERT INTO chatwoot_mirror_attempts(organization_id,integration_id,channel_id,destination_revision,
+    account_id,inbox_id,conversation_id,remote_conversation_id,cycle,message_id,job_id,lease_token,state)
+    SELECT organization_id,integration_id,channel_id,destination_revision,account_id,inbox_id,conversation_id,99,cycle,message_id,job_id,$2,'DISPATCHED'
+    FROM chatwoot_mirror_attempts WHERE job_id=$1`,[t.job,randomUUID()]);
+  const blocker=await t.read(),mutations:string[]=[];
+  const worker=createChatwootWorker({...t.options,async fetch(url,init){
+    const path=new URL(String(url)).pathname;
+    if(scenario==='post-claim-drift'&&path.endsWith('/capability'))await change('UPDATE messaging_messages SET upstream_message_id=NULL WHERE id=$1',[t.message]);
+    if(path.endsWith('/messages'))mutations.push(path);
+    return t.options.fetch!(url,init);
+  }});
+  await worker.runOnce(t.org);await worker.runOnce(t.org);
+  expect(await t.read()).toEqual(blocker);
+  expect((await db.database.pool.query("SELECT state,remote_message_id FROM chatwoot_mirror_attempts WHERE job_id=$1 AND state='UNKNOWN'",[t.job])).rows)
+    .toEqual([{state:'UNKNOWN',remote_message_id:null}]);
+  expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows).toHaveLength(0);
+  if(scenario==='success'){
+    expect(t.nativeBodies.map(body=>[body.broker_message_id,body.message_type])).toEqual([[event.id,'incoming']]);
+    expect(mutations).toEqual(['/api/v1/accounts/7/jrc_broker/inboxes/9/live-ingress/v1/messages']);
+  }else{
+    expect(mutations).toEqual([]);
+    const job=(await db.database.pool.query('SELECT status,attempts,last_error FROM integration_jobs WHERE message_id=$1',[event.id])).rows[0];
+    if(scenario==='post-claim-drift')expect(job.last_error).toBe('CHATWOOT_MIRROR_ISOLATION_CHANGED');
+    else expect(job).toMatchObject({status:'PENDING',attempts:0});
+  }
+});
 it.each([
  {observed:false,attachment:false,rebound:false},{observed:true,attachment:false,rebound:false},
  {observed:false,attachment:true,rebound:false},{observed:true,attachment:true,rebound:false},
@@ -151,8 +196,9 @@ it.each([
  {observed:false,attachment:false,rebound:false,siblings:true},
  {observed:true,attachment:true,rebound:false,siblings:true},
  {observed:false,attachment:true,rebound:true,siblings:true},
-])('reviews a single mirror (observed=$observed, attachment=$attachment, rebound=$rebound, siblings=$siblings)',async({observed,attachment,rebound,siblings})=>{
- const {t}=await fencedContact();
+ {observed:true,attachment:true,rebound:false,siblings:true,observedBlocker:true},
+])('reviews a single mirror (observed=$observed, attachment=$attachment, rebound=$rebound, siblings=$siblings, observedBlocker=$observedBlocker)',async({observed,attachment,rebound,siblings,observedBlocker})=>{
+ const {t}=await fencedContact(observedBlocker);
  const phone='15555550123';
  await db.database.pool.query('UPDATE messaging_contacts SET external_id=$2 WHERE organization_id=$1',[t.org,phone]);
  const binary={kind:'document' as const,fileName:'example.pdf',mimeType:'application/pdf',bytes:new TextEncoder().encode('%PDF-1.4 synthetic')};
