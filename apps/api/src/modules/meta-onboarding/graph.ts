@@ -80,11 +80,12 @@ export class MetaSignupGraphClient {
     const phone=z.object({status:z.string().optional()}).parse(await this.#request(`${phoneId}?fields=status`,token));
     const waba=z.object({account_review_status:z.string().optional(),
       health_status:z.object({can_send_message:z.string().optional()}).optional()}).parse(await this.#request(`${wabaId}?fields=account_review_status,health_status`,token));
-    let funding: {primary_funding_id?: string} | undefined;
+    let hasPaymentMethod: boolean | undefined;
     try {
-      funding = z.object({primary_funding_id:z.string().optional()}).parse(
+      const funding = z.object({primary_funding_id:z.string().optional()}).parse(
         await this.#request(`${wabaId}?fields=primary_funding_id`, token),
       );
+      hasPaymentMethod = Boolean(funding.primary_funding_id);
     } catch (error) {
       // Meta restricts this field to eligible providers. Use the independent sending health check in that case.
       if (!(error instanceof MetaGraphPermissionError)) throw error;
@@ -92,7 +93,7 @@ export class MetaSignupGraphClient {
     const pending:string[]=[];
     if(phone.status!=='CONNECTED') pending.push('PHONE_REGISTRATION_REQUIRED');
     if(waba.account_review_status!=='APPROVED') pending.push('META_BUSINESS_REVIEW_REQUIRED');
-    if(funding && !funding.primary_funding_id) pending.push('META_PAYMENT_METHOD_REQUIRED');
+    if(hasPaymentMethod === false) pending.push('META_PAYMENT_METHOD_REQUIRED');
     if(waba.health_status?.can_send_message!=='AVAILABLE') pending.push('META_ACCOUNT_HEALTH_REVIEW_REQUIRED');
     try {await this.subscribe(wabaId,token);} catch {pending.push('WEBHOOK_SUBSCRIPTION_REQUIRED');}
     return pending;
