@@ -1060,53 +1060,63 @@ export function createChatwootWorker(options: ChatwootOptions) {
     try{await receiptRecovery.reconcileJob(org,candidate.id,'NATIVE_PERSISTENCE_RECEIPT_RECOVERED',undefined,undefined,3000);}
     catch{ /* The indexed due time advances; UNKNOWN and original evidence stay intact. No replay. */ }
   }
+  async function processJob(org: string, job: Job): Promise<void> {
+    try {
+      if (job.kind === "CHATWOOT_REPLY") await receiveReply(job);
+      else await mirror(job);
+    } catch (error) {
+      const idempotentHistory=job.payload.historical===true&&job.payload.operation==='IMPORT_HISTORY';
+      const uncertain = !idempotentHistory&&
+        job.kind === "MIRROR_MESSAGE" &&
+        (!(error instanceof IntegrationError) ||
+          error.code === "INTEGRATION_LEASE_LOST") &&
+        !(error instanceof MediaError) &&
+        (!(error instanceof ChatwootError) || error.uncertain);
+      const retry =
+        (error instanceof IntegrationError &&
+            ['INTEGRATION_PAUSED', 'IDENTITY_UNVERIFIED', 'IDENTITY_CONFIRMATION_REQUIRED', 'CHATWOOT_NATIVE_RECEIPT_REQUIRED'].includes(error.code)) ||
+        ((error instanceof ChatwootError || error instanceof MediaError) &&
+          error.retrySafe &&
+          job.attempts < 6);
+      const code =
+        error instanceof IntegrationError ||
+        error instanceof ChatwootError ||
+        error instanceof MediaError ||
+        error instanceof MessagingRepositoryError
+          ? error.code
+          : "INTEGRATION_PROCESSING_FAILED";
+      const failureDiagnostic=createJobFailureDiagnostic(error,job.attempts,uncertain?'UNKNOWN':retry?'RETRY_SCHEDULED':'FAILED');
+      await tx(org, (t) =>
+        t
+          .query(
+            `UPDATE integration_jobs SET status=$4,last_error=$5,failure_diagnostic=$7::jsonb,lease_token=NULL,lease_expires_at=NULL,
+        available_at=now()+($6*interval '1 second'),updated_at=now() WHERE organization_id=$1 AND id=$2 AND lease_token=$3`,
+            [
+              org,
+              job.id,
+              job.lease_token,
+              uncertain ? "UNKNOWN" : retry ? job.payload.historical===true ? 'HISTORY_PENDING' : "PENDING" : "FAILED",
+              code,
+              Math.min(300, 5 * 2 ** Math.min(job.attempts, 6)),
+              JSON.stringify(failureDiagnostic),
+            ],
+          )
+          .then(() => undefined),
+      );
+    }
+  }
   return {
-    async runOnce(org: string): Promise<void> {
+    async runOnce(org: string, continuous = false): Promise<void> {
       await inspectNativeReceipt(org);
-      const job = await claim(org);
-      if (!job) return;
-      try {
-        if (job.kind === "CHATWOOT_REPLY") await receiveReply(job);
-        else await mirror(job);
-      } catch (error) {
-        const idempotentHistory=job.payload.historical===true&&job.payload.operation==='IMPORT_HISTORY';
-        const uncertain = !idempotentHistory&&
-          job.kind === "MIRROR_MESSAGE" &&
-          (!(error instanceof IntegrationError) ||
-            error.code === "INTEGRATION_LEASE_LOST") &&
-          !(error instanceof MediaError) &&
-          (!(error instanceof ChatwootError) || error.uncertain);
-        const retry =
-          (error instanceof IntegrationError &&
-              ['INTEGRATION_PAUSED', 'IDENTITY_UNVERIFIED', 'IDENTITY_CONFIRMATION_REQUIRED', 'CHATWOOT_NATIVE_RECEIPT_REQUIRED'].includes(error.code)) ||
-          ((error instanceof ChatwootError || error instanceof MediaError) &&
-            error.retrySafe &&
-            job.attempts < 6);
-        const code =
-          error instanceof IntegrationError ||
-          error instanceof ChatwootError ||
-          error instanceof MediaError ||
-          error instanceof MessagingRepositoryError
-            ? error.code
-            : "INTEGRATION_PROCESSING_FAILED";
-        const failureDiagnostic=createJobFailureDiagnostic(error,job.attempts,uncertain?'UNKNOWN':retry?'RETRY_SCHEDULED':'FAILED');
-        await tx(org, (t) =>
-          t
-            .query(
-              `UPDATE integration_jobs SET status=$4,last_error=$5,failure_diagnostic=$7::jsonb,lease_token=NULL,lease_expires_at=NULL,
-          available_at=now()+($6*interval '1 second'),updated_at=now() WHERE organization_id=$1 AND id=$2 AND lease_token=$3`,
-              [
-                org,
-                job.id,
-                job.lease_token,
-                uncertain ? "UNKNOWN" : retry ? job.payload.historical===true ? 'HISTORY_PENDING' : "PENDING" : "FAILED",
-                code,
-                Math.min(300, 5 * 2 ** Math.min(job.attempts, 6)),
-                JSON.stringify(failureDiagnostic),
-              ],
-            )
-            .then(() => undefined),
-        );
+      // Amortize the other provider polls, but yield to other tenants after
+      // a slow request. Every claim retains its original order and lease.
+      const deadline = performance.now() + 5000;
+      const limit = continuous ? 4 : 1;
+      for (let count = 0; count < limit; count++) {
+        const job = await claim(org);
+        if (!job) break;
+        await processJob(org, job);
+        if (performance.now() >= deadline) break;
       }
     },
   };

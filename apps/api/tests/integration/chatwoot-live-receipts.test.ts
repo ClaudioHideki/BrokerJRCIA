@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {afterAll,beforeAll,expect,it} from 'vitest';
+import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
 import {chatwootEnvironment,createChatwootService,type ChatwootOptions} from '../../src/modules/integrations/chatwoot-service.js';
 import {createChatwootWorker} from '../../src/modules/integrations/chatwoot-worker.js';
@@ -68,6 +68,28 @@ async function fencedContact() {
    upstreamMessageId:randomUUID(),content:{type:'TEXT' as const,text:'New entry'},scheduleBot:false};
  return {t,worker,repository,event};
 }
+it.each([{requestMs:10,expected:4},{requestMs:5200,expected:1}])(
+ 'bounds continuous delivery with a $requestMs ms receiver',
+ async({requestMs,expected})=>{
+  const t=await fixture();
+  await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)
+    SELECT $1,$2,$3,'INCOMING','CONTACT',jsonb_build_object('type','TEXT','text','Batch '||i),'DELIVERED'
+    FROM generate_series(1,4) i`,[t.org,t.channel,t.conversation]);
+  let clock=0;
+  const worker=createChatwootWorker({...t.options,async fetch(url,init){
+    const response=await t.options.fetch!(url,init);
+    if(!new URL(String(url)).pathname.endsWith('/live-ingress/v1/messages'))return response;
+    clock+=requestMs;
+    return Response.json({...await response.json(),message_id:901+t.nativeBodies.length});
+  }});
+  const timer=vi.spyOn(performance,'now').mockImplementation(()=>clock);
+  try {await worker.runOnce(t.org,true);} finally {timer.mockRestore();}
+  expect(t.nativeBodies).toHaveLength(expected);
+  expect(new Set(t.nativeBodies.map(body=>body.broker_message_id)).size).toBe(expected);
+  const result=await db.database.pool.query(`SELECT count(*)::int AS done FROM integration_jobs
+    WHERE organization_id=$1 AND integration_id=$2 AND status='SUCCEEDED'`,[t.org,t.integration]);
+  expect(result.rows[0].done).toBe(expected);
+ });
 it('keeps a new receipt for pre-activation history out of live ingress while admitting fresh messages',async()=>{
  const t=await fixture();
  await db.database.pool.query(`UPDATE integration_jobs SET status='HISTORY_PENDING',available_at='infinity',

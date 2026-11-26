@@ -196,7 +196,7 @@ export async function runMessagingWorker(
             await integrations.centralIngress?.runOnce(organizationId);
             await integrations.centralDispatcher?.runOnce(organizationId);
             await worker.runOnce(organizationId);
-            await integrations.chatwootWorker?.runOnce(organizationId);
+            await integrations.chatwootWorker?.runOnce(organizationId, watch);
             await integrations.flowChatwoot?.runOnce(organizationId);
             await integrations.onboarding?.runOnce(organizationId);
             // Identity reconciliation must not prevent ordinary delivery if a
