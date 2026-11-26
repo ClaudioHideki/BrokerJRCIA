@@ -62,7 +62,7 @@ export async function persistQrContactEvent(tx:TenantTransaction,channel:Messagi
     providerMessageId:event.upstreamMessageId,fromMe:observed,participantJid:null,displayName:null,messageTimestamp:Math.floor(event.occurredAt.getTime()/1000),
     state:'DELIVERED',content:{type:'LIVE_MEDIA',mediaType:event.media.kind.toUpperCase(),filename:event.media.fileName,caption:event.caption}} as LiveMediaFact:null);
   if(observed){const created=await recordQrOutboundObservation(tx,{organizationId:org,channelId,conversationId:conversation.id,
-    upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt});
+    upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt,liveIndividual:!event.recoveredIdentity&&!event.historical});
     if(created&&liveFact)await recordLiveHistoryFact(tx,org,channelId,created,liveFact);
     return;}
   const outcome=await repository.recordIncoming(tx,{id:randomUUID(),organizationId:org,channelId,conversationId:conversation.id,

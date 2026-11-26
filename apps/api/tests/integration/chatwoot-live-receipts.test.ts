@@ -4,6 +4,7 @@ import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
 import {chatwootEnvironment,createChatwootService,type ChatwootOptions} from '../../src/modules/integrations/chatwoot-service.js';
 import {createChatwootWorker} from '../../src/modules/integrations/chatwoot-worker.js';
 import {createPostgresMessagingRepository} from '../../src/modules/messaging/repository.js';
+import {persistQrContactEvent} from '../../src/modules/messaging/qr-contact-persistence.js';
 import {inspectMirrorQueue,reviewPendingMirror} from '../../src/modules/integrations/review-pending-mirror.js';
 import {createMediaStore,registerPendingMedia} from '../../src/modules/messaging/media-store.js';
 let db:Awaited<ReturnType<typeof attendanceDatabase>>;
@@ -75,6 +76,50 @@ async function fencedContact(observedBlocker=false) {
    upstreamMessageId:randomUUID(),content:{type:'TEXT' as const,text:'New entry'},scheduleBot:false};
  return {t,worker,repository,event};
 }
+it.each(['fresh','duplicate-before-release','missing-map','recovered-identity','history','changed-provider','changed-phone','wrong-remote'] as const)
+ ('mirrors only a first live QR observation admitted for the same contact (%s)',async scenario=>{
+  const {t,repository,event}=await fencedContact(true);
+  const phone='15555550123';
+  await db.database.pool.query('UPDATE messaging_contacts SET external_id=$2 WHERE organization_id=$1',[t.org,phone]);
+  const channel=await db.transact(t.org,tx=>repository.findChannel(tx,t.org,t.channel));
+  const qr={kind:'outbound' as const,upstreamMessageId:event.upstreamMessageId,externalId:phone,displayName:null,
+    occurredAt:new Date(),content:event.content,historical:scenario==='history',recoveredIdentity:scenario==='recovered-identity'};
+  if(scenario==='duplicate-before-release')await db.database.pool.query(`INSERT INTO qr_outbound_observations
+    (organization_id,channel_id,conversation_id,provider_message_id,content,occurred_at) VALUES($1,$2,$3,$4,$5,$6)`,
+    [t.org,t.channel,t.conversation,qr.upstreamMessageId,qr.content,qr.occurredAt]);
+  if(scenario==='missing-map')await db.database.pool.query('DELETE FROM chatwoot_conversations WHERE organization_id=$1',[t.org]);
+  await db.transact(t.org,tx=>persistQrContactEvent(tx,channel!,qr));
+  if(scenario==='missing-map')await db.database.pool.query(`INSERT INTO chatwoot_conversations
+    (organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id) VALUES($1,$2,$3,41,'synthetic-native-source',51)`,
+    [t.org,t.integration,t.conversation]);
+  await db.transact(t.org,tx=>persistQrContactEvent(tx,channel!,qr));
+  const {id}= (await db.database.pool.query('SELECT id FROM messaging_messages WHERE organization_id=$1 AND upstream_message_id=$2',[t.org,qr.upstreamMessageId])).rows[0];
+  const capture=await db.database.pool.query(`SELECT j.payload ? 'qrObservationId' AS captured FROM integration_jobs j
+    WHERE j.organization_id=$1 AND j.message_id=$2`,[t.org,id]);
+  expect(capture.rows.some(row=>row.captured)).toBe(['fresh','changed-provider','changed-phone','wrong-remote'].includes(scenario));
+  if(scenario==='changed-phone')await db.database.pool.query("UPDATE messaging_contacts SET external_id='15555550999' WHERE organization_id=$1",[t.org]);
+  const paths:string[]=[];
+  if(scenario==='fresh'){
+    for(const state of ['DELIVERED','READ'] as const)await db.transact(t.org,tx=>repository.recordStatusEvent(tx,{
+      organizationId:t.org,channelId:t.channel,upstreamMessageId:qr.upstreamMessageId,state}));
+  }
+  const worker=createChatwootWorker({...t.options,async fetch(url,init){
+    const path=new URL(String(url)).pathname;
+    if(path.endsWith('/conversations/51'))return Response.json({id:51,account_id:7,inbox_id:9,
+      contact_inbox:{id:11,contact_id:41,inbox_id:9,source_id:'synthetic-native-source'},meta:{sender:{id:41,phone_number:'+'+(scenario==='wrong-remote'?'15555550999':phone)}}});
+    if(path.endsWith('/capability')&&scenario==='changed-provider')await db.database.pool.query(
+      'UPDATE qr_outbound_observations SET provider_message_id=$2 WHERE message_id=$1',[id,randomUUID()]);
+    if(init?.method==='POST'&&path.endsWith('/messages'))paths.push(path);
+    return t.options.fetch!(url,init);
+  }});
+  for(let i=0;i<5;i++)await worker.runOnce(t.org);
+  if(scenario==='fresh')expect((await db.database.pool.query('SELECT status,last_error FROM integration_jobs WHERE message_id=$1',[id])).rows)
+    .toEqual(Array(3).fill({status:'SUCCEEDED',last_error:null}));
+  expect(paths).toEqual(scenario==='fresh'?['/api/v1/accounts/7/jrc_broker/inboxes/9/live-ingress/v1/messages']:[]);
+  if(scenario==='fresh')expect(t.nativeBodies[0]).toMatchObject({broker_message_id:id,message_type:'outgoing',message_origin:'EXTERNAL_OBSERVED',conversation_id:51});
+  expect(await t.read()).toMatchObject({status:'UNKNOWN'});
+  expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows).toHaveLength(0);
+});
 it.each([{requestMs:10,expected:4},{requestMs:5200,expected:1}])(
  'bounds continuous delivery with a $requestMs ms receiver',
  async({requestMs,expected})=>{

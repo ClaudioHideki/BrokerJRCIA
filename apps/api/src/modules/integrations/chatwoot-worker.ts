@@ -239,11 +239,27 @@ export function createChatwootWorker(options: ChatwootOptions) {
       WHERE leader.organization_id=j.organization_id AND leader.integration_id=j.integration_id AND leader.message_id=j.message_id
         AND leader.dedupe_key IN ('message:'||j.message_id::text||':SENT','message:'||j.message_id::text||':DELIVERED','message:'||j.message_id::text||':READ')
         AND leader.id::text=j.payload->>'reviewedStatusLeader' AND leader.status='SUCCEEDED'
-        AND leader.payload->'reviewedInboxTarget'=j.payload->'reviewedInboxTarget'
+        AND (leader.payload->'reviewedInboxTarget'=j.payload->'reviewedInboxTarget'
+          OR (leader.payload->'admittedInboxTarget'=j.payload->'admittedInboxTarget'
+            AND leader.payload->'qrObservationId'=j.payload->'qrObservationId'))
         AND leader.payload->>'mirrorProtocol'='jrc-live-ingress/1' AND leader.payload->'liveIngressProof'->>'attempt_id'=receipt.id::text
         AND receipt.state='CONFIRMED' AND receipt.channel_id=c.channel_id))`;
   const noUnknown = `NOT EXISTS(SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=j.organization_id
       AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN')`;
+  const firstQrObservation = `EXISTS(SELECT 1 FROM qr_outbound_observations observation
+    JOIN messaging_messages fact ON fact.organization_id=observation.organization_id AND fact.id=observation.message_id
+      AND fact.channel_id=observation.channel_id AND fact.conversation_id=observation.conversation_id
+    JOIN messaging_conversations cv ON cv.organization_id=fact.organization_id AND cv.id=fact.conversation_id
+    JOIN messaging_contacts ct ON ct.organization_id=cv.organization_id AND ct.id=cv.contact_id
+    WHERE observation.organization_id=j.organization_id AND observation.id=CASE
+      WHEN j.payload->>'qrObservationId' ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' THEN (j.payload->>'qrObservationId')::uuid END
+      AND fact.id=j.message_id AND fact.channel_id=c.channel_id AND fact.provider_scope='' AND observation.provider_scope=''
+      AND fact.upstream_message_id=observation.provider_message_id AND fact.direction='OUTGOING' AND fact.source='EXTERNAL_OBSERVED'
+      AND fact.state IN ('SENT','DELIVERED','READ') AND NOT fact.is_historical AND cv.recipient_kind='INDIVIDUAL'
+      AND observation.disposition='EXTERNAL_OBSERVED' AND NOT observation.blocking AND observation.content=fact.content
+      AND chatwoot_channel_identity_ready(j.organization_id,c.channel_id)
+      AND encode(sha256(convert_to(observation.provider_message_id,'UTF8')),'hex')=j.payload->'admittedInboxTarget'->>'providerHash'
+      AND encode(sha256(convert_to(ct.external_id,'UTF8')),'hex')=j.payload->'admittedInboxTarget'->>'phoneHash')`;
   const independentMirror = `j.kind='MIRROR_MESSAGE' AND EXISTS(
       SELECT 1 FROM messaging_messages candidate_message
       JOIN messaging_conversations candidate_conversation ON candidate_conversation.organization_id=candidate_message.organization_id
@@ -262,8 +278,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
                  AND map.conversation_id=attempt.conversation_id AND map.remote_conversation_id=attempt.remote_conversation_id
                WHERE ${inboxTarget} IS NOT NULL AND candidate_conversation.recipient_kind='INDIVIDUAL'
                  AND ((candidate_message.direction='INCOMING' AND candidate_message.source='CONTACT')
-                   OR (j.payload ? 'reviewedInboxTarget' AND candidate_message.direction='OUTGOING'
-                     AND candidate_message.source='EXTERNAL_OBSERVED')) AND NOT candidate_message.is_historical
+                   OR (candidate_message.direction='OUTGOING' AND candidate_message.source='EXTERNAL_OBSERVED'
+                     AND (j.payload ? 'reviewedInboxTarget' OR (j.payload ? 'qrObservationId' AND ${firstQrObservation}
+                       AND blocked_message.upstream_message_id<>'' AND blocked_message.upstream_message_id !~ '[[:space:][:cntrl:]]'
+                       AND blocked_message.upstream_message_id<>candidate_message.upstream_message_id)))) AND NOT candidate_message.is_historical
                  AND candidate_message.upstream_message_id IS NOT NULL AND blocked.message_id<>j.message_id
                  AND blocked.kind='MIRROR_MESSAGE' AND blocked.payload->>'operation'='SEND_MESSAGE'
                  AND NOT blocked_message.is_historical AND (
@@ -783,18 +801,20 @@ export function createChatwootWorker(options: ChatwootOptions) {
     if(!a.destination)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
     if (job.payload.requiresNativeReceipt === true) {
       const reviewed=job.payload.reviewedInboxTarget!==undefined;
+      const newObserved=job.payload.qrObservationId!==undefined&&z.uuid().safeParse(job.payload.qrObservationId).success;
       const target = z.object({ revision:z.number().int(), account:z.string(), inbox:z.string(),credentialRevision:z.number().int().optional(),phoneHash:z.string().optional(),messageHash:z.string().optional(),
         instance:z.uuid(), conversation:z.string(), contact:z.string(), sourceHash:z.string() }).safeParse(job.payload.admittedInboxTarget??job.payload.reviewedInboxTarget);
       const individualMirror=(message.direction==='INCOMING'&&message.source==='CONTACT')||
-        (reviewed&&message.direction==='OUTGOING'&&message.source==='EXTERNAL_OBSERVED');
-      if (!target.success || !individualMirror || message.is_historical || (reviewed&&(target.data.credentialRevision!==a.credential_version
-        ||target.data.messageHash!==message.reviewed_hash||target.data.phoneHash!==createHash('sha256').update(contact.external_id).digest('hex')))
+        ((reviewed||newObserved)&&message.direction==='OUTGOING'&&message.source==='EXTERNAL_OBSERVED');
+      if (!target.success || !individualMirror || message.is_historical || ((reviewed||newObserved)&&(target.data.credentialRevision!==a.credential_version
+        ||target.data.phoneHash!==createHash('sha256').update(contact.external_id).digest('hex')))
+        || (reviewed&&target.data.messageHash!==message.reviewed_hash)
         || !context.map || String(context.map.remote_conversation_id)!==target.data.conversation
         || String(context.map.contact_id)!==target.data.contact || createHash('sha256').update(context.map.source_id).digest('hex')!==target.data.sourceHash
         || String(a.account_id)!==target.data.account || String(c.inbox_id)!==target.data.inbox
         || a.destination.revision!==target.data.revision || message.instance_id!==target.data.instance)
         throw new IntegrationError('CHATWOOT_LIVE_CONTEXT_CHANGED',409);
-      if(reviewed)await verifyReviewedContact(client,accountId,inboxId,Number(context.map.remote_conversation_id),{
+      if(reviewed||newObserved)await verifyReviewedContact(client,accountId,inboxId,Number(context.map.remote_conversation_id),{
         contact_id:String(context.map.contact_id),source_id:context.map.source_id,phone:contact.external_id});
     }
     // A sibling may only acknowledge or patch the already confirmed remote message.
@@ -999,6 +1019,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
         const isolated = await t.query(`SELECT 1 FROM integration_jobs j
           JOIN chatwoot_connections c ON c.organization_id=j.organization_id AND c.id=j.integration_id
           WHERE j.organization_id=$1 AND j.id=$2 AND j.integration_id=$3 AND j.message_id=$4
+            AND (NOT(j.payload ? 'qrObservationId') OR ${firstQrObservation})
             AND (${noUnknown} OR (${independentMirror}))`,[org,job.id,c.id,message.id]);
         if (!isolated.rowCount) throw new IntegrationError('CHATWOOT_MIRROR_ISOLATION_CHANGED',409);
       };

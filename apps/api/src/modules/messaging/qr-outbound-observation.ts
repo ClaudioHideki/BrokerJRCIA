@@ -15,14 +15,47 @@ type Observation = { id: string; channel_id: string; conversation_id: string; pr
 
 /** The caller holds the channel lock. An observation never enters the send outbox. */
 export async function recordQrOutboundObservation(tx: TenantTransaction, input: Scope & {
-  upstreamMessageId: string; content: MessageContent; occurredAt: Date;
+  upstreamMessageId: string; content: MessageContent; occurredAt: Date; liveIndividual?: boolean;
 }) {
+  const firstId=randomUUID();
   const row = (await tx.query<{ id: string }>(`INSERT INTO qr_outbound_observations
-    (organization_id,channel_id,conversation_id,provider_message_id,content,occurred_at)
-    VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(organization_id,channel_id,provider_scope,provider_message_id)
+    (organization_id,channel_id,conversation_id,provider_message_id,content,occurred_at,id)
+    VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(organization_id,channel_id,provider_scope,provider_message_id)
     DO UPDATE SET provider_message_id=EXCLUDED.provider_message_id RETURNING id`,
-    [input.organizationId,input.channelId,input.conversationId,input.upstreamMessageId,input.content,input.occurredAt])).rows[0]!;
-  return settleQrOutboundObservation(tx,input.organizationId,row.id);
+    [input.organizationId,input.channelId,input.conversationId,input.upstreamMessageId,input.content,input.occurredAt,firstId])).rows[0]!;
+  const messageId=await settleQrOutboundObservation(tx,input.organizationId,row.id);
+  if(input.liveIndividual && row.id===firstId && messageId){
+    // Capture only a first physical fact and its first status job in this transaction.
+    // Duplicate callbacks, delayed reconciliation and group traffic cannot acquire a new target.
+    await tx.query(`UPDATE integration_jobs j SET payload=jsonb_build_object('qrObservationId',o.id,'admittedInboxTarget',
+      jsonb_build_object('revision',d.revision,'credentialRevision',a.credential_version,'account',a.account_id::text,
+        'inbox',c.inbox_id::text,'instance',ch.instance_id,'conversation',map.remote_conversation_id::text,
+        'contact',map.contact_id::text,'sourceHash',encode(sha256(convert_to(map.source_id,'UTF8')),'hex'),
+        'phoneHash',encode(sha256(convert_to(ct.external_id,'UTF8')),'hex'),
+        'providerHash',encode(sha256(convert_to(o.provider_message_id,'UTF8')),'hex')))
+      FROM qr_outbound_observations o
+      JOIN messaging_messages m ON m.organization_id=o.organization_id AND m.id=o.message_id AND m.channel_id=o.channel_id
+        AND m.conversation_id=o.conversation_id AND m.provider_scope=o.provider_scope AND m.upstream_message_id=o.provider_message_id
+      JOIN messaging_conversations cv ON cv.organization_id=m.organization_id AND cv.channel_id=m.channel_id AND cv.id=m.conversation_id
+      JOIN messaging_contacts ct ON ct.organization_id=cv.organization_id AND ct.id=cv.contact_id
+      JOIN messaging_channels ch ON ch.organization_id=m.organization_id AND ch.id=m.channel_id
+      JOIN chatwoot_connections c ON c.organization_id=ch.organization_id AND c.channel_id=ch.id
+      JOIN chatwoot_accounts a ON a.organization_id=c.organization_id
+      JOIN chatwoot_destinations d ON d.organization_id=a.organization_id AND d.base_url=a.base_url
+      JOIN chatwoot_conversations map ON map.organization_id=c.organization_id AND map.integration_id=c.id AND map.conversation_id=cv.id
+      WHERE o.organization_id=$1 AND o.id=$2 AND m.id=$3 AND o.disposition='EXTERNAL_OBSERVED' AND o.provider_scope=''
+        AND m.direction='OUTGOING' AND m.source='EXTERNAL_OBSERVED' AND NOT m.is_historical AND m.state IN ('SENT','DELIVERED','READ')
+        AND m.content->>'type' IN ('TEXT','MEDIA') AND o.provider_message_id<>'' AND o.provider_message_id !~ '[[:space:][:cntrl:]]'
+        AND cv.recipient_kind='INDIVIDUAL' AND ct.external_id ~ '^[1-9][0-9]{7,14}$'
+        AND ch.provider='BAILEYS' AND ch.transport='BROKER_TRANSPORT' AND ch.instance_id IS NOT NULL
+        AND chatwoot_channel_identity_ready(o.organization_id,ch.id)
+        AND c.status='READY' AND a.status='READY' AND d.approval_status='APPROVED'
+        AND j.organization_id=o.organization_id AND j.integration_id=c.id AND j.message_id=m.id
+        AND j.dedupe_key='message:'||m.id::text||':'||m.state::text AND j.kind='MIRROR_MESSAGE'
+        AND j.status='PENDING' AND j.attempts=0 AND j.payload='{}'::jsonb AND j.lease_token IS NULL`,
+      [input.organizationId,firstId,messageId]);
+  }
+  return messageId;
 }
 
 /** Exact provider ID is the only positive correlation. Sender hints, text and dates are never evidence. */

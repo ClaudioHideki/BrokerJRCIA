@@ -1092,6 +1092,29 @@ export function createPostgresMessagingRepository(): MessagingRepository {
           ],
         ),
       );
+      if(current.source==='EXTERNAL_OBSERVED' && current.direction==='OUTGOING' &&
+        (input.state==='DELIVERED'||input.state==='READ')){
+        // A provider receipt for a live, admitted QR fact can only update the
+        // remote message created by its original mirror. Index the leader by
+        // the canonical status keys, even on a large tenant queue.
+        await transaction.query(`UPDATE integration_jobs sibling SET payload=jsonb_build_object(
+          'qrObservationId',leader.payload->'qrObservationId','admittedInboxTarget',leader.payload->'admittedInboxTarget',
+          'reviewedStatusLeader',leader.id,'requiresNativeReceipt',true)
+          FROM integration_jobs leader WHERE sibling.organization_id=$1 AND sibling.message_id=$2
+            AND sibling.dedupe_key='message:'||sibling.message_id::text||':'||$3::text AND sibling.kind='MIRROR_MESSAGE'
+            AND sibling.status='PENDING' AND sibling.attempts=0 AND sibling.lease_token IS NULL AND sibling.payload='{}'::jsonb
+            AND leader.organization_id=sibling.organization_id AND leader.integration_id=sibling.integration_id
+            AND leader.message_id=sibling.message_id AND leader.id<>sibling.id AND leader.kind='MIRROR_MESSAGE'
+            AND leader.dedupe_key IN ('message:'||sibling.message_id::text||':SENT','message:'||sibling.message_id::text||':DELIVERED')
+            AND leader.payload ? 'qrObservationId' AND leader.payload ? 'admittedInboxTarget' AND NOT(leader.payload ? 'reviewedStatusLeader')
+            AND EXISTS(SELECT 1 FROM messaging_messages fact WHERE fact.organization_id=leader.organization_id
+              AND fact.id=leader.message_id AND NOT fact.is_historical AND fact.provider_scope='')
+            AND (leader.payload->>'mirrorProtocol'='jrc-live-ingress/1' OR EXISTS(
+              SELECT 1 FROM integration_jobs blocked JOIN messaging_messages older ON older.organization_id=blocked.organization_id
+                AND older.id=blocked.message_id AND older.channel_id=$5 AND older.conversation_id=$4
+              WHERE blocked.organization_id=leader.organization_id AND blocked.integration_id=leader.integration_id AND blocked.status='UNKNOWN'))`,
+          [input.organizationId,current.id,input.state,current.conversationId,input.channelId]);
+      }
       return { kind, message: asMessage(updated!) };
     },
 
