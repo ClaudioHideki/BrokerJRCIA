@@ -4,6 +4,8 @@ import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
 import {chatwootEnvironment,createChatwootService,type ChatwootOptions} from '../../src/modules/integrations/chatwoot-service.js';
 import {createChatwootWorker} from '../../src/modules/integrations/chatwoot-worker.js';
 import {createPostgresMessagingRepository} from '../../src/modules/messaging/repository.js';
+import {inspectMirrorQueue,reviewPendingMirror} from '../../src/modules/integrations/review-pending-mirror.js';
+import {createMediaStore,registerPendingMedia} from '../../src/modules/messaging/media-store.js';
 let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();},60_000);
 afterAll(async()=>{await db?.dispose();});
@@ -19,7 +21,9 @@ async function fixture(input:{lostAck?:boolean;pending?:boolean;unavailable?:boo
  const options:ChatwootOptions={baseUrl:`https://${t.org}.example.test`,publicOrigin:'https://broker.example.test',
   encryptionKey:Buffer.alloc(32,6).toString('base64'),transact:db.transact,resolveIntegration:async id=>id===t.integration?t.org:undefined,
   async fetch(url,init){
-   const path=new URL(String(url)).pathname;calls.push(path);const body=init?.body===undefined?{}:JSON.parse(String(init.body));
+   const path=new URL(String(url)).pathname;calls.push(path);
+   const encoded=init?.body instanceof FormData?init.body.get('envelope'):init?.body;
+   const body=encoded===undefined?{}:JSON.parse(String(encoded));
    if(path.endsWith('/contacts/search'))return Response.json({payload:[]});
    if(path.endsWith('/contacts'))return Response.json({payload:{contact:{id:41}}});
    if(path.endsWith('/contact_inboxes'))return Response.json({source_id:'synthetic-native-source'});
@@ -41,6 +45,7 @@ async function fixture(input:{lostAck?:boolean;pending?:boolean;unavailable?:boo
     if(!stored)return new Response('',{status:404});
     return Response.json(stored);
    }
+   if(init?.method==='PATCH'&&path.endsWith('/conversations/51/messages/901'))return Response.json({});
    if(path.endsWith('/conversations/51/messages')){
     if(input.lostAck)throw Error('Generic outcome must remain unknown');
     return Response.json({id:902});
@@ -137,6 +142,69 @@ it('holds the fresh message when the mapped receiver cannot provide native recei
  expect(requests[0]).toMatch(/\/capability$/);
  expect((await db.database.pool.query('SELECT status,last_error FROM integration_jobs WHERE message_id=$1',[event.id])).rows)
    .toEqual([{status:'PENDING',last_error:'CHATWOOT_NATIVE_RECEIPT_REQUIRED'}]);
+ expect(await t.read()).toMatchObject({status:'UNKNOWN'});
+});
+it.each([
+ {observed:false,attachment:false,rebound:false},{observed:true,attachment:false,rebound:false},
+ {observed:false,attachment:true,rebound:false},{observed:true,attachment:true,rebound:false},
+ {observed:false,attachment:false,rebound:true},
+])('reviews a single mirror (observed=$observed, attachment=$attachment, rebound=$rebound)',async({observed,attachment,rebound})=>{
+ const {t}=await fencedContact();
+ const phone='15555550123';
+ await db.database.pool.query('UPDATE messaging_contacts SET external_id=$2 WHERE organization_id=$1',[t.org,phone]);
+ const binary={kind:'document' as const,fileName:'example.pdf',mimeType:'application/pdf',bytes:new TextEncoder().encode('%PDF-1.4 synthetic')};
+ const media=createMediaStore({encryptionKey:t.options.encryptionKey,transact:t.options.transact,download:async()=>binary});
+ const queued=async(text:string,file=false)=>{
+  const sourceKey=randomUUID();
+  const mediaId=file?await db.transact(t.org,tx=>registerPendingMedia(tx,t.org,t.channel,{source:'QR',sourceKey,
+    descriptor:{messageId:sourceKey},kind:binary.kind,fileName:binary.fileName})):undefined;
+  if(file)await media.runOnce(t.org);
+  const content=mediaId?{type:'MEDIA',mediaId,kind:binary.kind,fileName:binary.fileName,caption:text}:{type:'TEXT',text};
+  const row=await db.database.pool.query(`INSERT INTO messaging_messages
+    (organization_id,channel_id,conversation_id,direction,source,upstream_message_id,content,state)
+    VALUES($1,$2,$3,$6,$7,$4,$5::jsonb,'DELIVERED') RETURNING id`,
+    [t.org,t.channel,t.conversation,sourceKey,JSON.stringify(content),observed?'OUTGOING':'INCOMING',observed?'EXTERNAL_OBSERVED':'CONTACT']);
+  const messageId=row.rows[0].id as string;
+  const job=await db.database.pool.query('SELECT id FROM integration_jobs WHERE organization_id=$1 AND message_id=$2',[t.org,messageId]);
+  return {messageId,jobId:job.rows[0].id as string};
+ };
+ const candidate=await queued('https://one.example.invalid/',attachment),other=await queued('https://two.example.invalid/path');
+ const input={organizationId:t.org,integrationId:t.integration,accountId:7,inboxId:9,conversationId:51,...candidate};
+ let remotePhone=phone;
+ const receiver:ChatwootOptions={...t.options,media,async fetch(url,init){
+   const path=new URL(String(url)).pathname;
+   if(path.endsWith('/conversations/51'))return Response.json({id:51,account_id:7,inbox_id:9,
+     contact_inbox:{id:11,contact_id:41,inbox_id:9,source_id:'synthetic-native-source'},meta:{sender:{id:41,phone_number:'+'+remotePhone}}});
+   if(path.endsWith('/conversations/51/messages')&&init?.method==='GET')return Response.json({payload:[]});
+   return t.options.fetch!(url,init);
+ }};
+ const options={transact:t.options.transact,client:chatwootEnvironment(receiver).client};
+ const worker=createChatwootWorker(receiver);
+ expect(await inspectMirrorQueue(options.transact,input)).toMatchObject({status:'PENDING',attempts:0,capturedTarget:false,
+   ownAttempts:0,siblingJobs:0,mapped:false,uncertainInConversation:1,observation:'PENDING_WITHOUT_TARGET_BEHIND_UNKNOWN'});
+ const preview=await reviewPendingMirror(options,input);
+ expect(preview.state).toBe('ELIGIBLE');
+ await expect(reviewPendingMirror(options,{...input,organizationId:randomUUID()})).rejects.toThrow();
+ await expect(reviewPendingMirror(options,{...input,inboxId:10})).rejects.toThrow();
+ await expect(reviewPendingMirror(options,{...input,jobId:t.job,messageId:t.message})).rejects.toThrow();
+ await expect(reviewPendingMirror(options,{...input,...other},preview.digest)).rejects.toThrow();
+ expect(t.nativeBodies).toHaveLength(0);
+ await reviewPendingMirror(options,input,preview.digest);
+ await expect(reviewPendingMirror(options,input,preview.digest)).rejects.toThrow();
+ if(rebound)remotePhone='15555550999';
+ await worker.runOnce(t.org); await worker.runOnce(t.org);
+ if(rebound){
+   expect(t.nativeBodies).toHaveLength(0);
+   expect((await db.database.pool.query('SELECT status,last_error FROM integration_jobs WHERE id=$1',[candidate.jobId])).rows)
+     .toEqual([{status:'FAILED',last_error:'CHATWOOT_REVIEW_REMOTE_MISMATCH'}]);
+ }else{
+   expect(t.nativeBodies).toHaveLength(1);
+   expect(t.nativeBodies[0]).toMatchObject({broker_message_id:candidate.messageId,message_type:observed?'outgoing':'incoming',
+     message_origin:observed?'EXTERNAL_OBSERVED':'LIVE',conversation_id:51,media:attachment?{mime_type:'application/pdf'}:null});
+   expect((await db.database.pool.query('SELECT status FROM integration_jobs WHERE id=$1',[candidate.jobId])).rows).toEqual([{status:'SUCCEEDED'}]);
+ }
+ expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE id=$1',[other.jobId])).rows)
+   .toEqual([{status:'PENDING',attempts:0}]);
  expect(await t.read()).toMatchObject({status:'UNKNOWN'});
 });
 it('does not send or create a conversation when the captured mapping changes',async()=>{

@@ -4,6 +4,24 @@ import { normalizeQrEvent, normalizeQrHistoryEvent } from '../../src/modules/mes
 const envelope = (data: unknown, event = 'messages.upsert') => ({ event, instance: 'jrc-private-instance', data });
 const message = { key: { id: 'qr-message-1', remoteJid: '15550000001@s.whatsapp.net', fromMe: false }, messageTimestamp: 1789470000, pushName: 'Contato de teste', message: { conversation: 'Olá JRC' } };
 describe('eventos QR canônicos', () => {
+  it('mantém os dois links de um contato sem nome, incluindo a mensagem com prévia', () => {
+    const firstUrl = 'https://one.example.invalid/';
+    const secondUrl = 'https://two.example.invalid/path';
+    const timestamp = message.messageTimestamp;
+    const entries = [
+      { key: { ...message.key, id: 'first-link' }, messageTimestamp: timestamp, message: { conversation: firstUrl } },
+      {
+        key: { ...message.key, id: 'second-link' }, messageTimestamp: timestamp + 60,
+        message: { extendedTextMessage: { text: secondUrl, matchedText: secondUrl, title: 'Prévia sintética' } },
+      },
+    ];
+    const expected = [firstUrl, secondUrl].map((url, index) => ({
+      kind: 'message', externalId: '15550000001', displayName: null,
+      upstreamMessageId: entries[index]!.key.id, content: { type: 'TEXT', text: url },
+      occurredAt: new Date((timestamp + 60 * index) * 1000),
+    }));
+    expect(normalizeQrEvent(envelope(entries), 'jrc-private-instance')).toEqual(expected);
+  });
   it('recebe documento com legenda no envelope suportado pela Evolution sem perder a identidade de mídia', () => {
     const raw = { ...message, message: { documentWithCaptionMessage: { message: { documentMessage: { fileName: 'proposta.pdf', caption: 'Documento sintético', mimetype: 'application/pdf' } } } } };
     expect(normalizeQrEvent(envelope(raw), 'jrc-private-instance')).toMatchObject([{

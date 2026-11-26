@@ -205,6 +205,19 @@ aceito pelas APIs genéricas, administrativas, de mensagens, Meta ou automaçõe
 
 ## Homologação e rollback
 
+### Revisão de uma mensagem individual já recebida pelo Broker
+
+O comando abaixo examina o trabalho original no serviço da API do Broker. Informe os UUIDs da organização, integração, trabalho e mensagem canônica, além dos IDs numéricos da conta, caixa e conversa no JRC Conversas. Obtenha os IDs das duas pontas da ocorrência. Os campos da prévia não incluem texto, telefone ou anexo.
+
+```sh
+node apps/api/dist/commands/review-pending-mirror.js --org "$ORG" --integration "$INTEGRATION" --job "$JOB" --message "$MESSAGE" --account "$ACCOUNT" --inbox "$INBOX" --conversation "$CONVERSATION" --diagnose
+```
+
+1. Consulte o diagnóstico. `PENDING_WITHOUT_TARGET_BEHIND_UNKNOWN` identifica pendência na mesma conversa e ausência de um destino registrado para o trabalho. Confira a mensagem na origem e a ausência na caixa pelo ID canônico. A busca por nome ou texto pode localizar outro atendimento.
+2. Repita o comando sem `--diagnose` para obter a prévia. O Broker verifica a identidade ativa, o contato, a caixa, a conversa e o protocolo de recibo do destino. Somente uma entrada individual ou uma saída observada, com ID do provedor e registro original intocado, pode ser admitida. A mídia precisa estar disponível. Trabalhos irmãos, tentativas anteriores, histórico retido e recibos exigem avaliação específica.
+3. Com a recuperação autorizada, repita o comando com `--approve "$DIGEST"`, usando o valor integral da prévia. Essa operação registra a decisão no histórico de auditoria e habilita o worker a espelhar exclusivamente a mensagem original. O consumidor usa seu idempotency key canônico e o horário original. Uma saída observada continua identificada como `EXTERNAL_OBSERVED` no JRC. A decisão fica vinculada à mensagem, ao destino, ao contato e à revisão de credencial.
+4. Confira o estado `SUCCEEDED`, o ID remoto e uma única mensagem na conversa de destino. Uma resposta `QUEUED` informa apenas a admissão. Se uma tentativa ficar incerta, consulte o recibo do protocolo antes de decidir sobre a ocorrência.
+
 Executar os três níveis da matriz separadamente. O piloto precisa observar entrada,
 saída, anexos, status, duplicatas e queda do Broker **antes** de aceitar o webhook.
 Se a versão Chatwoot descartar esse webhook sem retry/catch-up, bloquear liberação

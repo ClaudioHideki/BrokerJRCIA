@@ -6,6 +6,7 @@ import { createPostgresMessagingRepository } from "../messaging/repository.js";
 import { isOrganizationActive } from "../tenancy/operational-limits.js";
 import { ChatwootError } from "./chatwoot-client.js";
 import {createJobFailureDiagnostic} from './job-failure-diagnostics.js';
+import {reviewedMessageHashSql,verifyReviewedContact} from './review-pending-mirror.js';
 import { requireApprovedDestination } from './chatwoot-context.js';
 import {
   chatwootEnvironment,
@@ -209,6 +210,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
         AND status_message.channel_id=c.channel_id AND status_message.direction='OUTGOING' AND status_message.source='OPERATOR'
         AND status_message.is_historical=false AND (status_message.state='FAILED'
           OR status_message.state IN ('SENT','DELIVERED','READ') AND status_message.upstream_message_id IS NOT NULL))`;
+  const inboxTarget = "COALESCE(j.payload->'admittedInboxTarget',j.payload->'reviewedInboxTarget')";
   const eligibleJob = `j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now()
     AND j.payload->>'historySyncVersion' IS DISTINCT FROM '2'
     AND (NOT EXISTS(SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=j.organization_id
@@ -229,8 +231,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
                SELECT 1 FROM chatwoot_mirror_attempts attempt
                JOIN chatwoot_conversations map ON map.organization_id=attempt.organization_id AND map.integration_id=attempt.integration_id
                  AND map.conversation_id=attempt.conversation_id AND map.remote_conversation_id=attempt.remote_conversation_id
-               WHERE j.payload ? 'admittedInboxTarget' AND candidate_conversation.recipient_kind='INDIVIDUAL'
-                 AND candidate_message.direction='INCOMING' AND candidate_message.source='CONTACT' AND NOT candidate_message.is_historical
+               WHERE ${inboxTarget} IS NOT NULL AND candidate_conversation.recipient_kind='INDIVIDUAL'
+                 AND ((candidate_message.direction='INCOMING' AND candidate_message.source='CONTACT')
+                   OR (j.payload ? 'reviewedInboxTarget' AND candidate_message.direction='OUTGOING'
+                     AND candidate_message.source='EXTERNAL_OBSERVED')) AND NOT candidate_message.is_historical
                  AND candidate_message.upstream_message_id IS NOT NULL AND blocked.message_id<>j.message_id
                  AND blocked.kind='MIRROR_MESSAGE' AND blocked.payload->>'operation'='SEND_MESSAGE'
                  AND blocked_message.direction='INCOMING' AND blocked_message.source='CONTACT' AND NOT blocked_message.is_historical
@@ -239,10 +243,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
                  AND attempt.job_id=blocked.id AND attempt.message_id=blocked.message_id AND attempt.channel_id=c.channel_id
                  AND attempt.conversation_id=candidate_conversation.id AND attempt.state IN ('DISPATCHED','UNKNOWN')
                  AND attempt.remote_message_id IS NULL
-                 AND attempt.remote_conversation_id::text=j.payload->'admittedInboxTarget'->>'conversation'
-                 AND attempt.account_id::text=j.payload->'admittedInboxTarget'->>'account'
-                 AND attempt.inbox_id::text=j.payload->'admittedInboxTarget'->>'inbox'
-                 AND attempt.destination_revision::text=j.payload->'admittedInboxTarget'->>'revision'))))
+                 AND attempt.remote_conversation_id::text=${inboxTarget}->>'conversation'
+                 AND attempt.account_id::text=${inboxTarget}->>'account'
+                 AND attempt.inbox_id::text=${inboxTarget}->>'inbox'
+                 AND attempt.destination_revision::text=${inboxTarget}->>'revision'))))
     OR (${independentCampaignReply}) OR (${independentHumanReply}) OR (${provenHumanStatus}))`;
   async function claim(org: string): Promise<Job | undefined> {
     return tx(org, async (t) => {
@@ -277,7 +281,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
               AND held.message_id=j.message_id AND held.kind='MIRROR_MESSAGE'
               AND held.status='HISTORY_PENDING' AND held.available_at='infinity'
               AND held.last_error='PRE_ACTIVATION_HISTORY_HELD'
-          ) AS held_history, j.payload ? 'admittedInboxTarget' AND EXISTS (
+          ) AS held_history, ${inboxTarget} IS NOT NULL AND EXISTS (
             SELECT 1 FROM integration_jobs blocked JOIN messaging_messages previous ON previous.organization_id=blocked.organization_id AND previous.id=blocked.message_id
             JOIN messaging_messages candidate ON candidate.organization_id=j.organization_id AND candidate.id=j.message_id AND candidate.conversation_id=previous.conversation_id
             WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
@@ -660,12 +664,14 @@ export function createChatwootWorker(options: ChatwootOptions) {
           created_at:Date;
           instance_id:string|null;
           has_mirror_attempt:boolean;
+          reviewed_hash:string|null;
         }>(
           `SELECT id,conversation_id,direction,source,content,state,canonical_error_code,is_historical,created_at,
             (SELECT instance_id FROM messaging_channels WHERE organization_id=$1 AND id=$3) AS instance_id,
-            EXISTS(SELECT 1 FROM chatwoot_mirror_attempts WHERE organization_id=$1 AND job_id=$4) AS has_mirror_attempt
-            FROM messaging_messages WHERE organization_id=$1 AND id=$2 AND channel_id=$3`,
-          [org, job.message_id, c.channel_id,job.id],
+            EXISTS(SELECT 1 FROM chatwoot_mirror_attempts WHERE organization_id=$1 AND job_id=$4) AS has_mirror_attempt,
+            CASE WHEN $5::boolean THEN ${reviewedMessageHashSql} END AS reviewed_hash
+            FROM messaging_messages m WHERE organization_id=$1 AND id=$2 AND channel_id=$3`,
+          [org, job.message_id, c.channel_id,job.id,job.payload.reviewedInboxTarget!==undefined],
         )
       ).rows[0];
       if (!message)
@@ -714,14 +720,20 @@ export function createChatwootWorker(options: ChatwootOptions) {
       inboxId = Number(c.inbox_id);
     if(!a.destination)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
     if (job.payload.requiresNativeReceipt === true) {
-      const target = z.object({ revision:z.number().int(), account:z.string(), inbox:z.string(),
-        instance:z.uuid(), conversation:z.string(), contact:z.string(), sourceHash:z.string() }).safeParse(job.payload.admittedInboxTarget);
-      if (!target.success || message.direction!=='INCOMING' || message.source!=='CONTACT' || message.is_historical
+      const reviewed=job.payload.reviewedInboxTarget!==undefined;
+      const target = z.object({ revision:z.number().int(), account:z.string(), inbox:z.string(),credentialRevision:z.number().int().optional(),phoneHash:z.string().optional(),messageHash:z.string().optional(),
+        instance:z.uuid(), conversation:z.string(), contact:z.string(), sourceHash:z.string() }).safeParse(job.payload.admittedInboxTarget??job.payload.reviewedInboxTarget);
+      const individualMirror=(message.direction==='INCOMING'&&message.source==='CONTACT')||
+        (reviewed&&message.direction==='OUTGOING'&&message.source==='EXTERNAL_OBSERVED');
+      if (!target.success || !individualMirror || message.is_historical || (reviewed&&(target.data.credentialRevision!==a.credential_version
+        ||target.data.messageHash!==message.reviewed_hash||target.data.phoneHash!==createHash('sha256').update(contact.external_id).digest('hex')))
         || !context.map || String(context.map.remote_conversation_id)!==target.data.conversation
         || String(context.map.contact_id)!==target.data.contact || createHash('sha256').update(context.map.source_id).digest('hex')!==target.data.sourceHash
         || String(a.account_id)!==target.data.account || String(c.inbox_id)!==target.data.inbox
         || a.destination.revision!==target.data.revision || message.instance_id!==target.data.instance)
         throw new IntegrationError('CHATWOOT_LIVE_CONTEXT_CHANGED',409);
+      if(reviewed)await verifyReviewedContact(client,accountId,inboxId,Number(context.map.remote_conversation_id),{
+        contact_id:String(context.map.contact_id),source_id:context.map.source_id,phone:contact.external_id});
     }
     const attendanceScope:ChatwootObservationScope={organizationId:org,channelId:c.channel_id,integrationId:c.id,
       destinationRevision:a.destination.revision,credentialRevision:a.credential_version,accountId,inboxId};

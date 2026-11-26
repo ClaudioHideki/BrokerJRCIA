@@ -27,6 +27,8 @@ const types: Record<string, MediaKind> = {
   "video/mp4": "video",
   "video/3gpp": "video",
   "application/pdf": "document",
+  "application/zip": "document",
+  "text/csv": "document",
   "text/plain": "document",
   "application/msword": "document",
   "application/vnd.ms-excel": "document",
@@ -38,8 +40,16 @@ const types: Record<string, MediaKind> = {
   "application/vnd.openxmlformats-officedocument.presentationml.presentation":
     "document",
 };
-export function mediaKind(mimeType: string): MediaKind {
-  const kind = types[mimeType.toLowerCase().split(";")[0]!.trim()];
+export function canonicalMediaMime(mimeType: string): string {
+  const mime = mimeType.toLowerCase().split(";")[0]!.trim();
+  return mime === "application/x-zip-compressed" ? "application/zip" : mime;
+}
+export function mediaKind(mimeType: string, provider?: "meta"): MediaKind {
+  const mime = canonicalMediaMime(mimeType);
+  // QR document support is wider than the Cloud media contract.
+  if (provider === "meta" && (mime === "text/csv" || mime === "application/zip"))
+    throw new MediaError("MEDIA_TYPE_UNSUPPORTED");
+  const kind = types[mime];
   if (!kind) throw new MediaError("MEDIA_TYPE_UNSUPPORTED");
   return kind;
 }
@@ -60,6 +70,12 @@ export function validateMedia(media: BinaryMedia): void {
     throw new MediaError("MEDIA_SIZE_LIMIT");
   if (mediaKind(media.mimeType) !== media.kind)
     throw new MediaError("MEDIA_TYPE_UNSUPPORTED");
+  const mime = canonicalMediaMime(media.mimeType);
+  if (mime === "text/csv" && media.bytes.some(byte =>
+    byte < 32 && byte !== 9 && byte !== 10 && byte !== 13 || byte === 127
+  )) throw new MediaError("MEDIA_SIGNATURE_MISMATCH");
+  if (mime === "application/zip" && !isZipDocument(media.bytes))
+    throw new MediaError("MEDIA_SIGNATURE_MISMATCH");
   if (
     (media.kind === "image" && media.bytes.length > 5 * 1024 * 1024) ||
     (media.kind === "sticker" && media.bytes.length > 500 * 1024)
@@ -67,6 +83,19 @@ export function validateMedia(media: BinaryMedia): void {
     throw new MediaError("MEDIA_SIZE_LIMIT");
   if (media.caption && media.caption.length > 1024)
     throw new MediaError("MEDIA_CAPTION_LIMIT");
+}
+// Check the archive envelope without extracting or interpreting any entry.
+function isZipDocument(bytes: Uint8Array): boolean {
+  if (bytes.length < 22) return false;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const header = view.getUint32(0);
+  if (header !== 0x504b0304 && header !== 0x504b0506) return false;
+  const earliest = Math.max(0, bytes.length - 22 - 65535);
+  for (let at = bytes.length - 22; at >= earliest; at--) {
+    if (view.getUint32(at) === 0x504b0506 &&
+        at + 22 + view.getUint16(at + 20, true) === bytes.length) return true;
+  }
+  return false;
 }
 export async function readMediaBytes(
   response: Response,

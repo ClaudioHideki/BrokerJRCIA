@@ -591,13 +591,14 @@ export class MetaCloudClient {
     const media: BinaryMedia = {
       bytes: await readMediaBytes(response),
       mimeType,
-      kind: mediaKind(mimeType),
+      kind: mediaKind(mimeType, "meta"),
       fileName: "arquivo-" + id,
     };
     validateMedia(media);
     return media;
   }
   async uploadMedia(media: BinaryMedia): Promise<string> {
+    mediaKind(media.mimeType, "meta");
     validateMedia(media);
     const form = new FormData();
     form.set("messaging_product", "whatsapp");

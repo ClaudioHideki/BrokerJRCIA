@@ -3,6 +3,7 @@ import type { ProviderContext } from '../contracts/types.js';
 import {
   MAX_MEDIA_BYTES,
   MediaError,
+  canonicalMediaMime,
   mediaKind,
   safeMediaName,
   validateMedia,
@@ -176,7 +177,7 @@ export class EvolutionMessagingClient {
       throw new MediaError("MEDIA_DOWNLOAD_FAILED", true);
     const media: BinaryMedia = {
       bytes: new Uint8Array(Buffer.from(result.base64, "base64")),
-      mimeType: result.mimetype.split(";")[0]!.toLowerCase(),
+      mimeType: canonicalMediaMime(result.mimetype),
       fileName: safeMediaName(
         typeof result.fileName === "string" ? result.fileName : "arquivo",
       ),

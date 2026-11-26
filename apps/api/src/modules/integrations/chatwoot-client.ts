@@ -9,6 +9,7 @@ import { createHistoryConsumer } from '../history-sync/consumer.js';
 import { createLiveIngressConsumer } from './chatwoot-live-ingress.js';
 import {
   MediaError,
+  canonicalMediaMime,
   readMediaBytes,
   mediaKind,
   safeMediaName,
@@ -934,10 +935,7 @@ export class ChatwootClient {
           response.status === 429 || response.status >= 500,
         );
       }
-      let mimeType = (response.headers.get("content-type") ?? "")
-        .split(";")[0]!
-        .trim()
-        .toLowerCase();
+      let mimeType = canonicalMediaMime(response.headers.get("content-type") ?? "");
       const bytes = await readMediaBytes(response);
       // Active Storage identifies Ogg/Opus as audio/opus. Providers consume
       // audio/ogg; normalize only this scoped audio asset with a complete
