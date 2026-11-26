@@ -13,6 +13,15 @@ export function openToken(value: string, key: Buffer, context: string): string {
   return Buffer.concat([cipher.update(data.subarray(12,-16)), cipher.final()]).toString('utf8');
 }
 export interface MetaSignupConfig { appId: string; appSecret: string; graphVersion: string }
+
+class MetaGraphPermissionError extends Error {
+  readonly status = 503;
+
+  constructor() {
+    super('META_GRAPH_UNAVAILABLE');
+  }
+}
+
 export class MetaSignupGraphClient {
   #config: MetaSignupConfig; #fetch: typeof fetch;
   constructor(config: MetaSignupConfig, fetcher: typeof fetch = fetch) {
@@ -35,11 +44,14 @@ export class MetaSignupGraphClient {
       if (!response.ok) {
         const error=z.object({error:z.object({code:z.number()})}).safeParse(json);
         if(error.success && error.data.error.code===190) throw new Error('META_TOKEN_REVOKED');
+        if (error.success && error.data.error.code === 10 && (response.status === 400 || response.status === 403)) {
+          throw new MetaGraphPermissionError();
+        }
         throw new Error();
       }
       return json;
     } catch(error) {
-      if(error instanceof Error && error.message==='META_TOKEN_REVOKED') throw error;
+      if (error instanceof MetaGraphPermissionError || (error instanceof Error && error.message === 'META_TOKEN_REVOKED')) throw error;
       throw Object.assign(new Error('META_GRAPH_UNAVAILABLE'), {status:503});
     }
   }
@@ -66,12 +78,22 @@ export class MetaSignupGraphClient {
   }
   async checkReadiness(wabaId:string,phoneId:string,token:string):Promise<string[]> {
     const phone=z.object({status:z.string().optional()}).parse(await this.#request(`${phoneId}?fields=status`,token));
-    const waba=z.object({account_review_status:z.string().optional(),primary_funding_id:z.string().optional(),
-      health_status:z.object({can_send_message:z.string().optional()}).optional()}).parse(await this.#request(`${wabaId}?fields=account_review_status,primary_funding_id,health_status`,token));
+    const waba=z.object({account_review_status:z.string().optional(),
+      health_status:z.object({can_send_message:z.string().optional()}).optional()}).parse(await this.#request(`${wabaId}?fields=account_review_status,health_status`,token));
+    let hasPaymentMethod: boolean | undefined;
+    try {
+      const funding = z.object({primary_funding_id:z.string().optional()}).parse(
+        await this.#request(`${wabaId}?fields=primary_funding_id`, token),
+      );
+      hasPaymentMethod = Boolean(funding.primary_funding_id);
+    } catch (error) {
+      // Meta restricts this field to eligible providers. Use the independent sending health check in that case.
+      if (!(error instanceof MetaGraphPermissionError)) throw error;
+    }
     const pending:string[]=[];
     if(phone.status!=='CONNECTED') pending.push('PHONE_REGISTRATION_REQUIRED');
     if(waba.account_review_status!=='APPROVED') pending.push('META_BUSINESS_REVIEW_REQUIRED');
-    if(!waba.primary_funding_id) pending.push('META_PAYMENT_METHOD_REQUIRED');
+    if(hasPaymentMethod === false) pending.push('META_PAYMENT_METHOD_REQUIRED');
     if(waba.health_status?.can_send_message!=='AVAILABLE') pending.push('META_ACCOUNT_HEALTH_REVIEW_REQUIRED');
     try {await this.subscribe(wabaId,token);} catch {pending.push('WEBHOOK_SUBSCRIPTION_REQUIRED');}
     return pending;
