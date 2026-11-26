@@ -68,6 +68,24 @@ async function fencedContact() {
    upstreamMessageId:randomUUID(),content:{type:'TEXT' as const,text:'New entry'},scheduleBot:false};
  return {t,worker,repository,event};
 }
+it('keeps a new receipt for pre-activation history out of live ingress while admitting fresh messages',async()=>{
+ const t=await fixture();
+ await db.database.pool.query(`UPDATE integration_jobs SET status='HISTORY_PENDING',available_at='infinity',
+   last_error='PRE_ACTIVATION_HISTORY_HELD' WHERE id=$1`,[t.job]);
+ await db.database.pool.query("UPDATE messaging_messages SET state='READ' WHERE id=$1",[t.message]);
+ const worker=createChatwootWorker(t.options);
+ await worker.runOnce(t.org);
+ expect(t.calls).toHaveLength(0);
+ const prior=await db.database.pool.query(`SELECT status,attempts,available_at='infinity' AS held FROM integration_jobs
+   WHERE organization_id=$1 AND integration_id=$2 AND message_id=$3`,[t.org,t.integration,t.message]);
+ expect(prior.rows).toEqual(Array(2).fill({status:'HISTORY_PENDING',attempts:0,held:true}));
+ const event={id:randomUUID(),organizationId:t.org,channelId:t.channel,conversationId:t.conversation,webhookEventKey:randomUUID(),
+   upstreamMessageId:randomUUID(),content:{type:'TEXT' as const,text:'New after activation'},scheduleBot:false};
+ await db.transact(t.org,tx=>createPostgresMessagingRepository().recordIncoming(tx,event));
+ await worker.runOnce(t.org);
+ await worker.runOnce(t.org);
+ expect(t.nativeBodies.map(body=>body.broker_message_id)).toEqual([event.id]);
+});
 it('delivers a newly accepted contact message once past an older uncertain mirror, leaving the backlog intact',async()=>{
  const {t,worker,repository,event}=await fencedContact();
  const backlog=await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)

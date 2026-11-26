@@ -270,8 +270,14 @@ export function createChatwootWorker(options: ChatwootOptions) {
       ).rows[0];
       if (!connection) return;
       const job = (
-        await t.query<{ id: string; receipt_only: boolean }>(
-          `SELECT j.id, j.payload ? 'admittedInboxTarget' AND EXISTS (
+        await t.query<{ id: string; held_history: boolean; receipt_only: boolean }>(
+          `SELECT j.id, j.kind='MIRROR_MESSAGE' AND EXISTS (
+            SELECT 1 FROM integration_jobs held
+            WHERE held.organization_id=j.organization_id AND held.integration_id=j.integration_id
+              AND held.message_id=j.message_id AND held.kind='MIRROR_MESSAGE'
+              AND held.status='HISTORY_PENDING' AND held.available_at='infinity'
+              AND held.last_error='PRE_ACTIVATION_HISTORY_HELD'
+          ) AS held_history, j.payload ? 'admittedInboxTarget' AND EXISTS (
             SELECT 1 FROM integration_jobs blocked JOIN messaging_messages previous ON previous.organization_id=blocked.organization_id AND previous.id=blocked.message_id
             JOIN messaging_messages candidate ON candidate.organization_id=j.organization_id AND candidate.id=j.message_id AND candidate.conversation_id=previous.conversation_id
             WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
@@ -284,6 +290,17 @@ export function createChatwootWorker(options: ChatwootOptions) {
         )
       ).rows[0];
       if (!job) return;
+      if (job.held_history) {
+        // A later read or delivery receipt can create a fresh job for a message
+        // that predates activation. Keep that message in its original lane.
+        await t.query(
+          `UPDATE integration_jobs SET status='HISTORY_PENDING',available_at='infinity',
+            last_error='PRE_ACTIVATION_HISTORY_HELD',updated_at=now()
+            WHERE organization_id=$1 AND id=$2`,
+          [org, job.id],
+        );
+        return;
+      }
       await t.query(
         "UPDATE chatwoot_connections SET updated_at=now() WHERE organization_id=$1 AND id=$2",
         [org, connection.id],
