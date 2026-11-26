@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { IntegrationError } from './integration-error.js';
+import { CHATWOOT_WEBHOOK_WINDOW_MS } from './secrets.js';
 
 const record = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -16,10 +17,15 @@ export function humanOutboundIntent(attributes: unknown, scope: {integrationId:s
 
 /** Re-read the exact persisted remote message before the local idempotent enqueue. */
 export function requireCanonicalHumanIntent(raw:unknown,expected:{intentId:string;integrationId:string;accountId:number;inboxId:number;
-  conversationId:number;messageId:number;senderId:number;content?:{type:'TEXT';text:string};caption?:string;
+  conversationId:number;messageId:number;senderId:number;admittedAt?:Date;content?:{type:'TEXT';text:string};caption?:string;
   attachments?:{id:number;kind:'image'|'audio'|'video'|'document'}[]}):void {
   const message=record(raw),attributes=record(message.content_attributes),additional=record(message.additional_attributes),sender=record(message.sender);
   const fail=()=>{throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);};
+  // A first delivery of an old signed webhook must not gain new-cycle authority.
+  // Compare the persisted admission time so a delayed worker may still finish.
+  if(expected.admittedAt && (typeof message.created_at!=='number'||
+    Math.abs(expected.admittedAt.getTime()-message.created_at*1000)>CHATWOOT_WEBHOOK_WINDOW_MS))
+    throw new IntegrationError('CHATWOOT_CYCLE_HISTORICAL_INTENT_REVIEW',409);
   if(message.id!==expected.messageId||message.conversation_id!==expected.conversationId||message.inbox_id!==expected.inboxId||
     message.account_id!==undefined&&message.account_id!==expected.accountId||message.private!==false||
     ![1,'outgoing'].includes(message.message_type as number|string)||sender.type!=='user'||sender.id!==expected.senderId||

@@ -24,7 +24,7 @@ import { lockAttendanceChannel } from '../attendance/repository.js';
 import { beginChatwootMirrorAttempt,confirmChatwootMirrorAttempt,failChatwootMirrorAttempt,initializeChatwootAttendanceMap,mayForwardChatwootAttendanceReply,
   type ChatwootObservationScope } from './chatwoot-attendance-store.js';
 import type { ChatwootAttendanceEvent } from './chatwoot-attendance-events.js';
-import {preparePhysicalConversationCycle} from './chatwoot-conversation-cycle.js';
+import {mayStartIndependentHumanCycle,preparePhysicalConversationCycle} from './chatwoot-conversation-cycle.js';
 import {canonicalCampaignRecipient,requireCampaignIntent,verifyCanonicalCampaignMessage} from './chatwoot-campaign-authority.js';
 import {requireCanonicalHumanIntent} from './chatwoot-human-intent.js';
 import {lockChatwootDestination} from './chatwoot-destination.js';
@@ -52,6 +52,7 @@ const replySchema = z
     attendanceObservationId:z.string().uuid().optional(),
     campaignIntentId:z.uuid().optional(),
     outboundIntentId:z.uuid().optional(),
+    newCycleAdmission:z.literal(1).optional(),
     attendanceKind:z.enum(['HUMAN_PUBLIC','EXTERNAL_BOT','AUTOMATED_REPLY','NATIVE_CSAT']).optional(),
     destinationRevision:z.number().int().positive().optional(),
     messageId: z.number().int().positive(),
@@ -210,6 +211,22 @@ export function createChatwootWorker(options: ChatwootOptions) {
         AND status_message.channel_id=c.channel_id AND status_message.direction='OUTGOING' AND status_message.source='OPERATOR'
         AND status_message.is_historical=false AND (status_message.state='FAILED'
           OR status_message.state IN ('SENT','DELIVERED','READ') AND status_message.upstream_message_id IS NOT NULL))`;
+  // This permits canonical reads for a newly admitted human intent. No
+  // physical enqueue is possible without proving the contact under lock.
+  const waitingHumanCycle = `j.kind='CHATWOOT_REPLY' AND j.payload->>'newCycleAdmission'='1'
+    AND j.payload->>'attendanceKind'='HUMAN_PUBLIC' AND EXISTS(
+      SELECT 1 FROM chatwoot_attendance_observations o
+      JOIN chatwoot_accounts a ON a.organization_id=o.organization_id AND a.status='READY' AND a.account_id=o.account_id
+        AND a.credential_version=o.credential_revision
+      JOIN chatwoot_destinations d ON d.organization_id=a.organization_id AND d.base_url=a.base_url
+        AND d.approval_status='APPROVED' AND d.revision=o.destination_revision
+      WHERE o.organization_id=j.organization_id AND o.integration_id=j.integration_id AND o.channel_id=c.channel_id
+        AND o.inbox_id=c.inbox_id AND o.event_key='message:'||(j.payload->>'messageId')
+        AND o.id::text=j.payload->>'attendanceObservationId' AND o.remote_conversation_id::text=j.payload->>'conversationId'
+        AND o.destination_revision::text=j.payload->>'destinationRevision' AND o.event->>'newCycleAdmission'='1'
+        AND o.event->>'kind'='HUMAN_PUBLIC' AND o.event->>'mayForwardReply'='true'
+        AND o.event->>'outboundIntentId'=j.payload->>'outboundIntentId'
+        AND o.disposition='WAITING_MAP' AND o.conversation_id IS NULL AND o.cycle IS NULL)`;
   const inboxTarget = "COALESCE(j.payload->'admittedInboxTarget',j.payload->'reviewedInboxTarget')";
   const eligibleJob = `j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now()
     AND j.payload->>'historySyncVersion' IS DISTINCT FROM '2'
@@ -259,7 +276,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
                  AND attempt.account_id::text=${inboxTarget}->>'account'
                  AND attempt.inbox_id::text=${inboxTarget}->>'inbox'
                  AND attempt.destination_revision::text=${inboxTarget}->>'revision'))))
-    OR (${independentCampaignReply}) OR (${independentHumanReply}) OR (${provenHumanStatus}))`;
+    OR (${independentCampaignReply}) OR (${independentHumanReply}) OR (${waitingHumanCycle}) OR (${provenHumanStatus}))`;
   async function claim(org: string): Promise<Job | undefined> {
     return tx(org, async (t) => {
       // An expired POST might have succeeded remotely. Replies are local, idempotent transactions.
@@ -410,6 +427,13 @@ export function createChatwootWorker(options: ChatwootOptions) {
         throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);
       humanCanonical=await env.client(binding.account).canonicalMessage(Number(binding.account.account_id),Number(binding.connection.inbox_id),data.conversationId,data.messageId);
     }
+    function verifyHumanIntent(accountId:number,inboxId:number,senderId:number,admittedAt?:Date){
+      if(!data.outboundIntentId)throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);
+      requireCanonicalHumanIntent(humanCanonical,{intentId:data.outboundIntentId,integrationId:job.integration_id,accountId,inboxId,
+        conversationId:data.conversationId,messageId:data.messageId,senderId,...(admittedAt?{admittedAt}:{}),
+        ...(data.content?{content:data.content}:{}),...(data.caption!==undefined?{caption:data.caption}:{}),
+        ...(data.attachments?{attachments:data.attachments}:{})});
+    }
     let remote:
       | Awaited<ReturnType<ReturnType<typeof env.client>["conversation"]>>
       | undefined;
@@ -442,8 +466,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
         contact.phone_number !== remote.meta.sender.phone_number
       )
         throw new IntegrationError("CHATWOOT_BINDING_MISMATCH");
-      remoteSource = data.campaignIntentId
-        ? canonicalCampaignRecipient(remote,contact,{accountId:Number(binding.account.account_id),inboxId:Number(binding.connection.inbox_id),conversationId:data.conversationId},'CAMPAIGN_RECIPIENT_CHANGED').sourceId
+      remoteSource = data.campaignIntentId||data.newCycleAdmission
+        ? canonicalCampaignRecipient(remote,contact,{accountId:Number(binding.account.account_id),inboxId:Number(binding.connection.inbox_id),conversationId:data.conversationId},data.campaignIntentId?'CAMPAIGN_RECIPIENT_CHANGED':'CHATWOOT_BINDING_MISMATCH').sourceId
         : contact.contact_inboxes.find((i) => i.inbox.id === remote!.inbox_id)?.source_id;
       if (!remoteSource)
         throw new IntegrationError("CHATWOOT_CONVERSATION_NOT_BOUND");
@@ -491,6 +515,22 @@ export function createChatwootWorker(options: ChatwootOptions) {
         )
       ).rows[0];
       if (!map && remote && remoteSource) {
+        if(data.newCycleAdmission){
+          const observed=await t.query<{sender_id:string;created_at:Date}>(`SELECT o.event->>'senderId' AS sender_id,o.created_at FROM integration_jobs j
+            JOIN chatwoot_connections c ON c.organization_id=j.organization_id AND c.id=j.integration_id
+            JOIN chatwoot_attendance_observations o ON o.organization_id=j.organization_id AND o.id=$3 AND o.integration_id=c.id
+            WHERE j.organization_id=$1 AND j.id=$2 AND (${waitingHumanCycle})`,[job.organization_id,job.id,data.attendanceObservationId]);
+          if(!observed.rows[0]?.sender_id||!currentAccount)throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);
+          verifyHumanIntent(Number(currentAccount.account_id),Number(connection.inbox_id),Number(observed.rows[0].sender_id),observed.rows[0].created_at);
+          if(!await mayStartIndependentHumanCycle(t,{organizationId:job.organization_id,integrationId:job.integration_id,
+            channelId:connection.channel_id,remoteContactId:remote.meta.sender.id,sourceId:remoteSource,phone:remote.meta.sender.phone_number!})){
+            await t.query(`UPDATE integration_jobs SET status='PENDING',attempts=greatest(0,attempts-1),
+              last_error='CHATWOOT_CYCLE_WAITING_PREVIOUS_MIRROR',available_at=now()+interval '5 minutes',
+              lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE organization_id=$1 AND id=$2 AND lease_token=$3`,
+              [job.organization_id,job.id,job.lease_token]);
+            return;
+          }
+        }
         await repo.findChannel(t, job.organization_id, connection.channel_id, { lock: true });
         const contact = await repo.upsertContact(t, {
           id: randomUUID(),
@@ -553,7 +593,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
         const scope:ChatwootObservationScope={organizationId:job.organization_id,channelId:connection.channel_id,integrationId:job.integration_id,
           destinationRevision:currentAccount.destination.revision,credentialRevision:currentAccount.credential_version,accountId:Number(currentAccount.account_id),inboxId:Number(connection.inbox_id)};
         if(canonical)await initializeChatwootAttendanceMap(t,scope,{conversationId:map.conversation_id,remoteConversationId:data.conversationId,canonical});
-        const observation=(await t.query<{disposition:string;event:ChatwootAttendanceEvent;credential_revision:number;channel_id:string}>(`SELECT disposition,event,credential_revision,channel_id FROM chatwoot_attendance_observations
+        const observation=(await t.query<{disposition:string;event:ChatwootAttendanceEvent;credential_revision:number;channel_id:string;created_at:Date}>(`SELECT disposition,event,credential_revision,channel_id,created_at FROM chatwoot_attendance_observations
           WHERE organization_id=$1 AND id=$2 AND integration_id=$3 AND destination_revision=$4 AND remote_conversation_id=$5 AND conversation_id=$6
             AND account_id=$7 AND inbox_id=$8`,
           [job.organization_id,data.attendanceObservationId,job.integration_id,scope.destinationRevision,data.conversationId,map.conversation_id,scope.accountId,scope.inboxId])).rows[0];
@@ -565,9 +605,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
             event.remoteMessageId!==data.messageId||event.remoteConversationId!==data.conversationId||
             observation.credential_revision!==scope.credentialRevision||observation.channel_id!==scope.channelId)
             throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);
-          requireCanonicalHumanIntent(humanCanonical,{intentId:data.outboundIntentId,integrationId:job.integration_id,accountId:scope.accountId,
-            inboxId:scope.inboxId,conversationId:data.conversationId,messageId:data.messageId,senderId:event.senderId,
-            ...(data.content?{content:data.content}:{}),...(data.caption!==undefined?{caption:data.caption}:{}),...(data.attachments?{attachments:data.attachments}:{})});
+          verifyHumanIntent(scope.accountId,scope.inboxId,event.senderId,data.newCycleAdmission?observation.created_at:undefined);
           // A canonical GET happens outside this transaction. Re-check the
           // uncertain-mirror proof under the channel lock before any enqueue.
           const isolated=await t.query(`SELECT 1 FROM integration_jobs j

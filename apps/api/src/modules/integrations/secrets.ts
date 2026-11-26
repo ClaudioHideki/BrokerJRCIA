@@ -62,10 +62,12 @@ export function verifyChatwootSignature(
     !/^sha256=[a-f0-9]{64}$/u.test(signature)
   )
     return false;
-  if (Math.abs(now - Number(timestamp) * 1000) > 300_000) return false;
+  if (Math.abs(now - Number(timestamp) * 1000) > CHATWOOT_WEBHOOK_WINDOW_MS) return false;
   const expected = createHmac("sha256", secret)
     .update(timestamp + ".")
     .update(raw)
     .digest();
   return timingSafeEqual(expected, Buffer.from(signature.slice(7), "hex"));
 }
+
+export const CHATWOOT_WEBHOOK_WINDOW_MS = 300_000;

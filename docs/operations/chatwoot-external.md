@@ -232,3 +232,8 @@ existente e proteção de identidade. Revogar uma chave de controle interrompe c
 sem desligar o número. Reverter para binário anterior ao suporte EXTERNAL só depois
 de migrar/esvaziar essas integrações com procedimento autorizado: não apontar jobs
 externos silenciosamente ao destino MANAGED.
+## Duas conversas abertas para o mesmo número
+
+Quando um agente responde na segunda conversa, o Broker consulta a mensagem humana salva no JRC, o contato, a caixa e o identificador de origem. Uma pendência de espelhamento em outro contato permite um novo ciclo quando todas essas evidências coincidem. O vínculo anterior continua consultável. A entrega da mesma notificação duas vezes gera uma única saída física na fila.
+
+Esse tratamento começa na admissão de uma nova intenção assinada. Uma intenção anterior sem ciclo conserva seu estado para revisão. `CHATWOOT_CYCLE_WAITING_PREVIOUS_MIRROR` indica espera pela identificação dos espelhos incertos dessa conexão ou pela sua conciliação. `CHATWOOT_CYCLE_HISTORICAL_INTENT_REVIEW` indica que a mensagem canônica foi criada fora da janela de cinco minutos da admissão assinada. A verificação usa o horário original da admissão com o Broker, inclusive quando a fila leva mais tempo para processar.

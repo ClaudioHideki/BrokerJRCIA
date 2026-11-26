@@ -5,6 +5,33 @@ import {SUPERSEDED_PHYSICAL_CYCLE_PREFIX} from '../attendance/conversation-cycle
 import {createPostgresMessagingRepository} from '../messaging/repository.js';
 import {IntegrationError} from './integration-error.js';
 
+/** Under the channel lock, an unresolved mirror may be isolated only after
+ * canonical GETs prove the prior route for this physical contact. */
+export async function mayStartIndependentHumanCycle(tx:TenantTransaction,input:{
+  organizationId:string;integrationId:string;channelId:string;remoteContactId:number;sourceId:string;phone:string;
+}){
+  const result=await tx.query<{allowed:boolean}>(`SELECT NOT EXISTS(
+    SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=$1 AND blocked.integration_id=$2 AND blocked.status='UNKNOWN'
+  ) OR EXISTS (
+    SELECT 1 FROM chatwoot_conversations prior
+    JOIN messaging_conversations active ON active.organization_id=prior.organization_id AND active.id=prior.conversation_id
+      AND active.channel_id=$3 AND active.remote_conversation_key IS NULL AND active.recipient_kind='INDIVIDUAL'
+    JOIN messaging_contacts contact ON contact.organization_id=active.organization_id AND contact.id=active.contact_id
+    JOIN messaging_channels channel ON channel.organization_id=active.organization_id AND channel.id=$3 AND channel.transport='BROKER_TRANSPORT'
+    WHERE prior.organization_id=$1 AND prior.integration_id=$2 AND prior.contact_id=$4 AND prior.source_id=$5 AND contact.external_id=$6
+      AND NOT EXISTS (
+        SELECT 1 FROM integration_jobs blocked
+        LEFT JOIN messaging_messages msg ON msg.organization_id=blocked.organization_id AND msg.id=blocked.message_id AND msg.channel_id=$3
+        LEFT JOIN messaging_conversations route ON route.organization_id=msg.organization_id AND route.id=msg.conversation_id AND route.channel_id=$3
+        LEFT JOIN chatwoot_conversations map ON map.organization_id=route.organization_id AND map.conversation_id=route.id
+          AND map.integration_id=$2 AND map.remote_conversation_id::text=blocked.payload->>'conversationId'
+        WHERE blocked.organization_id=$1 AND blocked.integration_id=$2 AND blocked.status='UNKNOWN' AND (
+          blocked.kind<>'MIRROR_MESSAGE' OR blocked.payload->>'operation' IS DISTINCT FROM 'SEND_MESSAGE'
+          OR map.conversation_id IS NULL OR route.contact_id IS NULL OR route.contact_id=active.contact_id))
+  ) AS allowed`,[input.organizationId,input.integrationId,input.channelId,input.remoteContactId,input.sourceId,input.phone.slice(1)]);
+  return result.rows[0]?.allowed===true;
+}
+
 /** Caller holds the channel and current integration-job lease. No network here.
  * A waiting result must be committed, preserving the human pause, then retried. */
 export async function preparePhysicalConversationCycle(tx:TenantTransaction,input:{

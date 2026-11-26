@@ -71,6 +71,7 @@ async function queueReply(tx:TenantTransaction,s:ChatwootObservationScope,observ
     VALUES($1,$2,'CHATWOOT_REPLY',$3,$4::jsonb) ON CONFLICT(organization_id,integration_id,dedupe_key) DO NOTHING`,
     [s.organizationId,s.integrationId,`reply:${s.destinationRevision}:${s.accountId}:${s.inboxId}:${observation.event.remoteMessageId}`,JSON.stringify({...observation.reply_payload,
       attendanceObservationId:observation.id,attendanceKind:observation.event.kind,destinationRevision:s.destinationRevision,
+      ...('newCycleAdmission' in observation.event && observation.event.newCycleAdmission===1?{newCycleAdmission:1}:{}),
       ...('campaignIntentId' in observation.event&&observation.event.campaignIntentId?{campaignIntentId:observation.event.campaignIntentId}:{}),
       ...('outboundIntentId' in observation.event&&observation.event.outboundIntentId?{outboundIntentId:observation.event.outboundIntentId}:{})})]);
   await tx.query('UPDATE chatwoot_attendance_observations SET reply_payload=null WHERE organization_id=$1 AND id=$2',[s.organizationId,observation.id]);
@@ -155,11 +156,16 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
   const selectedAutomation=(event.kind==='AUTOMATED_REPLY'||event.kind==='EXTERNAL_BOT')&&await mayForwardChatwootAttendanceReply(tx,s,event);
   const nativeCsat=event.kind==='NATIVE_CSAT'&&event.mayForwardReply;
   const disposition:Disposition=candidate||effectCandidate&&!effectCandidate.confirmed?'ECHO_PENDING':event.kind==='BROKER_ECHO'||!event.interruptsBot&&event.kind!=='CONVERSATION_CONTROL'&&!selectedAutomation&&!nativeCsat?'IGNORED':control?'APPLIED':'WAITING_MAP';
+  // Only an original signed intent can enter this protocol. Duplicate webhooks
+  // return above, so pre-existing waiting jobs never acquire fresh authority.
+  const newCycleAdmission=disposition==='WAITING_MAP' && event.kind==='HUMAN_PUBLIC' && event.outboundIntentId && reply &&
+    transport==='BROKER_TRANSPORT' && (await tx.query(`SELECT 1 FROM integration_jobs
+      WHERE organization_id=$1 AND integration_id=$2 AND status='UNKNOWN' LIMIT 1`,[s.organizationId,s.integrationId])).rowCount;
   const observation=(await tx.query<Observation>(`INSERT INTO chatwoot_attendance_observations(organization_id,id,integration_id,channel_id,destination_revision,credential_revision,
     account_id,inbox_id,remote_conversation_id,event_key,event,disposition,mirror_attempt_id,reply_payload,conversation_id,cycle,effect_outbox_id)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id,event,disposition,reply_payload,conversation_id,cycle`,
     [s.organizationId,randomUUID(),s.integrationId,s.channelId,s.destinationRevision,s.credentialRevision,s.accountId,s.inboxId,event.remoteConversationId,key,
-      JSON.stringify(event),disposition,candidate,reply?JSON.stringify(reply):null,control?.conversation_id??null,control?.cycle??null,effectCandidate?.id??null])).rows[0]!;
+      JSON.stringify(newCycleAdmission?{...event,newCycleAdmission:1}:event),disposition,candidate,reply?JSON.stringify(reply):null,control?.conversation_id??null,control?.cycle??null,effectCandidate?.id??null])).rows[0]!;
   if(disposition==='ECHO_PENDING'){
     const effectId=effectCandidate?.id??(candidate?(await tx.query<{outbox_id:string}>(`select e.outbox_id from automation_conversation_effects e
       join chatwoot_mirror_attempts a on a.organization_id=e.organization_id and a.message_id=e.messaging_message_id
@@ -198,6 +204,10 @@ export async function initializeChatwootAttendanceMap(tx:TenantTransaction,s:Cha
     [s.organizationId,input.conversationId,input.remoteConversationId,canonical.remoteUpdatedAt]);
   const pending=(await tx.query<Observation>(`SELECT id,event,disposition,reply_payload,conversation_id,cycle FROM chatwoot_attendance_observations
     WHERE organization_id=$1 AND integration_id=$2 AND destination_revision=$3 AND account_id=$4 AND inbox_id=$5 AND remote_conversation_id=$6 AND disposition='WAITING_MAP'
+      AND (event->>'kind' IS DISTINCT FROM 'HUMAN_PUBLIC' OR event->>'newCycleAdmission'='1' OR NOT EXISTS(
+        SELECT 1 FROM chatwoot_attendance_observations admission WHERE admission.organization_id=$1 AND admission.integration_id=$2
+          AND admission.destination_revision=$3 AND admission.account_id=$4 AND admission.inbox_id=$5 AND admission.remote_conversation_id=$6
+          AND admission.event->>'newCycleAdmission'='1'))
     ORDER BY created_at,id`,[...scopeValues(s),input.remoteConversationId])).rows;
   for(const observation of pending)await applyObservation(tx,s,observation,{...current,observed_remote_updated_at:null});
   if(canonical.interruptsBot||canonical.teamId!==null){
