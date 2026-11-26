@@ -213,6 +213,18 @@ export function createChatwootWorker(options: ChatwootOptions) {
   const inboxTarget = "COALESCE(j.payload->'admittedInboxTarget',j.payload->'reviewedInboxTarget')";
   const eligibleJob = `j.status IN ('PENDING','HISTORY_PENDING') AND j.available_at<=now()
     AND j.payload->>'historySyncVersion' IS DISTINCT FROM '2'
+    AND (NOT (j.payload ? 'reviewedStatusLeader') OR EXISTS (
+      SELECT 1 FROM integration_jobs leader
+      JOIN chatwoot_mirror_attempts receipt ON receipt.organization_id=leader.organization_id
+        AND receipt.integration_id=leader.integration_id AND receipt.job_id=leader.id AND receipt.message_id=leader.message_id
+      JOIN chatwoot_messages mapped ON mapped.organization_id=receipt.organization_id AND mapped.integration_id=receipt.integration_id
+        AND mapped.message_id=receipt.message_id AND mapped.remote_message_id=receipt.remote_message_id
+      WHERE leader.organization_id=j.organization_id AND leader.integration_id=j.integration_id AND leader.message_id=j.message_id
+        AND leader.dedupe_key IN ('message:'||j.message_id::text||':SENT','message:'||j.message_id::text||':DELIVERED','message:'||j.message_id::text||':READ')
+        AND leader.id::text=j.payload->>'reviewedStatusLeader' AND leader.status='SUCCEEDED'
+        AND leader.payload->'reviewedInboxTarget'=j.payload->'reviewedInboxTarget'
+        AND leader.payload->>'mirrorProtocol'='jrc-live-ingress/1' AND leader.payload->'liveIngressProof'->>'attempt_id'=receipt.id::text
+        AND receipt.state='CONFIRMED' AND receipt.channel_id=c.channel_id))
     AND (NOT EXISTS(SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=j.organization_id
       AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN')
     OR (j.kind='MIRROR_MESSAGE' AND EXISTS(
@@ -734,6 +746,19 @@ export function createChatwootWorker(options: ChatwootOptions) {
         throw new IntegrationError('CHATWOOT_LIVE_CONTEXT_CHANGED',409);
       if(reviewed)await verifyReviewedContact(client,accountId,inboxId,Number(context.map.remote_conversation_id),{
         contact_id:String(context.map.contact_id),source_id:context.map.source_id,phone:contact.external_id});
+    }
+    // A sibling may only acknowledge or patch the already confirmed remote message.
+    // Recheck after claim, even if another process removed or replaced the mapping.
+    if (job.payload.reviewedStatusLeader !== undefined) {
+      const mappedMessage=context.mappedMessage,conversation=context.map,revision=a.destination.revision;
+      if(!mappedMessage || !conversation || !z.uuid().safeParse(job.payload.reviewedStatusLeader).success)
+        throw new IntegrationError('CHATWOOT_REVIEW_RECEIPT_CHANGED',409);
+      const receipt=await tx(org,t=>t.query(`SELECT 1 FROM chatwoot_mirror_attempts WHERE organization_id=$1 AND integration_id=$2
+        AND job_id=$3 AND message_id=$4 AND channel_id=$5 AND account_id=$6 AND inbox_id=$7 AND conversation_id=$8
+        AND remote_conversation_id=$9 AND remote_message_id=$10 AND state='CONFIRMED' AND destination_revision=$11`,
+        [org,c.id,job.payload.reviewedStatusLeader,message.id,c.channel_id,accountId,inboxId,message.conversation_id,
+          conversation.remote_conversation_id,mappedMessage.remote_message_id,revision]));
+      if(!receipt.rowCount)throw new IntegrationError('CHATWOOT_REVIEW_RECEIPT_CHANGED',409);
     }
     const attendanceScope:ChatwootObservationScope={organizationId:org,channelId:c.channel_id,integrationId:c.id,
       destinationRevision:a.destination.revision,credentialRevision:a.credential_version,accountId,inboxId};

@@ -49,6 +49,10 @@ export async function inspectMirrorQueue(transact:Options['transact'],rawInput:I
 }
 
 async function candidate(tx:TenantTransaction,input:Input){
+ // The receipt trigger takes this same message lock before enqueueing a new state.
+ // Serialize reviews started from different jobs of one canonical message.
+ await tx.query('SELECT id FROM messaging_messages WHERE organization_id=$1 AND id=$2 FOR UPDATE',
+   [input.organizationId,input.messageId]);
  const row=(await tx.query<{instance_id:string;phone:string;contact_id:string;source_id:string;content_hash:string;provider_id:string}>(
    `SELECT ch.instance_id,ct.external_id AS phone,map.contact_id,map.source_id,
      ${reviewedMessageHashSql} AS content_hash,m.upstream_message_id AS provider_id
@@ -73,11 +77,17 @@ async function candidate(tx:TenantTransaction,input:Input){
         AND cm.integration_id=c.id AND cm.message_id=m.id)
       AND NOT EXISTS(SELECT 1 FROM chatwoot_mirror_attempts a WHERE a.organization_id=j.organization_id
         AND a.integration_id=c.id AND a.message_id=m.id)
-      AND NOT EXISTS(SELECT 1 FROM integration_jobs other WHERE other.organization_id=j.organization_id
-        AND other.integration_id=c.id AND other.message_id=m.id AND other.id<>j.id)
     FOR UPDATE OF j FOR SHARE OF m,ct,cv,map`,
    [input.organizationId,input.jobId,input.messageId,input.integrationId,input.inboxId,input.conversationId])).rows[0];
- return row??reject('CHATWOOT_REVIEW_NOT_ELIGIBLE');
+ if(!row)return reject('CHATWOOT_REVIEW_NOT_ELIGIBLE');
+ const siblings=(await tx.query<{id:string;eligible:boolean}>(`SELECT id,kind='MIRROR_MESSAGE' AND status='PENDING'
+      AND attempts=0 AND lease_token IS NULL AND available_at<=now() AND payload='{}'::jsonb
+      AND dedupe_key IN('message:'||message_id::text||':SENT','message:'||message_id::text||':DELIVERED',
+        'message:'||message_id::text||':READ') AS eligible FROM integration_jobs
+    WHERE organization_id=$1 AND integration_id=$2 AND message_id=$3 AND id<>$4 ORDER BY id FOR UPDATE`,
+   [input.organizationId,input.integrationId,input.messageId,input.jobId])).rows;
+ if(siblings.some(sibling=>!sibling.eligible))return reject('CHATWOOT_REVIEW_NOT_ELIGIBLE');
+ return {...row,siblingIds:siblings.map(sibling=>sibling.id)};
 }
 
 export async function verifyReviewedContact(client:ChatwootClient,accountId:number,inboxId:number,conversationId:number,
@@ -117,17 +127,22 @@ export async function reviewPendingMirror(options:Options,rawInput:Input,approve
  const target={revision,account:String(input.accountId),inbox:String(input.inboxId),instance:row.instance_id,
    conversation:String(input.conversationId),contact:row.contact_id,sourceHash:hash(row.source_id),
    phoneHash:hash(row.phone),messageHash:row.content_hash,credentialRevision:a.credential_version};
- const digest=hash(JSON.stringify([input,target,row.content_hash,row.provider_id,row.phone,a.base_url]));
+ const digest=hash(JSON.stringify([input,target,row.content_hash,row.provider_id,row.phone,a.base_url,...row.siblingIds]));
  if(approvedDigest===undefined)return {state:'ELIGIBLE' as const,digest};
  if(!/^[a-f0-9]{64}$/.test(approvedDigest)||approvedDigest!==digest)return reject('CHATWOOT_REVIEW_DIGEST_MISMATCH');
  await options.transact(org,async tx=>{
    await assertChatwootMirrorContext(tx,a,c,row.instance_id);
    const current=await candidate(tx,input);
    if(current.source_id!==row.source_id||current.contact_id!==row.contact_id||current.phone!==row.phone||
-      current.provider_id!==row.provider_id||current.content_hash!==row.content_hash||current.instance_id!==row.instance_id)
+      current.provider_id!==row.provider_id||current.content_hash!==row.content_hash||current.instance_id!==row.instance_id||
+      current.siblingIds.join(',')!==row.siblingIds.join(','))
      return reject('CHATWOOT_REVIEW_SCOPE_MISMATCH');
    await tx.query(`UPDATE integration_jobs SET payload=jsonb_build_object('reviewedInboxTarget',$3::jsonb,
       'requiresNativeReceipt',true),updated_at=now() WHERE organization_id=$1 AND id=$2`,[org,input.jobId,JSON.stringify(target)]);
+   if(row.siblingIds.length)await tx.query(`UPDATE integration_jobs SET payload=jsonb_build_object(
+     'reviewedInboxTarget',$3::jsonb,'requiresNativeReceipt',true,'reviewedStatusLeader',$4::text),updated_at=now()
+     WHERE organization_id=$1 AND integration_id=$5 AND message_id=$6 AND id=ANY($2::uuid[])`,
+     [org,row.siblingIds,JSON.stringify(target),input.jobId,input.integrationId,input.messageId]);
    await integrationAudit(tx,org,'PENDING_MIRROR_REVIEWED',input.jobId,digest);
  });
  return {state:'QUEUED' as const,digest};

@@ -214,9 +214,11 @@ node apps/api/dist/commands/review-pending-mirror.js --org "$ORG" --integration 
 ```
 
 1. Consulte o diagnóstico. `PENDING_WITHOUT_TARGET_BEHIND_UNKNOWN` identifica pendência na mesma conversa e ausência de um destino registrado para o trabalho. Confira a mensagem na origem e a ausência na caixa pelo ID canônico. A busca por nome ou texto pode localizar outro atendimento.
-2. Repita o comando sem `--diagnose` para obter a prévia. O Broker verifica a identidade ativa, o contato, a caixa, a conversa e o protocolo de recibo do destino. Somente uma entrada individual ou uma saída observada, com ID do provedor e registro original intocado, pode ser admitida. A mídia precisa estar disponível. Trabalhos irmãos, tentativas anteriores, histórico retido e recibos exigem avaliação específica.
+2. Repita o comando sem `--diagnose` para obter a prévia. O Broker verifica a identidade ativa, o contato, a caixa, a conversa e o protocolo de recibo do destino. Somente uma entrada individual ou uma saída observada, com ID do provedor e registro original intocado, pode ser admitida. A mídia precisa estar disponível. Quando há vários trabalhos `SENT`, `DELIVERED` ou `READ` para a mesma mensagem, todos precisam estar pendentes, com zero tentativas e sem operações anteriores. A lista de trabalhos integra o digest. Uma alteração exige uma nova prévia.
 3. Com a recuperação autorizada, repita o comando com `--approve "$DIGEST"`, usando o valor integral da prévia. Essa operação registra a decisão no histórico de auditoria e habilita o worker a espelhar exclusivamente a mensagem original. O consumidor usa seu idempotency key canônico e o horário original. Uma saída observada continua identificada como `EXTERNAL_OBSERVED` no JRC. A decisão fica vinculada à mensagem, ao destino, ao contato e à revisão de credencial.
 4. Confira o estado `SUCCEEDED`, o ID remoto e uma única mensagem na conversa de destino. Uma resposta `QUEUED` informa apenas a admissão. Se uma tentativa ficar incerta, consulte o recibo do protocolo antes de decidir sobre a ocorrência.
+
+O trabalho escolhido cria o espelho. Os demais aguardam seu recibo confirmado e o vínculo com o mesmo ID remoto para processar o estado. Se houver mudança de contato ou resultado incerto no trabalho escolhido, os demais ficam pendentes para conciliação.
 
 Executar os três níveis da matriz separadamente. O piloto precisa observar entrada,
 saída, anexos, status, duplicatas e queda do Broker **antes** de aceitar o webhook.

@@ -148,7 +148,10 @@ it.each([
  {observed:false,attachment:false,rebound:false},{observed:true,attachment:false,rebound:false},
  {observed:false,attachment:true,rebound:false},{observed:true,attachment:true,rebound:false},
  {observed:false,attachment:false,rebound:true},
-])('reviews a single mirror (observed=$observed, attachment=$attachment, rebound=$rebound)',async({observed,attachment,rebound})=>{
+ {observed:false,attachment:false,rebound:false,siblings:true},
+ {observed:true,attachment:true,rebound:false,siblings:true},
+ {observed:false,attachment:true,rebound:true,siblings:true},
+])('reviews a single mirror (observed=$observed, attachment=$attachment, rebound=$rebound, siblings=$siblings)',async({observed,attachment,rebound,siblings})=>{
  const {t}=await fencedContact();
  const phone='15555550123';
  await db.database.pool.query('UPDATE messaging_contacts SET external_id=$2 WHERE organization_id=$1',[t.org,phone]);
@@ -188,24 +191,48 @@ it.each([
    ownAttempts:0,siblingJobs:0,mapped:false,uncertainInConversation:1,observation:'PENDING_WITHOUT_TARGET_BEHIND_UNKNOWN'});
  const preview=await reviewPendingMirror(options,input);
  expect(preview.state).toBe('ELIGIBLE');
+ let digest=preview.digest;
+ if(siblings){
+   await db.database.pool.query("UPDATE messaging_messages SET state='READ' WHERE id=$1",[candidate.messageId]);
+   await expect(reviewPendingMirror(options,input,digest)).rejects.toThrow('CHATWOOT_REVIEW_DIGEST_MISMATCH');
+   const sibling=(await db.database.pool.query('SELECT id FROM integration_jobs WHERE message_id=$1 AND id<>$2',[candidate.messageId,candidate.jobId])).rows[0].id;
+   await db.database.pool.query('UPDATE integration_jobs SET attempts=1 WHERE id=$1',[sibling]);
+   await expect(reviewPendingMirror(options,input)).rejects.toThrow('CHATWOOT_REVIEW_NOT_ELIGIBLE');
+   await db.database.pool.query('UPDATE integration_jobs SET attempts=0 WHERE id=$1',[sibling]);
+   digest=(await reviewPendingMirror(options,input)).digest;
+ }
  await expect(reviewPendingMirror(options,{...input,organizationId:randomUUID()})).rejects.toThrow();
  await expect(reviewPendingMirror(options,{...input,inboxId:10})).rejects.toThrow();
  await expect(reviewPendingMirror(options,{...input,jobId:t.job,messageId:t.message})).rejects.toThrow();
  await expect(reviewPendingMirror(options,{...input,...other},preview.digest)).rejects.toThrow();
  expect(t.nativeBodies).toHaveLength(0);
- await reviewPendingMirror(options,input,preview.digest);
- await expect(reviewPendingMirror(options,input,preview.digest)).rejects.toThrow();
+ await reviewPendingMirror(options,input,digest);
+ await expect(reviewPendingMirror(options,input,digest)).rejects.toThrow();
+ if(siblings){
+   await db.database.pool.query("UPDATE integration_jobs SET available_at=now()+interval '1 hour' WHERE id=$1",[candidate.jobId]);
+   await worker.runOnce(t.org);
+   expect(t.nativeBodies).toHaveLength(0);
+   expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE message_id=$1',[candidate.messageId])).rows)
+     .toEqual([{status:'PENDING',attempts:0},{status:'PENDING',attempts:0}]);
+   await db.database.pool.query('UPDATE integration_jobs SET available_at=now() WHERE id=$1',[candidate.jobId]);
+ }
  if(rebound)remotePhone='15555550999';
  await worker.runOnce(t.org); await worker.runOnce(t.org);
  if(rebound){
    expect(t.nativeBodies).toHaveLength(0);
    expect((await db.database.pool.query('SELECT status,last_error FROM integration_jobs WHERE id=$1',[candidate.jobId])).rows)
      .toEqual([{status:'FAILED',last_error:'CHATWOOT_REVIEW_REMOTE_MISMATCH'}]);
+   if(siblings)expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE message_id=$1 AND id<>$2',[candidate.messageId,candidate.jobId])).rows)
+     .toEqual([{status:'PENDING',attempts:0}]);
  }else{
    expect(t.nativeBodies).toHaveLength(1);
    expect(t.nativeBodies[0]).toMatchObject({broker_message_id:candidate.messageId,message_type:observed?'outgoing':'incoming',
      message_origin:observed?'EXTERNAL_OBSERVED':'LIVE',conversation_id:51,media:attachment?{mime_type:'application/pdf'}:null});
    expect((await db.database.pool.query('SELECT status FROM integration_jobs WHERE id=$1',[candidate.jobId])).rows).toEqual([{status:'SUCCEEDED'}]);
+   if(siblings){
+     expect((await db.database.pool.query('SELECT status FROM integration_jobs WHERE message_id=$1',[candidate.messageId])).rows).toEqual([{status:'SUCCEEDED'},{status:'SUCCEEDED'}]);
+     expect((await db.database.pool.query('SELECT state FROM chatwoot_mirror_attempts WHERE message_id=$1',[candidate.messageId])).rows).toEqual([{state:'CONFIRMED'}]);
+   }
  }
  expect((await db.database.pool.query('SELECT status,attempts FROM integration_jobs WHERE id=$1',[other.jobId])).rows)
    .toEqual([{status:'PENDING',attempts:0}]);
