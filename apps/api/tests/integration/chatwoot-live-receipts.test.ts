@@ -175,7 +175,11 @@ it.each([
    const path=new URL(String(url)).pathname;
    if(path.endsWith('/conversations/51'))return Response.json({id:51,account_id:7,inbox_id:9,
      contact_inbox:{id:11,contact_id:41,inbox_id:9,source_id:'synthetic-native-source'},meta:{sender:{id:41,phone_number:'+'+remotePhone}}});
-   if(path.endsWith('/conversations/51/messages')&&init?.method==='GET')return Response.json({payload:[]});
+   if(path.endsWith('/conversations/51/messages')&&init?.method==='GET'){
+     const params=new URL(String(url)).searchParams;
+     const anchor={id:5,inbox_id:9,conversation_id:51,source_id:null,created_at:1,content_attributes:{}};
+     return Response.json({payload:params.has('before')&&!params.has('after')?[]:[anchor]});
+   }
    return t.options.fetch!(url,init);
  }};
  const options={transact:t.options.transact,client:chatwootEnvironment(receiver).client};

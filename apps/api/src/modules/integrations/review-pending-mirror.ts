@@ -110,8 +110,7 @@ export async function reviewPendingMirror(options:Options,rawInput:Input,approve
  const {a,c,row}=context;
  const client=options.client(a);
  await verifyReviewedContact(client,input.accountId,input.inboxId,input.conversationId,row);
- if(await client.findBrokerMessage(input.accountId,input.conversationId,input.messageId))
-   return reject('CHATWOOT_REVIEW_REMOTE_MESSAGE_EXISTS');
+ await client.reviewMirrorHistory(input.accountId,input.inboxId,input.conversationId,input.messageId,row.provider_id,org);
  const revision=a.destination!.revision;
  if(!await client.liveIngress().capability(input.accountId,input.inboxId,{organization_id:org,
    integration_id:c.id,instance_id:row.instance_id,destination_revision:revision}))return reject('CHATWOOT_NATIVE_RECEIPT_REQUIRED');

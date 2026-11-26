@@ -1,5 +1,30 @@
 import { expect,it,vi } from 'vitest';
 import { ChatwootClient } from '../../src/modules/integrations/chatwoot-client.js';
+const reviewIdentity={broker:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',provider:'whatsapp-test-id',org:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'};
+it.each(['canonical','provider','partial','repeated','lostAnchor','absent'])('checks legacy mirror history across pages (%s)',async mode=>{
+ const identity=reviewIdentity,latest={id:42,conversation_id:51,inbox_id:9,created_at:125,source_id:null,content_attributes:{}};
+ const older={...latest,id:60,created_at:100,source_id:mode==='provider'?identity.provider:null,
+   content_attributes:mode==='canonical'?{jrc_broker_message_id:identity.broker.toUpperCase()}:{}};
+ const calls:string[]=[];
+ const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch:async input=>{
+   const {searchParams:q,search}=new URL(String(input));calls.push(search);
+   if(!search)return Response.json({payload:[latest]});
+   if(q.get('before')==='42'){
+     if(mode==='partial')return Response.json({payload:[]},{status:206});
+     return Response.json({payload:[mode==='repeated'?latest:older]});
+   }
+   if(q.get('after')==='60')return Response.json({payload:mode==='lostAnchor'?[]:[older]});
+   return Response.json({payload:[]});
+ }});
+ const lookup=client.reviewMirrorHistory(7,9,51,identity.broker,identity.provider,identity.org);
+ if(mode==='absent'){
+   await expect(lookup).resolves.toBeUndefined();
+   expect(calls).toEqual(['','?before=42','?before=60','?after=60&before=61','']);
+ }else{
+   await expect(lookup).rejects.toThrow();
+   expect(calls).toContain('?before=42');
+ }
+});
 const message={id:41,conversation_id:51,account_id:7,inbox_id:9,message_type:0,private:false,content:'Synthetic input',content_type:'text',sender:{id:31,type:'contact'},created_at:100};
 it('finds the exact message when chronological pagination requires an existing cursor',async()=>{
  const client=new ChatwootClient({baseUrl:'https://central.example.test',token:'synthetic',fetch:async input=>{

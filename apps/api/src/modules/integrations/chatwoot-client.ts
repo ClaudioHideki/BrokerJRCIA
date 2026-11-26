@@ -144,6 +144,7 @@ export class ChatwootClient {
     body?: unknown,
     allowEmpty = false,
     readOnly = false,
+    requireFullResponse = false,
   ): Promise<unknown> {
     const safe = method !== "POST" || readOnly;
     let response: Response;
@@ -172,7 +173,7 @@ export class ChatwootClient {
         { phase: 'TRANSPORT', method },
       );
     }
-    if (!response.ok) {
+    if (!response.ok || (requireFullResponse && (response.status!==200||response.headers.has('content-range')))) {
       // Releasing an unread rejected body must not replace the observed status
       // with an arbitrary transport/stream error or change retry semantics.
       try { await response.body?.cancel(); } catch { /* preserve bounded HTTP evidence */ }
@@ -757,6 +758,46 @@ export class ChatwootClient {
     if (matches.length > 1)
       throw new ChatwootError("CHATWOOT_MESSAGE_AMBIGUOUS");
     return matches[0]?.id;
+  }
+  /** Read-only operator preflight. LAB2 orders pages chronologically, including late historical inserts. */
+  async reviewMirrorHistory(accountId:number,inboxId:number,conversationId:number,brokerId:string,providerId:string,org:string){
+    const path=this.account(accountId)+`/conversations/${integer.parse(conversationId)}/messages`;
+    const schema=z.object({payload:z.array(z.object({id:canonicalInteger.refine(n=>n<Number.MAX_SAFE_INTEGER),inbox_id:canonicalInteger,conversation_id:canonicalInteger,
+      created_at:z.number().int().nonnegative(),source_id:z.string().nullable(),content_attributes:z.record(z.string(),z.unknown())})).max(20)});
+    const read=async(query:string)=>{
+      const {payload}=parseCatalog(schema,await this.request('GET',path+query,undefined,false,true,true));
+      if(payload.some(m=>m.inbox_id!==inboxId||m.conversation_id!==conversationId))throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
+      return payload;
+    };
+    const seen=new Set<number>();
+    let cursor:number|undefined, oldest=Infinity, latest:number|undefined;
+    for(let page=0;page<100;page++){
+      const rows=await read(cursor===undefined?'':`?before=${cursor}`);
+      if(!rows.length){
+        // An invalid/disappearing anchor also gives an empty page. Confirm it by an exact ID-range read.
+        if(cursor===undefined)throw new ChatwootError('CHATWOOT_REVIEW_HISTORY_INCOMPLETE');
+        const anchor=await read(`?after=${cursor}&before=${cursor+1}`);
+        const head=await read('');
+        if(anchor.length!==1||anchor[0]?.id!==cursor||head.at(-1)?.id!==latest)throw new ChatwootError('CHATWOOT_REVIEW_HISTORY_INCOMPLETE');
+        return;
+      }
+      latest??=rows.at(-1)!.id;
+      let previous=-1;
+      for(const row of rows){
+        if(seen.has(row.id)||row.created_at<previous||row.created_at>oldest)throw new ChatwootError('CHATWOOT_REVIEW_HISTORY_INCOMPLETE');
+        seen.add(row.id);
+        previous=row.created_at;
+        const marker=row.content_attributes.jrc_broker_message_id;
+        if((typeof marker==='string'&&marker.toLowerCase()===brokerId.toLowerCase())||
+          row.content_attributes.jrc_broker_provider_message_id===providerId||row.source_id===providerId||
+          row.source_id===brokerId||row.source_id===`jrc-history:${org}:${brokerId}`||
+          (row.source_id?.startsWith(`jrc-history-v2:${org}:`)&&row.source_id.endsWith(':'+brokerId)))
+          throw new ChatwootError('CHATWOOT_REVIEW_REMOTE_MESSAGE_EXISTS');
+      }
+      cursor=rows[0]!.id;
+      oldest=rows[0]!.created_at;
+    }
+    throw new ChatwootError('CHATWOOT_REVIEW_HISTORY_INCOMPLETE');
   }
   /** Chatwoot exposes a bounded message list, not a GET for an individual message. */
   async canonicalMessage(accountId:number,inboxId:number,conversationId:number,messageId:number) {
