@@ -6,6 +6,7 @@ import {createChatwootWorker} from '../../src/modules/integrations/chatwoot-work
 import {createPostgresMessagingRepository} from '../../src/modules/messaging/repository.js';
 import {persistQrContactEvent} from '../../src/modules/messaging/qr-contact-persistence.js';
 import {inspectMirrorQueue,reviewPendingMirror} from '../../src/modules/integrations/review-pending-mirror.js';
+import {reviewPreDispatchMirror} from '../../src/modules/integrations/review-pre-dispatch-mirror.js';
 import {createMediaStore,registerPendingMedia} from '../../src/modules/messaging/media-store.js';
 let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();},60_000);
@@ -119,6 +120,95 @@ it.each(['fresh','duplicate-before-release','missing-map','recovered-identity','
   if(scenario==='fresh')expect(t.nativeBodies[0]).toMatchObject({broker_message_id:id,message_type:'outgoing',message_origin:'EXTERNAL_OBSERVED',conversation_id:51});
   expect(await t.read()).toMatchObject({status:'UNKNOWN'});
   expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows).toHaveLength(0);
+});
+
+it.each(['media','text','unexpected-receipt','proxy-404','missing-target','claimed-sibling','dispatched-sibling','phone-drift','local-map','external-marker','lease','other-error'] as const)(
+ 'reviews only a proven pre-dispatch QR mirror (%s)',async scenario=>{
+  const {t,repository}=await fencedContact(true);
+  const phone='15555550123',provider=randomUUID();
+  await db.database.pool.query('UPDATE messaging_contacts SET external_id=$2 WHERE organization_id=$1',[t.org,phone]);
+  const channel=await db.transact(t.org,tx=>repository.findChannel(tx,t.org,t.channel));
+  const binary={kind:'document' as const,fileName:'sample.pdf',mimeType:'application/pdf',bytes:new TextEncoder().encode('%PDF-1.4 example')};
+  const media=createMediaStore({encryptionKey:t.options.encryptionKey,transact:t.options.transact,download:async()=>binary});
+  const base={kind:'outbound' as const,upstreamMessageId:provider,externalId:phone,displayName:null,occurredAt:new Date(),historical:false};
+  await db.transact(t.org,tx=>persistQrContactEvent(tx,channel!,scenario==='text'
+    ?{...base,content:{type:'TEXT',text:'synthetic observation'}}
+    :{...base,kind:'outbound-media',media:{kind:'document',fileName:binary.fileName,source:'QR',sourceKey:provider,
+      descriptor:{messageId:provider}},caption:'synthetic observation'}));
+  if(scenario!=='text')await media.runOnce(t.org);
+  for(const state of ['DELIVERED','READ'] as const)await db.transact(t.org,tx=>repository.recordStatusEvent(tx,{
+    organizationId:t.org,channelId:t.channel,upstreamMessageId:provider,state}));
+  const record=(await db.database.pool.query("SELECT m.id AS message, j.id AS job FROM messaging_messages m JOIN integration_jobs j ON j.message_id=m.id AND j.dedupe_key='message:'||m.id::text||':SENT' WHERE m.organization_id=$1 AND m.upstream_message_id=$2",[t.org,provider])).rows[0];
+  const input={organizationId:t.org,integrationId:t.integration,accountId:7,inboxId:9,conversationId:51,messageId:record.message,jobId:record.job};
+  let invalidSender=true;
+  const paths:string[]=[];
+  const receiver:ChatwootOptions={...t.options,media,async fetch(url,init){
+    const path=new URL(String(url)).pathname,method=init?.method??'GET';
+    paths.push(method+' '+path);
+    if(path.endsWith('/conversations/51'))return Response.json({id:51,account_id:7,inbox_id:9,
+      contact_inbox:{id:11,contact_id:41,inbox_id:9,source_id:'synthetic-native-source'},meta:{sender:{id:41,phone_number:'+'+phone,name:invalidSender?123:null}}});
+    if(path.endsWith('/conversations/51/messages')&&method==='GET'){
+      const anchor={id:5,inbox_id:9,conversation_id:51,source_id:scenario==='external-marker'?provider:null,created_at:1,content_attributes:{}};
+      const params=new URL(String(url)).searchParams;
+      return Response.json({payload:params.has('before')&&!params.has('after')?[]:[anchor]});
+    }
+    if(path.includes('/receipts/')&&!t.nativeBodies.length){
+      if(scenario==='unexpected-receipt')return Response.json({state:'MEDIA_PENDING'});
+      return scenario==='proxy-404'?new Response('Not found',{status:404}):Response.json({error:'JRC_LIVE_RECEIPT_NOT_FOUND'},{status:404});
+    }
+    if(method==='POST'&&path.endsWith('/live-ingress/v1/messages')){
+      const encoded=init?.body instanceof FormData?init.body.get('envelope'):init?.body;
+      const body=JSON.parse(String(encoded));
+      t.nativeBodies.push(body);
+      return Response.json({protocol:body.protocol,organization_id:body.organization_id,integration_id:body.integration_id,
+        instance_id:body.instance_id,destination_revision:body.destination_revision,broker_message_id:body.broker_message_id,
+        conversation_id:body.conversation_id,request_hash:body.request_hash,account_id:7,inbox_id:9,message_id:901,
+        receipt_id:randomUUID(),state:'PERSISTED'});
+    }
+    return t.options.fetch!(url,init);
+  }};
+  const worker=createChatwootWorker(receiver),options={transact:db.transact,client:chatwootEnvironment(receiver).client,media};
+  await worker.runOnce(t.org);
+  const current=async()=> (await db.database.pool.query('SELECT id,status,attempts,lease_token,payload,last_error,failure_diagnostic FROM integration_jobs WHERE organization_id=$1 AND message_id=$2 ORDER BY id',[t.org,record.message])).rows;
+  const first=await current(),leader=first.find(x=>x.id===record.job), siblings=first.filter(x=>x.id!==record.job);
+  expect(leader).toMatchObject({status:'UNKNOWN',attempts:1,last_error:'INTEGRATION_PROCESSING_FAILED',failure_diagnostic:{phase:'UNKNOWN',settlement:'UNKNOWN',attempt:1,httpStatus:null,method:null}});
+  expect(siblings).toHaveLength(2);
+  expect(paths.every(p=>p.startsWith('GET '))).toBe(true);
+  expect((await db.database.pool.query('SELECT id FROM chatwoot_mirror_attempts WHERE message_id=$1',[record.message])).rowCount).toBe(0);
+  invalidSender=false;
+  if(scenario==='missing-target')await db.database.pool.query("UPDATE integration_jobs SET payload=payload-'admittedInboxTarget' WHERE id=$1",[record.job]);
+  if(scenario==='claimed-sibling')await db.database.pool.query('UPDATE integration_jobs SET attempts=1 WHERE id=$1',[siblings[0].id]);
+  if(scenario==='lease')await db.database.pool.query("UPDATE integration_jobs SET status='RUNNING',lease_token=$2,lease_expires_at=now()+interval '1 minute' WHERE id=$1",[record.job,randomUUID()]);
+  if(scenario==='other-error')await db.database.pool.query("UPDATE integration_jobs SET last_error='CHATWOOT_OUTCOME_UNKNOWN' WHERE id=$1",[record.job]);
+  if(scenario==='local-map')await db.database.pool.query('INSERT INTO chatwoot_messages(organization_id,integration_id,message_id,remote_message_id) VALUES($1,$2,$3,118)',[t.org,t.integration,record.message]);
+  if(scenario==='dispatched-sibling')await db.database.pool.query("INSERT INTO chatwoot_mirror_attempts(organization_id,integration_id,channel_id,destination_revision,account_id,inbox_id,conversation_id,remote_conversation_id,cycle,message_id,job_id,lease_token,state) SELECT organization_id,integration_id,channel_id,destination_revision,account_id,inbox_id,conversation_id,remote_conversation_id,cycle,$2,$3,$4,'DISPATCHED' FROM chatwoot_mirror_attempts WHERE job_id=$1 LIMIT 1",[t.job,record.message,siblings[0].id,randomUUID()]);
+  const unchanged=await current();
+  const review=(digest?:string)=>reviewPreDispatchMirror(options,input,digest);
+  if(!['text','media','phone-drift'].includes(scenario)){
+    await expect(review()).rejects.toThrow();
+    expect(await current()).toEqual(unchanged);
+  }else{
+    const preview=await review();
+    expect(preview.state).toBe('ELIGIBLE');
+    expect(await current()).toEqual(unchanged);
+    await expect(review('0'.repeat(64))).rejects.toThrow();
+    if(scenario==='phone-drift'){
+      await db.database.pool.query('UPDATE messaging_contacts SET external_id=$2 WHERE organization_id=$1',[t.org,'15555550999']);
+      await expect(review(preview.digest)).rejects.toThrow();
+    }else{
+      const results=await Promise.allSettled([review(preview.digest),review(preview.digest)]);
+      expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+      const approved=await current();
+      expect(approved.find(x=>x.id===record.job)).toMatchObject({status:'PENDING',attempts:1,lease_token:null,payload:leader.payload,failure_diagnostic:leader.failure_diagnostic});
+      expect(approved.filter(x=>x.id!==record.job)).toEqual(siblings);
+      expect(t.nativeBodies).toHaveLength(0);
+      for(let i=0;i<4;i++)await worker.runOnce(t.org);
+      expect(t.nativeBodies.map(b=>b.broker_message_id)).toEqual([record.message]);
+      expect((await db.database.pool.query('SELECT remote_message_id::text FROM chatwoot_messages WHERE organization_id=$1 AND integration_id=$2 AND message_id=$3',[t.org,t.integration,record.message])).rows).toEqual([{remote_message_id:'901'}]);
+    }
+  }
+  expect(await t.read()).toMatchObject({status:'UNKNOWN'});
+  expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
 });
 it.each([{requestMs:10,expected:4},{requestMs:5200,expected:1}])(
  'bounds continuous delivery with a $requestMs ms receiver',

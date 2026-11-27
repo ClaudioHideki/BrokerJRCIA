@@ -12,6 +12,7 @@ export const mirrorReviewInput=z.strictObject({organizationId:z.uuid(),integrati
   messageId:z.uuid(),accountId:remoteId,inboxId:remoteId,conversationId:remoteId});
 type Input=z.infer<typeof mirrorReviewInput>;
 type Options={transact<T>(org:string,work:OrganizationTransaction<T>):Promise<T>;client(account:AccountRow):ChatwootClient};
+export type MirrorReviewOptions=Options & {media?:Pick<import('../messaging/media-store.js').MediaStore,'read'>};
 const reject=(reason:string):never=>{throw new IntegrationError(reason,409);};
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 // Excludes mutable delivery/read state. Both observations use PostgreSQL's canonical JSON encoding.

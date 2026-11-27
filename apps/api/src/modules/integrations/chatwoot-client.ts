@@ -6,7 +6,7 @@ import {
 } from '../automations/conversation-effect-protocol.js';
 import { createChatwootSafeFetch } from './chatwoot-safe-http.js';
 import { createHistoryConsumer } from '../history-sync/consumer.js';
-import { createLiveIngressConsumer } from './chatwoot-live-ingress.js';
+import { createLiveIngressConsumer, liveIngressLookup, type LiveIngressLookup } from './chatwoot-live-ingress.js';
 import {
   MediaError,
   canonicalMediaMime,
@@ -18,6 +18,7 @@ import {
 } from "@jrc/providers";
 
 const integer = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+const missingScopedReceipt = Symbol('missing scoped receipt');
 const canonicalInteger = z.union([integer, z.string().regex(/^[1-9]\d{0,15}$/).transform(Number).pipe(integer)]);
 const catalogName=z.string().max(1000);
 // Existing remote email is display metadata; authorization uses the account-scoped ID.
@@ -116,6 +117,14 @@ export class ChatwootClient {
   historySyncV2() { return createHistoryConsumer((method,path,body)=>this.request(method,path,body)); }
   liveIngress() { return createLiveIngressConsumer((method,path,body)=>this.request(method,path,body,false,!path.endsWith('/messages')),
     (code,uncertain=false)=>new ChatwootError(code,false,uncertain)); }
+
+  /** An operator repairing a pre-dispatch failure requires the receiver's explicit negative answer. */
+  async requireMissingLiveReceipt(accountId:number,inboxId:number,lookup:LiveIngressLookup):Promise<void>{
+    const {broker_message_id,conversation_id:_,...body}=liveIngressLookup(lookup);
+    const path=`/api/v1/accounts/${integer.parse(accountId)}/jrc_broker/inboxes/${integer.parse(inboxId)}/live-ingress/v1/receipts/${broker_message_id}`;
+    const result=await this.request('POST',path,body,false,true,false,true);
+    if(result!==missingScopedReceipt)throw new ChatwootError('CHATWOOT_RECEIPT_ABSENCE_UNPROVEN');
+  }
   constructor(private readonly options: Options) {
     const url = new URL(options.baseUrl);
     const local =
@@ -145,6 +154,7 @@ export class ChatwootClient {
     allowEmpty = false,
     readOnly = false,
     requireFullResponse = false,
+    requireMissingReceipt = false,
   ): Promise<unknown> {
     const safe = method !== "POST" || readOnly;
     let response: Response;
@@ -172,6 +182,19 @@ export class ChatwootClient {
         undefined,
         { phase: 'TRANSPORT', method },
       );
+    }
+    if(requireMissingReceipt&&response.status===404){
+      try{
+        if(!response.headers.has('content-range')&&response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase()==='application/json'){
+          const bytes=await readMediaBytes(response,1024);
+          const declared=response.headers.get('content-length');
+          if(declared!==null&&(!/^\d+$/.test(declared)||Number(declared)!==bytes.byteLength))throw new Error('partial receipt response');
+          const parsed=z.strictObject({error:z.literal('JRC_LIVE_RECEIPT_NOT_FOUND')}).safeParse(JSON.parse(new TextDecoder().decode(bytes)));
+          if(parsed.success)return missingScopedReceipt;
+        }
+      }catch{ /* A partial, oversized or malformed response cannot establish absence. */ }
+      finally{try{await response.body?.cancel();}catch{ /* Reader may have closed. */ }}
+      throw new ChatwootError('CHATWOOT_RECEIPT_ABSENCE_UNPROVEN');
     }
     if (!response.ok || (requireFullResponse && (response.status!==200||response.headers.has('content-range')))) {
       // Releasing an unread rejected body must not replace the observed status
