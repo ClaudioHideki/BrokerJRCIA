@@ -367,7 +367,7 @@ export class ChatwootClient {
   async flowConversation(accountId: number, conversationId: number) {
     return z.object({ id: integer, account_id: integer, inbox_id: integer, status: z.string(),
       meta: z.object({ assignee: z.object({ id: integer, type: z.string().optional() }).nullable().optional(),
-        sender: z.object({ id: integer, name: z.string().optional() }) }),
+        sender: z.object({ id: integer, name: z.string().nullish() }) }),
     }).parse(await this.request('GET', this.account(accountId) + `/conversations/${integer.parse(conversationId)}`));
   }
   async sendFlowMessage(accountId: number, conversationId: number, text: string, deliveryId: string) {
@@ -712,7 +712,7 @@ export class ChatwootClient {
           sender: z.object({
             id: integer,
             phone_number: z.string().nullable(),
-            name: z.string().optional(),
+            name: z.string().nullish(),
           }),
         }),
       })

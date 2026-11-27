@@ -2,6 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { ChatwootClient } from '../../src/modules/integrations/chatwoot-client.js';
 
 describe('Chatwoot Agent Bot transport', () => {
+  it('reads the same conversation with a null contact name and preserves its assignment', async () => {
+    const meta = { sender: { id: 3, name: null }, assignee: { id: 5, type: 'User' } };
+    const data = { id: 9, account_id: 2, inbox_id: 7, status: 'open', meta };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json(data));
+    const client = new ChatwootClient({ baseUrl: 'https://support.example.test', token: 'synthetic-token', fetch });
+    await expect(client.flowConversation(2, 9)).resolves.toEqual(data);
+    expect(fetch.mock.calls.map(([, init]) => init?.method)).toEqual(['GET']);
+  });
   it('starts mirrored WhatsApp conversations in pending only when a flow owns the inbox', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json({ id: 19 }));
     const client = new ChatwootClient({ baseUrl: 'https://support.example.test', token: 'synthetic-admin', fetch });

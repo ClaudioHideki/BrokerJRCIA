@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { ChatwootClient } from '../../src/modules/integrations/chatwoot-client.js';
+import { verifyReviewedContact } from '../../src/modules/integrations/review-pending-mirror.js';
 
 it('usa origem única e credencial no cabeçalho para criar caixa API', async () => {
   const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 8, channel_type: 'Channel::Api', name: 'JRC', secret: 'webhook-secret', webhook_url: 'https://broker.test/events' })));
@@ -50,6 +51,31 @@ it('keeps platform user email validation strict for provisioning identity', asyn
 
 const campaignConversation={id:21,account_id:7,inbox_id:9,meta:{sender:{id:12,phone_number:'+12025550123'}}};
 const campaignRoute={id:81,contact_id:12,inbox_id:9,source_id:'opaque-conversation-route'};
+
+it('verifies a mirror contact with a null display name using its bound identity', async () => {
+  const expected = { contact_id: '12', source_id: campaignRoute.source_id, phone: '12025550123' };
+  const remote = { ...campaignConversation, contact_inbox: campaignRoute,
+    meta: { sender: { ...campaignConversation.meta.sender, name: null } } };
+  const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => Response.json(remote));
+  const client = new ChatwootClient({ baseUrl: 'https://conversas.test', token: 'synthetic-token', fetch });
+
+  await expect(verifyReviewedContact(client, 7, 9, 21, expected)).resolves.toBeUndefined();
+  for (const mismatch of [{ contact_id: '13' }, { source_id: 'different-route' }, { phone: '12025550124' }]) {
+    await expect(verifyReviewedContact(client, 7, 9, 21, { ...expected, ...mismatch }))
+      .rejects.toMatchObject({ code: 'CHATWOOT_REVIEW_REMOTE_MISMATCH' });
+  }
+  await expect(verifyReviewedContact(client, 7, 10, 21, expected))
+    .rejects.toMatchObject({ code: 'CHATWOOT_REVIEW_REMOTE_MISMATCH' });
+  expect(fetch.mock.calls.map(([, init]) => init?.method)).toEqual(Array(5).fill('GET'));
+});
+
+it.each([{ id: 0, name: null }, { id: 12, name: 7 }])('rejects malformed sender fields on both conversation reads', async sender => {
+  const remote = { ...campaignConversation, status: 'pending', meta: { sender: { ...sender, phone_number: '+12025550123' } } };
+  const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => Response.json(remote));
+  const client = new ChatwootClient({ baseUrl: 'https://conversas.test', token: 'synthetic-token', fetch });
+  await expect(client.conversation(7, 21)).rejects.toThrow();
+  await expect(client.flowConversation(7, 21)).rejects.toThrow();
+});
 it('retains only the canonical conversation route fields needed for campaign recipient proof',async()=>{
   const client=new ChatwootClient({baseUrl:'https://conversas.test',token:'synthetic-token',fetch:vi.fn().mockResolvedValue(Response.json({
     ...campaignConversation,contact_inbox:{...campaignRoute,pubsub_token:'synthetic-private-channel-token'},
