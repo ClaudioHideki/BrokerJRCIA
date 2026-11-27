@@ -18,13 +18,16 @@ import {centralMediaRuntimeSql} from './central-media-runtime-schema.js';
 import {guidedSetupRuntimeSql} from './guided-setup-runtime-schema.js';
 import {boxRoutingRuntimeSql} from './box-routing-runtime-schema.js';
 import {historySyncRuntimeSql} from './history-sync-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0095_history_retention_guard';
+export const RUNTIME_SCHEMA_BASELINE = '0096_chatwoot_live_claim_streak';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
 // The app role cannot read drizzle.__drizzle_migrations. This is a structural
 // readiness probe, not a migration journal/hash comparison.
 const requiredObjectsSql = `SELECT
+  EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.chatwoot_connections')
+    AND attname='live_claims_since_review' AND atttypid='smallint'::regtype AND attnotnull AND NOT attisdropped)
+  AND
   NOT EXISTS(SELECT 1 FROM (VALUES ('public.media_private_objects'),('public.media_private_operations')) AS required(relation_name)
     WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass(required.relation_name)
       AND c.relrowsecurity AND c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)='jrc_migrator'

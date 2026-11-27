@@ -58,6 +58,9 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
 
   it('enqueues one new proven human reply without retrying or clearing an unrelated UNKNOWN',async()=>{
     const t=await fixture();
+    const older=(await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)
+      VALUES($1,$2,$3,'INCOMING','CONTACT','{"type":"TEXT","text":"Previously reviewed"}','DELIVERED') RETURNING id`,[t.org,t.channel,t.next])).rows[0].id;
+    await db.database.pool.query(`UPDATE integration_jobs SET payload='{"reviewedInboxTarget":{"inbox":"9"}}' WHERE message_id=$1`,[older]);
     await t.ingest(t.message);
     await createChatwootWorker(t.options).runOnce(t.org);
     const outbox=(await db.database.pool.query(`SELECT m.conversation_id,m.content,m.source FROM messaging_outbox o
@@ -66,6 +69,8 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
     expect((await db.database.pool.query('SELECT status,attempts,last_error FROM integration_jobs WHERE id=$1',[t.unknown])).rows[0])
       .toEqual({status:'UNKNOWN',attempts:1,last_error:'CHATWOOT_OUTCOME_UNKNOWN'});
     expect(t.calls).toEqual(['GET /api/v1/accounts/7/conversations/52/messages']);
+    expect((await db.database.pool.query('SELECT attempts,status FROM integration_jobs WHERE message_id=$1',[older])).rows)
+      .toEqual([{attempts:0,status:'PENDING'}]);
     expect((await db.database.pool.query("SELECT status FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows)
       .toEqual([{status:'SUCCEEDED'}]);
   });

@@ -333,8 +333,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
       ).rows[0];
       if (!connection) return;
       const job = (
-        await t.query<{ id: string; held_history: boolean; receipt_only: boolean }>(
-          `SELECT j.id, j.kind='MIRROR_MESSAGE' AND EXISTS (
+        await t.query<{ id: string; held_history: boolean; receipt_only: boolean; reviewed: boolean }>(
+          `SELECT j.id, j.payload ? 'reviewedInboxTarget' AS reviewed, j.kind='MIRROR_MESSAGE' AND EXISTS (
             SELECT 1 FROM integration_jobs held
             WHERE held.organization_id=j.organization_id AND held.integration_id=j.integration_id
               AND held.message_id=j.message_id AND held.kind='MIRROR_MESSAGE'
@@ -348,7 +348,9 @@ export function createChatwootWorker(options: ChatwootOptions) {
         WHERE j.organization_id=$1 AND j.integration_id=$2 AND ${eligibleJob}
           AND NOT EXISTS(SELECT 1 FROM integration_jobs busy WHERE busy.organization_id=j.organization_id
             AND busy.integration_id=j.integration_id AND busy.status='RUNNING')
-        ORDER BY CASE WHEN j.payload->>'historical'='true' THEN 1 ELSE 0 END,j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`,
+        ORDER BY CASE WHEN j.payload->>'historical'='true' THEN 2
+          WHEN (j.payload ? 'reviewedInboxTarget')=(c.live_claims_since_review>=3) THEN 0 ELSE 1 END,
+          j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`,
           [org, connection.id],
         )
       ).rows[0];
@@ -365,8 +367,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
         return;
       }
       await t.query(
-        "UPDATE chatwoot_connections SET updated_at=now() WHERE organization_id=$1 AND id=$2",
-        [org, connection.id],
+        `UPDATE chatwoot_connections SET updated_at=now(),
+          live_claims_since_review=CASE WHEN $3 THEN 0 ELSE LEAST(3,live_claims_since_review+1) END
+          WHERE organization_id=$1 AND id=$2`,
+        [org, connection.id,job.reviewed],
       );
       return (
         await t.query<Job>(

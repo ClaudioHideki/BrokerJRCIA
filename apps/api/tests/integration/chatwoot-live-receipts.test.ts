@@ -142,6 +142,33 @@ it.each([{requestMs:10,expected:4},{requestMs:5200,expected:1}])(
     WHERE organization_id=$1 AND integration_id=$2 AND status='SUCCEEDED'`,[t.org,t.integration]);
   expect(result.rows[0].done).toBe(expected);
  });
+it.each(['mixed','only-live','only-reviewed'] as const)('shares claim opportunities across restarts (%s)',async scenario=>{
+ const t=await fixture(),posted:string[]=[];
+ const reviewed:string[]=[],live:string[]=[];
+ const setup=async(isReviewed:boolean,index:number)=>{
+   const msg=index===0?t.message:(await db.database.pool.query(`INSERT INTO messaging_messages
+     (organization_id,channel_id,conversation_id,direction,source,content,state) VALUES($1,$2,$3,'INCOMING','CONTACT',
+     '{"type":"TEXT","text":"Queue test"}','DELIVERED') RETURNING id`,[t.org,t.channel,t.conversation])).rows[0].id as string;
+   await db.database.pool.query(`UPDATE integration_jobs SET created_at=timestamptz '2026-01-01 UTC'+$3::int*interval '1 minute',
+     payload=CASE WHEN $2 THEN jsonb_build_object('reviewedInboxTarget',jsonb_build_object('inbox','9')) ELSE payload END
+     WHERE message_id=$1`,[msg,isReviewed,index]);
+   (isReviewed?reviewed:live).push(msg);
+ };
+ for(let i=0;i<(scenario==='mixed'?7:1);i++)await setup(scenario==='only-reviewed'||(scenario==='mixed'&&i<2),i);
+ const order=scenario==='mixed'?[...live.slice(0,3),reviewed[0],...live.slice(3),reviewed[1]]:[...live,...reviewed];
+ const options:ChatwootOptions={...t.options,async fetch(url,init){
+   const response=await t.options.fetch!(url,init);
+   if(!new URL(String(url)).pathname.endsWith('/live-ingress/v1/messages'))return response;
+   const receipt=await response.json();posted.push(receipt.broker_message_id);
+   return Response.json({...receipt,message_id:1000+posted.length});
+ }};
+ for(let i=0;i<order.length;i++){
+   await Promise.all([createChatwootWorker(options).runOnce(t.org),createChatwootWorker(options).runOnce(t.org)]);
+ }
+ expect(posted).toEqual(order);
+ expect((await db.database.pool.query("SELECT count(*)::int n FROM integration_jobs WHERE organization_id=$1 AND status='SUCCEEDED' AND attempts=1",[t.org])).rows[0].n)
+   .toBe(order.length);
+});
 it('keeps a new receipt for pre-activation history out of live ingress while admitting fresh messages',async()=>{
  const t=await fixture();
  await db.database.pool.query(`UPDATE integration_jobs SET status='HISTORY_PENDING',available_at='infinity',

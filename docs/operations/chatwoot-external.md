@@ -242,3 +242,16 @@ Esse tratamento começa na admissão de uma nova intenção assinada. Uma inten�
 Para uma saída individual nova, o Broker registra a caixa e o contato aprovados na primeira observação QR que identifica a mensagem. O vínculo contém a revisão do destino e da credencial, a instância e a referência ao evento do provedor. Diante de outra gravação incerta nessa conversa, o worker confere o contato remoto antes de gravar no JRC. Os recibos posteriores de entrega e leitura podem atualizar a mensagem depois da confirmação nativa da primeira gravação. Eventos que já aguardavam reconciliação ou chegaram pela importação conservam o tratamento anterior. Nos casos que exigem aprovação, consulte o procedimento de revisão individual acima.
 
 Um trabalho `MIRROR_MESSAGE` em `UNKNOWN` pode corresponder à gravação no JRC de uma mensagem que já saiu pelo WhatsApp. Para a origem `EXTERNAL_OBSERVED`, o Broker exige uma tentativa incerta que identifique a mesma caixa e conversa e que esteja vinculada à mesma mensagem. A nova mensagem precisa ter identificador de provedor próprio. Uma entrada admitida ou uma saída observada aprovada para revisão pode então ser gravada uma única vez no JRC por meio do recibo nativo. `CHATWOOT_MIRROR_ISOLATION_CHANGED` indica que a evidência mudou entre a seleção e a gravação. Consulte os identificadores de ambas as mensagens e da tentativa antes de uma nova revisão.
+
+## Prioridade do atendimento e fila revisada
+
+Quando existem trabalhos elegíveis nas duas filas da mesma caixa, o worker oferece até três oportunidades ao atendimento corrente e uma aos espelhos aprovados para revisão individual. Dentro de cada fila vale a ordem de criação e identificador. Uma classe única ocupa as oportunidades disponíveis. O histórico explícito continua por último. O contador em `chatwoot_connections.live_claims_since_review` é gravado na mesma transação da reivindicação, inclusive quando há mais de um worker.
+
+No Compose do Dokploy, utilize `migrate` com a imagem de API que inclui `0096_chatwoot_live_claim_streak`. Na janela, execute o preflight e, após `READY`, a aplicação pontual. Uma segunda execução retorna `CURRENT`. O comando usa a conexão de manutenção existente, confere o manifesto anterior inteiro e grava a coluna e o registro Drizzle numa única transação. Uma espera de trava superior a três segundos cancela a operação.
+
+```sh
+docker compose --profile maintenance run --rm --no-deps --entrypoint node migrate apps/api/dist/db/apply-live-claim-streak.js --check
+docker compose --profile maintenance run --rm --no-deps --entrypoint node migrate apps/api/dist/db/apply-live-claim-streak.js --apply
+```
+
+Confira `CURRENT` com o preflight e a prontidão dos processos após a troca da imagem. Se for necessário voltar à imagem predecessora, mantenha a coluna aditiva e o registro Drizzle. API e worker anteriores consultam a estrutura da qual dependem. O comando de auditoria do manifesto do binário anterior identifica que o banco já está na revisão posterior.

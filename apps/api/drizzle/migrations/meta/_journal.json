@@ -666,6 +666,13 @@
       "when": 1794868800000,
       "tag": "0095_history_retention_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1795780800000,
+      "tag": "0096_chatwoot_live_claim_streak",
+      "breakpoints": true
     }
   ]
 }
