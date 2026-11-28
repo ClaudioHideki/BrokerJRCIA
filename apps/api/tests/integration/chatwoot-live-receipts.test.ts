@@ -76,6 +76,52 @@ async function fencedContact(observedBlocker=false) {
    upstreamMessageId:randomUUID(),content:{type:'TEXT' as const,text:'New entry'},scheduleBot:false};
  return {t,worker,repository,event};
 }
+it.each([
+  { storedRows: 0, reason: 'CHATWOOT_REVIEW_EMPTY_SNAPSHOT_ONLY' },
+  { storedRows: 1, reason: 'CHATWOOT_REVIEW_HISTORY_INCOMPLETE' },
+])('keeps the mirror job unchanged when the list is empty and the remote fixture has $storedRows rows', async ({storedRows, reason}) => {
+  const { t } = await fencedContact();
+  const phone = '15555550123';
+  await db.database.pool.query('UPDATE messaging_contacts SET external_id=$2 WHERE organization_id=$1', [t.org, phone]);
+  const inserted = await db.database.pool.query(`INSERT INTO messaging_messages
+    (organization_id,channel_id,conversation_id,direction,source,upstream_message_id,content,state)
+    VALUES ($1,$2,$3,'INCOMING','CONTACT',$4,'{"type":"TEXT","text":"Synthetic history test"}','DELIVERED') RETURNING id`,
+  [t.org, t.channel, t.conversation, randomUUID()]);
+  const messageId = inserted.rows[0].id;
+  const jobId = (await db.database.pool.query('SELECT id FROM integration_jobs WHERE message_id=$1', [messageId])).rows[0].id;
+  const input = { organizationId: t.org, integrationId: t.integration, accountId: 7, inboxId: 9, conversationId: 51, messageId, jobId };
+  const fixtureDb = await db.database.pool.connect();
+  const routes: string[] = [];
+  try {
+    await fixtureDb.query('BEGIN');
+    await fixtureDb.query('CREATE TEMP TABLE remote_history_fixture (id int PRIMARY KEY) ON COMMIT DROP');
+    if (storedRows) await fixtureDb.query('INSERT INTO remote_history_fixture VALUES (80)');
+    const contact = { id: 41, name: null, phone_number: '+' + phone };
+    const options = { ...t.options, async fetch(url: RequestInfo | URL, init?: RequestInit) {
+      const path = new URL(String(url)).pathname;
+      expect(init?.method).toBe('GET');
+      routes.push(path);
+      if (path.endsWith('/conversations/51/messages')) return Response.json({ meta: { contact }, payload: [] });
+      expect(path).toMatch(/\/conversations\/51$/);
+      const { rows } = await fixtureDb.query('SELECT id FROM remote_history_fixture ORDER BY id DESC LIMIT 1');
+      return Response.json({ id: 51, account_id: 7, inbox_id: 9, messages: rows, meta: { sender: contact },
+        contact_inbox: { id: 11, contact_id: 41, inbox_id: 9, source_id: 'synthetic-native-source' } });
+    } };
+    const review = { transact: t.options.transact, client: chatwootEnvironment(options).client };
+    for (const digest of [undefined, '0'.repeat(64)]) {
+      routes.length = 0;
+      await expect(reviewPendingMirror(review, input, digest)).rejects.toThrow(reason);
+      expect(routes).toHaveLength(storedRows ? 3 : 4);
+    }
+    expect((await fixtureDb.query('SELECT id FROM remote_history_fixture')).rowCount).toBe(storedRows);
+    expect(await inspectMirrorQueue(review.transact, input)).toMatchObject({ status: 'PENDING', attempts: 0,
+      capturedTarget: false, ownAttempts: 0, mapped: false });
+  } finally {
+    await fixtureDb.query('ROLLBACK');
+    fixtureDb.release();
+  }
+});
+
 it.each(['fresh','duplicate-before-release','missing-map','recovered-identity','history','changed-provider','changed-phone','wrong-remote'] as const)
  ('mirrors only a first live QR observation admitted for the same contact (%s)',async scenario=>{
   const {t,repository,event}=await fencedContact(true);

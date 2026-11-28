@@ -120,7 +120,8 @@ export async function reviewPendingMirror(options:Options,rawInput:Input,approve
  const {a,c,row}=context;
  const client=options.client(a);
  await verifyReviewedContact(client,input.accountId,input.inboxId,input.conversationId,row);
- await client.reviewMirrorHistory(input.accountId,input.inboxId,input.conversationId,input.messageId,row.provider_id,org);
+ await client.reviewMirrorHistory(input.accountId,input.inboxId,input.conversationId,input.messageId,row.provider_id,org,
+   {contact_id:row.contact_id,source_id:row.source_id,phone:row.phone});
  const revision=a.destination!.revision;
  if(!await client.liveIngress().capability(input.accountId,input.inboxId,{organization_id:org,
    integration_id:c.id,instance_id:row.instance_id,destination_revision:revision}))return reject('CHATWOOT_NATIVE_RECEIPT_REQUIRED');

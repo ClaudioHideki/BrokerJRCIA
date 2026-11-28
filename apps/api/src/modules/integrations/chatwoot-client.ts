@@ -19,6 +19,14 @@ import {
 
 const integer = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const canonicalInteger = z.union([integer, z.string().regex(/^[1-9]\d{0,15}$/).transform(Number).pipe(integer)]);
+type MirrorContactBinding = {contact_id:string; source_id:string; phone:string};
+const snapshotContact = z.object({id:integer,phone_number:z.string()});
+const emptySnapshotPage = z.object({meta:z.object({contact:snapshotContact}),payload:z.tuple([])});
+const emptySnapshotDetail = z.object({
+  id:integer,account_id:integer,inbox_id:integer,messages:z.array(z.object({id:canonicalInteger})).max(1),
+  meta:z.object({sender:snapshotContact}),
+  contact_inbox:z.object({id:integer,contact_id:integer,inbox_id:integer,source_id:z.string()}),
+});
 const catalogName=z.string().max(1000);
 // Existing remote email is display metadata; authorization uses the account-scoped ID.
 const catalogAgents=z.array(z.object({id:integer,name:catalogName,email:z.string().max(320)})).max(10000);
@@ -759,20 +767,47 @@ export class ChatwootClient {
       throw new ChatwootError("CHATWOOT_MESSAGE_AMBIGUOUS");
     return matches[0]?.id;
   }
+  // The native receiver has no precondition tying this observation to its next write.
+  // A provider-only legacy insert can commit after the final GET; never return eligibility here.
+  private async diagnoseEmptyMirrorHistory(accountId:number,inboxId:number,conversationId:number,
+    binding:MirrorContactBinding,firstPage:unknown):Promise<never>{
+    const path=this.account(accountId)+`/conversations/${integer.parse(conversationId)}`;
+    const matches=(contact:z.infer<typeof snapshotContact>)=>
+      String(contact.id)===binding.contact_id && contact.phone_number.replace(/\D/g,'')===binding.phone;
+    const verifyPage=(raw:unknown)=>{
+      const page=parseCatalog(emptySnapshotPage,raw);
+      if(!matches(page.meta.contact))throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
+    };
+    verifyPage(firstPage);
+    const detail=parseCatalog(emptySnapshotDetail,await this.request('GET',path,undefined,false,true,true));
+    if(detail.account_id!==accountId || detail.inbox_id!==inboxId || detail.id!==conversationId ||
+      !matches(detail.meta.sender) || String(detail.contact_inbox.contact_id)!==binding.contact_id ||
+      detail.contact_inbox.inbox_id!==inboxId || detail.contact_inbox.source_id!==binding.source_id){
+      throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
+    }
+    if(detail.messages.length)throw new ChatwootError('CHATWOOT_REVIEW_HISTORY_INCOMPLETE');
+    verifyPage(await this.request('GET',path+'/messages',undefined,false,true,true));
+    throw new ChatwootError('CHATWOOT_REVIEW_EMPTY_SNAPSHOT_ONLY');
+  }
   /** Read-only operator preflight. LAB2 orders pages chronologically, including late historical inserts. */
-  async reviewMirrorHistory(accountId:number,inboxId:number,conversationId:number,brokerId:string,providerId:string,org:string){
+  async reviewMirrorHistory(accountId:number,inboxId:number,conversationId:number,brokerId:string,providerId:string,org:string,
+    emptyDiagnosticBinding?:MirrorContactBinding){
     const path=this.account(accountId)+`/conversations/${integer.parse(conversationId)}/messages`;
     const schema=z.object({payload:z.array(z.object({id:canonicalInteger.refine(n=>n<Number.MAX_SAFE_INTEGER),inbox_id:canonicalInteger,conversation_id:canonicalInteger,
       created_at:z.number().int().nonnegative(),source_id:z.string().nullable(),content_attributes:z.record(z.string(),z.unknown())})).max(20)});
-    const read=async(query:string)=>{
-      const {payload}=parseCatalog(schema,await this.request('GET',path+query,undefined,false,true,true));
+    const read=async(query:string,firstPage=false)=>{
+      const raw=await this.request('GET',path+query,undefined,false,true,true);
+      const {payload}=parseCatalog(schema,raw);
+      if(firstPage && !payload.length && emptyDiagnosticBinding){
+        return this.diagnoseEmptyMirrorHistory(accountId,inboxId,conversationId,emptyDiagnosticBinding,raw);
+      }
       if(payload.some(m=>m.inbox_id!==inboxId||m.conversation_id!==conversationId))throw new ChatwootError('CHATWOOT_BINDING_MISMATCH');
       return payload;
     };
     const seen=new Set<number>();
     let cursor:number|undefined, oldest=Infinity, latest:number|undefined;
     for(let page=0;page<100;page++){
-      const rows=await read(cursor===undefined?'':`?before=${cursor}`);
+      const rows=await read(cursor===undefined?'':`?before=${cursor}`,cursor===undefined);
       if(!rows.length){
         // An invalid/disappearing anchor also gives an empty page. Confirm it by an exact ID-range read.
         if(cursor===undefined)throw new ChatwootError('CHATWOOT_REVIEW_HISTORY_INCOMPLETE');
