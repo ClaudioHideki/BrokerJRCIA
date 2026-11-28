@@ -5,6 +5,7 @@ import { initializeChatwootAttendanceMap } from '../../src/modules/integrations/
 import { chatwootEnvironment, createChatwootService, type ChatwootOptions } from '../../src/modules/integrations/chatwoot-service.js';
 import { registerPendingMedia } from '../../src/modules/messaging/media-store.js';
 import { createChatwootWorker } from '../../src/modules/integrations/chatwoot-worker.js';
+import { freezeReplyCohort } from '../../src/modules/integrations/freeze-reply-cohort.js';
 
 describe('durable new human intent around unrelated uncertain mirrors', () => {
   let db: Awaited<ReturnType<typeof attendanceDatabase>>;
@@ -78,6 +79,66 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
     const jobs=await db.database.pool.query("SELECT status,attempts FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
     expect(jobs.rows).toEqual([{status:'PENDING',attempts:0},{status:'PENDING',attempts:0}]);
     expect(t.calls).toEqual([]);
+  });
+  it('keeps a held original out of egress when the callback is admitted in another destination revision',async()=>{
+    const t=await fixture(false,'guard');
+    t.setCanonical({source_id:null});
+    await t.ingest(t.message);
+    await db.database.pool.query("UPDATE integration_jobs SET status='SUCCEEDED' WHERE id=$1",[t.unknown]);
+    await db.database.pool.query("UPDATE integration_jobs SET available_at='infinity',payload=payload||jsonb_build_object('frozenReply',jsonb_build_object('version',1,'origin',$2::text,'accountId',7,'inboxId',9)) WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org,t.options.baseUrl]);
+    await db.database.pool.query("UPDATE chatwoot_destinations SET revision=2 WHERE organization_id=$1",[t.org]);
+    await db.database.pool.query(`INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,payload)
+      SELECT organization_id,integration_id,kind,'reply:2:7:9:701',(payload-'frozenReply')||'{"destinationRevision":2}'::jsonb
+      FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'`,[t.org]);
+    await Promise.all([createChatwootWorker(t.options).runOnce(t.org),createChatwootWorker(t.options).runOnce(t.org)]);
+    const rows=await db.database.pool.query("SELECT status,attempts FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+    expect(rows.rows).toEqual([{status:'PENDING',attempts:0},{status:'PENDING',attempts:0}]);
+    expect(t.calls).toEqual([]);
+  });
+  it('freezes the complete manifest atomically and idempotently while later independent replies remain eligible',async()=>{
+    const t=await fixture(false,'guard');t.setCanonical({source_id:null});
+    await t.ingest({...t.message,id:700});
+    const original=(await db.database.pool.query(`SELECT id FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'`,[t.org])).rows[0];
+    const cutoff=(await db.database.pool.query("SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS instant")).rows[0].instant;
+    const manifest={organizationId:t.org,integrationId:t.integration,channelId:t.channel,origin:t.options.baseUrl,accountId:7,inboxId:9,
+      destinationRevision:1,credentialRevision:1,cutoff,expectedCount:1,jobs:[{id:original.id,messageId:700,conversationId:52}]};
+    const apply=(raw:unknown)=>db.transact(t.org,tx=>freezeReplyCohort(tx,Buffer.from(JSON.stringify(raw))));
+    await expect(apply({...manifest,jobs:[{...manifest.jobs[0],conversationId:53}]})).rejects.toThrow();
+    const state=()=>db.database.pool.query("SELECT available_at='infinity' AS held,status,attempts FROM integration_jobs WHERE id=$1",[original.id]);
+    expect((await state()).rows[0].held).toBe(false);
+    const results=await Promise.all([apply(manifest),apply(manifest)]);
+    expect(results.map(r=>r.changed).sort()).toEqual([0,1]);
+    await t.ingest(t.message);
+    await Promise.all([createChatwootWorker(t.options).runOnce(t.org),createChatwootWorker(t.options).runOnce(t.org)]);
+    expect((await state()).rows[0]).toEqual({held:true,status:'PENDING',attempts:0});
+    expect((await db.database.pool.query('SELECT count(*)::int AS n FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows[0].n).toBe(1);
+    expect((await db.database.pool.query("SELECT count(*)::int AS n FROM integration_audit WHERE organization_id=$1 AND action='CHATWOOT_REPLY_COHORT_FROZEN'",[t.org])).rows[0].n).toBe(1);
+    const other=await fixture(false,'guard');
+    other.setCanonical({id:700,source_id:null});
+    await other.ingest({...other.message,id:700});
+    await createChatwootWorker(other.options).runOnce(other.org);
+    expect((await db.database.pool.query('SELECT count(*)::int AS n FROM messaging_outbox WHERE organization_id=$1',[other.org])).rows[0].n).toBe(1);
+  });
+  it('rejects a cohort while a worker already owns a reply lease',async()=>{
+    const t=await fixture(false,'guard');
+    t.setCanonical({source_id:null});
+    await t.ingest(t.message);
+    const original=(await db.database.pool.query("SELECT id FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows[0];
+    const cutoff=(await db.database.pool.query("SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS instant")).rows[0].instant;
+    const manifest={organizationId:t.org,integrationId:t.integration,channelId:t.channel,origin:t.options.baseUrl,accountId:7,inboxId:9,
+      destinationRevision:1,credentialRevision:1,cutoff,expectedCount:1,jobs:[{id:original.id,messageId:701,conversationId:52}]};
+    let acknowledge!:()=>void,proceed!:()=>void;
+    const claimed=new Promise<void>(resolve=>{acknowledge=resolve;});
+    const release=new Promise<void>(resolve=>{proceed=resolve;});
+    const fetch=t.options.fetch!;
+    const worker=createChatwootWorker({...t.options,fetch:async(input,init)=>{acknowledge();await release;return fetch(input,init);}});
+    const processing=worker.runOnce(t.org);
+    try {
+      await claimed;
+      await expect(db.transact(t.org,tx=>freezeReplyCohort(tx,Buffer.from(JSON.stringify(manifest))))).rejects.toThrow('REPLY_COHORT_STATE_CHANGED');
+    } finally {proceed();await processing;}
+    const row=(await db.database.pool.query("SELECT payload ? 'frozenReply' AS held FROM integration_jobs WHERE id=$1",[original.id])).rows[0];
+    expect(row.held).toBe(false);
   });
   it('refuses a later claim after credential rotation or replay of a disarmed original',async()=>{
     const t=await fixture();await t.ingest(t.message);

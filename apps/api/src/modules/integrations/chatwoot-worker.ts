@@ -307,6 +307,18 @@ export function createChatwootWorker(options: ChatwootOptions) {
                  AND attempt.inbox_id::text=${inboxTarget}->>'inbox'
                  AND attempt.destination_revision::text=${inboxTarget}->>'revision')))`;
   const heldIntegrations = [...(options.directTransportReviewIntegrations ?? [])];
+  const guardedIntegrations = [...new Set([...heldIntegrations,...(options.directSourceGuardIntegrations ?? [])])];
+  // The ordinary reply key contains the destination revision. A later callback for
+  // the same Rails row can have a new key while its original is still under review.
+  const outsideFrozenCohort = (guarded: string) => `(j.kind<>'CHATWOOT_REPLY' OR NOT(j.integration_id=ANY(${guarded}::uuid[])) OR NOT EXISTS (
+    SELECT 1 FROM chatwoot_accounts target JOIN chatwoot_destinations d ON d.organization_id=target.organization_id AND d.base_url=target.base_url
+    CROSS JOIN LATERAL generate_series(1,d.revision) rev(n)
+    JOIN integration_jobs original ON original.organization_id=target.organization_id AND original.integration_id=j.integration_id
+      AND original.dedupe_key=concat_ws(':','reply',rev.n,target.account_id,c.inbox_id,j.payload->>'messageId')
+    WHERE target.organization_id=j.organization_id
+      AND original.kind='CHATWOOT_REPLY' AND original.status='PENDING' AND original.available_at='infinity'
+      AND original.payload->>'messageId'=j.payload->>'messageId'
+      AND original.payload->'frozenReply' @> jsonb_build_object('version',1,'origin',target.base_url,'accountId',target.account_id,'inboxId',c.inbox_id)))`;
   const eligibleJob = `${dueJob} AND (${noUnknown} OR (${independentMirror})
     OR (${independentCampaignReply}) OR (${independentHumanReply}) OR (${waitingHumanCycle}) OR (${provenHumanStatus}))`;
   async function claim(org: string): Promise<Job | undefined> {
@@ -327,10 +339,11 @@ export function createChatwootWorker(options: ChatwootOptions) {
         WHERE c.organization_id=$1 AND c.status='READY' AND a.status='READY'
           AND d.approval_status='APPROVED'
           AND chatwoot_channel_identity_ready(c.organization_id,c.channel_id)
-          AND EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND ${eligibleJob} AND (j.kind<>'CHATWOOT_REPLY' OR NOT (j.integration_id=ANY($2::uuid[]))))
+          AND EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND ${eligibleJob}
+            AND (j.kind<>'CHATWOOT_REPLY' OR NOT (j.integration_id=ANY($2::uuid[]))) AND ${outsideFrozenCohort('$3')})
           AND NOT EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND j.status='RUNNING')
         ORDER BY c.updated_at,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1`,
-          [org, heldIntegrations],
+          [org, heldIntegrations, guardedIntegrations],
         )
       ).rows[0];
       if (!connection) return;
@@ -348,12 +361,13 @@ export function createChatwootWorker(options: ChatwootOptions) {
             WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
           ) AS receipt_only FROM integration_jobs j JOIN chatwoot_connections c ON c.organization_id=j.organization_id AND c.id=j.integration_id
         WHERE j.organization_id=$1 AND j.integration_id=$2 AND ${eligibleJob} AND (j.kind<>'CHATWOOT_REPLY' OR NOT (j.integration_id=ANY($3::uuid[])))
+          AND ${outsideFrozenCohort('$4')}
           AND NOT EXISTS(SELECT 1 FROM integration_jobs busy WHERE busy.organization_id=j.organization_id
             AND busy.integration_id=j.integration_id AND busy.status='RUNNING')
         ORDER BY CASE WHEN j.payload->>'historical'='true' THEN 2
           WHEN (j.payload ? 'reviewedInboxTarget')=(c.live_claims_since_review>=3) THEN 0 ELSE 1 END,
           j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`,
-          [org, connection.id, heldIntegrations],
+          [org, connection.id, heldIntegrations, guardedIntegrations],
         )
       ).rows[0];
       if (!job) return;
