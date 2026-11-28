@@ -1,6 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {MediaError,type BinaryMedia} from '@jrc/providers';
 import {registerPendingMedia} from '../messaging/media-store.js';
+import {guardDirectSource} from './direct-source-policy.js';
 import {requireCanonicalHumanIntent} from './chatwoot-human-intent.js';
 import type {ChatwootAttendanceEvent} from './chatwoot-attendance-events.js';
 import type {MessageContent} from '../messaging/types.js';
@@ -203,7 +204,7 @@ export function createChatwootGroupWorker(options:ChatwootOptions,hooks:{before(
      if(!map||Number(map.remote_conversation_id)!==remote||data.destinationRevision!==current.scope.destinationRevision)throw fail();
      const account=await readChatwootAccount(t,org);if(!account)throw fail();return{current,account};});
     mediaScope=captured.current;
-    humanCanonical=await env.client(captured.account).canonicalMessage(mediaScope.accountId,mediaScope.inboxId,remote,data.messageId);
+    humanCanonical=await env.client(captured.account).canonicalMessage(mediaScope.accountId,mediaScope.inboxId,remote,data.messageId,guardDirectSource(options,job.integration_id));
     await tx(org,t=>assertCurrent(t,job,captured.current));
    }
    await tx(org,async t=>{
@@ -223,7 +224,7 @@ export function createChatwootGroupWorker(options:ChatwootOptions,hooks:{before(
      if(event.kind!=='HUMAN_PUBLIC'||event.outboundIntentId!==data.outboundIntentId||event.senderId===undefined||
       event.remoteMessageId!==data.messageId||event.remoteConversationId!==remote||evidence.credential_revision!==current.credentialRevision||evidence.channel_id!==mapped.channel_id)
       throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);
-     requireCanonicalHumanIntent(humanCanonical,{intentId:data.outboundIntentId,integrationId:job.integration_id,accountId:current.accountId,inboxId:current.inboxId,
+     requireCanonicalHumanIntent(humanCanonical,{guardDirectSource:guardDirectSource(options,job.integration_id),intentId:data.outboundIntentId,integrationId:job.integration_id,accountId:current.accountId,inboxId:current.inboxId,
       conversationId:remote,messageId:data.messageId,senderId:event.senderId,attachments:data.attachments,...(data.caption!==undefined?{caption:data.caption}:{})});
     }
     const contents:MessageContent[]=[];

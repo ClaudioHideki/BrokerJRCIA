@@ -25,6 +25,7 @@ import {LIVE_INGRESS_PROTOCOL,liveIngressProofSchema,type LiveIngressProof} from
 import {assertChatwootMirrorContext} from './chatwoot-mirror-context.js';
 import {readGroupCentralSnapshot,readGroupRemoteMap} from '../whatsapp-groups/central-group-store.js';
 import {currentGroupWebhookBinding} from '../whatsapp-groups/automation-authority.js';
+import { guardDirectSource,type DirectSourcePolicy } from './direct-source-policy.js';
 import { createChatwootRuntimeIngress } from './chatwoot-runtime-ingress.js';
 import type { MediaStore } from "../messaging/media-store.js";
 import { createChatwootDestinationService, lockChatwootDestination } from './chatwoot-destination.js';
@@ -37,9 +38,7 @@ import type { ChatwootControlAuth, ChatwootControlPrincipal } from './chatwoot-c
 import type { AuthenticationContext } from '../../http/plugins/authorization.js';
 export { IntegrationError } from './integration-error.js';
 export { readChatwootAccount, type AccountRow } from './chatwoot-context.js';
-export interface ChatwootOptions {
-  directSourceGuardIntegrations?: ReadonlySet<string>;
-  directTransportReviewIntegrations?: ReadonlySet<string>;
+export interface ChatwootOptions extends DirectSourcePolicy {
   firstContactIntegrations?: ReadonlySet<string>;
   groupPolicy?:import('../whatsapp-groups/automation-authority.js').GroupPhysicalPolicy;
   baseUrl?: string;
@@ -730,7 +729,7 @@ export function createChatwootService(options: ChatwootOptions) {
         }
         if(!a.destination)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
         const observation=await recordChatwootAttendanceEvent(t,{organizationId:org,channelId:c.channel_id,integrationId:id,
-          destinationRevision:a.destination.revision,credentialRevision:a.credential_version,accountId:Number(a.account_id),inboxId:Number(c.inbox_id)},payload);
+          destinationRevision:a.destination.revision,credentialRevision:a.credential_version,accountId:Number(a.account_id),inboxId:Number(c.inbox_id)},payload,guardDirectSource(options,id));
         if(!observation.observationId)return;
         await observeChatwootCapabilities(t, a, { signedCallback: true });
         await t.query(`INSERT INTO chatwoot_connection_health(organization_id,integration_id,channel_id,callback_verified_at,callback_destination_revision,callback_credential_version)

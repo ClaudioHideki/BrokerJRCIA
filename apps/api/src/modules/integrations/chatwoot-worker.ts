@@ -26,6 +26,7 @@ import { beginChatwootMirrorAttempt,confirmChatwootMirrorAttempt,failChatwootMir
 import type { ChatwootAttendanceEvent } from './chatwoot-attendance-events.js';
 import {mayStartIndependentHumanCycle,preparePhysicalConversationCycle} from './chatwoot-conversation-cycle.js';
 import {canonicalCampaignRecipient,requireCampaignIntent,verifyCanonicalCampaignMessage} from './chatwoot-campaign-authority.js';
+import {guardDirectSource,railsDeleted} from './direct-source-policy.js';
 import {requireCanonicalHumanIntent} from './chatwoot-human-intent.js';
 import {lockChatwootDestination} from './chatwoot-destination.js';
 import {assertChatwootMirrorContext} from './chatwoot-mirror-context.js';
@@ -445,16 +446,16 @@ export function createChatwootWorker(options: ChatwootOptions) {
     if(closed.rowCount)throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_REVIEW',409);
     let verifyDirectSourceScope: ((t:TenantTransaction)=>Promise<void>) | undefined;
     let guardedCanonical: Awaited<ReturnType<ReturnType<typeof env.client>['canonicalMessage']>> | undefined;
-    if(options.directSourceGuardIntegrations?.has(job.integration_id)){
+    if(guardDirectSource(options,job.integration_id)){
       const scoped=await tx(job.organization_id,async t=>({
         account:await readChatwootAccount(t,job.organization_id),
         connection:await readChatwootConnection(t,job.organization_id,job.integration_id)
       }));
       if(!scoped.account || !scoped.connection?.inbox_id || typeof job.payload.conversationId!=='number' || typeof job.payload.messageId!=='number')
         throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_UNAVAILABLE',409);
-      guardedCanonical=await env.client(scoped.account).canonicalMessage(Number(scoped.account.account_id),Number(scoped.connection.inbox_id),job.payload.conversationId,job.payload.messageId);
+      guardedCanonical=await env.client(scoped.account).canonicalMessage(Number(scoped.account.account_id),Number(scoped.connection.inbox_id),job.payload.conversationId,job.payload.messageId,true);
       if(guardedCanonical.source_id===undefined)throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_UNAVAILABLE',409);
-      if(guardedCanonical.source_id)throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_REVIEW',409);
+      if(guardedCanonical.source_id!==null || railsDeleted(guardedCanonical.content_attributes) || railsDeleted(guardedCanonical.additional_attributes))throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_REVIEW',409);
       const account=scoped.account,connection=scoped.connection;
       if(job.payload.destinationRevision!==account.destination?.revision)throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_CONTEXT_CHANGED',409);
       verifyDirectSourceScope=async t=>{
@@ -502,7 +503,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
     }
     function verifyHumanIntent(accountId:number,inboxId:number,senderId:number,admittedAt?:Date){
       if(!data.outboundIntentId)throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);
-      requireCanonicalHumanIntent(humanCanonical,{intentId:data.outboundIntentId,integrationId:job.integration_id,accountId,inboxId,
+      requireCanonicalHumanIntent(humanCanonical,{guardDirectSource:guardDirectSource(options,job.integration_id),intentId:data.outboundIntentId,integrationId:job.integration_id,accountId,inboxId,
         conversationId:data.conversationId,messageId:data.messageId,senderId,...(admittedAt?{admittedAt}:{}),
         ...(data.content?{content:data.content}:{}),...(data.caption!==undefined?{caption:data.caption}:{}),
         ...(data.attachments?{attachments:data.attachments}:{})});

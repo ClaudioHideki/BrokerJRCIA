@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { railsDeleted } from './direct-source-policy.js';
 import { IntegrationError } from './integration-error.js';
 import { CHATWOOT_WEBHOOK_WINDOW_MS } from './secrets.js';
 
@@ -16,12 +17,12 @@ export function humanOutboundIntent(attributes: unknown, scope: {integrationId:s
 }
 
 /** Re-read the exact persisted remote message before the local idempotent enqueue. */
-export function requireCanonicalHumanIntent(raw:unknown,expected:{intentId:string;integrationId:string;accountId:number;inboxId:number;
+export function requireCanonicalHumanIntent(raw:unknown,expected:{guardDirectSource?:boolean;intentId:string;integrationId:string;accountId:number;inboxId:number;
   conversationId:number;messageId:number;senderId:number;admittedAt?:Date;content?:{type:'TEXT';text:string};caption?:string;
   attachments?:{id:number;kind:'image'|'audio'|'video'|'document'}[]}):void {
   const message=record(raw),attributes=record(message.content_attributes),additional=record(message.additional_attributes),sender=record(message.sender);
   const fail=()=>{throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);};
-  if(typeof message.source_id==='string' && message.source_id.startsWith('WAID:'))
+  if(expected.guardDirectSource && ((typeof message.source_id==='string' && message.source_id.startsWith('WAID:')) || railsDeleted(attributes) || railsDeleted(additional)))
     throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_REVIEW',409);
   // A first delivery of an old signed webhook must not gain new-cycle authority.
   // Compare the persisted admission time so a delayed worker may still finish.

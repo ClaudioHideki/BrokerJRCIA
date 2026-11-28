@@ -1,3 +1,4 @@
+import {railsAttributes,railsDeleted} from './direct-source-policy.js';
 import {settleResolvedPhysicalCycles} from '../attendance/resolved-cycle.js';
 import {requireCampaignIntent} from './chatwoot-campaign-authority.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -105,15 +106,26 @@ async function applyObservation(tx:TenantTransaction,s:ChatwootObservationScope,
 }
 
 /** Authenticated callback admission: no network and no dependency on transport queue progress. */
-export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:ChatwootObservationScope,raw:unknown) {
+export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:ChatwootObservationScope,raw:unknown,guardDirectSource=false) {
   await lockScope(tx,s);
-  let event=classifyChatwootAttendanceEvent(raw,await classificationScope(tx,s));
+  let original=record(raw);
+  if(guardDirectSource && original.event==='message_created'){
+    original={...original};
+    for(const field of ['content_attributes','additional_attributes']){
+      if(original[field]===undefined)continue;
+      const parsed=railsAttributes.safeParse(original[field]);
+      if(!parsed.success)throw new IntegrationError('INVALID_WEBHOOK_PAYLOAD',400);
+      original[field]=parsed.data;
+    }
+  }
+  let event=classifyChatwootAttendanceEvent(original,await classificationScope(tx,s));
   if(!event)return {observationId:null,duplicate:false,disposition:'IGNORED' as const};
   // A central-origin message is already transported. Keep human control but
   // never enqueue the public reply back to that same inbox.
   const transport=(await tx.query<{transport:string}>('SELECT transport FROM messaging_channels WHERE organization_id=$1 AND id=$2',[s.organizationId,s.channelId])).rows[0]?.transport;
   if(transport==='CENTRAL_TRANSPORT')event={...event,mayForwardReply:false};
-  const original=record(raw);
+  if(guardDirectSource && (railsDeleted(record(original.content_attributes)) || railsDeleted(record(original.additional_attributes))))
+    event={...event,mayForwardReply:false};
   // A campaign marker is never a human takeover instruction. Invalid or revoked
   // intents remain observable but cannot pause the selected executor.
   if(event.kind==='AUTOMATED_REPLY'&&(event.campaignIntentId||record(original.additional_attributes).jrc_campaign_broker===true)&&
@@ -144,7 +156,7 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
   let reply:Record<string,unknown>|null=null;
   if(event.mayForwardReply){
     const attributes={...record(original.content_attributes)}; delete attributes.jrc_broker_message_id;
-    try { reply=parseChatwootReply({...original,content_attributes:attributes},{accountId:s.accountId,inboxId:s.inboxId}); }
+    try { reply=parseChatwootReply({...original,content_attributes:attributes},{accountId:s.accountId,inboxId:s.inboxId,guardDirectSource}); }
     catch { /* Unsupported content does not erase authenticated attendance control. */ }
   }
   let control=await controlForRemote(tx,s,event.remoteConversationId);

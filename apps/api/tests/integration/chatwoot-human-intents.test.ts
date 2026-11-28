@@ -10,7 +10,7 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
   beforeAll(async () => { db = await attendanceDatabase(); }, 600_000);
   afterAll(async () => { await db?.dispose(); });
 
-  async function fixture(sameConversation = false) {
+  async function fixture(sameConversation = false,policy?:'guard'|'review'|'other') {
     const t = await seedAttendanceTenant(db.database);
     const next = randomUUID(), intent = randomUUID();
     const contact = (await db.database.pool.query(`INSERT INTO messaging_contacts(organization_id,external_id)
@@ -50,6 +50,8 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
     const vault=chatwootEnvironment(options).vault,secret='synthetic-human-intent-secret';
     await db.database.pool.query('UPDATE chatwoot_accounts SET encrypted_token=$2 WHERE organization_id=$1',[t.org,vault.encrypt(`${t.org}:chatwoot-account`,'synthetic-token')]);
     await db.database.pool.query('UPDATE chatwoot_connections SET encrypted_webhook_secret=$2 WHERE id=$1',[t.integration,vault.encrypt(`${t.org}:chatwoot-webhook:${t.integration}`,secret)]);
+    if(policy==='guard'||policy==='other')options.directSourceGuardIntegrations=new Set([policy==='guard'?t.integration:randomUUID()]);
+    if(policy==='review')options.directTransportReviewIntegrations=new Set([t.integration]);
     const service=createChatwootService(options);
     const ingest=async(raw:unknown)=>{const bytes=Buffer.from(JSON.stringify(raw)),timestamp=String(Math.floor(Date.now()/1000));
       return service.ingest(t.integration,bytes,timestamp,'sha256='+createHmac('sha256',secret).update(timestamp+'.').update(bytes).digest('hex'));};
@@ -57,7 +59,7 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
   }
 
   it('fences a persisted direct WAID before native egress under concurrent workers',async()=>{
-    const t=await fixture();
+    const t=await fixture(false,'guard');
     t.setCanonical({source_id:'WAID:synthetic-direct-key'});
     await t.ingest(t.message);
     await Promise.all([createChatwootWorker(t.options).runOnce(t.org),createChatwootWorker(t.options).runOnce(t.org)]);
@@ -88,11 +90,23 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
     expect(t.calls).toEqual([]);
   });
 
-  it('does not enqueue callbacks already identified by the direct transport',async()=>{
-    const t=await fixture();
+  it.each(['guard','review','other',undefined] as const)('scopes the same direct webhook to the configured integration (%s)',async policy=>{
+    const t=await fixture(false,policy);
     await t.ingest({...t.message,source_id:'WAID:synthetic-direct-key'});
     const rows=await db.database.pool.query("SELECT id FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
-    expect(rows.rows).toEqual([]);
+    expect(rows.rowCount).toBe(policy==='guard'||policy==='review'?0:1);
+  });
+  it.each(['other',undefined] as const)('preserves native egress for the same WAID in a tenant outside the lists (%s)',async policy=>{
+    const t=await fixture(false,policy);
+    t.setCanonical({source_id:'WAID:synthetic-direct-key'});
+    await t.ingest(t.message);await createChatwootWorker(t.options).runOnce(t.org);
+    expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(1);
+  });
+  it('checks a native WAID even when Rails returns serialized legacy JSON attributes',async()=>{
+    const t=await fixture(false,'guard');
+    t.setCanonical({source_id:'WAID:synthetic-direct-key',content_attributes:JSON.stringify(t.message.content_attributes),additional_attributes:'{}'});
+    await t.ingest(t.message);await createChatwootWorker(t.options).runOnce(t.org);
+    expect((await db.database.pool.query("SELECT last_error FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows[0].last_error).toBe('CHATWOOT_DIRECT_SOURCE_REVIEW');
   });
   it.each([['WAID:synthetic-direct','CHATWOOT_DIRECT_SOURCE_REVIEW'],[undefined,'CHATWOOT_DIRECT_SOURCE_UNAVAILABLE']] as const)
     ('checks the persisted source for a legacy job on a guarded integration (%s)',async(source,expected)=>{
@@ -118,6 +132,18 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
     await createChatwootWorker(options).runOnce(t.org);
     expect((await db.database.pool.query("SELECT last_error FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows[0].last_error).toBe('CHATWOOT_DIRECT_SOURCE_CONTEXT_CHANGED');
     expect((await db.database.pool.query("SELECT message_id FROM messaging_outbox WHERE organization_id=$1",[t.org])).rows).toEqual([]);
+  });
+  it('preserves the native intent of a guarded serialized webhook and refuses malformed attributes',async()=>{
+    const t=await fixture(false,'guard');
+    await expect(t.ingest({...t.message,additional_attributes:'['})).rejects.toThrow();
+    await t.ingest({...t.message,content_attributes:JSON.stringify(t.message.content_attributes),additional_attributes:'{}'});
+    expect((await db.database.pool.query("SELECT payload->>'outboundIntentId' AS intent FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows).toEqual([{intent:t.intent}]);
+  });
+  it.each(['deleted','broken'] as const)('rejects %s serialized attributes before native egress',async mode=>{
+    const t=await fixture(false,'guard');
+    t.setCanonical({source_id:null,content_attributes:mode==='broken'?'bad':JSON.stringify({...t.message.content_attributes,deleted:true})});
+    await t.ingest(t.message);await createChatwootWorker(t.options).runOnce(t.org);
+    expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
   });
   it('enqueues one new proven human reply without retrying or clearing an unrelated UNKNOWN',async()=>{
     const t=await fixture();

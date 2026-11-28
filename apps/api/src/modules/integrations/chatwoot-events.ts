@@ -11,7 +11,7 @@ const event = z.object({
   message_type: z.union([z.string(), z.number()]),
   content_type: z.string().max(100).optional(),
   sender: z.unknown().optional(),
-  source_id: z.string().nullable().optional(),
+  source_id: z.unknown().optional(),
   private: z.boolean(),
   content: z.string().nullable().optional(),
   content_attributes: z.record(z.string(), z.unknown()).optional(),
@@ -19,7 +19,7 @@ const event = z.object({
 });
 export function parseChatwootReply(
   raw: unknown,
-  binding: { accountId: number; inboxId: number },
+  binding: { accountId: number; inboxId: number; guardDirectSource?:boolean },
 ) {
   const message = event.parse(raw);
   if (
@@ -36,7 +36,7 @@ export function parseChatwootReply(
     message.event !== "message_created" ||
     (!["outgoing", 1].includes(message.message_type) && !nativeCsat) ||
     message.private ||
-    message.source_id?.startsWith("WAID:") ||
+    (binding.guardDirectSource && typeof message.source_id==="string" && message.source_id.startsWith("WAID:")) ||
     message.content_attributes?.jrc_broker_message_id
   )
     return null;

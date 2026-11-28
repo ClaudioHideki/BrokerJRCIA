@@ -1,3 +1,4 @@
+import {railsAttributes} from './direct-source-policy.js';
 import { z } from "zod";
 import { ConversationAttributeDefinitionSchema,type AttendanceScope,type HumanTarget,type IntakeHandoffRequest } from '@jrc/contracts';
 import {
@@ -800,23 +801,24 @@ export class ChatwootClient {
     throw new ChatwootError('CHATWOOT_REVIEW_HISTORY_INCOMPLETE');
   }
   /** Chatwoot exposes a bounded message list, not a GET for an individual message. */
-  async canonicalMessage(accountId:number,inboxId:number,conversationId:number,messageId:number) {
-    const messages=await this.centralMessages(accountId,inboxId,conversationId,messageId);
+  async canonicalMessage(accountId:number,inboxId:number,conversationId:number,messageId:number,decodeRailsAttributes=false) {
+    const messages=await this.centralMessages(accountId,inboxId,conversationId,messageId,decodeRailsAttributes);
     const matches=messages.filter(message=>message.id===messageId);
     if(matches.length!==1)throw new ChatwootError('CHATWOOT_MESSAGE_NOT_PROVEN',true);
     return matches[0]!;
   }
-  async centralMessages(accountId:number,inboxId:number,conversationId:number,beforeId?:number) {
+  async centralMessages(accountId:number,inboxId:number,conversationId:number,beforeId?:number,decodeRailsAttributes=false) {
     integer.parse(inboxId);
     // The chronological LAB2 finder requires an existing anchor for before-only
     // pagination. An exact inclusive/exclusive ID range also works in stock
     // Chatwoot 3.x/4.x and never substitutes a neighbouring message as proof.
     const query=beforeId===undefined?'':`?after=${integer.max(Number.MAX_SAFE_INTEGER-1).parse(beforeId)}&before=${beforeId+1}`;
     const data=record(await this.request('GET',this.account(accountId)+`/conversations/${integer.parse(conversationId)}/messages${query}`));
+    const attributes=decodeRailsAttributes?railsAttributes:z.record(z.string(),z.unknown());
     const schema=z.object({id:canonicalInteger,account_id:canonicalInteger.optional(),inbox_id:canonicalInteger,conversation_id:canonicalInteger,
       message_type:z.union([z.literal(0),z.literal(1),z.literal(2),z.literal(3),z.enum(['incoming','outgoing','activity','template'])]),
-      additional_attributes:z.record(z.string(),z.unknown()).optional(),private:z.boolean(),content:z.string().nullable(),content_type:z.string().optional(),source_id:z.string().nullable().optional(),attachments:z.array(z.unknown()).max(100).optional(),
-      content_attributes:z.record(z.string(),z.unknown()).default({}),status:z.enum(['sent','delivered','read','failed']).optional(),
+      additional_attributes:attributes.optional(),private:z.boolean(),content:z.string().nullable(),content_type:z.string().optional(),source_id:z.unknown().optional(),attachments:z.array(z.unknown()).max(100).optional(),
+      content_attributes:attributes.default({}),status:z.enum(['sent','delivered','read','failed']).optional(),
       sender:z.object({id:canonicalInteger,type:z.string().optional()}).nullable().optional(),created_at:z.number().finite().nonnegative()});
     const messages=parseCatalog(z.array(schema).max(100),data.payload);
     if(messages.some(message=>message.account_id!==undefined&&message.account_id!==accountId||message.inbox_id!==inboxId||message.conversation_id!==conversationId))

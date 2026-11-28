@@ -22,7 +22,7 @@ async function applyDirectReply(tx:TenantTransaction,raw:Buffer,scope:{organizat
   requireProof(p.organizationId===scope.organizationId && p.jobId===scope.jobId && new URL(p.origin).origin===p.origin);
   requireProof(e.accountId===r.accountId && e.inboxId===r.inboxId && e.conversationId===r.conversationId && e.messageId===r.messageId);
   requireProof(p.historicalBinding.instanceId===e.instanceId && e.instanceId===a.instanceId && a.messageRowId===e.rowId &&
-    a.key===e.key && a.peer===e.peer && r.sourceId==='WAID:'+e.key && r.bodySha256===e.bodySha256);
+    a.key===e.key && a.peer===e.peer && a.remoteJid===e.remoteJid && r.sourceId==='WAID:'+e.key && r.bodySha256===e.bodySha256);
   const evidenceSha256=createHash('sha256').update(raw).digest('hex');
   const proofIdentity=createHash('sha256').update(JSON.stringify([p.protocol,p.organizationId,p.integrationId,p.channelId,p.jobId,p.origin,p.destinationRevision,p.credentialRevision,r,p.historicalBinding,e])).digest('hex');
   const receipt={protocol:p.protocol,organizationId:p.organizationId,integrationId:p.integrationId,channelId:p.channelId,jobId:p.jobId,
