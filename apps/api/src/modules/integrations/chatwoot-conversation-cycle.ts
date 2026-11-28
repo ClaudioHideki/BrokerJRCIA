@@ -28,6 +28,33 @@ export async function mayStartIndependentHumanCycle(tx:TenantTransaction,input:{
         WHERE blocked.organization_id=$1 AND blocked.integration_id=$2 AND blocked.status='UNKNOWN' AND (
           blocked.kind<>'MIRROR_MESSAGE' OR blocked.payload->>'operation' IS DISTINCT FROM 'SEND_MESSAGE'
           OR map.conversation_id IS NULL OR route.contact_id IS NULL OR route.contact_id=active.contact_id))
+  ) OR (
+    -- The first mapping has no prior route to prove. Reject partial matches to
+    -- existing mappings and require a distinct proven route for every UNKNOWN.
+    EXISTS (SELECT 1 FROM messaging_channels WHERE organization_id=$1 AND id=$3 AND transport='BROKER_TRANSPORT')
+    AND NOT EXISTS (
+      SELECT 1 FROM chatwoot_conversations prior
+      JOIN messaging_conversations route ON route.organization_id=prior.organization_id AND route.id=prior.conversation_id
+      LEFT JOIN messaging_contacts contact ON contact.organization_id=route.organization_id AND contact.id=route.contact_id
+      WHERE prior.organization_id=$1 AND prior.integration_id=$2
+        AND (prior.contact_id=$4 OR prior.source_id=$5 OR contact.external_id=$6)
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM integration_jobs blocked
+      WHERE blocked.organization_id=$1 AND blocked.integration_id=$2 AND blocked.status='UNKNOWN'
+        AND NOT EXISTS (
+          SELECT 1 FROM messaging_messages msg
+          JOIN messaging_conversations route ON route.organization_id=msg.organization_id AND route.id=msg.conversation_id
+          JOIN messaging_contacts contact ON contact.organization_id=route.organization_id AND contact.id=route.contact_id
+          JOIN chatwoot_conversations map ON map.organization_id=route.organization_id AND map.conversation_id=route.id
+          WHERE msg.organization_id=$1 AND msg.id=blocked.message_id AND msg.channel_id=$3 AND route.channel_id=$3
+            AND blocked.kind='MIRROR_MESSAGE' AND blocked.payload->>'operation'='SEND_MESSAGE'
+            AND map.integration_id=$2 AND map.remote_conversation_id::text=blocked.payload->>'conversationId'
+            AND route.recipient_kind='INDIVIDUAL' AND map.contact_id>0 AND map.contact_id<>$4
+            AND btrim(map.source_id)<>'' AND map.source_id<>$5
+            AND contact.external_id ~ '^[1-9][0-9]{7,14}$' AND contact.external_id<>$6
+        )
+    )
   ) AS allowed`,[input.organizationId,input.integrationId,input.channelId,input.remoteContactId,input.sourceId,input.phone.slice(1)]);
   return result.rows[0]?.allowed===true;
 }

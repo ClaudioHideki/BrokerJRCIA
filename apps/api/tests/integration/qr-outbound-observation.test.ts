@@ -5,6 +5,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { withOrganizationTransaction } from '../../src/db/tenant-transaction.js';
 import { createOrganization, runInAdminTransaction } from '../../src/modules/organizations/repository.js';
 import { createPostgresMessagingRepository } from '../../src/modules/messaging/repository.js';
+import { dispatchClaim } from '../../src/modules/messaging/dispatcher.js';
 import { createQrMessagingService, ensureQrChannel } from '../../src/modules/messaging/qr-service.js';
 import { createIsolatedPostgresDatabase, requireTestDatabaseAdminUrl, type IsolatedPostgresDatabase } from './helpers/postgres.js';
 import { connectionStringForRole } from './helpers/task7.js';
@@ -63,7 +64,7 @@ describe('P4.1 saída QR observada no PostgreSQL isolado', () => {
       expect(claim, 'the synthetic outbox must be available before the scenario starts').toBeDefined();
       if (!claim) throw new Error('QR_FIXTURE_CLAIM_MISSING');
       expect(await transact(tx => repository.validateClaim(tx, { organizationId, messageId: result.message.id, leaseToken: claim.leaseToken }))).toMatchObject({ eligible: true });
-      return { messageId: result.message.id, leaseToken: claim.leaseToken };
+      return { messageId: result.message.id, leaseToken: claim.leaseToken, claim };
     }
     return { org:organizationId,actor,channel,instance,conversation,qr,auth,payload,transact,outgoing,sending,rejectWrite:()=>{rejectWrite=true;} };
   }
@@ -380,13 +381,29 @@ describe('P4.1 saída QR observada no PostgreSQL isolado', () => {
 
   it('recupera callback não persistido como UNKNOWN sem reenviar nem classificar por conteúdo', async () => {
     const h=await harness(),attempt=await h.sending();
-    await h.qr.ingest(h.channel,h.auth,h.payload('before-crash'));
+    let sends=0;
+    await expect(dispatchClaim(attempt.claim,{
+      validate:async()=>true, // sending() already performed the durable pre-dispatch validation.
+      resolveClient:async()=>({
+        sendText:async()=>{
+          sends++;
+          await h.qr.ingest(h.channel,h.auth,h.payload('before-crash'));
+          return {upstreamMessageId:'before-crash'};
+        },
+        listTemplates:async()=>[],
+        sendTemplate:async()=>{throw new Error('unexpected template');},
+      }),
+      complete:async()=>{throw new Error('simulated worker loss before receipt commit');},
+    })).rejects.toThrow('simulated worker loss before receipt commit');
     await h.transact(tx=>tx.query(`UPDATE qr_dispatch_attempts SET lease_expires_at=now()-interval '1 second' WHERE organization_id=$1`,[h.org]));
     await h.transact(tx=>observations.recoverQrOutboundObservations(tx,h.org));
     expect((await h.outgoing()).rows).toMatchObject([{id:attempt.messageId,state:'UNKNOWN',upstream_message_id:null}]);
     expect((await h.transact(tx=>tx.query('SELECT state FROM qr_dispatch_attempts WHERE organization_id=$1',[h.org]))).rows).toEqual([{state:'UNKNOWN'}]);
     expect((await h.transact(tx=>tx.query('SELECT blocking,disposition FROM qr_outbound_observations WHERE organization_id=$1',[h.org]))).rows).toEqual([{blocking:true,disposition:'RECONCILE'}]);
     expect((await h.transact(tx=>tx.query('SELECT * FROM messaging_outbox WHERE organization_id=$1',[h.org]))).rows).toHaveLength(0);
+    const claimAgain=()=>h.transact(tx=>repository.claimOutgoing(tx,{organizationId:h.org,workerId:randomUUID(),now:new Date(),leaseMs:120000,limit:1}));
+    expect(await Promise.all([claimAgain(),claimAgain()])).toEqual([[],[]]);
+    expect(sends).toBe(1);
   });
   it('recuperação e expiração concorrem sem inverter locks de mensagem e outbox',async()=>{
     const h=await harness(),attempt=await h.sending();

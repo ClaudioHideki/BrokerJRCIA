@@ -75,19 +75,35 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
       .toEqual([{status:'SUCCEEDED'}]);
   });
 
-  it.each(['success','same-contact','ambiguous-source','changed-message','historical-callback'] as const)
+  it.each(['success','first-contact','first-phone-overlap','first-source-overlap','first-id-overlap','same-contact','ambiguous-source','changed-message','historical-callback'] as const)
     ('checks a new intent on a second remote conversation, preserving older waiting jobs (%s)',async scenario=>{
       const t=await fixture(scenario==='same-contact');
       const phone='15550004242',remote=53;
       await db.database.pool.query('UPDATE messaging_contacts SET external_id=$2 WHERE id=(SELECT contact_id FROM messaging_conversations WHERE id=$1)',[t.next,phone]);
+      if(scenario.startsWith('first-')){
+        await db.database.pool.query("UPDATE chatwoot_conversations SET contact_id=43,source_id='older-source' WHERE conversation_id=$1",[t.next]);
+        await db.database.pool.query("UPDATE messaging_contacts SET external_id='15550004000' WHERE id=(SELECT contact_id FROM messaging_conversations WHERE id=$1)",[t.next]);
+        await db.database.pool.query('UPDATE messaging_contacts SET external_id=$2 WHERE id=(SELECT contact_id FROM messaging_conversations WHERE id=$1)',
+          [t.conversation,scenario==='first-phone-overlap'?phone:'15550004001']);
+        if(scenario==='first-source-overlap')await db.database.pool.query("UPDATE chatwoot_conversations SET source_id='second-source' WHERE conversation_id=$1",[t.conversation]);
+        if(scenario==='first-id-overlap')await db.database.pool.query('UPDATE chatwoot_conversations SET contact_id=42 WHERE conversation_id=$1',[t.conversation]);
+      }
       const event={...t.message,conversation:{id:remote,inbox_id:9}};
       const canonical={id:event.id,account_id:7,inbox_id:9,conversation_id:remote,message_type:1,private:false,
         sender:event.sender,content:scenario==='changed-message'?'Different canonical content':event.content,
         content_attributes:event.content_attributes,attachments:[],created_at:scenario==='historical-callback'?1_700_000_000:Math.floor(Date.now()/1000)};
+      const originals=[event];
+      if(scenario==='first-contact'){
+        for(const id of [702,703,704])originals.push({...event,id,content_attributes:{
+          jrc_broker_outbound:{...t.marker,intent_id:randomUUID()},
+        }});
+      }
       const options:ChatwootOptions={...t.options,fetch:async(input,init)=>{
         const path=new URL(String(input)).pathname;
         expect(init?.method??'GET').toBe('GET');
-        if(path.endsWith('/53/messages'))return Response.json({payload:[canonical]});
+        if(path.endsWith('/53/messages'))return Response.json({payload:originals.map(original=>({
+          ...canonical,id:original.id,content_attributes:original.content_attributes,
+        }))});
         if(path.endsWith('/conversations/53'))return Response.json({id:remote,account_id:7,inbox_id:9,status:'open',updated_at:100,
           meta:{sender:{id:42,phone_number:'+'+phone},assignee:{id:12,type:'user'},assignee_type:'User',team:null}});
         if(path.endsWith('/contacts/42'))return Response.json({payload:{id:42,phone_number:'+'+phone,contact_inboxes:[
@@ -99,16 +115,29 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
       await t.ingest(previous);
       await db.database.pool.query("UPDATE integration_jobs SET payload=payload-'newCycleAdmission' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
       await db.database.pool.query("UPDATE chatwoot_attendance_observations SET event=event-'newCycleAdmission' WHERE organization_id=$1 AND event_key='message:700'",[t.org]);
-      await t.ingest(event);
+      for(const original of originals)await t.ingest(original);
       const worker=createChatwootWorker(options);
-      await worker.runOnce(t.org);await t.ingest(event);await worker.runOnce(t.org);
+      await Promise.all([worker.runOnce(t.org),createChatwootWorker(options).runOnce(t.org)]);
+      await t.ingest(event);await worker.runOnce(t.org);
+      if(scenario==='first-contact'){
+        for(const original of originals){
+          await t.ingest(original);
+          await Promise.all([worker.runOnce(t.org),createChatwootWorker(options).runOnce(t.org)]);
+        }
+      }
       const sent=(await db.database.pool.query('SELECT m.content,m.conversation_id FROM messaging_outbox b JOIN messaging_messages m ON m.organization_id=b.organization_id AND m.id=b.message_id WHERE b.organization_id=$1',[t.org])).rows;
-      expect(sent).toHaveLength(scenario==='success'?1:0);
+      const admitted=scenario==='success'||scenario==='first-contact';
+      expect(sent).toHaveLength(admitted?originals.length:0);
+      if(scenario==='first-contact'){
+        const keys=await db.database.pool.query('SELECT idempotency_key FROM messaging_messages WHERE organization_id=$1 AND source=\'OPERATOR\' ORDER BY idempotency_key',[t.org]);
+        expect(keys.rows.map(row=>row.idempotency_key)).toEqual(originals.map(original=>`chatwoot:${t.integration}:1:${original.id}`));
+      }
       const job=(await db.database.pool.query("SELECT status,last_error FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY' AND payload->>'messageId'='701'",[t.org])).rows[0];
-      const expectedError={success:null,'same-contact':'CHATWOOT_CYCLE_WAITING_PREVIOUS_MIRROR','ambiguous-source':'CHATWOOT_BINDING_MISMATCH',
+      const waiting='CHATWOOT_CYCLE_WAITING_PREVIOUS_MIRROR';
+      const expectedError={success:null,'first-contact':null,'first-phone-overlap':waiting,'first-source-overlap':waiting,'first-id-overlap':waiting,'same-contact':waiting,'ambiguous-source':'CHATWOOT_BINDING_MISMATCH',
         'changed-message':'CHATWOOT_HUMAN_INTENT_NOT_PROVEN','historical-callback':'CHATWOOT_CYCLE_HISTORICAL_INTENT_REVIEW'};
       expect(job.last_error).toBe(expectedError[scenario]);
-      if(scenario==='success'){
+      if(admitted){
         const next=(await db.database.pool.query('SELECT conversation_id FROM chatwoot_conversations WHERE organization_id=$1 AND remote_conversation_id=53',[t.org])).rows[0];
         expect(next.conversation_id).not.toBe(t.next);
         expect(sent[0]).toEqual({conversation_id:next.conversation_id,content:{type:'TEXT',text:event.content}});
