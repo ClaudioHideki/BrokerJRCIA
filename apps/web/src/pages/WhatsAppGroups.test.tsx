@@ -46,14 +46,34 @@ it('consulta pelo UUID canônico e oferece configuração explícita do bot', as
   expect(screen.getByText('12 participantes')).toBeVisible();
   expect(screen.getByText('Atual')).toBeVisible();
   expect(screen.getByRole('button',{name:'Configurar bot de Equipe de teste'})).toBeVisible();
-  expect(screen.getByText('Selecione o grupo e configure o bot. A ativação exige um menu publicado e uma mensagem para iniciar o atendimento.')).toBeVisible();
+  expect(screen.getByText('Selecione os grupos para usar no JRC Conversas. A configuração do bot é opcional e individual por grupo.')).toBeVisible();
   expect(screen.getByText('Observado em', { exact: false })).toBeVisible();
+});
+
+it('seleciona o catálogo inteiro com uma única mutação mesmo quando há mais de uma página', async () => {
+  const initial = page({total:63, nextCursor:{snapshotId, afterGroupJid:'100-200@g.us'}});
+  const done = page({...initial, snapshot:{...initial.snapshot, catalogRevision:8}, items:[group(undefined,undefined,true)]});
+  let selected = false;
+  const { client } = api(async (path, init) => {
+    if (init?.method === 'PUT') {
+      expect(path).toBe(`${base}/selection`);
+      expect(JSON.parse(String(init.body))).toEqual({allCurrent:true, expectedSnapshotId:snapshotId, expectedCatalogRevision:7,
+        expectedIdentityRevision:2, expectedIdentityFingerprint:'a'.repeat(64)});
+      selected = true;
+    }
+    return selected ? done : initial;
+  });
+  render(<WhatsAppGroups client={client} channelId={channelId} canManage />);
+  fireEvent.click(await screen.findByRole('button',{name:'Selecionar todos os grupos atuais'}));
+  await waitFor(()=>expect(screen.getByRole('checkbox')).toBeChecked());
+  expect(vi.mocked(client.request).mock.calls.filter(([,init])=>init?.method==='PUT')).toHaveLength(1);
 });
 
 it('permite consulta e recarga ao operador, mas não mutações', async () => {
   const { client } = api(async () => page());
   render(<WhatsAppGroups client={client} channelId={channelId} canManage={false} />);
   expect(await screen.findByRole('checkbox')).toBeDisabled();
+  expect(screen.queryByRole('button',{name:'Selecionar todos os grupos atuais'})).toBeNull();
   expect(screen.queryByRole('button', { name: 'Atualizar grupos do WhatsApp' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Recarregar catálogo' }));
   await waitFor(() => expect(client.request).toHaveBeenCalledTimes(2));
@@ -66,6 +86,7 @@ it('não permite selecionar a partir de catálogo desatualizado', async () => {
   render(<WhatsAppGroups client={client} channelId={channelId} canManage />);
   expect(await screen.findByRole('checkbox')).toBeDisabled();
   expect(screen.getByText('Desatualizado')).toBeVisible();
+  expect(screen.getByRole('button',{name:'Selecionar todos os grupos atuais'})).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Atualizar grupos do WhatsApp' })).toBeEnabled();
 });
 

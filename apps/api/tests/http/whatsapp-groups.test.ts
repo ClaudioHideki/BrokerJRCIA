@@ -63,6 +63,16 @@ async function harness() {
 }
 
 describe('WhatsApp group catalog HTTP boundary (G1)', () => {
+  it('allows selecting the current catalog only with an active administrative role and server-derived scope',async()=>{
+    const h=await harness(),{groupJid:_jid,enabled:_enabled,...baseline}=selection;
+    const payload={...baseline,allCurrent:true},put=(body:object)=>h.app.inject({method:'PUT',url:`${url}/selection`,headers:h.headers,payload:body});
+    h.setRole('OPERATOR');
+    expect((await put(payload)).statusCode).toBe(403);
+    h.setRole('ADMIN');
+    expect((await put({...payload,organizationId:org})).statusCode).toBe(400);
+    expect((await put(payload)).statusCode).toBe(200);
+    expect(h.service.select).toHaveBeenCalledExactlyOnceWith({organizationId:org,actorId:actor},channel,payload);
+  });
   it('reports configuration separately with the same current operator grant and never allows scope in the request',async()=>{
     const h=await harness(),statusUrl=`/v1/channels/${channel}/whatsapp-group-events-configuration`;
     h.setRole('OPERATOR');const response=await h.app.inject({url:statusUrl,headers:h.headers});

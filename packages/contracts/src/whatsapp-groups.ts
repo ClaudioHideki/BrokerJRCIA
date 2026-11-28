@@ -65,11 +65,14 @@ export const WhatsAppGroupCatalogPageSchema = z.strictObject({
 // Server handlers must resolve the tenant/channel's own snapshot and revalidate
 // lease, revisions and observed identity after I/O. These are expectations,
 // never a grant, and G1 selection admits neither sending nor automation.
-export const UpdateWhatsAppGroupSelectionSchema = z.strictObject({
+const groupSelectionExpectations = z.strictObject({
   expectedSnapshotId: z.uuid(), expectedCatalogRevision: revision,
   expectedIdentityRevision: revision, expectedIdentityFingerprint: identityFingerprint,
-  groupJid, enabled: z.boolean(),
 });
+export const UpdateWhatsAppGroupSelectionSchema = z.union([
+  groupSelectionExpectations.extend({ groupJid, enabled: z.boolean() }),
+  groupSelectionExpectations.extend({ allCurrent: z.literal(true) }),
+]);
 
 export type WhatsAppGroupCatalogScope = z.infer<typeof WhatsAppGroupCatalogScopeSchema>;
 export type WhatsAppGroupCatalogItem = z.infer<typeof WhatsAppGroupCatalogItemSchema>;

@@ -26,6 +26,15 @@ const selection = {
   groupJid, enabled: true,
 };
 
+it('selects exactly the current catalog without accepting explicit targets, future groups or automation', () => {
+  const { groupJid: _jid, enabled: _enabled, ...expected } = selection;
+  const all = { ...expected, allCurrent: true };
+  expect(UpdateWhatsAppGroupSelectionSchema.parse(all)).toEqual(all);
+  for (const extra of [{ allCurrent:false }, {groupJid}, {enabled:false}, {includeFuture:true}, {automationEnabled:true}]) {
+    expect(UpdateWhatsAppGroupSelectionSchema.safeParse({...all,...extra}).success).toBe(false);
+  }
+});
+
 describe('WhatsApp QR group catalog and opt-in (G1)', () => {
   it('scopes every snapshot to organization, channel and observed identity without a phone number', () => {
     expect(WhatsAppGroupCatalogScopeSchema.parse(scope)).toEqual(scope);

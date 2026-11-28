@@ -28,10 +28,13 @@ async function fixture() {
     return { instance, channel: (await ensureQrChannel(tx, principal.organizationId, instance)).id };
   });
   let phone = '15550000001', fail = false, catalog = groups(), onRead: (() => Promise<void>) | undefined;
-  let reads = 0;
+  let reads = 0, identityReads = 0;
+  let onIdentity: (() => Promise<void>) | undefined;
   const service = createWhatsAppGroupCatalog({ encryptionKey: Buffer.alloc(32, 17).toString('base64'), transact: db.transact,
     readIdentity: async (context, key) => {
       expect(context.organizationId).toBe(principal.organizationId); expect(key).toBe(upstreamKey);
+      identityReads++;
+      await onIdentity?.();
       return { connected: true, phone };
     },
     readGroups: async () => {
@@ -47,8 +50,77 @@ async function fixture() {
     setPhone: (value: string) => { phone = value; }, fail: () => { fail = true; },
     setGroups: (value: ReturnType<typeof groups>) => { catalog = value; },
     onRead: (value: () => Promise<void>) => { onRead = value; }, reads: () => reads,
+    onIdentity: (value: () => Promise<void>) => { onIdentity = value; }, identityReads: () => identityReads,
   };
 }
+function selectCurrent(page:Awaited<ReturnType<ReturnType<typeof createWhatsAppGroupCatalog>['refresh']>>) {
+  return {allCurrent:true as const, expectedSnapshotId:page.snapshot.snapshotId,
+    expectedCatalogRevision:page.snapshot.catalogRevision, expectedIdentityRevision:page.snapshot.scope.identityRevision,
+    expectedIdentityFingerprint:page.snapshot.scope.identityFingerprint};
+}
+it('selects the entire observed catalog in one revision and one identity read without selecting future or foreign groups', async () => {
+  const h=await fixture(), other=await fixture();
+  h.setGroups(groups(103));
+  const first=await h.service.refresh(h.principal,h.channel);
+  await other.service.refresh(other.principal,other.channel);
+  const before=h.identityReads();
+  const done=await h.service.select(h.principal,h.channel,selectCurrent(first));
+  expect(h.identityReads()-before).toBe(1);
+  expect(h.reads()).toBe(1);
+  expect(done.snapshot.catalogRevision).toBe(first.snapshot.catalogRevision+1);
+  const pageTwo=await h.service.page(h.principal,h.channel,{limit:100,cursor:done.nextCursor!});
+  expect([...done.items,...pageTwo.items]).toHaveLength(103);
+  expect([...done.items,...pageTwo.items].every(item=>item.selected&&!item.automationEnabled)).toBe(true);
+  const again=await h.service.select(h.principal,h.channel,selectCurrent(done));
+  expect(again.snapshot.catalogRevision).toBe(done.snapshot.catalogRevision);
+  expect((await other.service.page(other.principal,other.channel,{limit:50})).items.every(item=>!item.selected)).toBe(true);
+  h.setGroups(groups(104));
+  const refreshed=await h.service.refresh(h.principal,h.channel);
+  const tail=await h.service.page(h.principal,h.channel,{limit:100,cursor:refreshed.nextCursor!});
+  expect(tail.items.at(-1)).toMatchObject({selected:false,automationEnabled:false});
+  const audit = await db.database.pool.query("SELECT metadata FROM audit_logs WHERE organization_id=$1 AND resource_id=$2 AND event_type='WHATSAPP_GROUP_SELECTION_CHANGED'", [h.organizationId, h.channel]);
+  expect(audit.rows).toEqual([{metadata:{snapshotId:first.snapshot.snapshotId,selected:true,allCurrent:true,changedCount:103}}]);
+});
+it.each(['expired','identity','denied','provider','concurrentRevision'] as const)('retains every prior selection when bulk verification fails (%s)',async mode=>{
+  const h=await fixture();
+  const initial=await h.service.refresh(h.principal,h.channel);
+  const first=await h.service.select(h.principal,h.channel,h.selection(initial));
+  if(mode==='identity')h.setPhone('15550000002');
+  if (mode === 'denied') {
+    const replacement = randomUUID();
+    await db.database.pool.query("INSERT INTO users(id,email,password_hash) VALUES($1,$2,'test-only')", [replacement, replacement + '@example.test']);
+    await db.database.pool.query("INSERT INTO memberships(organization_id,user_id,role) VALUES($1,$2,'OWNER')", [h.organizationId, replacement]);
+  }
+  h.onIdentity(async()=>{
+    if(mode==='expired')await db.database.pool.query("UPDATE whatsapp_group_catalogs SET observed_at=clock_timestamp()-interval '5 minutes',valid_until=clock_timestamp()-interval '1 second' WHERE organization_id=$1 AND channel_id=$2",[h.organizationId,h.channel]);
+    if(mode==='denied')await db.database.pool.query("UPDATE memberships SET role='OPERATOR' WHERE organization_id=$1 AND user_id=$2",[h.organizationId,h.actorId]);
+    if(mode==='concurrentRevision')await db.database.pool.query("UPDATE whatsapp_group_catalogs SET catalog_revision=catalog_revision+1 WHERE organization_id=$1 AND channel_id=$2",[h.organizationId,h.channel]);
+    if(mode==='provider')throw Object.assign(new Error('synthetic upstream unavailable'),{code:'PROVIDER_TIMEOUT'});
+  });
+  await expect(h.service.select(h.principal,h.channel,selectCurrent(first))).rejects.toThrow(
+    {expired:'GROUP_CATALOG_STALE',identity:'GROUP_IDENTITY_CHANGED',denied:'GROUP_ACCESS_DENIED',provider:'PROVIDER_TIMEOUT',concurrentRevision:'GROUP_CATALOG_CHANGED'}[mode]);
+  const items=await db.transact(h.organizationId,t=>t.query('SELECT selected FROM whatsapp_group_catalog_items WHERE organization_id=$1 AND channel_id=$2 ORDER BY group_jid',[h.organizationId,h.channel]));
+  expect(items.rows).toEqual([{selected:true},{selected:false}]);
+});
+it('allows only one of two concurrent selections for the same revision', async () => {
+  const h = await fixture();
+  const page = await h.service.refresh(h.principal, h.channel);
+  let arrivals = 0;
+  let release!: () => void;
+  const bothReading = new Promise<void>(resolve => { release = resolve; });
+  h.onIdentity(async () => {
+    if (++arrivals === 2) release();
+    await bothReading;
+  });
+  const select = () => h.service.select(h.principal, h.channel, selectCurrent(page));
+  const results = await Promise.allSettled([select(), select()]);
+  expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+  const failure = results.find(result => result.status === 'rejected');
+  expect(failure?.reason).toMatchObject({ code: 'GROUP_CATALOG_CHANGED' });
+  const current = await h.service.page(h.principal, h.channel, { limit: 50 });
+  expect(current.snapshot.catalogRevision).toBe(page.snapshot.catalogRevision + 1);
+  expect(current.items.every(item => item.selected)).toBe(true);
+});
 it('installs isolated catalog tables for QR metadata without authorizing group automation', async () => {
   const facts = (await db.database.pool.query("SELECT to_regclass('public.whatsapp_group_catalogs')::text AS catalog, to_regclass('public.whatsapp_group_catalog_items')::text AS items")).rows[0];
   expect(facts).toEqual({ catalog: 'whatsapp_group_catalogs', items: 'whatsapp_group_catalog_items' });
