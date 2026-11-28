@@ -92,3 +92,17 @@ it('preserves a legacy conversation response without manufacturing a canonical r
   const client=new ChatwootClient({baseUrl:'https://conversas.test',token:'synthetic-token',fetch:vi.fn().mockResolvedValue(Response.json(campaignConversation))});
   await expect(client.conversation(7,21)).resolves.toEqual(campaignConversation);
 });
+it.each(['GET', 'PATCH'] as const)('checks the returned inbox against the requested inbox on %s', async method => {
+  const fetch = vi.fn().mockResolvedValue(Response.json({ id: 32, account_id: 1, name: 'Fixture', channel_type: 'Channel::Api' }));
+  const client = new ChatwootClient({ baseUrl: 'https://conversas.test', token: 'fixture', fetch });
+  const result = method === 'GET' ? client.getInbox(1, 31) : client.configureInbox(1, 31, 'https://broker.test/events');
+  await expect(result).rejects.toMatchObject({ code: 'CHATWOOT_BINDING_MISMATCH', uncertain: method === 'PATCH' });
+});
+
+it.each(['GET', 'PATCH', 'POST'] as const)('checks an explicit account on an inbox response from %s', async method => {
+  const fetch = vi.fn().mockResolvedValue(Response.json({ id: 31, account_id: 2, name: 'Fixture', channel_type: 'Channel::Api' }));
+  const client = new ChatwootClient({ baseUrl: 'https://conversas.test', token: 'fixture', fetch });
+  const callback = 'https://broker.test/events';
+  const result = method === 'GET' ? client.getInbox(1, 31) : method === 'PATCH' ? client.configureInbox(1, 31, callback) : client.createInbox(1, 'Fixture', callback);
+  await expect(result).rejects.toMatchObject({ code: 'CHATWOOT_BINDING_MISMATCH', uncertain: method !== 'GET' });
+});

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import {readDeliverySummary} from './delivery-summary.js';
 import {readJobFailureDiagnostic} from './job-failure-diagnostics.js';
 import { createChatwootAttendanceService } from './chatwoot-attendance-service.js';
-import type { ChatwootStatus } from "@jrc/contracts";
+import type { ChatwootConnectionDestination, ChatwootStatus } from "@jrc/contracts";
 import type {
   OrganizationTransaction,
   TenantTransaction,
@@ -175,14 +175,19 @@ export function createChatwootService(options: ChatwootOptions) {
       throw new IntegrationError('CENTRAL_INBOX_CLAIMED',409);
   }
   async function rememberInbox(org: string, id: string, remote: ChatwootInbox, snapshot: AccountRow) {
-    await tx(org, t => observeChatwootCapabilities(t, snapshot, { apiInbox: remote.channel_type === 'Channel::Api', webhookSecret: Boolean(remote.secret) }));
     // Keep a successful creation ID even when a later verification needs repair.
-    await tx(org, (t) =>
-      t.query(
-        "UPDATE chatwoot_connections SET inbox_id=$3 WHERE organization_id=$1 AND id=$2",
+    await tx(org, async t => {
+      await lockChatwootDestination(t, org);
+      const current = await readChatwootAccount(t, org);
+      if (current?.credential_version !== snapshot.credential_version || current.destination?.revision !== snapshot.destination?.revision)
+        throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
+      const remembered = await t.query(
+        "UPDATE chatwoot_connections SET inbox_id=$3 WHERE organization_id=$1 AND id=$2 AND (inbox_id IS NULL OR inbox_id=$3)",
         [org, id, remote.id],
-      ),
-    );
+      );
+      if (!remembered.rowCount) throw new IntegrationError('CHATWOOT_BINDING_MISMATCH', 409);
+      await observeChatwootCapabilities(t, snapshot, { apiInbox: remote.channel_type === 'Channel::Api', webhookSecret: Boolean(remote.secret) });
+    });
     if (
       remote.channel_type !== "Channel::Api" ||
       !remote.secret ||
@@ -198,10 +203,11 @@ export function createChatwootService(options: ChatwootOptions) {
       const current = await readChatwootAccount(t, org);
       if (current?.credential_version !== snapshot.credential_version || current.destination?.revision !== snapshot.destination?.revision)
         throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
-      await t.query(
-        "UPDATE chatwoot_connections SET inbox_id=$3,encrypted_webhook_secret=$4,status='READY',last_error=NULL,updated_at=now() WHERE organization_id=$1 AND id=$2",
+      const verified = await t.query(
+        "UPDATE chatwoot_connections SET encrypted_webhook_secret=$4,status='READY',last_error=NULL,updated_at=now() WHERE organization_id=$1 AND id=$2 AND inbox_id=$3",
         [org, id, remote.id, encryptedSecret],
       );
+      if (!verified.rowCount) throw new IntegrationError('CHATWOOT_BINDING_MISMATCH', 409);
       await integrationAudit(
         t,
         org,
@@ -434,13 +440,18 @@ export function createChatwootService(options: ChatwootOptions) {
         name: string;
         replaceExistingWebhook?: boolean | undefined;
         requireIdentity?: boolean | undefined;
+        expectedDestination?: ChatwootConnectionDestination | undefined;
       },
       actorId?: string,
       authentication?: AuthenticationContext | ChatwootControlPrincipal,
     ) {
       const initialPrincipal = authentication && initialIdentity ? await initialIdentity.authorize(authentication) : undefined;
-      const a = await account(org),
-        client = env.client(a);
+      const a = await account(org);
+      const expected = input.expectedDestination;
+      if (expected && (expected.organizationId !== org || expected.accountId !== Number(a.account_id) ||
+          expected.destinationRevision !== a.destination?.revision || expected.credentialVersion !== a.credential_version))
+        throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED', 409);
+      const client = env.client(a);
       let channelId = input.channelId;
       if (input.instanceId) {
         if (!options.activateQr)
@@ -499,14 +510,6 @@ export function createChatwootService(options: ChatwootOptions) {
               "CHATWOOT_WEBHOOK_REPLACEMENT_REQUIRED",
               409,
             );
-          await tx(org, (t) =>
-            t
-              .query(
-                "UPDATE chatwoot_connections SET inbox_id=$3 WHERE organization_id=$1 AND id=$2",
-                [org, id, input.inboxId],
-              )
-              .then(() => undefined),
-          );
           remote = await client.configureInbox(
             Number(a.account_id),
             input.inboxId,

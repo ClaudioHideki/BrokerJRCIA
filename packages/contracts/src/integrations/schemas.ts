@@ -54,11 +54,19 @@ export const BindChatwootAccountSchema = z.strictObject({
     .max(4096)
     .regex(/^[^\r\n]+$/u),
 });
+const connectionDestination = z.strictObject({
+  organizationId: z.uuid(),
+  accountId: z.number().int().positive(),
+  destinationRevision: z.number().int().positive(),
+  credentialVersion: z.number().int().positive(),
+});
+export type ChatwootConnectionDestination = z.infer<typeof connectionDestination>;
 export const ConnectChatwootSchema = z
   .strictObject({
     channelId: z.uuid().optional(),
     instanceId: z.uuid().optional(),
     inboxId: z.number().int().positive().optional(),
+    expectedDestination: connectionDestination.optional(),
     name: z.string().trim().min(1).max(120),
     replaceExistingWebhook: z.boolean().optional(),
   })

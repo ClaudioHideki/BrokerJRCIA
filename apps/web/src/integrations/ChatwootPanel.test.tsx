@@ -243,14 +243,53 @@ it('requires an explicit destination choice after refresh removes the selected i
   expect(screen.getByText(/A caixa selecionada não está mais disponível/)).toBeVisible();
   expect(request.mock.calls.some(([, method]) => method === 'POST')).toBe(false);
   fireEvent.change(screen.getByLabelText('Destino'), { target: { value: '' } });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'Conectar caixa' }));
   await waitFor(() => expect(request).toHaveBeenCalledWith('/connections', 'POST', {
     instanceId: id, name: 'Nova caixa deliberada',
   }));
 });
 
+it.each(['same numeric inbox in another account', 'inbox read fails'] as const)('blocks stale destination selection when %s', async scenario => {
+  let refreshing = false;
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const request = vi.fn(async (path: string) => {
+    if (path === '') return { ...status, account: { accountId: refreshing && scenario === 'same numeric inbox in another account' ? 2 : 1, status: 'READY', hasCredential: true, lastError: null } };
+    if (path === '/inboxes') {
+      if (refreshing) {
+        await pending;
+        if (scenario === 'inbox read fails') throw new Error('synthetic catalog error');
+      }
+      return { data: [{ id: 31, name: refreshing ? 'Outra caixa' : 'Original', hasWebhook: false }] };
+    }
+    if (path === '/sources') return { data: [{ kind: 'instance', id, name: 'Comercial', label: 'QR Code' }] };
+    return { data: [] };
+  });
+  render(<ChatwootPanel request={request} canManage platform={false} />);
+  await screen.findByRole('option', { name: 'Original · Caixa 31' });
+  await screen.findByRole('option', { name: 'Comercial · QR Code' });
+  fireEvent.change(screen.getByLabelText('Conexão WhatsApp'), { target: { value: id } });
+  fireEvent.change(screen.getByLabelText('Destino'), { target: { value: '31' } });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeEnabled());
+  refreshing = true;
+  fireEvent.click(screen.getByRole('button', { name: 'Atualizar integração' }));
+  try {
+    expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeDisabled();
+  } finally {
+    finish();
+  }
+  if (scenario === 'inbox read fails') await screen.findByText(/Alguns dados não puderam ser consultados/);
+  else {
+    await screen.findByRole('option', { name: 'Outra caixa · Caixa 31' });
+    expect(screen.getByLabelText('Destino')).toHaveValue('UNAVAILABLE');
+  }
+  expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeDisabled();
+});
+
 it('preserves the selected inbox when refresh confirms that it remains available', async () => {
-  const ready = { ...status, account: { accountId: 1, status: 'READY', hasCredential: true, lastError: null } };
+  const destination = { organizationId: id, baseUrl: 'https://atendimento.test', mode: 'MANAGED', approvalStatus: 'APPROVED', mediaOrigins: [], revision: 3 };
+  const ready = { ...status, destination, account: { accountId: 1, credentialVersion: 2, status: 'READY', hasCredential: true, lastError: null } };
   const request = vi.fn(async (path: string, _method?: string) => path === '' ? ready
     : path === '/inboxes' ? { data: [{ id: 31, name: 'Destino original', hasWebhook: false }] }
     : path === '/sources' ? { data: [{ kind: 'instance', id, name: 'Comercial', label: 'QR Code' }] }
@@ -264,11 +303,12 @@ it('preserves the selected inbox when refresh confirms that it remains available
   fireEvent.click(screen.getByRole('button', { name: 'Atualizar integração' }));
   await waitFor(() => expect(request.mock.calls.filter(([path]) => path === '/inboxes')).toHaveLength(2));
   expect(screen.getByLabelText('Destino')).toHaveValue('31');
-  expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeEnabled();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Conectar caixa' })).toBeEnabled());
   expect(request.mock.calls.some(([, method]) => method === 'POST')).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: 'Conectar caixa' }));
   await waitFor(() => expect(request).toHaveBeenCalledWith('/connections', 'POST', {
     instanceId: id, name: 'Caixa existente deliberada', inboxId: 31,
+    expectedDestination: { organizationId: id, accountId: 1, destinationRevision: 3, credentialVersion: 2 },
   }));
 });
 it("keeps viewers read-only and never loads administrative choices", async () => {

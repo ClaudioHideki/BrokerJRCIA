@@ -58,6 +58,14 @@ const inbox = z.object({
   secret: z.string().optional(),
 });
 export type ChatwootInbox = z.infer<typeof inbox>;
+const inboxResponse = inbox.extend({ account_id: canonicalInteger.optional() });
+
+function readScopedInbox(value: unknown, accountId: number, inboxId: number | undefined, mutation: boolean): ChatwootInbox {
+  const { account_id, ...remote } = parseEffect(inboxResponse, value, mutation);
+  if ((account_id !== undefined && account_id !== accountId) || (inboxId !== undefined && remote.id !== inboxId))
+    throw new ChatwootError('CHATWOOT_BINDING_MISMATCH', false, mutation);
+  return remote;
+}
 const flowBot = z.object({ id: integer, name: z.string(), outgoing_url: z.string().nullable().optional(),
   secret: z.string().optional(), access_token: z.union([z.string(), z.object({ token: z.string() })]).optional(),
 }).transform(({ access_token, ...bot }) => ({ ...bot, token: typeof access_token === 'string' ? access_token : access_token?.token }));
@@ -339,7 +347,7 @@ export class ChatwootClient {
     const data = record(
       await this.request("GET", this.account(accountId) + "/inboxes"),
     );
-    return z.array(inbox).max(10000).parse(data.payload);
+    return z.array(z.unknown()).max(10000).parse(data.payload).map(value => readScopedInbox(value, accountId, undefined, false));
   }
   async listDashboardApps(accountId: number): Promise<DashboardApp[]> {
     return z.array(dashboardApp).max(1000).parse(await this.request('GET', this.account(accountId) + '/dashboard_apps'));
@@ -405,11 +413,12 @@ export class ChatwootClient {
     return dashboardApp.parse(await this.request('POST', this.account(accountId) + '/dashboard_apps', input));
   }
   async getInbox(accountId: number, inboxId: number): Promise<ChatwootInbox> {
-    return inbox.parse(
+    return readScopedInbox(
       await this.request(
         "GET",
         this.account(accountId) + `/inboxes/${integer.parse(inboxId)}`,
       ),
+      accountId, inboxId, false,
     );
   }
   async createInbox(
@@ -417,13 +426,14 @@ export class ChatwootClient {
     name: string,
     webhookUrl: string,
   ): Promise<ChatwootInbox> {
-    return inbox.parse(
+    return readScopedInbox(
       await this.request("POST", this.account(accountId) + "/inboxes", {
         name,
         greeting_enabled: false,
         enable_auto_assignment: false,
         channel: { type: "api", webhook_url: webhookUrl },
       }),
+      accountId, undefined, true,
     );
   }
   async configureInbox(
@@ -431,12 +441,13 @@ export class ChatwootClient {
     inboxId: number,
     webhookUrl: string,
   ): Promise<ChatwootInbox> {
-    return inbox.parse(
+    return readScopedInbox(
       await this.request(
         "PATCH",
         this.account(accountId) + `/inboxes/${integer.parse(inboxId)}`,
         { channel: { webhook_url: webhookUrl } },
       ),
+      accountId, inboxId, true,
     );
   }
   async assignAgents(

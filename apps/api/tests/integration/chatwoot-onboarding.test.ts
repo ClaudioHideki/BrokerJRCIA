@@ -164,6 +164,25 @@ describe('durable Chatwoot onboarding with tenant PostgreSQL', () => {
     expect(await service.get(principal, op.operationId)).toMatchObject({ state: 'SUCCEEDED', instanceId: saved.instanceId });
     expect(provision).toHaveBeenCalledTimes(count);
   });
+  it('preserves the selected inbox when a different remote inbox reports the saved callback', async () => {
+    const op = await service.start(principal, input(), randomUUID());
+    for (let step = 0; step < 5; step++) await service.runOnce(org);
+    const result = await service.get(principal, op.operationId);
+    expect(result.state).toBe('SUCCEEDED');
+    const originalId = result.inboxId!, integration = result.integrationId!;
+    const original = remote.get(originalId)!;
+    const alternate = originalId + 10000;
+    remote.set(originalId, { ...original, webhook_url: null });
+    remote.set(alternate, { ...original, id: alternate });
+    try {
+      await expect(chatwoot.reconcileConnection(org, integration)).rejects.toMatchObject({ code: 'CHATWOOT_BINDING_MISMATCH' });
+      const saved = await transact(org, tx => tx.query('SELECT inbox_id FROM chatwoot_connections WHERE organization_id=$1 AND id=$2', [org, integration]));
+      expect(Number(saved.rows[0].inbox_id)).toBe(originalId);
+    } finally {
+      remote.set(originalId, original);
+      remote.delete(alternate);
+    }
+  });
   it('reports a known quota failure as FAILED and keeps the provider uncalled', async () => {
     const op = await service.start(principal, input(), randomUUID()), count = provision.mock.calls.length;
     await db.pool.query('UPDATE organization_limits SET max_instances=1 WHERE organization_id=$1', [org]);
@@ -173,5 +192,17 @@ describe('durable Chatwoot onboarding with tenant PostgreSQL', () => {
       expect(provision).toHaveBeenCalledTimes(count);
     } finally { await db.pool.query('UPDATE organization_limits SET max_instances=100 WHERE organization_id=$1', [org]); }
     await service.recover(principal, op.operationId, 'CANCEL', randomUUID());
+  });
+  it('checks the destination displayed by the agent before activating a channel or contacting the remote inbox', async () => {
+    const activate = vi.fn(activateQr);
+    const candidate = createChatwootService({ baseUrl: 'https://managed.example.com', publicOrigin: 'https://broker.example.com', encryptionKey, fetch, transact, activateQr: activate, resolveIntegration: async () => org });
+    const context = await candidate.status(org);
+    const current = { organizationId: org, accountId: Number(context.account!.accountId), destinationRevision: context.destination!.revision, credentialVersion: context.account!.credentialVersion! };
+    for (const change of [{ organizationId: other }, { accountId: current.accountId + 1 }, { destinationRevision: current.destinationRevision + 1 }, { credentialVersion: current.credentialVersion + 1 }]) {
+      const calls = fetch.mock.calls.length;
+      await expect(candidate.connect(org, { instanceId: randomUUID(), inboxId: 31, name: 'Fixture', expectedDestination: { ...current, ...change } })).rejects.toMatchObject({ code: 'CHATWOOT_CONTEXT_CHANGED' });
+      expect(fetch).toHaveBeenCalledTimes(calls);
+    }
+    expect(activate).not.toHaveBeenCalled();
   });
 });

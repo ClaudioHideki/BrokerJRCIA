@@ -161,6 +161,8 @@ export function ChatwootPanel({
     [selectedInbox, setSelectedInbox] = useState(""),
     [reason, setReason] = useState("Correção verificada pelo administrador");
   const [inboxSelectionUnavailable, setInboxSelectionUnavailable] = useState(false);
+  const [connectionCatalogReady, setConnectionCatalogReady] = useState(false);
+  const lastDestinationScope = useRef<string | null>(null);
   const [search, setSearch] = useState("");
   const [connectionSearch,setConnectionSearch]=useState('');
   const connectionSearchInput=useRef<HTMLInputElement>(null);
@@ -174,32 +176,33 @@ export function ChatwootPanel({
   async function load() {
     const current = ++generation.current,
       send = api.current;
+    setConnectionCatalogReady(false);
     const status = ChatwootStatusSchema.parse(await send(""));
     if (!live.current || current !== generation.current) return;
+    const scope = JSON.stringify([status.destination?.organizationId, status.baseUrl, status.account?.accountId, status.destination?.revision, status.account?.credentialVersion]);
+    if (lastDestinationScope.current !== null && lastDestinationScope.current !== scope) {
+      setSelectedInbox('');
+      setInboxSelectionUnavailable(true);
+      setSource('');
+    }
+    lastDestinationScope.current = scope;
     setData(status);
     if (!status.configured) return;
+    const readSources = canManage && send("/sources").then(value => {
+      if (live.current && current === generation.current) setSources((value as { data: Source[] }).data);
+    });
+    const readInboxes = canManage && status.account?.status === "READY" && send("/inboxes").then(value => {
+      if (live.current && current === generation.current) setInboxes((value as { data: Inbox[] }).data);
+    });
     const results = await Promise.allSettled([
       send("/jobs").then((value) => {
         const result = IntegrationJobsSchema.parse(value);
         if (live.current && current === generation.current)
           setJobs(result.data);
       }),
-      ...(canManage
-        ? [
-            send("/sources").then((value) => {
-              if (live.current && current === generation.current)
-                setSources((value as { data: Source[] }).data);
-            }),
-          ]
-        : []),
-      ...(canManage && status.account?.status === "READY"
-        ? [
-            send("/inboxes").then((value) => {
-              if (live.current && current === generation.current)
-                setInboxes((value as { data: Inbox[] }).data);
-            }),
-          ]
-        : []),
+      Promise.all([readSources, readInboxes]).then(() => {
+        if (readSources && readInboxes && live.current && current === generation.current) setConnectionCatalogReady(true);
+      }),
     ]);
     if (
       results.some((r) => r.status === "rejected") &&
@@ -612,7 +615,7 @@ export function ChatwootPanel({
                   e.preventDefault();
                   const form = new FormData(e.currentTarget),
                     chosen = sources.find((s) => s.id === source);
-                  if (!chosen || destinationUnavailable) return;
+                  if (!chosen || destinationUnavailable || !connectionCatalogReady) return;
                   void action(
                     "/connections",
                     "POST",
@@ -620,6 +623,14 @@ export function ChatwootPanel({
                       [chosen.kind === "instance" ? "instanceId" : "channelId"]:
                         chosen.id,
                       name: String(form.get("name")),
+                      ...(data.destination && data.account?.accountId && data.account.credentialVersion ? {
+                        expectedDestination: {
+                          organizationId: data.destination.organizationId,
+                          accountId: data.account.accountId,
+                          destinationRevision: data.destination.revision,
+                          credentialVersion: data.account.credentialVersion,
+                        },
+                      } : {}),
                       ...(selectedInbox
                         ? { inboxId: Number(selectedInbox) }
                         : {}),
@@ -680,7 +691,7 @@ export function ChatwootPanel({
                     o webhook atual desta caixa pelo broker JRC.
                   </label>
                 )}
-                <button className="button" disabled={blocked || !source || destinationUnavailable}>
+                <button className="button" disabled={blocked || !source || destinationUnavailable || !connectionCatalogReady}>
                   Conectar caixa
                 </button>
               </form>
