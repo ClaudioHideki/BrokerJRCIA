@@ -33,7 +33,29 @@ import {assertChatwootMirrorContext} from './chatwoot-mirror-context.js';
 import {LIVE_INGRESS_PROTOCOL,liveIngressLookup,liveIngressProofSchema,type LiveIngressProof} from './chatwoot-live-ingress.js';
 import {selectLiveMirrorProtocol,dispatchNativeLiveMirror,assertRejectedNativeRetry} from './chatwoot-live-dispatch.js';
 
+export const liveMirrorTargetSchema=z.strictObject({
+  organizationId:z.uuid(),integrationId:z.uuid(),channelId:z.uuid(),instanceId:z.uuid(),
+  origin:z.url().refine(value=>new URL(value).origin===value),accountId:z.number().int().positive(),
+  inboxId:z.number().int().positive(),destinationRevision:z.number().int().positive(),credentialRevision:z.number().int().positive(),
+});
+type LiveMirrorTarget=z.infer<typeof liveMirrorTargetSchema>;
+function pilotBinding(parameter:string){
+  const p=`${parameter}::jsonb`;
+  return `SELECT 1 FROM chatwoot_connections pc JOIN chatwoot_accounts pa ON pa.organization_id=pc.organization_id
+    JOIN chatwoot_destinations pd ON pd.organization_id=pa.organization_id AND pd.base_url=pa.base_url
+    JOIN messaging_channels ch ON ch.organization_id=pc.organization_id AND ch.id=pc.channel_id
+    WHERE pc.organization_id=(${p}->>'organizationId')::uuid AND pc.id=(${p}->>'integrationId')::uuid
+      AND pc.channel_id=(${p}->>'channelId')::uuid AND ch.instance_id=(${p}->>'instanceId')::uuid
+      AND pa.base_url=${p}->>'origin' AND pa.account_id=(${p}->>'accountId')::bigint AND pc.inbox_id=(${p}->>'inboxId')::bigint
+      AND pd.revision=(${p}->>'destinationRevision')::int AND pa.credential_version=(${p}->>'credentialRevision')::int
+      AND pc.status='READY' AND pa.status='READY' AND pd.approval_status='APPROVED'`;
+}
+async function assertPilotBinding(t:TenantTransaction,target:LiveMirrorTarget){
+  const result=await t.query(pilotBinding('$1')+' FOR SHARE OF pc,pa,pd,ch',[JSON.stringify(target)]);
+  if(!result.rowCount)throw new IntegrationError('CHATWOOT_LIVE_PILOT_SCOPE_CHANGED',409);
+}
 interface Job {
+  mirrorLane?: LiveMirrorTarget;
   id: string;
   organization_id: string;
   integration_id: string;
@@ -321,35 +343,66 @@ export function createChatwootWorker(options: ChatwootOptions) {
       AND original.payload->'frozenReply' @> jsonb_build_object('version',1,'origin',target.base_url,'accountId',target.account_id,'inboxId',c.inbox_id)))`;
   const eligibleJob = `${dueJob} AND (${noUnknown} OR (${independentMirror})
     OR (${independentCampaignReply}) OR (${independentHumanReply}) OR (${waitingHumanCycle}) OR (${provenHumanStatus}))`;
-  async function claim(org: string): Promise<Job | undefined> {
+  const claimPriority = `CASE WHEN j.payload->>'historical'='true' THEN 2
+          WHEN (j.payload ? 'reviewedInboxTarget')=(c.live_claims_since_review>=3) THEN 0 ELSE 1 END`;
+  const claimOrder=`${claimPriority},j.created_at,j.id`;
+  // Start with mapped individual text. Bootstrap, historical reviews, group
+  // policy, media and replies keep their normal worker and dependency gates.
+  const liveText = `j.kind='MIRROR_MESSAGE' AND j.payload ? 'admittedInboxTarget' AND j.payload->>'historical' IS DISTINCT FROM 'true'
+    AND NOT (j.payload ? 'reviewedInboxTarget') AND j.last_error IS DISTINCT FROM 'CHATWOOT_NATIVE_RECEIPT_REQUIRED'
+    AND EXISTS(SELECT 1 FROM messaging_messages m JOIN messaging_conversations cv
+      ON cv.organization_id=m.organization_id AND cv.id=m.conversation_id AND cv.channel_id=m.channel_id
+      JOIN chatwoot_conversations map ON map.organization_id=m.organization_id AND map.conversation_id=cv.id AND map.integration_id=j.integration_id
+      JOIN messaging_channels ch ON ch.organization_id=m.organization_id AND ch.id=m.channel_id
+      JOIN chatwoot_accounts account ON account.organization_id=m.organization_id
+      JOIN chatwoot_destinations dest ON dest.organization_id=account.organization_id AND dest.base_url=account.base_url
+      WHERE m.organization_id=j.organization_id AND m.id=j.message_id AND m.channel_id=c.channel_id
+        AND m.direction='INCOMING' AND m.source='CONTACT' AND NOT m.is_historical AND cv.recipient_kind='INDIVIDUAL'
+        AND m.content->>'type'='TEXT' AND j.payload->'admittedInboxTarget' @> jsonb_build_object(
+          'revision',dest.revision,'account',account.account_id::text,'inbox',c.inbox_id::text,'instance',ch.instance_id,
+          'conversation',map.remote_conversation_id::text,'contact',map.contact_id::text,
+          'sourceHash',encode(sha256(convert_to(map.source_id,'UTF8')),'hex')))`;
+  async function claim(org: string, target?:LiveMirrorTarget): Promise<Job | undefined> {
+    const mirrorIntegration=target?.integrationId,mirrorsOnly=target!==undefined;
     return tx(org, async (t) => {
+      if(target){
+        const locked=await t.query(pilotBinding('$1')+' FOR UPDATE OF pc SKIP LOCKED FOR SHARE OF pa,pd,ch',[JSON.stringify(target)]);
+        if(!locked.rowCount)return;
+      }
       // An expired POST might have succeeded remotely. Replies are local, idempotent transactions.
       await t.query(
-        `UPDATE integration_jobs SET status=CASE WHEN payload->>'historical'='true' AND payload->>'operation'='IMPORT_HISTORY' THEN 'HISTORY_PENDING' WHEN kind='CHATWOOT_REPLY' THEN 'PENDING' ELSE 'UNKNOWN' END,
+        `UPDATE integration_jobs j SET status=CASE WHEN payload->>'historical'='true' AND payload->>'operation'='IMPORT_HISTORY' THEN 'HISTORY_PENDING' WHEN kind='CHATWOOT_REPLY' THEN 'PENDING' ELSE 'UNKNOWN' END,
         lease_token=NULL,lease_expires_at=NULL,last_error='WORKER_LEASE_EXPIRED',updated_at=now()
-        WHERE organization_id=$1 AND status='RUNNING' AND lease_expires_at<now()`,
-        [org],
+        WHERE organization_id=$1 AND status='RUNNING' AND lease_expires_at<now()
+          ${mirrorsOnly?`AND j.integration_id=$2 AND EXISTS(SELECT 1 FROM chatwoot_connections c WHERE c.organization_id=j.organization_id
+            AND c.id=j.integration_id AND ${liveText})`:''}`,
+        mirrorsOnly?[org,mirrorIntegration]:[org],
       );
       if (!(await isOrganizationActive(t, org))) return;
+      const began=mirrorsOnly?performance.now():0;
       const connection = (
         await t.query<{ id: string }>(
           `SELECT c.id FROM chatwoot_connections c
         JOIN chatwoot_accounts a ON a.organization_id=c.organization_id
         JOIN chatwoot_destinations d ON d.organization_id=a.organization_id AND d.base_url=a.base_url
-        WHERE c.organization_id=$1 AND c.status='READY' AND a.status='READY'
+        WHERE c.organization_id=$1 ${mirrorsOnly?'AND c.id=$4':''} AND c.status='READY' AND a.status='READY'
           AND d.approval_status='APPROVED'
           AND chatwoot_channel_identity_ready(c.organization_id,c.channel_id)
-          AND EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND ${eligibleJob}
-            AND (j.kind<>'CHATWOOT_REPLY' OR NOT (j.integration_id=ANY($2::uuid[]))) AND ${outsideFrozenCohort('$3')})
+          AND ${mirrorsOnly?`(SELECT (${liveText})`:'EXISTS(SELECT 1'} FROM integration_jobs j
+            WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND ${eligibleJob}
+            AND (j.kind<>'CHATWOOT_REPLY' OR NOT (j.integration_id=ANY($2::uuid[]))) AND ${outsideFrozenCohort('$3')}
+            ${mirrorsOnly?`ORDER BY ${claimOrder} LIMIT 1`:''})
           AND NOT EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND j.status='RUNNING')
         ORDER BY c.updated_at,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1`,
-          [org, heldIntegrations, guardedIntegrations],
+          mirrorsOnly?[org,heldIntegrations,guardedIntegrations,mirrorIntegration]:[org, heldIntegrations, guardedIntegrations],
         )
       ).rows[0];
       if (!connection) return;
+      const selectedConnection=mirrorsOnly?performance.now():0;
       const job = (
-        await t.query<{ id: string; held_history: boolean; receipt_only: boolean; reviewed: boolean }>(
-          `SELECT j.id, j.payload ? 'reviewedInboxTarget' AS reviewed, j.kind='MIRROR_MESSAGE' AND EXISTS (
+        await t.query<{ id: string; held_history: boolean; receipt_only: boolean; reviewed: boolean; live_text:boolean; eligible_at:string }>(
+          `SELECT j.id,${mirrorsOnly?'clock_timestamp()::text':'NULL'} AS eligible_at,
+            ${mirrorsOnly?liveText:'false'} AS live_text, j.payload ? 'reviewedInboxTarget' AS reviewed, j.kind='MIRROR_MESSAGE' AND EXISTS (
             SELECT 1 FROM integration_jobs held
             WHERE held.organization_id=j.organization_id AND held.integration_id=j.integration_id
               AND held.message_id=j.message_id AND held.kind='MIRROR_MESSAGE'
@@ -364,13 +417,12 @@ export function createChatwootWorker(options: ChatwootOptions) {
           AND ${outsideFrozenCohort('$4')}
           AND NOT EXISTS(SELECT 1 FROM integration_jobs busy WHERE busy.organization_id=j.organization_id
             AND busy.integration_id=j.integration_id AND busy.status='RUNNING')
-        ORDER BY CASE WHEN j.payload->>'historical'='true' THEN 2
-          WHEN (j.payload ? 'reviewedInboxTarget')=(c.live_claims_since_review>=3) THEN 0 ELSE 1 END,
-          j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`,
+        ORDER BY ${claimOrder} FOR UPDATE OF j ${mirrorsOnly?'NOWAIT':'SKIP LOCKED'} LIMIT 1`,
           [org, connection.id, heldIntegrations, guardedIntegrations],
         )
       ).rows[0];
-      if (!job) return;
+      if (!job || (mirrorsOnly && !job.live_text)) return;
+      const selectedJob=mirrorsOnly?performance.now():0;
       if (job.held_history) {
         // A later read or delivery receipt can create a fresh job for a message
         // that predates activation. Keep that message in its original lane.
@@ -391,9 +443,12 @@ export function createChatwootWorker(options: ChatwootOptions) {
       return (
         await t.query<Job>(
           `UPDATE integration_jobs SET status='RUNNING',attempts=attempts+1,lease_token=$3,lease_expires_at=now()+interval '3 minutes',updated_at=now(),
-             payload=CASE WHEN $4 THEN payload||'{"requiresNativeReceipt":true}'::jsonb ELSE payload END
+             payload=(CASE WHEN $4 THEN payload||'{"requiresNativeReceipt":true}'::jsonb ELSE payload END)
+             ${mirrorsOnly?`|| CASE WHEN payload ? 'liveMirrorClaim' THEN '{}'::jsonb ELSE
+               jsonb_build_object('liveMirrorClaim',jsonb_build_object('dueAt',available_at,'eligibleObservedAt',$5::timestamptz,
+               'claimedAt',clock_timestamp(),'connectionSelectMs',$6::float8,'jobSelectMs',$7::float8)) END`:''}
         WHERE organization_id=$1 AND id=$2 RETURNING *`,
-          [org, job.id, randomUUID(), job.receipt_only],
+          [org,job.id,randomUUID(),job.receipt_only,...(mirrorsOnly?[job.eligible_at,selectedConnection-began,selectedJob-selectedConnection]:[])],
         )
       ).rows[0];
     });
@@ -414,9 +469,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
     });
   }
   async function beforeExternal(job: Job, operation: string) {
-    const connection = await tx(job.organization_id, t => readChatwootConnection(t, job.organization_id, job.integration_id));
-    if (connection) await options.assertIdentity?.(job.organization_id, connection.channel_id);
+    const channelId=job.mirrorLane?.channelId ?? (await tx(job.organization_id, t => readChatwootConnection(t,job.organization_id,job.integration_id)))?.channel_id;
+    if(channelId)await options.assertIdentity?.(job.organization_id,channelId);
     await tx(job.organization_id, async (t) => {
+      if(job.mirrorLane)await assertPilotBinding(t,job.mirrorLane);
       if (!(await isOrganizationActive(t, job.organization_id)))
         throw new IntegrationError("INTEGRATION_PAUSED", 409);
       const result = await t.query(
@@ -794,6 +850,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
     if(await groups.mirror(job))return;
     const org = job.organization_id,originalMirrorOperation=job.payload.operation;
     const context = await tx(org, async (t) => {
+      if(job.mirrorLane)await assertPilotBinding(t,job.mirrorLane);
       const a = await readChatwootAccount(t, org),
         c = await readChatwootConnection(t, org, job.integration_id);
       if (!a || !c?.inbox_id || c.status !== "READY")
@@ -866,7 +923,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
       accountId = Number(a.account_id),
       inboxId = Number(c.inbox_id);
     if(!a.destination)throw new IntegrationError('CHATWOOT_CONTEXT_CHANGED',409);
-    if (job.payload.requiresNativeReceipt === true) {
+    if (job.payload.requiresNativeReceipt === true || job.mirrorLane) {
       const reviewed=job.payload.reviewedInboxTarget!==undefined;
       const newObserved=job.payload.qrObservationId!==undefined&&z.uuid().safeParse(job.payload.qrObservationId).success;
       const target = z.object({ revision:z.number().int(), account:z.string(), inbox:z.string(),credentialRevision:z.number().int().optional(),phoneHash:z.string().optional(),messageHash:z.string().optional(),
@@ -1060,11 +1117,11 @@ export function createChatwootWorker(options: ChatwootOptions) {
         recorded:job.payload.mirrorProtocol,hasPriorAttempt:message.has_mirror_attempt,operation:originalMirrorOperation})
         .catch((error:unknown)=>{
           // A failed capability probe has not sent the message. Keep its job retryable.
-          if (job.payload.requiresNativeReceipt === true && !message.has_mirror_attempt && error instanceof ChatwootError)
+          if ((job.mirrorLane || job.payload.requiresNativeReceipt === true) && !message.has_mirror_attempt && error instanceof ChatwootError)
             throw new IntegrationError('CHATWOOT_NATIVE_RECEIPT_REQUIRED',409);
           throw error;
         });
-      if (job.payload.requiresNativeReceipt === true && protocol !== LIVE_INGRESS_PROTOCOL)
+      if ((job.mirrorLane || job.payload.requiresNativeReceipt === true) && protocol !== LIVE_INGRESS_PROTOCOL)
         throw new IntegrationError('CHATWOOT_NATIVE_RECEIPT_REQUIRED',409);
       const previousNativeProof=job.payload.liveIngressProof;
       const presentationText=media?(externalObserved?`${originLabel}${message.content.type==='MEDIA'&&message.content.caption?'\n'+message.content.caption:''}`:media.caption??''):text!;
@@ -1073,10 +1130,11 @@ export function createChatwootWorker(options: ChatwootOptions) {
         message_type:message.direction==='INCOMING'?'incoming':'outgoing',message_origin:externalObserved?'EXTERNAL_OBSERVED':'LIVE',content:presentationText,
         ...(priorNative?.success?(priorNative.data.occurred_at===undefined?{}:{occurred_at:priorNative.data.occurred_at})
           :{occurred_at:Math.floor(message.created_at.getTime()/1000)})},media):undefined;
+      if(job.mirrorLane)await tx(org,t=>assertPilotBinding(t,job.mirrorLane!));
       await beforeExternal(job, "SEND_MESSAGE");
       let proof:LiveIngressProof|undefined;
       const assertInboxTarget = async (t:TenantTransaction) => {
-        if (job.payload.requiresNativeReceipt !== true) return;
+        if (job.payload.requiresNativeReceipt !== true && !job.mirrorLane) return;
         const target = await t.query(`SELECT 1 FROM chatwoot_conversations WHERE organization_id=$1 AND integration_id=$2
           AND conversation_id=$3 AND remote_conversation_id=$4 AND contact_id=$5 AND source_id=$6 FOR SHARE`,
           [org,c.id,message.conversation_id,map!.remote_conversation_id,map!.contact_id,map!.source_id]);
@@ -1091,6 +1149,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
         if (!isolated.rowCount) throw new IntegrationError('CHATWOOT_MIRROR_ISOLATION_CHANGED',409);
       };
       const started=await tx(org,async t=>{
+        if(job.mirrorLane)await assertPilotBinding(t,job.mirrorLane);
         await assertChatwootMirrorContext(t,a,c,message.instance_id);
         await assertInboxTarget(t);
         if(previousNativeProof!==undefined){
@@ -1121,15 +1180,19 @@ export function createChatwootWorker(options: ChatwootOptions) {
         return {attempt:value,patch};
       });
       const attempt=started.attempt;Object.assign(job.payload,started.patch);
-      const assertCurrent=async(t:TenantTransaction)=>{
+      const assertCurrent=async(t:TenantTransaction,beforePost=false)=>{
+        if(job.mirrorLane)await assertPilotBinding(t,job.mirrorLane);
         await assertChatwootMirrorContext(t,a,c,message.instance_id);
         await assertInboxTarget(t);
-        const lease=await t.query(`SELECT id FROM integration_jobs WHERE organization_id=$1 AND id=$2 AND lease_token=$3
-          AND status='RUNNING' AND lease_expires_at>clock_timestamp() FOR UPDATE`,[org,job.id,job.lease_token]);
+        const recordPost=beforePost&&job.mirrorLane;
+        const lease=await t.query(`${recordPost?`UPDATE integration_jobs SET payload=CASE WHEN payload->'liveMirrorClaim' ? 'postGuardedAt' THEN payload ELSE
+          jsonb_set(payload,'{liveMirrorClaim,postGuardedAt}',to_jsonb(clock_timestamp())) END`:'SELECT id FROM integration_jobs'}
+          WHERE organization_id=$1 AND id=$2 AND lease_token=$3 AND status='RUNNING' AND lease_expires_at>clock_timestamp()
+          ${recordPost?'RETURNING id':'FOR UPDATE'}`,[org,job.id,job.lease_token]);
         if(!lease.rowCount)throw new IntegrationError('INTEGRATION_LEASE_LOST',409);
       };
       const guard=async<T>(_operation:'PERSIST'|'RECEIPT',mutation:boolean,work:()=>Promise<T>)=>{
-        await tx(org,assertCurrent);
+        await tx(org,t=>assertCurrent(t,mutation));
         const result=await work();
         try{await tx(org,assertCurrent);}
         catch(error){if(mutation)throw new ChatwootError('CHATWOOT_LIVE_CONTEXT_CHANGED',false,true);throw error;}
@@ -1229,18 +1292,33 @@ export function createChatwootWorker(options: ChatwootOptions) {
   }
   const groups=createChatwootGroupWorker(options,{before:beforeExternal,progress,finish});
   const receiptRecovery=createChatwootService(options);
-  async function inspectNativeReceipt(org:string){
+  async function inspectNativeReceipt(org:string,target?:LiveMirrorTarget){
+    const mirrorIntegration=target?.integrationId;
     const candidate=await tx(org,async t=>{
       if(!(await isOrganizationActive(t,org)))return undefined;
+      if(target)await assertPilotBinding(t,target);
       return(await t.query<{id:string}>(`UPDATE integration_jobs SET available_at=now()+interval '15 seconds'
-        WHERE organization_id=$1 AND id=(SELECT id FROM integration_jobs WHERE organization_id=$1 AND status='UNKNOWN'
+        WHERE organization_id=$1 AND id=(SELECT j.id FROM integration_jobs j WHERE organization_id=$1 AND status='UNKNOWN'
           AND kind='MIRROR_MESSAGE' AND payload->>'mirrorProtocol'=$2 AND payload ? 'liveIngressProof'
-          AND available_at<=now() ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1)
-        AND status='UNKNOWN' RETURNING id`,[org,LIVE_INGRESS_PROTOCOL])).rows[0];
+          AND available_at<=now() ${target?`AND j.integration_id=$3 AND j.payload->>'operation'='SEND_MESSAGE'
+            AND j.payload->'liveIngressProof' @> $4::jsonb AND EXISTS(SELECT 1 FROM chatwoot_connections c
+              WHERE c.organization_id=j.organization_id AND c.id=j.integration_id AND ${liveText})`:''}
+          ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1)
+        AND status='UNKNOWN' RETURNING id`,target?[org,LIVE_INGRESS_PROTOCOL,mirrorIntegration,JSON.stringify({
+          organization_id:target.organizationId,integration_id:target.integrationId,instance_id:target.instanceId,
+          account_id:target.accountId,inbox_id:target.inboxId,base_url:target.origin,
+          destination_revision:target.destinationRevision,credential_revision:target.credentialRevision
+        })]:[org,LIVE_INGRESS_PROTOCOL])).rows[0];
     });
-    if(!candidate)return;
-    try{await receiptRecovery.reconcileJob(org,candidate.id,'NATIVE_PERSISTENCE_RECEIPT_RECOVERED',undefined,undefined,3000);}
-    catch{ /* The indexed due time advances; UNKNOWN and original evidence stay intact. No replay. */ }
+    if(!candidate)return false;
+    try{
+      const recovery=target?createChatwootService({...options,transact:(tenant,work)=>tx(tenant,async t=>{
+        await assertPilotBinding(t,target);
+        return work(t);
+      })}):receiptRecovery;
+      await recovery.reconcileJob(org,candidate.id,'NATIVE_PERSISTENCE_RECEIPT_RECOVERED',undefined,undefined,3000);
+      return true;
+    }catch{ return false; /* The indexed due time advances; the original evidence stays intact. */ }
   }
   async function processJob(org: string, job: Job): Promise<void> {
     try {
@@ -1288,6 +1366,69 @@ export function createChatwootWorker(options: ChatwootOptions) {
     }
   }
   return {
+    // Explicit operator snapshot only. Avoid counting the backlog on every poll.
+    async liveMirrorQueue(target:LiveMirrorTarget){
+      const {organizationId:org,integrationId}=liveMirrorTargetSchema.parse(target);
+      return tx(org,async t=>{
+        await t.query("SET LOCAL statement_timeout='5s'");
+        await assertPilotBinding(t,target);
+        const result=await t.query(`WITH scoped AS (
+          SELECT j.id,j.created_at,j.status,j.last_error,j.payload->>'groupScopeBlocker' AS group_blocker,
+            c.inbox_id,(${liveText}) AS lane,(${eligibleJob}
+            AND (j.kind<>'CHATWOOT_REPLY' OR NOT(j.integration_id=ANY($3::uuid[]))) AND ${outsideFrozenCohort('$4')}) AS eligible,
+            ${claimPriority} AS priority,
+            ($5::boolean AND c.status='READY' AND a.status='READY' AND d.approval_status='APPROVED' AND
+             chatwoot_channel_identity_ready(c.organization_id,c.channel_id)) AS ready
+          FROM integration_jobs j JOIN chatwoot_connections c ON c.organization_id=j.organization_id AND c.id=j.integration_id
+          JOIN chatwoot_accounts a ON a.organization_id=c.organization_id
+          JOIN chatwoot_destinations d ON d.organization_id=a.organization_id AND d.base_url=a.base_url
+          WHERE j.organization_id=$1 AND j.integration_id=$2 AND j.status<>'SUCCEEDED'
+        ) SELECT count(*) FILTER(WHERE lane AND eligible AND ready)::int AS eligible_live_jobs,
+          min(created_at) FILTER(WHERE lane AND eligible AND ready) AS oldest_eligible_created_at,
+          extract(epoch from(clock_timestamp()-min(created_at) FILTER(WHERE lane AND eligible AND ready)))::float8 AS oldest_eligible_age_seconds,
+          (NOT EXISTS(SELECT 1 FROM scoped WHERE status='RUNNING') AND EXISTS(
+            SELECT 1 FROM (SELECT lane,ready FROM scoped WHERE eligible ORDER BY priority,created_at,id LIMIT 1) head WHERE lane AND ready)) AS next_is_live,
+          count(*) FILTER(WHERE status='RUNNING')::int AS running,count(*) FILTER(WHERE status='UNKNOWN')::int AS uncertain,
+          count(*) FILTER(WHERE last_error='GROUP_CENTRAL_SCOPE_CHANGED' AND group_blocker='GROUP_CATALOG_STALE')::int AS catalog_stale,
+          (SELECT count(*)::int FROM chatwoot_attendance_observations WHERE organization_id=$1 AND integration_id=$2 AND disposition='WAITING_MAP') AS waiting_map_observations,
+          count(*) FILTER(WHERE last_error='CHATWOOT_CYCLE_WAITING_PREVIOUS_MIRROR')::int AS waiting_previous_mirror
+          FROM scoped`,[org,integrationId,heldIntegrations,guardedIntegrations,await isOrganizationActive(t,org)]);
+        return {organizationId:org,integrationId,inboxId:target.inboxId,...result.rows[0]};
+      });
+    },
+    async runLiveMirrors(target:LiveMirrorTarget):Promise<number>{
+      const {organizationId:org,integrationId}=liveMirrorTargetSchema.parse(target);
+      // Hints only. Every action still goes through its original locked claim.
+      // Use separate indexable existence checks so completed history is never
+      // an input to the correlated fairness and uncertainty checks on idle ticks.
+      const hints=await tx(org,async t=>(await t.query<{pending:boolean;receipt:boolean;expired:boolean;bound:boolean}>(`
+        SELECT EXISTS(SELECT 1 FROM integration_jobs WHERE organization_id=$1 AND integration_id=$2
+          AND status='PENDING' AND available_at<=now() AND kind='MIRROR_MESSAGE' AND payload ? 'admittedInboxTarget'
+          AND NOT (payload ? 'reviewedInboxTarget') AND payload->>'historical' IS DISTINCT FROM 'true'
+          AND last_error IS DISTINCT FROM 'CHATWOOT_NATIVE_RECEIPT_REQUIRED') AS pending,
+        EXISTS(SELECT 1 FROM integration_jobs WHERE organization_id=$1 AND integration_id=$2 AND kind='MIRROR_MESSAGE'
+          AND status='UNKNOWN' AND available_at<=now() AND payload ? 'admittedInboxTarget'
+          AND payload->>'mirrorProtocol'=$3 AND payload ? 'liveIngressProof') AS receipt,
+        EXISTS(SELECT 1 FROM integration_jobs WHERE organization_id=$1 AND integration_id=$2 AND kind='MIRROR_MESSAGE'
+          AND status='RUNNING' AND lease_expires_at<=now() AND payload ? 'admittedInboxTarget') AS expired,
+        EXISTS(${pilotBinding('$4')}) AS bound`,
+        [org,integrationId,LIVE_INGRESS_PROTOCOL,JSON.stringify(target)])).rows[0]!);
+      if(!hints.bound)throw new IntegrationError('CHATWOOT_LIVE_PILOT_SCOPE_CHANGED',409);
+      const recovered=hints.receipt&&await inspectNativeReceipt(org,target);
+      if(!hints.pending&&!hints.expired&&!recovered)return 0;
+      const deadline=performance.now()+5000;
+      let completed=0;
+      while(completed<4 && performance.now()<deadline){
+        const job=await claim(org,target);
+        if(!job)break;
+        // Require native persistence for this invocation without changing the
+        // recorded authority of legacy jobs returned to the ordinary consumer.
+        job.mirrorLane=target;
+        await processJob(org,job);
+        completed++;
+      }
+      return completed;
+    },
     async runOnce(org: string, continuous = false): Promise<void> {
       await inspectNativeReceipt(org);
       // Amortize the other provider polls, but yield to other tenants after

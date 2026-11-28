@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { createFlowService } from '../modules/flows/service.js';
 import { createHash } from "node:crypto";
 import { createIntegrationRuntime } from "../modules/integrations/runtime.js";
+import {liveMirrorTargetSchema} from '../modules/integrations/chatwoot-worker.js';
 import { recoverPrivateMedia } from "../modules/messaging/private-media-worker.js";
 import { setTimeout } from "node:timers/promises";
 import { Pool } from "pg";
@@ -60,12 +61,20 @@ export function loadWorkerConfig(environment: NodeJS.ProcessEnv) {
               .split(",")
               .map((value) => value.trim()),
           );
+  const lane=z.enum(['all','live-mirrors']).default('all').parse(environment.MESSAGING_WORKER_LANE);
+  if(lane==='live-mirrors' && (mode!=='allowlist'||organizations.length!==1||shards!==1))
+    throw new Error('LIVE_MIRROR_WORKER_REQUIRES_SINGLE_ORGANIZATION');
+  const mirrorTarget=lane==='live-mirrors'
+    ? liveMirrorTargetSchema.parse(JSON.parse(environment.MESSAGING_WORKER_MIRROR_TARGET_JSON??'null')):undefined;
+  if(mirrorTarget&&mirrorTarget.organizationId!==organizations[0])throw new Error('LIVE_MIRROR_WORKER_TENANT_MISMATCH');
   return {
     databaseUrl,
     mode,
     shard,
     shards,
     organizations: [...new Set(organizations)],
+    lane,
+    mirrorTarget,
   };
 }
 
@@ -82,10 +91,12 @@ export function belongsToWorkerShard(
 export async function runMessagingWorker(
   environment: NodeJS.ProcessEnv = process.env,
   watch = false,
+  queueSnapshot = false,
 ): Promise<void> {
   const config = loadWorkerConfig(environment);
+  if(queueSnapshot&&(config.lane!=='live-mirrors'||watch))throw new Error('MIRROR_QUEUE_SNAPSHOT_REQUIRES_SCOPED_ONE_SHOT');
   const heartbeatInstanceId=workerInstanceId();
-  const controlEnabled = z.enum(['true', 'false']).default('false').parse(environment.CHATWOOT_CONTROL_ENABLED) === 'true';
+  const controlEnabled = config.lane==='all' && z.enum(['true', 'false']).default('false').parse(environment.CHATWOOT_CONTROL_ENABLED) === 'true';
   const controlConfig = controlEnabled ? {
     authUrl: z.url().parse(environment.AUTH_DATABASE_URL), hmacSecret: z.string().min(32).parse(environment.API_KEY_HMAC_SECRET),
     baseUrl: z.url().parse(environment.EVOLUTION_BASE_URL), apiKey: z.string().min(32).parse(environment.EVOLUTION_API_KEY),
@@ -139,6 +150,30 @@ export async function runMessagingWorker(
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   try {
+    if(config.lane==='live-mirrors'){
+      if(!integrations.chatwootWorker)throw new Error('LIVE_MIRROR_WORKER_REQUIRES_CHATWOOT');
+      if(queueSnapshot){
+        const snapshot=await integrations.chatwootWorker.liveMirrorQueue(config.mirrorTarget!);
+        process.stdout.write(JSON.stringify(snapshot)+'\n');
+        return;
+      }
+      let idleDelay=1000;
+      do {
+        let processed=0;
+        try {
+          processed=await integrations.chatwootWorker.runLiveMirrors(config.mirrorTarget!);
+          if(environment.WORKER_HEARTBEAT_FILE)await writeFile(environment.WORKER_HEARTBEAT_FILE,String(Date.now()),{mode:0o600});
+        }catch(error){
+          if(!watch)throw error;
+          process.stderr.write('LIVE_MIRROR_WORKER_TICK_FAILED\n');
+        }
+        const delay=processed?100:idleDelay;
+        idleDelay=processed?1000:Math.min(8000,idleDelay*2);
+        if(watch&&!shutdown.signal.aborted)
+          await setTimeout(delay,undefined,{signal:shutdown.signal}).catch(()=>undefined);
+      }while(watch&&!shutdown.signal.aborted);
+      return;
+    }
     const worker = createMessagingWorker({
       automationRuntimeEnabled:automationRuntimeEnabled(environment),
       automations:createEventRouter({repository:createPostgresAutomationRepository(integrations.groupPolicy),enabled:automationRuntimeEnabled(environment),transact:(org,work)=>withOrganizationTransaction(pool,org,work)}),
@@ -234,7 +269,7 @@ if (
   process.argv[1] &&
   pathToFileURL(process.argv[1]).href === import.meta.url
 ) {
-  runMessagingWorker(process.env, process.argv.includes("--watch")).catch(
+  runMessagingWorker(process.env,process.argv.includes("--watch"),process.argv.includes("--mirror-queue")).catch(
     () => {
       process.stderr.write("MESSAGING_WORKER_FAILED\n");
       process.exitCode = 1;

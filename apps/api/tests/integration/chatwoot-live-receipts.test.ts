@@ -1,3 +1,8 @@
+import {mkdtemp,readFile,writeFile,unlink,rmdir} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {runMessagingWorker} from '../../src/commands/messaging-worker.js';
+import {connectionStringForRole} from './helpers/task7.js';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
@@ -10,7 +15,7 @@ import {createMediaStore,registerPendingMedia} from '../../src/modules/messaging
 let db:Awaited<ReturnType<typeof attendanceDatabase>>;
 beforeAll(async()=>{db=await attendanceDatabase();},60_000);
 afterAll(async()=>{await db?.dispose();});
-async function fixture(input:{lostAck?:boolean;pending?:boolean;unavailable?:boolean;legacy?:boolean;mutate?:string;expireAfterPost?:boolean;rejectOnce?:boolean}={}){
+async function fixture(input:{admitted?:boolean;uniqueRemoteIds?:boolean;lostAck?:boolean;pending?:boolean;unavailable?:boolean;legacy?:boolean;mutate?:string;expireAfterPost?:boolean;rejectOnce?:boolean}={}){
  const t=await seedAttendanceTenant(db.database),instance=randomUUID(),calls:string[]=[],nativeBodies:Record<string,unknown>[]=[];
  const provider=(await db.database.pool.query('SELECT provider_account_id FROM messaging_channels WHERE id=$1',[t.channel])).rows[0].provider_account_id;
  await db.database.pool.query("UPDATE provider_accounts SET provider='BAILEYS' WHERE id=$1",[provider]);
@@ -35,7 +40,7 @@ async function fixture(input:{lostAck?:boolean;pending?:boolean;unavailable?:boo
     if(input.rejectOnce){input.rejectOnce=false;return new Response('',{status:429});}
     stored={protocol:body.protocol,organization_id:body.organization_id,integration_id:body.integration_id,instance_id:body.instance_id,
      destination_revision:body.destination_revision,broker_message_id:body.broker_message_id,conversation_id:body.conversation_id,
-     request_hash:body.request_hash,account_id:7,inbox_id:9,message_id:input.pending?null:901,receipt_id:randomUUID(),state:input.pending?'MEDIA_PENDING':'PERSISTED'};
+     request_hash:body.request_hash,account_id:7,inbox_id:9,message_id:input.pending?null:input.uniqueRemoteIds?900+nativeBodies.length:901,receipt_id:randomUUID(),state:input.pending?'MEDIA_PENDING':'PERSISTED'};
     if(input.expireAfterPost)await db.database.pool.query("UPDATE integration_jobs SET lease_expires_at=now()-interval '1 second' WHERE organization_id=$1 AND status='RUNNING'",[t.org]);
     if(input.lostAck)throw Error('Synthetic response lost after COMMIT');
     return Response.json(stored);
@@ -55,14 +60,21 @@ async function fixture(input:{lostAck?:boolean;pending?:boolean;unavailable?:boo
   }};
  const vault=chatwootEnvironment(options).vault;
  await db.database.pool.query('UPDATE chatwoot_accounts SET encrypted_token=$2 WHERE organization_id=$1',[t.org,vault.encrypt(`${t.org}:chatwoot-account`,'synthetic')]);
- const message=(await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)
+ const message=input.admitted?randomUUID():(await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)
   VALUES($1,$2,$3,'INCOMING','CONTACT','{"type":"TEXT","text":"Synthetic received live"}','DELIVERED') RETURNING id`,[t.org,t.channel,t.conversation])).rows[0].id;
+ if(input.admitted)await db.transact(t.org,tx=>createPostgresMessagingRepository().recordIncoming(tx,{id:message,organizationId:t.org,
+   channelId:t.channel,conversationId:t.conversation,webhookEventKey:randomUUID(),upstreamMessageId:randomUUID(),
+   content:{type:'TEXT',text:'Synthetic received live'},scheduleBot:false}));
  const job=(await db.database.pool.query('SELECT id FROM integration_jobs WHERE organization_id=$1 AND message_id=$2',[t.org,message])).rows[0].id;
  if(input.legacy)await db.database.pool.query("UPDATE integration_jobs SET payload=payload||'{\"operation\":\"SEND_MESSAGE\"}'::jsonb WHERE id=$1",[job]);
  const read=async()=>(await db.database.pool.query('SELECT status,payload,last_error FROM integration_jobs WHERE id=$1',[job])).rows[0];
  return{...t,instance,message,job,calls,nativeBodies,options,read,stored:()=>stored,complete:()=>{
   input.pending=false;input.unavailable=false;if(stored){stored.state='PERSISTED';stored.message_id=901;}
  }};
+}
+function pilot(t:Awaited<ReturnType<typeof fixture>>){
+ return {organizationId:t.org,integrationId:t.integration,channelId:t.channel,instanceId:t.instance,origin:t.options.baseUrl!,
+ accountId:7,inboxId:9,destinationRevision:1,credentialRevision:1};
 }
 async function fencedContact(observedBlocker=false) {
  const t=await fixture({legacy:true,lostAck:true});
@@ -398,6 +410,181 @@ it('settles a lost native ACK by receipt lookup and never emits another message 
  expect(t.calls.filter(path=>path.endsWith('/messages'))).toHaveLength(1);
  expect(t.calls.filter(path=>path.includes('/receipts/'))).toHaveLength(1);
 });
+it('keeps an earlier reply at the head and recovers a dropped POST across two mirror-only workers',async()=>{
+ const t=await fixture({admitted:true,lostAck:true,expireAfterPost:true});
+ const reply=(await db.database.pool.query(`INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,payload,created_at)
+   VALUES($1,$2,'CHATWOOT_REPLY','synthetic-head','{}',now()-interval '1 hour') RETURNING id`,[t.org,t.integration])).rows[0].id;
+ const first=createChatwootWorker(t.options), second=createChatwootWorker(t.options);
+ expect(await first.liveMirrorQueue(pilot(t))).toMatchObject({eligible_live_jobs:1,next_is_live:false});
+ await Promise.all([first.runLiveMirrors(pilot(t)),second.runLiveMirrors(pilot(t))]);
+ expect((await t.read()).status).toBe('PENDING');
+ expect(t.calls).toHaveLength(0);
+ expect((await db.database.pool.query('SELECT attempts,status FROM integration_jobs WHERE id=$1',[reply])).rows[0]).toEqual({attempts:0,status:'PENDING'});
+ await db.database.pool.query("UPDATE integration_jobs SET status='SUCCEEDED' WHERE id=$1",[reply]);
+ await Promise.all([first.runLiveMirrors(pilot(t)),second.runLiveMirrors(pilot(t))]);
+ expect((await t.read()).status).toBe('UNKNOWN');
+ await db.database.pool.query('UPDATE integration_jobs SET available_at=now() WHERE id=$1',[t.job]);
+ await Promise.all([first.runLiveMirrors(pilot(t)),second.runLiveMirrors(pilot(t))]);
+ expect((await t.read()).status).toBe('SUCCEEDED');
+ expect(t.calls.filter(path=>path.endsWith('/messages'))).toHaveLength(1);
+ expect(t.calls.filter(path=>path.includes('/receipts/'))).toHaveLength(1);
+ expect((await db.database.pool.query('SELECT count(*)::int AS n FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows[0].n).toBe(0);
+ expect((await db.database.pool.query('SELECT count(*)::int AS n FROM qr_dispatch_attempts WHERE organization_id=$1',[t.org])).rows[0].n).toBe(0);
+ const timing=(await t.read()).payload.liveMirrorClaim;
+ expect(Date.parse(timing.postGuardedAt)).toBeGreaterThanOrEqual(Date.parse(timing.claimedAt));
+ expect(Date.parse(timing.claimedAt)).toBeGreaterThanOrEqual(Date.parse(timing.eligibleObservedAt));
+});
+
+it('measures synthetic polling latency with matching live text and preserves the other tenant',async()=>{
+ const total=12,other=await fixture({admitted:true}),repo=createPostgresMessagingRepository();
+ async function sample(dedicated:boolean){
+  const t=await fixture({admitted:true,uniqueRemoteIds:true}),worker=createChatwootWorker(t.options);
+  const add=()=>db.transact(t.org,tx=>repo.recordIncoming(tx,{id:randomUUID(),organizationId:t.org,channelId:t.channel,
+    conversationId:t.conversation,webhookEventKey:randomUUID(),upstreamMessageId:randomUUID(),content:{type:'TEXT',text:'Synthetic benchmark'},scheduleBot:false}));
+  for(let i=1;i<total;i++)await add();
+  await expect(worker.runLiveMirrors({...pilot(t),integrationId:other.integration})).rejects.toThrow('CHATWOOT_LIVE_PILOT_SCOPE_CHANGED');
+  expect((await other.read()).status).toBe('PENDING');
+  const normal=async()=>{
+    for(let i=0;i<12&&t.nativeBodies.length<total;i++){
+      // Simulate the same interval spent on other duties before each ordinary poll.
+      await new Promise(resolve=>setTimeout(resolve,750));
+      await worker.runOnce(t.org,true);
+    }
+  };
+  const extra=async()=>{
+    for(let i=0;i<60&&t.nativeBodies.length<total;i++){
+      const n=await worker.runLiveMirrors(pilot(t));
+      if(t.nativeBodies.length<total)await new Promise(resolve=>setTimeout(resolve,n?100:1000));
+    }
+  };
+  await Promise.all([normal(),...(dedicated?[extra()]:[])]);
+  expect(t.nativeBodies).toHaveLength(total);
+  const measured=(await db.database.pool.query(`SELECT count(*)::int AS n,
+    round((percentile_cont(.50) within group(order by extract(epoch FROM (a.created_at-j.created_at))*1000))::numeric,1)::float8 AS p50_ms,
+    round((percentile_cont(.95) within group(order by extract(epoch FROM (a.created_at-j.created_at))*1000))::numeric,1)::float8 AS p95_ms,
+    count(*) FILTER(WHERE j.payload ? 'liveMirrorClaim')::int AS dedicated_claims
+    FROM integration_jobs j JOIN chatwoot_mirror_attempts a ON a.organization_id=j.organization_id AND a.job_id=j.id
+    WHERE j.organization_id=$1 AND j.integration_id=$2 AND j.status='SUCCEEDED' AND a.state='CONFIRMED'`,[t.org,t.integration])).rows[0];
+  expect(measured.n).toBe(total);
+  return measured;
+ }
+ const normal=await sample(false),withDedicated=await sample(true);
+ expect(withDedicated.dedicated_claims).toBeGreaterThan(0);
+ expect(normal.dedicated_claims).toBe(0);
+ console.info('SYNTHETIC_MIRROR_JOB_TO_ATTEMPT_MS',JSON.stringify({normal,withDedicated,normalPollDelayMs:750}));
+},60000);
+
+it('leaves a changed admitted destination and an unmarked old original to the ordinary worker',async()=>{
+ for(const admitted of [false,true]){
+   const t=await fixture({admitted});
+   if(admitted)await db.database.pool.query('UPDATE chatwoot_conversations SET remote_conversation_id=77 WHERE organization_id=$1 AND integration_id=$2',[t.org,t.integration]);
+   expect(await createChatwootWorker(t.options).runLiveMirrors(pilot(t))).toBe(0);
+   expect((await t.read()).status).toBe('PENDING');
+   expect(t.calls).toHaveLength(0);
+ }
+});
+
+it('probes the pinned queue and updates health only after a successful idle tick',async()=>{
+ const t=await fixture({admitted:true});
+ await db.database.pool.query("UPDATE integration_jobs SET available_at='infinity' WHERE id=$1",[t.job]);
+ const dir=await mkdtemp(join(tmpdir(),'synthetic-live-worker-')),file=join(dir,'heartbeat');
+ const env={DATABASE_URL:connectionStringForRole(db.database.connectionString,'jrc_app'),
+   MESSAGING_WORKER_ORGANIZATIONS:t.org,MESSAGING_WORKER_LANE:'live-mirrors',
+   MESSAGING_WORKER_MIRROR_TARGET_JSON:JSON.stringify(pilot(t)),CHATWOOT_BASE_URL:t.options.baseUrl,
+   INTEGRATION_ENCRYPTION_KEY:t.options.encryptionKey,PUBLIC_ORIGIN:t.options.publicOrigin,WORKER_HEARTBEAT_FILE:file};
+ try{
+   await writeFile(file,'42');
+   const stdout=vi.spyOn(process.stdout,'write').mockImplementation(()=>true);
+   try{
+     await runMessagingWorker(env,false,true);
+     expect(stdout.mock.calls.some(([chunk])=>String(chunk).includes('"eligible_live_jobs":0'))).toBe(true);
+   }finally{stdout.mockRestore();}
+   expect(await readFile(file,'utf8')).toBe('42');
+   await runMessagingWorker(env,false);
+   expect(Number(await readFile(file,'utf8'))).toBeGreaterThan(42);
+   await writeFile(file,'42');
+   await db.database.pool.query('UPDATE chatwoot_connections SET inbox_id=19 WHERE id=$1',[t.integration]);
+   await expect(runMessagingWorker(env,false)).rejects.toThrow('CHATWOOT_LIVE_PILOT_SCOPE_CHANGED');
+   expect(await readFile(file,'utf8')).toBe('42');
+ }finally{await unlink(file);await rmdir(dir);}
+});
+it.each(['pending','expired','receipt','pre-post'] as const)('pins a reused connection UUID across %s',async state=>{
+ const t=await fixture({admitted:true,lostAck:state==='receipt',expireAfterPost:state==='receipt'});
+ const redirect=()=>db.database.pool.query('UPDATE chatwoot_connections SET inbox_id=19 WHERE id=$1',[t.integration]);
+ const worker=createChatwootWorker({...t.options,async fetch(url,init){
+   const response=await t.options.fetch!(url,init);
+   if(state==='pre-post'&&new URL(String(url)).pathname.endsWith('/capability'))await redirect();
+   return response;
+ }});
+ if(state==='pre-post'){
+   await worker.runLiveMirrors(pilot(t)).catch(error=>expect(error.message).toBe('CHATWOOT_LIVE_PILOT_SCOPE_CHANGED'));
+   expect(t.calls.some(path=>path.endsWith('/capability'))).toBe(true);
+   expect(t.nativeBodies).toHaveLength(0);
+ }else{
+   if(state==='receipt'){
+     await worker.runLiveMirrors(pilot(t));expect((await t.read()).status).toBe('UNKNOWN');
+     await db.database.pool.query('UPDATE integration_jobs SET available_at=now() WHERE id=$1',[t.job]);
+   }
+   if(state==='expired')await db.database.pool.query("UPDATE integration_jobs SET status='RUNNING',lease_token=$2,lease_expires_at=now()-interval '1 minute' WHERE id=$1",[t.job,randomUUID()]);
+   await redirect();
+ }
+ const before=await t.read(),calls=t.calls.length;
+ await expect(worker.runLiveMirrors(pilot(t))).rejects.toThrow('CHATWOOT_LIVE_PILOT_SCOPE_CHANGED');
+ await expect(worker.liveMirrorQueue(pilot(t))).rejects.toThrow('CHATWOOT_LIVE_PILOT_SCOPE_CHANGED');
+ expect(await t.read()).toEqual(before);expect(t.calls).toHaveLength(calls);
+});
+it('profiles idle and active claim plans with completed history and a separate uncertain inbox',async()=>{
+ const t=await fixture({admitted:true,uniqueRemoteIds:true});
+ const pool=db.database.pool,history=8000,held=256;
+ const ch=(await pool.query(`INSERT INTO messaging_channels(organization_id,provider_account_id,phone_number_id,waba_id,credential_reference)
+   SELECT organization_id,provider_account_id,$2,'synthetic','vault://synthetic' FROM messaging_channels WHERE id=$1 RETURNING id`,
+   [t.channel,randomUUID()])).rows[0].id;
+ const other=(await pool.query("INSERT INTO chatwoot_connections(organization_id,channel_id,inbox_id,name,status) VALUES($1,$2,19,'uncertain synthetic inbox','READY') RETURNING id",[t.org,ch])).rows[0].id;
+ await pool.query(`INSERT INTO integration_jobs(organization_id,integration_id,kind,status,dedupe_key,payload)
+   SELECT $1,$2,'MIRROR_MESSAGE','SUCCEEDED','completed:'||n,'{"historical":true}'::jsonb FROM generate_series(1,$3::int) n`,[t.org,t.integration,history]);
+ await pool.query(`INSERT INTO integration_jobs(organization_id,integration_id,kind,status,dedupe_key,payload,available_at)
+   SELECT $1,$2,'MIRROR_MESSAGE','HISTORY_PENDING','held:'||n,'{"historical":true}'::jsonb,'infinity' FROM generate_series(1,$3::int) n`,[t.org,t.integration,held]);
+ await pool.query("INSERT INTO integration_jobs(organization_id,integration_id,kind,status,dedupe_key) VALUES($1,$2,'MIRROR_MESSAGE','UNKNOWN','uncertain')",[t.org,other]);
+ await pool.query("UPDATE integration_jobs SET available_at='infinity' WHERE id=$1",[t.job]);
+ await pool.query('ANALYZE integration_jobs');
+ const plans:Record<string,unknown>={};let mode='',profiling=true;
+ const observed:ChatwootOptions={...t.options,transact:(org,operation)=>t.options.transact(org,tx=>operation({
+   query:async(sql:string,values:unknown[])=>{
+     const kind=sql.includes('AS pending,')?'hint':sql.includes('FOR UPDATE OF pc SKIP LOCKED')?'pilot_lock':sql.includes('SELECT c.id FROM chatwoot_connections c')?'connection':
+       sql.includes('AS live_text,')?'job':sql.includes("SET available_at=now()+interval '15 seconds'")?'receipt':null;
+     const key=mode+'_'+kind;
+     if(profiling&&kind&&!plans[key]){
+       const raw=await tx.query('EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) '+sql,values);
+       const detail=raw.rows[0]['QUERY PLAN'][0],plan=detail.Plan;
+       plans[key]={execution_ms:detail['Execution Time'],shared_hits:plan['Shared Hit Blocks'],shared_reads:plan['Shared Read Blocks']};
+     }
+     return tx.query(sql,values);
+   }
+ } as typeof tx))};
+ const worker=createChatwootWorker(observed);
+ async function tick(lane:string){mode=lane;return lane.startsWith('normal')?worker.runOnce(t.org):worker.runLiveMirrors(pilot(t));}
+ await tick('normal_idle');await tick('canary_idle');
+ expect(plans.canary_idle_hint).toBeDefined();
+ expect(plans.canary_idle_connection).toBeUndefined();
+ expect(plans.canary_idle_receipt).toBeUndefined();
+ profiling=false;
+ const idle:Record<string,number[]>={normal_idle:[],canary_idle:[]};
+ for(let n=0;n<20;n++)for(const lane of Object.keys(idle)){
+   const begin=performance.now();await tick(lane);idle[lane]!.push(performance.now()-begin);
+ }
+ profiling=true;
+ await pool.query('UPDATE integration_jobs SET available_at=now() WHERE id=$1',[t.job]);
+ await tick('canary_busy');
+ expect(plans.canary_busy_connection).toBeDefined();expect(plans.canary_busy_job).toBeDefined();
+ // Record the normal selector plans with the same history and an equivalent new original.
+ await db.transact(t.org,tx=>createPostgresMessagingRepository().recordIncoming(tx,{id:randomUUID(),organizationId:t.org,channelId:t.channel,
+   conversationId:t.conversation,webhookEventKey:randomUUID(),upstreamMessageId:randomUUID(),content:{type:'TEXT',text:'synthetic control'},scheduleBot:false}));
+ await tick('normal_busy');
+ expect(plans.normal_busy_connection).toBeDefined();expect(plans.normal_busy_job).toBeDefined();
+ const latency=Object.fromEntries(Object.entries(idle).map(([lane,ms])=>{ms.sort((a,b)=>a-b);
+   return [lane,{n:ms.length,p50_ms:+ms[9]!.toFixed(2),p95_ms:+ms[18]!.toFixed(2)}];}));
+ console.info('SYNTHETIC_MIRROR_CLAIM_PROFILE',JSON.stringify({history,held,unrelatedUnknown:1,latency,plans}));
+},60000);
 it('does not perform a receipt read after its dispatch lease expires during the message POST',async()=>{
  const t=await fixture({expireAfterPost:true,lostAck:true});await createChatwootWorker(t.options).runOnce(t.org);
  expect(await t.read()).toMatchObject({status:'UNKNOWN'});

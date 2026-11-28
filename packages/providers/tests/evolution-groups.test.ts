@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EvolutionGroupsClient } from '../src/evolution/groups.js';
 import type { ProviderContext } from '../src/contracts/types.js';
 
@@ -28,6 +28,21 @@ function setup(body: unknown) {
 }
 
 describe('Evolution QR group catalog (G1)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('omits pictures only for the explicitly configured catalog organization', async () => {
+    const selected = 'b83b3e44-0424-4b73-b150-f678e2220521';
+    const other = '31093330-c9d4-47b3-94d5-427ad0b07950';
+    const { client, calls } = setup([]);
+    for (const [setting, organizationId] of [[selected, selected], [selected, other], ['', selected], ['*', selected], ['*', '*']] as const) {
+      vi.stubEnv('EVOLUTION_GROUP_CATALOG_METADATA_ONLY_ORGANIZATION_ID', setting);
+      await client.list({ ...context, organizationId }, 'one');
+    }
+    expect(calls.map(call => new URL(call.url).search)).toEqual([
+      '?getParticipants=false&getPictures=false',
+      ...Array(4).fill('?getParticipants=false'),
+    ]);
+  });
   it('uses one verified GET with getParticipants=false and no remote pagination', async () => {
     const { client, calls } = setup([{ ...group, linkedParent: legacyGroupJid }]);
     expect(await client.list(context, 'key /&')).toEqual([{

@@ -6,6 +6,7 @@ import { chatwootEnvironment, createChatwootService, type ChatwootOptions } from
 import { registerPendingMedia } from '../../src/modules/messaging/media-store.js';
 import { createChatwootWorker } from '../../src/modules/integrations/chatwoot-worker.js';
 import { freezeReplyCohort } from '../../src/modules/integrations/freeze-reply-cohort.js';
+import {createPostgresMessagingRepository} from '../../src/modules/messaging/repository.js';
 
 describe('durable new human intent around unrelated uncertain mirrors', () => {
   let db: Awaited<ReturnType<typeof attendanceDatabase>>;
@@ -68,6 +69,42 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
     expect((await db.database.pool.query('SELECT count(*)::int AS n FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows[0].n).toBe(0);
     expect((await db.database.pool.query("SELECT status,last_error FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows)
       .toEqual([{status:'FAILED',last_error:'CHATWOOT_DIRECT_SOURCE_REVIEW'}]);
+  });
+  it('processes a fresh human reply in another inbox while the scoped mirror is waiting for Rails',async()=>{
+    const waits:number[]=[];
+    for(const busy of [false,true]){
+      const t=await fixture(false,'guard');t.setCanonical({source_id:null});
+      const provider=randomUUID(),instance=randomUUID(),channel=randomUUID(),integration=randomUUID(),conversation=randomUUID();
+      const p=db.database.pool;
+      await p.query("INSERT INTO provider_accounts(id,organization_id,provider,name,credential_reference) VALUES($1,$2,'BAILEYS','synthetic','vault://synthetic')",[provider,t.org]);
+      await p.query("INSERT INTO instances(id,organization_id,provider_account_id,name,upstream_instance_key,status) VALUES($1::uuid,$2,$3,'synthetic mirror',$1::text,'CONNECTED')",[instance,t.org,provider]);
+      await p.query("INSERT INTO messaging_channels(id,organization_id,provider_account_id,provider,instance_id,credential_reference) VALUES($1,$2,$3,'BAILEYS',$4,'vault://synthetic')",[channel,t.org,provider,instance]);
+      await p.query("INSERT INTO chatwoot_connections(id,organization_id,channel_id,inbox_id,name,status) VALUES($1,$2,$3,19,'synthetic mirror','READY')",[integration,t.org,channel]);
+      await p.query('INSERT INTO messaging_conversations(id,organization_id,channel_id,contact_id) SELECT $1,$2,$3,contact_id FROM messaging_conversations WHERE id=$4',[conversation,t.org,channel,t.conversation]);
+      await p.query("INSERT INTO chatwoot_conversations(organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id) VALUES($1,$2,$3,71,'other-source',81)",[t.org,integration,conversation]);
+      let entered!:()=>void,release!:()=>void;
+      const blocked=new Promise<void>(resolve=>{entered=resolve;}),resume=new Promise<void>(resolve=>{release=resolve;});
+      let canary:Promise<number>|undefined;
+      if(busy){
+        await db.transact(t.org,tx=>createPostgresMessagingRepository().recordIncoming(tx,{id:randomUUID(),organizationId:t.org,channelId:channel,
+          conversationId:conversation,webhookEventKey:randomUUID(),upstreamMessageId:randomUUID(),content:{type:'TEXT',text:'Synthetic mirror'},scheduleBot:false}));
+        const mirror=createChatwootWorker({...t.options,fetch:async(input)=>{
+          expect(new URL(String(input)).pathname).toMatch(/\/capability$/);entered();await resume;return new Response('',{status:503});
+        }});
+        canary=mirror.runLiveMirrors({organizationId:t.org,integrationId:integration,channelId:channel,instanceId:instance,origin:t.options.baseUrl!,accountId:7,inboxId:19,destinationRevision:1,credentialRevision:1});
+        await blocked;
+      }
+      try{
+        await t.ingest(t.message);
+        await createChatwootWorker(t.options).runOnce(t.org);
+        const result=await p.query(`SELECT j.status,extract(epoch from(o.created_at-j.created_at))*1000 AS ms
+          FROM integration_jobs j JOIN messaging_outbox o ON o.organization_id=j.organization_id AND o.message_id=j.message_id
+          WHERE j.organization_id=$1 AND j.integration_id=$2 AND j.kind='CHATWOOT_REPLY'`,[t.org,t.integration]);
+        expect(result.rows).toHaveLength(1);expect(result.rows[0].status).toBe('SUCCEEDED');
+        waits.push(Number(result.rows[0].ms));
+      }finally{release();if(canary)await canary;}
+    }
+    console.info('SYNTHETIC_OTHER_INBOX_HUMAN_JOB_TO_OUTBOX_MS',JSON.stringify({control:waits[0],mirrorBusy:waits[1]}));
   });
   it('leaves both legacy and native jobs unclaimed in an integration under direct-transport review',async()=>{
     const t=await fixture();

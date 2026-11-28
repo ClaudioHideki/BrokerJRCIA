@@ -267,3 +267,17 @@ O Broker bloqueia a linha do catálogo enquanto verifica a revisão, o fingerpri
 A ausência de identidade retorna `503 GROUP_IDENTITY_REQUIRED`. Na Evolution 2.3.8, as tentativas HTTP ficam em memória e um reinício pode interrompê-las. Quando a mensagem física existe na origem, sua recuperação exige conferir o dono e a geração no instante do evento, o original e os efeitos já gravados. O journal V2 também descarta esse formato misto. [Controlador de webhooks da Evolution 2.3.8](https://github.com/evolution-foundation/evolution-api/blob/182c255ae351ff31043d7d6b872799b809338c42/src/api/integrations/event/webhook/webhook.controller.ts)
 
 Para desativar o piloto, restaure a lista anterior na API e no worker e confira a configuração dos dois processos. O retorno afeta as entradas seguintes. Confira as pendências anteriores por original na origem e no destino.
+
+## Worker adicional para texto recebido em uma caixa
+
+O serviço `live-mirror-worker`, do perfil Compose `live-mirror-canary`, consome textos individuais de entrada com destino já admitido e conversa mapeada. Mantém a ordem do worker geral e usa o recibo nativo do JRC. A consulta do recibo permite recuperar a confirmação quando o JRC gravou a mensagem e a resposta HTTP se perdeu.
+
+Configure `LIVE_MIRROR_ORGANIZATION_ID` e `LIVE_MIRROR_TARGET_JSON`. O JSON contém `organizationId`, `integrationId`, `channelId`, `instanceId`, `origin`, `accountId`, `inboxId`, `destinationRevision` e `credentialRevision`. Obtenha os valores da mesma integração aprovada. Os identificadores da conta e caixa e as duas revisões são números. Confira o vínculo antes de iniciar o serviço. Um tick bem-sucedido atualiza o heartbeat, inclusive com fila vazia. Uma mudança de destino ou credencial exige reconferência do vínculo.
+
+Com o serviço em execução, o comando abaixo mostra a quantidade e idade das entradas elegíveis, o primeiro tipo de trabalho na fila e os bloqueios identificados. A consulta tem limite de cinco segundos.
+
+```sh
+docker compose exec -T live-mirror-worker node apps/api/dist/commands/messaging-worker.js --mirror-queue
+```
+
+Compare a criação dos jobs, as tentativas, os recibos e as linhas públicas com os originais da mesma caixa e tipo. Conte os pendentes em separado. Confira a espera das respostas humanas e o tempo de seleção no banco. Para desativar a capacidade adicional, pare o serviço `live-mirror-worker`. O worker geral continua atendendo a fila com as reservas e recibos já gravados.

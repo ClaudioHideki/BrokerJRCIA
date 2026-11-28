@@ -50,6 +50,14 @@ function renderCompose(overrides = {}) {
 }
 
 describe('Dokploy Compose interpolation', () => {
+  it('forwards the catalog opt-in to API and worker with an empty default', () => {
+    const key = 'EVOLUTION_GROUP_CATALOG_METADATA_ONLY_ORGANIZATION_ID';
+    for (const selected of ['', 'b83b3e44-0424-4b73-b150-f678e2220521']) {
+      const config = renderCompose(selected ? { [key]: selected } : {});
+      for (const service of ['api', 'worker']) expect(config.services[service].environment[key]).toBe(selected);
+      expect(config.services.evolution.environment).not.toHaveProperty(key);
+    }
+  });
   it('brands new linked devices as Broker JRC without replacing the compatible Chrome identity', () => {
     const config = renderCompose();
     expect(config.services.evolution.environment.CONFIG_SESSION_PHONE_CLIENT).toBe('Broker JRC');

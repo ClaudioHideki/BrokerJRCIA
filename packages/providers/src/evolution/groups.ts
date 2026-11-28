@@ -111,7 +111,10 @@ export class EvolutionGroupsClient {
   async list(context: ProviderContext, instanceKey: string): Promise<EvolutionGroupCatalogItem[]> {
     const key = encodedKey(instanceKey);
     const operation = this.#client.beginOperation(context, operationTimeoutMs);
-    const response = await operation.request({ method: 'GET', path: `/group/fetchAllGroups/${key}?getParticipants=false` });
+    const selected = process.env.EVOLUTION_GROUP_CATALOG_METADATA_ONLY_ORGANIZATION_ID;
+    const metadataOnly = selected === context.organizationId && /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu.test(selected);
+    const query = metadataOnly ? 'getParticipants=false&getPictures=false' : 'getParticipants=false';
+    const response = await operation.request({ method: 'GET', path: `/group/fetchAllGroups/${key}?${query}` });
     if (!response.found || !Array.isArray(response.body) || response.body.length > maximumGroups) invalidResponse();
     const items = response.body.map(normalizeGroup);
     if (new Set(items.map(item => item.groupJid)).size !== items.length) invalidResponse();
