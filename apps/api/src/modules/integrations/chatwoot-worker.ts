@@ -305,6 +305,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
                  AND attempt.account_id::text=${inboxTarget}->>'account'
                  AND attempt.inbox_id::text=${inboxTarget}->>'inbox'
                  AND attempt.destination_revision::text=${inboxTarget}->>'revision')))`;
+  const heldIntegrations = [...(options.directTransportReviewIntegrations ?? [])];
   const eligibleJob = `${dueJob} AND (${noUnknown} OR (${independentMirror})
     OR (${independentCampaignReply}) OR (${independentHumanReply}) OR (${waitingHumanCycle}) OR (${provenHumanStatus}))`;
   async function claim(org: string): Promise<Job | undefined> {
@@ -325,10 +326,10 @@ export function createChatwootWorker(options: ChatwootOptions) {
         WHERE c.organization_id=$1 AND c.status='READY' AND a.status='READY'
           AND d.approval_status='APPROVED'
           AND chatwoot_channel_identity_ready(c.organization_id,c.channel_id)
-          AND EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND ${eligibleJob})
+          AND EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND ${eligibleJob} AND (j.kind<>'CHATWOOT_REPLY' OR NOT (j.integration_id=ANY($2::uuid[]))))
           AND NOT EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=c.organization_id AND j.integration_id=c.id AND j.status='RUNNING')
         ORDER BY c.updated_at,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1`,
-          [org],
+          [org, heldIntegrations],
         )
       ).rows[0];
       if (!connection) return;
@@ -345,13 +346,13 @@ export function createChatwootWorker(options: ChatwootOptions) {
             JOIN messaging_messages candidate ON candidate.organization_id=j.organization_id AND candidate.id=j.message_id AND candidate.conversation_id=previous.conversation_id
             WHERE blocked.organization_id=j.organization_id AND blocked.integration_id=j.integration_id AND blocked.status='UNKNOWN'
           ) AS receipt_only FROM integration_jobs j JOIN chatwoot_connections c ON c.organization_id=j.organization_id AND c.id=j.integration_id
-        WHERE j.organization_id=$1 AND j.integration_id=$2 AND ${eligibleJob}
+        WHERE j.organization_id=$1 AND j.integration_id=$2 AND ${eligibleJob} AND (j.kind<>'CHATWOOT_REPLY' OR NOT (j.integration_id=ANY($3::uuid[])))
           AND NOT EXISTS(SELECT 1 FROM integration_jobs busy WHERE busy.organization_id=j.organization_id
             AND busy.integration_id=j.integration_id AND busy.status='RUNNING')
         ORDER BY CASE WHEN j.payload->>'historical'='true' THEN 2
           WHEN (j.payload ? 'reviewedInboxTarget')=(c.live_claims_since_review>=3) THEN 0 ELSE 1 END,
           j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`,
-          [org, connection.id],
+          [org, connection.id, heldIntegrations],
         )
       ).rows[0];
       if (!job) return;
@@ -429,7 +430,45 @@ export function createChatwootWorker(options: ChatwootOptions) {
     });
   }
   async function receiveReply(job: Job): Promise<void> {
-    if(await groups.receiveReply(job))return;
+    // Ingress can use a new dedupe key after destination rotation. Consult the
+    // indexed earlier keys in this lineage before entering either sending path.
+    const closed=await tx(job.organization_id,t=>t.query(`SELECT 1
+      FROM chatwoot_connections c JOIN chatwoot_accounts a ON a.organization_id=c.organization_id
+      JOIN chatwoot_destinations d ON d.organization_id=c.organization_id AND d.base_url=a.base_url
+      CROSS JOIN LATERAL generate_series(1,d.revision) revision(n)
+      JOIN integration_jobs old ON old.organization_id=c.organization_id AND old.integration_id=c.id AND
+        old.dedupe_key=concat_ws(':','reply',revision.n,a.account_id,c.inbox_id,$3::text)
+      WHERE c.organization_id=$1 AND c.id=$2 AND old.status='SUCCEEDED' AND old.kind='CHATWOOT_REPLY'
+        AND old.payload->'directEvolutionReceipt'->>'protocol'='DIRECT_EVOLUTION_RECEIPT_V1'
+        AND old.payload->'directEvolutionReceipt'->>'origin'=a.base_url LIMIT 1`,
+      [job.organization_id,job.integration_id,String(job.payload.messageId)]));
+    if(closed.rowCount)throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_REVIEW',409);
+    let verifyDirectSourceScope: ((t:TenantTransaction)=>Promise<void>) | undefined;
+    let guardedCanonical: Awaited<ReturnType<ReturnType<typeof env.client>['canonicalMessage']>> | undefined;
+    if(options.directSourceGuardIntegrations?.has(job.integration_id)){
+      const scoped=await tx(job.organization_id,async t=>({
+        account:await readChatwootAccount(t,job.organization_id),
+        connection:await readChatwootConnection(t,job.organization_id,job.integration_id)
+      }));
+      if(!scoped.account || !scoped.connection?.inbox_id || typeof job.payload.conversationId!=='number' || typeof job.payload.messageId!=='number')
+        throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_UNAVAILABLE',409);
+      guardedCanonical=await env.client(scoped.account).canonicalMessage(Number(scoped.account.account_id),Number(scoped.connection.inbox_id),job.payload.conversationId,job.payload.messageId);
+      if(guardedCanonical.source_id===undefined)throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_UNAVAILABLE',409);
+      if(guardedCanonical.source_id)throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_REVIEW',409);
+      const account=scoped.account,connection=scoped.connection;
+      if(job.payload.destinationRevision!==account.destination?.revision)throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_CONTEXT_CHANGED',409);
+      verifyDirectSourceScope=async t=>{
+        await lockChatwootDestination(t,job.organization_id);
+        await lockAttendanceChannel(t,job.organization_id,connection.channel_id);
+        const same=await t.query(`SELECT 1 FROM chatwoot_connections c JOIN chatwoot_accounts a ON a.organization_id=c.organization_id
+          JOIN chatwoot_destinations d ON d.organization_id=c.organization_id AND d.base_url=a.base_url
+          WHERE c.organization_id=$1 AND c.id=$2 AND c.channel_id=$3 AND c.inbox_id=$4 AND a.account_id=$5 AND a.base_url=$6
+            AND a.credential_version=$7 AND d.revision=$8 AND d.approval_status='APPROVED' FOR SHARE OF c,a,d`,
+          [job.organization_id,job.integration_id,connection.channel_id,connection.inbox_id,account.account_id,account.base_url,account.credential_version,account.destination?.revision]);
+        if(!same.rowCount)throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_CONTEXT_CHANGED',409);
+      };
+    }
+    if(await groups.receiveReply(job,verifyDirectSourceScope))return;
     const data = replySchema.parse(job.payload);
     const nativeCsat=data.attendanceKind==='NATIVE_CSAT';
     if(nativeCsat&&(!data.attendanceObservationId||!data.destinationRevision||data.campaignIntentId||!data.content||data.attachments))
@@ -453,13 +492,13 @@ export function createChatwootWorker(options: ChatwootOptions) {
     if(data.campaignIntentId){
       if(!binding.account||!binding.connection?.inbox_id)throw new IntegrationError('INTEGRATION_PAUSED',409);
       await tx(job.organization_id,t=>requireCampaignIntent(t,job.organization_id,data.campaignIntentId!,job.integration_id,data.conversationId,data.messageId));
-      campaignCanonical=await env.client(binding.account).canonicalMessage(Number(binding.account.account_id),Number(binding.connection.inbox_id),data.conversationId,data.messageId);
+      campaignCanonical=guardedCanonical??await env.client(binding.account).canonicalMessage(Number(binding.account.account_id),Number(binding.connection.inbox_id),data.conversationId,data.messageId);
     }
     let humanCanonical:unknown;
     if(data.outboundIntentId){
       if(data.attendanceKind!=='HUMAN_PUBLIC'||!data.attendanceObservationId||!binding.account||!binding.connection?.inbox_id)
         throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);
-      humanCanonical=await env.client(binding.account).canonicalMessage(Number(binding.account.account_id),Number(binding.connection.inbox_id),data.conversationId,data.messageId);
+      humanCanonical=guardedCanonical??await env.client(binding.account).canonicalMessage(Number(binding.account.account_id),Number(binding.connection.inbox_id),data.conversationId,data.messageId);
     }
     function verifyHumanIntent(accountId:number,inboxId:number,senderId:number,admittedAt?:Date){
       if(!data.outboundIntentId)throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);
@@ -508,6 +547,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
       if(data.attendanceObservationId&&!data.campaignIntentId)canonical=await client.attendanceConversation(Number(binding.account.account_id),data.conversationId);
     }
     await tx(job.organization_id, async (t) => {
+      if(verifyDirectSourceScope)await verifyDirectSourceScope(t);
       if(!binding.connection)throw new IntegrationError('INTEGRATION_PAUSED',409);
       // Serialize with destination/credential rotation before taking the channel
       // lock, then retain the current scope through the outbox COMMIT.

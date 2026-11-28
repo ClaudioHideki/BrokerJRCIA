@@ -56,6 +56,69 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
     return {...t,next,intent,unknown,marker,message,options,calls,ingest,setCanonical:(value:Record<string,unknown>)=>{canonical={...canonical,...value};}};
   }
 
+  it('fences a persisted direct WAID before native egress under concurrent workers',async()=>{
+    const t=await fixture();
+    t.setCanonical({source_id:'WAID:synthetic-direct-key'});
+    await t.ingest(t.message);
+    await Promise.all([createChatwootWorker(t.options).runOnce(t.org),createChatwootWorker(t.options).runOnce(t.org)]);
+    expect((await db.database.pool.query('SELECT count(*)::int AS n FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows[0].n).toBe(0);
+    expect((await db.database.pool.query("SELECT status,last_error FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows)
+      .toEqual([{status:'FAILED',last_error:'CHATWOOT_DIRECT_SOURCE_REVIEW'}]);
+  });
+  it('leaves both legacy and native jobs unclaimed in an integration under direct-transport review',async()=>{
+    const t=await fixture();
+    await t.ingest(t.message);
+    await db.database.pool.query("UPDATE integration_jobs SET status='SUCCEEDED' WHERE id=$1",[t.unknown]);
+    await db.database.pool.query("INSERT INTO integration_jobs(organization_id,integration_id,kind,status,payload,dedupe_key) VALUES($1,$2,'CHATWOOT_REPLY','PENDING',$3,'synthetic-held')",[t.org,t.integration,{conversationId:52,messageId:702,content:{type:'TEXT',text:'synthetic legacy'}}]);
+    const options={...t.options,directTransportReviewIntegrations:new Set([t.integration])};
+    await Promise.all([createChatwootWorker(options).runOnce(t.org),createChatwootWorker(options).runOnce(t.org)]);
+    const jobs=await db.database.pool.query("SELECT status,attempts FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+    expect(jobs.rows).toEqual([{status:'PENDING',attempts:0},{status:'PENDING',attempts:0}]);
+    expect(t.calls).toEqual([]);
+  });
+  it('refuses a later claim after credential rotation or replay of a disarmed original',async()=>{
+    const t=await fixture();await t.ingest(t.message);
+    await db.database.pool.query("UPDATE integration_jobs SET status='SUCCEEDED' WHERE id=$1",[t.unknown]);
+    await db.database.pool.query("UPDATE integration_jobs SET dedupe_key='reply:2:7:9:701' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+    await db.database.pool.query("UPDATE chatwoot_destinations SET revision=2 WHERE organization_id=$1",[t.org]);
+    await db.database.pool.query("INSERT INTO integration_jobs(organization_id,integration_id,kind,status,dedupe_key,payload) VALUES($1,$2,'CHATWOOT_REPLY','SUCCEEDED','reply:1:7:9:701',$3)",[t.org,t.integration,{messageId:701,directEvolutionReceipt:{origin:t.options.baseUrl,protocol:'DIRECT_EVOLUTION_RECEIPT_V1'}}]);
+    await createChatwootWorker(t.options).runOnce(t.org);
+    const j=(await db.database.pool.query("SELECT last_error FROM integration_jobs WHERE organization_id=$1 AND dedupe_key='reply:2:7:9:701'",[t.org])).rows[0];
+    expect(j.last_error).toBe('CHATWOOT_DIRECT_SOURCE_REVIEW');
+    expect(t.calls).toEqual([]);
+  });
+
+  it('does not enqueue callbacks already identified by the direct transport',async()=>{
+    const t=await fixture();
+    await t.ingest({...t.message,source_id:'WAID:synthetic-direct-key'});
+    const rows=await db.database.pool.query("SELECT id FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+    expect(rows.rows).toEqual([]);
+  });
+  it.each([['WAID:synthetic-direct','CHATWOOT_DIRECT_SOURCE_REVIEW'],[undefined,'CHATWOOT_DIRECT_SOURCE_UNAVAILABLE']] as const)
+    ('checks the persisted source for a legacy job on a guarded integration (%s)',async(source,expected)=>{
+      const t=await fixture();
+      await t.ingest(t.message);
+      await db.database.pool.query("UPDATE integration_jobs SET status='SUCCEEDED' WHERE id=$1",[t.unknown]);
+      await db.database.pool.query("UPDATE integration_jobs SET payload=payload-'outboundIntentId' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+      t.setCanonical({source_id:source});
+      await createChatwootWorker({...t.options,directSourceGuardIntegrations:new Set([t.integration])}).runOnce(t.org);
+      expect((await db.database.pool.query("SELECT last_error FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows[0].last_error).toBe(expected);
+      expect((await db.database.pool.query("SELECT message_id FROM messaging_outbox WHERE organization_id=$1",[t.org])).rows).toEqual([]);
+    });
+  it('rejects a legacy source read when credentials rotate during the GET',async()=>{
+    const t=await fixture();
+    await t.ingest(t.message);t.setCanonical({source_id:null});
+    await db.database.pool.query("UPDATE integration_jobs SET status='SUCCEEDED' WHERE id=$1",[t.unknown]);
+    await db.database.pool.query("UPDATE integration_jobs SET payload=payload-'outboundIntentId' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+    const options={...t.options,directSourceGuardIntegrations:new Set([t.integration]),fetch:async(...args:Parameters<typeof fetch>)=>{
+      const response=await t.options.fetch!(...args);
+      await db.database.pool.query('UPDATE chatwoot_accounts SET credential_version=credential_version+1 WHERE organization_id=$1',[t.org]);
+      return response;
+    }};
+    await createChatwootWorker(options).runOnce(t.org);
+    expect((await db.database.pool.query("SELECT last_error FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows[0].last_error).toBe('CHATWOOT_DIRECT_SOURCE_CONTEXT_CHANGED');
+    expect((await db.database.pool.query("SELECT message_id FROM messaging_outbox WHERE organization_id=$1",[t.org])).rows).toEqual([]);
+  });
   it('enqueues one new proven human reply without retrying or clearing an unrelated UNKNOWN',async()=>{
     const t=await fixture();
     const older=(await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state)

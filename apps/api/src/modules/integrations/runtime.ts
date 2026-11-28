@@ -196,6 +196,8 @@ export function createIntegrationRuntime(
   const options: ChatwootOptions | undefined = config.chatwoot
     ? {
         ...config.chatwoot,
+        directSourceGuardIntegrations: new Set((environment.CHATWOOT_DIRECT_SOURCE_GUARD_INTEGRATIONS ?? '').split(',').map(id => id.trim()).filter(Boolean).map(id => z.uuid().parse(id))),
+        directTransportReviewIntegrations: new Set((environment.CHATWOOT_DIRECT_TRANSPORT_REVIEW_INTEGRATIONS ?? '').split(',').map(id => id.trim()).filter(Boolean).map(id => z.uuid().parse(id))),
         firstContactIntegrations: new Set((environment.CHATWOOT_FIRST_CONTACT_INTEGRATIONS ?? '').split(',').map(id => id.trim()).filter(Boolean)),
         transact,
         mediaOrigins: (environment.CHATWOOT_MEDIA_ORIGINS ?? "")

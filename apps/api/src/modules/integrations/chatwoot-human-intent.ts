@@ -21,6 +21,8 @@ export function requireCanonicalHumanIntent(raw:unknown,expected:{intentId:strin
   attachments?:{id:number;kind:'image'|'audio'|'video'|'document'}[]}):void {
   const message=record(raw),attributes=record(message.content_attributes),additional=record(message.additional_attributes),sender=record(message.sender);
   const fail=()=>{throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);};
+  if(typeof message.source_id==='string' && message.source_id.startsWith('WAID:'))
+    throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_REVIEW',409);
   // A first delivery of an old signed webhook must not gain new-cycle authority.
   // Compare the persisted admission time so a delayed worker may still finish.
   if(expected.admittedAt && (typeof message.created_at!=='number'||

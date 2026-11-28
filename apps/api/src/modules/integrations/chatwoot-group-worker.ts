@@ -190,7 +190,7 @@ export function createChatwootGroupWorker(options:ChatwootOptions,hooks:{before(
    }
    await hooks.finish(job);return true;
   },
-  async receiveReply(job:GroupIntegrationJob):Promise<boolean>{
+  async receiveReply(job:GroupIntegrationJob,verifyDirectSourceScope?:(t:TenantTransaction)=>Promise<void>):Promise<boolean>{
    const org=job.organization_id,remote=job.payload.conversationId;
    if(typeof remote!=='number')return false;
    const mapped=await tx(org,async t=>(await t.query<{conversation_id:string;channel_id:string}>(`SELECT c.conversation_id,m.channel_id FROM chatwoot_conversations c JOIN messaging_conversations m ON m.organization_id=c.organization_id AND m.id=c.conversation_id WHERE c.organization_id=$1 AND c.integration_id=$2 AND c.remote_conversation_id=$3 AND m.recipient_kind='GROUP'`,[org,job.integration_id,remote])).rows[0]);
@@ -207,6 +207,7 @@ export function createChatwootGroupWorker(options:ChatwootOptions,hooks:{before(
     await tx(org,t=>assertCurrent(t,job,captured.current));
    }
    await tx(org,async t=>{
+    if(verifyDirectSourceScope)await verifyDirectSourceScope(t);
     const current=mediaScope?await assertCurrent(t,job,mediaScope):await snapshot(t,job,mapped.channel_id,mapped.conversation_id),map=await readGroupRemoteMap(t,current);
     if(!map||Number(map.remote_conversation_id)!==remote||data.destinationRevision!==current.scope.destinationRevision)throw fail();
     const evidence=(await t.query<{attendance_revision:number;event:ChatwootAttendanceEvent;credential_revision:number;channel_id:string}>(`SELECT m.attendance_revision,o.event,o.credential_revision,o.channel_id FROM messaging_conversations m

@@ -11,6 +11,7 @@ const event = z.object({
   message_type: z.union([z.string(), z.number()]),
   content_type: z.string().max(100).optional(),
   sender: z.unknown().optional(),
+  source_id: z.string().nullable().optional(),
   private: z.boolean(),
   content: z.string().nullable().optional(),
   content_attributes: z.record(z.string(), z.unknown()).optional(),
@@ -35,6 +36,7 @@ export function parseChatwootReply(
     message.event !== "message_created" ||
     (!["outgoing", 1].includes(message.message_type) && !nativeCsat) ||
     message.private ||
+    message.source_id?.startsWith("WAID:") ||
     message.content_attributes?.jrc_broker_message_id
   )
     return null;
