@@ -1,3 +1,4 @@
+import {ordinaryQrReceipt} from '../evolution-fleet/dispatch-trace.js';
 import type {EvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
 import type {OrganizationTransaction,TenantTransaction} from '../../db/tenant-transaction.js';
 import type {QrEvent} from '../messaging/qr-events.js';
@@ -289,7 +290,7 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
         await tx.query(`INSERT INTO messaging_status_events(organization_id,channel_id,provider_scope,upstream_message_id,state) VALUES($1,$2,$3,$4,$5)
           ON CONFLICT(organization_id,channel_id,provider_scope,upstream_message_id,state) DO NOTHING`,[org,channel,scope,event.upstreamMessageId,event.state]);
         const messages=(await tx.query<{id:string;state:import('../messaging/types.js').MessageState}>(`SELECT m.id,m.state FROM messaging_messages m JOIN messaging_conversations c ON c.organization_id=m.organization_id AND c.id=m.conversation_id
-          WHERE m.organization_id=$1 AND m.channel_id=$2 AND m.upstream_message_id=$3 AND m.provider_scope=$5 AND m.direction='OUTGOING' AND c.recipient_kind='GROUP' AND c.group_jid=$4 FOR UPDATE OF m`,[org,channel,event.upstreamMessageId,event.groupJid,scope])).rows;
+          WHERE m.organization_id=$1 AND m.channel_id=$2 AND m.upstream_message_id=$3 AND m.provider_scope=$5 AND m.direction='OUTGOING' AND c.recipient_kind='GROUP' AND c.group_jid=$4 AND ${ordinaryQrReceipt('m')} FOR UPDATE OF m`,[org,channel,event.upstreamMessageId,event.groupJid,scope])).rows;
         for(const m of messages)if(canAdvanceMessageState(m.state,event.state))await tx.query('UPDATE messaging_messages SET state=$3,updated_at=clock_timestamp() WHERE organization_id=$1 AND id=$2',[org,m.id,event.state]);
         return {duplicate:false,executionId:null,reason:null};
       }

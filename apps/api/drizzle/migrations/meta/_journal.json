@@ -673,6 +673,13 @@
       "when": 1795780800000,
       "tag": "0096_chatwoot_live_claim_streak",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1795867200000,
+      "tag": "0097_qr_dispatch_trace",
+      "breakpoints": true
     }
   ]
 }

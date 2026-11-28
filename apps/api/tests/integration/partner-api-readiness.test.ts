@@ -7,7 +7,7 @@ beforeAll(async () => { db = await attendanceDatabase(); }, 60_000);
 afterAll(async () => { await db?.dispose(); });
 
 it('accepts the fully migrated partner API under the actual app role', async () => {
-  expect(RUNTIME_SCHEMA_BASELINE).toBe('0096_chatwoot_live_claim_streak');
+  expect(RUNTIME_SCHEMA_BASELINE).toBe('0097_qr_dispatch_trace');
   const client = await db.database.pool.connect();
   try {
     await client.query('BEGIN');

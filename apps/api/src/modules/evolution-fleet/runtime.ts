@@ -1,3 +1,4 @@
+import {dispatchTraceOrganizations,pinPhysicalDispatch,savePhysicalResponse,type DispatchPeer} from './dispatch-trace.js';
 import {normalizeEvolutionDatabaseError} from './errors.js';
 import {randomUUID} from 'node:crypto';
 import {EvolutionProviderAdapter,EvolutionWorkspaceClient,EvolutionGroupsClient,EvolutionMessagingClient,createEvolutionGroupTextSender,createEvolutionGroupMediaSender,
@@ -65,6 +66,7 @@ export function createPostgresFleetStore(transaction:FleetTransaction,fleet:Read
 export function createEvolutionFleetRuntime(environment:Record<string,string|undefined>,transact:FleetTransaction|undefined,
  options:{store?:FleetStore;factories?:Partial<Factories>}={}){
  const fleet=loadEvolutionFleet(environment);
+ const traced=dispatchTraceOrganizations(environment.QR_DISPATCH_TRACE_ORGANIZATIONS);
  if(!options.store&&!transact)throw new Error('EVOLUTION_FLEET_TRANSACTION_REQUIRED');
  const store=options.store??createPostgresFleetStore(transact!,fleet);
  const factories:Factories={provider:engine=>new EvolutionProviderAdapter(engine.providerOptions()),
@@ -74,7 +76,7 @@ export function createEvolutionFleetRuntime(environment:Record<string,string|und
   groupMedia:(engine,key)=>createEvolutionGroupMediaSender({...engine.providerOptions(),instanceKey:key}),...options.factories};
  const capture=(org:string,key:string,operationId?:string,tx?:TenantTransaction)=>store.resolve(org,key,operationId,tx);
  const same=(a:EngineSnapshot,b:EngineSnapshot)=>a.instanceId===b.instanceId&&a.organizationId===b.organizationId&&a.engineId===b.engineId&&a.generation===b.generation&&a.destinationFingerprint===b.destinationFingerprint&&a.traditional===b.traditional;
- const execute=async<T>(context:ProviderContext,key:string,mutation:boolean,invoke:(engine:EvolutionEngine)=>Promise<T>,pinned?:EngineSnapshot,reconciliation=false):Promise<T>=>{
+ const execute=async<T>(context:ProviderContext,key:string,mutation:boolean,invoke:(engine:EvolutionEngine)=>Promise<T>,pinned?:EngineSnapshot,reconciliation=false,peer?:DispatchPeer):Promise<T>=>{
   const snapshot=await capture(context.organizationId,key,context.engineOperationId);
   if(pinned&&!same(snapshot,pinned))throw fault('EVOLUTION_ENGINE_BINDING_CHANGED');
   const engine=resolveBoundEngine(fleet,snapshot);
@@ -85,7 +87,13 @@ export function createEvolutionFleetRuntime(environment:Record<string,string|und
   let dispatched=false,received=false;
   try{
    await store.assert(snapshot,undefined,mutation||!reconciliation);
+   const intent=peer&&context.engineIntent?.kind==='QR_DISPATCH'&&traced.has(snapshot.organizationId)?context.engineIntent:undefined;
+   if(intent){
+     if(!transact)throw fault('EVOLUTION_ENGINE_CONFIGURATION_INVALID');
+     await pinPhysicalDispatch(transact,snapshot,intent,peer!,environment.QR_WEBHOOK_SIGNING_KEY);
+   }
    dispatched=true;const result=await invoke(engine);received=true;
+   if(intent)await savePhysicalResponse(transact!,snapshot,intent,(result as {upstreamMessageId?:unknown})?.upstreamMessageId);
    await store.assert(snapshot,undefined,mutation||!reconciliation);await store.settle(lease,true,null);return result;
   }catch(error){
    const candidate=error instanceof Error?error:Object.assign(new Error('PROVIDER_OPERATION_FAILED'),{code:'PROVIDER_OPERATION_FAILED'});
@@ -122,13 +130,13 @@ export function createEvolutionFleetRuntime(environment:Record<string,string|und
      supplied as ProviderContext:{organizationId:org,requestId:randomUUID(),deadline:new Date(Date.now()+30000),signal:AbortSignal.timeout(30000)};
     return execute({...context,...(intent?{engineIntent:intent}:{})},key,!['downloadMedia','readWebhookConfiguration'].includes(String(property)),engine=>{
      const client=factories.messaging(engine,key);return(Reflect.get(client,property,client) as (...args:unknown[])=>Promise<unknown>).apply(client,args);
-    },pinned,String(property)==='readWebhookConfiguration');
+    },pinned,String(property)==='readWebhookConfiguration', ['sendText','sendMedia'].includes(String(property))?{kind:'INDIVIDUAL',value:String(args[0])}:undefined);
    };
   }});
  };
  const webhook=async(org:string,key:string,channelId:string)=>{
   const snapshot=await capture(org,key);const engine=resolveBoundEngine(fleet,snapshot);
-  return{reconciliationOnly:snapshot.state==='DISABLED',token:engine.webhookToken({organizationId:org,channelId,instanceId:snapshot.instanceId,upstreamKey:key}),
+  return{authenticatedSnapshot:snapshot,reconciliationOnly:snapshot.state==='DISABLED',token:engine.webhookToken({organizationId:org,channelId,instanceId:snapshot.instanceId,upstreamKey:key}),
    assert:(tx:TenantTransaction)=>store.assert(snapshot,tx)};
  };
  const guardOperation=async(tx:TenantTransaction,org:string,operationId:string,mutation=false)=>{
@@ -136,8 +144,8 @@ export function createEvolutionFleetRuntime(environment:Record<string,string|und
   if(result.rows[0]?.valid!==true)throw fault('EVOLUTION_ENGINE_BINDING_CHANGED');
  };
  return{provider,workspace,groups,messaging,webhook,capture,assert:store.assert,guardOperation,
-  groupText:(c:ProviderContext,k:string,r:{kind:'GROUP';groupJid:string},text:string)=>execute(c,k,true,e=>factories.groupText(e,k).sendText(c,r,text)),
-  groupMedia:(c:ProviderContext,k:string,r:{kind:'GROUP';groupJid:string},media:BinaryMedia)=>execute(c,k,true,e=>factories.groupMedia(e,k).sendMedia(c,r,media)),
+  groupText:(c:ProviderContext,k:string,r:{kind:'GROUP';groupJid:string},text:string)=>execute(c,k,true,e=>factories.groupText(e,k).sendText(c,r,text),undefined,false,{kind:'GROUP',value:r.groupJid}),
+  groupMedia:(c:ProviderContext,k:string,r:{kind:'GROUP';groupJid:string},media:BinaryMedia)=>execute(c,k,true,e=>factories.groupMedia(e,k).sendMedia(c,r,media),undefined,false,{kind:'GROUP',value:r.groupJid}),
   // Preserve G3's historical configuration fingerprint when fleet is absent.
   configurationScope:(origin:string)=>fleet.size===1?JSON.stringify([environment.EVOLUTION_BASE_URL,origin,environment.QR_WEBHOOK_SIGNING_KEY]):JSON.stringify(['evolution-fleet:v1',origin,[...fleet.values()].map(engine=>engine.metadata())]),
  };

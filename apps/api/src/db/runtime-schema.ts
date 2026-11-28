@@ -18,13 +18,20 @@ import {centralMediaRuntimeSql} from './central-media-runtime-schema.js';
 import {guidedSetupRuntimeSql} from './guided-setup-runtime-schema.js';
 import {boxRoutingRuntimeSql} from './box-routing-runtime-schema.js';
 import {historySyncRuntimeSql} from './history-sync-runtime-schema.js';
-export const RUNTIME_SCHEMA_BASELINE = '0096_chatwoot_live_claim_streak';
+export const RUNTIME_SCHEMA_BASELINE = '0097_qr_dispatch_trace';
 
 type SchemaProbeQuery = (sql: string) => Promise<{ rows: Array<{ ready: boolean | null }> }>;
 
 // The app role cannot read drizzle.__drizzle_migrations. This is a structural
 // readiness probe, not a migration journal/hash comparison.
 const requiredObjectsSql = `SELECT
+  EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE oid=pg_catalog.to_regclass('public.qr_dispatch_evidence')
+    AND relrowsecurity AND relforcerowsecurity AND pg_catalog.pg_get_userbyid(relowner)='jrc_migrator')
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_index WHERE indexrelid=pg_catalog.to_regclass('public.qr_dispatch_evidence_key') AND indisunique AND indisvalid)
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid=pg_catalog.to_regclass('public.qr_dispatch_evidence')
+    AND tgname='qr_keep_dispatch_trace' AND tgfoid=pg_catalog.to_regprocedure('public.qr_keep_dispatch_trace()') AND tgenabled IN ('O','A'))
+  AND EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE oid=pg_catalog.to_regclass('public.qr_traced_dispatch_attempts') AND 'security_invoker=true'=ANY(reloptions))
+  AND
   EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=pg_catalog.to_regclass('public.chatwoot_connections')
     AND attname='live_claims_since_review' AND atttypid='smallint'::regtype AND attnotnull AND NOT attisdropped)
   AND

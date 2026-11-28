@@ -6,6 +6,8 @@ import { withOrganizationTransaction } from '../../src/db/tenant-transaction.js'
 import { createOrganization, runInAdminTransaction } from '../../src/modules/organizations/repository.js';
 import { createPostgresMessagingRepository } from '../../src/modules/messaging/repository.js';
 import { dispatchClaim } from '../../src/modules/messaging/dispatcher.js';
+import {createEvolutionFleetRuntime} from '../../src/modules/evolution-fleet/runtime.js';
+import {EvolutionMessagingClient} from '@jrc/providers';
 import { createMessagingWorker } from '../../src/modules/messaging/worker.js';
 import { createQrMessagingService, ensureQrChannel } from '../../src/modules/messaging/qr-service.js';
 import { createIsolatedPostgresDatabase, requireTestDatabaseAdminUrl, type IsolatedPostgresDatabase } from './helpers/postgres.js';
@@ -70,6 +72,51 @@ describe('P4.1 saída QR observada no PostgreSQL isolado', () => {
     return { org:organizationId,actor,channel,instance,conversation,qr,auth,payload,transact,outgoing,sending,rejectWrite:()=>{rejectWrite=true;} };
   }
 
+  it('persists the physical single-engine scope once for the exact part across two workers and a dropped response',async()=>{
+    const h=await harness(),attempt=await h.sending(),key='synthetic-physical-key';
+    let posts=0;
+    const fleet=createEvolutionFleetRuntime({EVOLUTION_BASE_URL:'https://synthetic.example.test',EVOLUTION_API_KEY:'synthetic-token',
+      QR_DISPATCH_TRACE_ORGANIZATIONS:h.org},(org,work)=>withOrganizationTransaction(pool,org,work),{
+      factories:{messaging:()=>({sendText:async()=>{posts++;throw Object.assign(Error('lost after send'),{uncertain:true});}} as unknown as EvolutionMessagingClient)}
+    });
+    const instanceKey=(await h.transact(tx=>tx.query('SELECT upstream_instance_key FROM instances WHERE organization_id=$1 AND id=$2',[h.org,h.instance]))).rows[0].upstream_instance_key;
+    const client=await fleet.messaging(h.org,instanceKey,{kind:'QR_DISPATCH',messageId:attempt.messageId,leaseToken:attempt.leaseToken});
+    await Promise.allSettled([client.sendText('15550000001','synthetic'),client.sendText('15550000001','synthetic')]);
+    expect(posts).toBe(1);
+    await h.transact(tx=>repository.completeSend(tx,{organizationId:h.org,messageId:attempt.messageId,leaseToken:attempt.leaseToken,
+      outcome:{state:'UNKNOWN',canonicalErrorCode:'QR_SEND_UNKNOWN'}}));
+    const read=async()=>(await h.transact(tx=>tx.query('SELECT state,physical_dispatch,physical_response_key,provider_message_id FROM qr_traced_dispatch_attempts WHERE organization_id=$1 AND message_id=$2',[h.org,attempt.messageId]))).rows[0];
+    expect((await read()).physical_dispatch).toMatchObject({instanceId:h.instance,engineId:'legacy',generation:1,traditional:true,recipientKind:'INDIVIDUAL'});
+    expect((await read()).provider_message_id).toBeNull();
+    await h.qr.ingest(h.channel,h.auth,h.payload(key));
+    await h.qr.ingest(h.channel,h.auth,{event:'messages.update',instance:instanceKey,data:{status:'READ',key:{id:key,fromMe:true,remoteJid:'15550000001@s.whatsapp.net'}}});
+    expect(await read()).toMatchObject({state:'UNKNOWN',physical_response_key:null,provider_message_id:null});
+    expect((await h.outgoing()).rows).toMatchObject([{id:attempt.messageId,state:'UNKNOWN'}]);
+    expect(posts).toBe(1);
+  });
+  it('quarantines both parts when concurrent provider responses claim the same physical key',async()=>{
+    const h=await harness();
+    const addConversation=async()=>{
+      const contact=(await h.transact(tx=>tx.query('INSERT INTO messaging_contacts(organization_id,external_id) VALUES($1,$2) RETURNING id',[h.org,'15550000003']))).rows[0].id;
+      return (await h.transact(tx=>tx.query('INSERT INTO messaging_conversations(organization_id,channel_id,contact_id) VALUES($1,$2,$3) RETURNING id',[h.org,h.channel,contact]))).rows[0].id;
+    };
+    const first=await h.sending(),second=await h.sending('second',await addConversation());
+    let entered=0,release!:()=>void;
+    const ready=new Promise<void>(resolve=>{release=resolve;});
+    const fleet=createEvolutionFleetRuntime({EVOLUTION_BASE_URL:'https://synthetic.example.test',EVOLUTION_API_KEY:'synthetic-token',
+      QR_DISPATCH_TRACE_ORGANIZATIONS:h.org},(org,work)=>withOrganizationTransaction(pool,org,work),{
+      factories:{messaging:()=>({sendText:async()=>{if(++entered===2)release();await ready;return{upstreamMessageId:'same-physical-key'};}} as unknown as EvolutionMessagingClient)}
+    });
+    const instanceKey=(await h.transact(tx=>tx.query('SELECT upstream_instance_key FROM instances WHERE id=$1',[h.instance]))).rows[0].upstream_instance_key;
+    const send=async(a:typeof first,peer:string)=>(await fleet.messaging(h.org,instanceKey,{kind:'QR_DISPATCH',messageId:a.messageId,leaseToken:a.leaseToken})).sendText(peer,'test');
+    const outcomes=await Promise.allSettled([send(first,'15550000001'),send(second,'15550000003')]);
+    expect(outcomes.filter(o=>o.status==='fulfilled')).toHaveLength(1);
+    const rows=(await h.transact(tx=>tx.query('SELECT physical_response_key,conflicting_response_key,key_conflict FROM qr_dispatch_evidence ORDER BY attempt_id'))).rows;
+    expect(rows).toHaveLength(2);expect(rows.every(r=>r.key_conflict)).toBe(true);
+    expect(rows.filter(r=>r.physical_response_key==='same-physical-key')).toHaveLength(1);
+    expect(rows.filter(r=>r.conflicting_response_key==='same-physical-key')).toHaveLength(1);
+    await expect(h.transact(tx=>tx.query('UPDATE qr_dispatch_evidence SET key_conflict=false'))).rejects.toThrow('QR_DISPATCH_TRACE_IMMUTABLE');
+  });
   it('persiste e deduplica saída do aparelho sem outbox ou job de bot', async () => {
     const h = await harness();
     await h.qr.ingest(h.channel, h.auth, h.payload('device-id'));

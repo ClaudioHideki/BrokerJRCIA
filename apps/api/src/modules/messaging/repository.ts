@@ -1,3 +1,4 @@
+import {ordinaryQrReceipt} from '../evolution-fleet/dispatch-trace.js';
 import {settleResolvedPhysicalCycles} from '../attendance/resolved-cycle.js';
 import { isOrganizationActive } from "../tenancy/operational-limits.js";
 import { transitionChannelOwner } from '../attendance/transition.js';
@@ -1066,6 +1067,7 @@ export function createPostgresMessagingRepository(): MessagingRepository {
         await transaction.query<MessageDatabaseRow>(
           `SELECT ${MESSAGE_COLUMNS} FROM messaging_messages
           WHERE organization_id = $1 AND channel_id = $2 AND provider_scope='' AND upstream_message_id = $3
+            AND ${ordinaryQrReceipt('messaging_messages')}
           FOR UPDATE`,
           [input.organizationId, input.channelId, input.upstreamMessageId],
         ),
@@ -1580,13 +1582,16 @@ export function createPostgresMessagingRepository(): MessagingRepository {
         >(
           `SELECT state FROM messaging_status_events
             WHERE organization_id = $1 AND channel_id = $2 AND upstream_message_id = $3
-              AND provider_scope=(SELECT provider_scope FROM messaging_messages WHERE organization_id=$1 AND id=$4)
+              AND provider_scope=coalesce((SELECT CASE WHEN a.physical_response_key=$3 AND NOT a.key_conflict THEN a.physical_dispatch->>'receiptScope' ELSE 'qr-receipt:conflict' END FROM qr_traced_dispatch_attempts a
+                WHERE a.organization_id=$1 AND a.message_id=$4 AND a.lease_token=$5 AND (a.physical_dispatch->>'receiptScope' IS NOT NULL OR a.key_conflict)),
+                (SELECT provider_scope FROM messaging_messages WHERE organization_id=$1 AND id=$4))
             ORDER BY occurred_at, id`,
           [
             input.organizationId,
             owned.channelId,
             input.outcome.upstreamMessageId,
             input.messageId,
+            input.leaseToken,
           ],
         );
         let reconciledState: MessageState = "SENT";

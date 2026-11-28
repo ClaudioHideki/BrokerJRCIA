@@ -1,3 +1,4 @@
+import {recordPhysicalAcknowledgment} from '../evolution-fleet/dispatch-trace.js';
 import {lockAttendanceChannel} from '../attendance/repository.js';
 import {admitOriginReceipt,assertOriginFactPersisted,type OriginReceiptInput} from './origin-receipt.js';
 import {persistConnectionFact} from './qr-connection-order.js';
@@ -22,6 +23,7 @@ const error = (code: string, status = 422) =>
   Object.assign(new Error(code), { code, status });
 export interface QrServiceOptions {
   fleet?: EvolutionFleetRuntime;
+  traceOrganizations?:ReadonlySet<string>;
   baseUrl: string;
   apiKey: string;
   webhookOrigin: string;
@@ -286,6 +288,12 @@ export function createQrMessagingService(options: QrServiceOptions) {
         if(groupEvents.length)await options.groups?.ingest(tx,binding.organizationId,channelId,groupEvents);
         for (const event of events) {
           if(event.kind==='group')continue;
+          if((event.kind==='status'||event.kind==='group-status')&&event.physicalPeer&&ownerPhone&&authority?.authenticatedSnapshot
+              &&options.traceOrganizations?.has(binding.organizationId)){
+            await recordPhysicalAcknowledgment(tx,authority.authenticatedSnapshot,channelId,
+              {kind:event.kind==='group-status'?'GROUP':'INDIVIDUAL',value:event.physicalPeer},ownerPhone,
+              options.signingKey,event.upstreamMessageId,event.state);
+          }
           if(event.kind==='group-text'||event.kind==='group-media'||event.kind==='group-status') {
             // A group JID and its participant are never converted to a contact/phone.
             // Persist the authenticated fact in this transaction before acknowledging it.

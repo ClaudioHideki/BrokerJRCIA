@@ -30,10 +30,11 @@ export type QrEvent =
       participantJidAlt:string|null;content:{type:'TEXT';text:string};occurredAt:Date}
   | {kind:'group-media';mixedSenderKey?:true;groupJid:string;upstreamMessageId:string;fromMe:boolean;participantJid:string|null;
       participantJidAlt:string|null;media:MediaRegistration;caption:string;occurredAt:Date}
-  | {kind:'group-status';groupJid:string;upstreamMessageId:string;state:'SENT'|'DELIVERED'|'READ'|'FAILED'}
+  | {kind:'group-status';physicalPeer?:string;groupJid:string;upstreamMessageId:string;state:'SENT'|'DELIVERED'|'READ'|'FAILED'}
   | { kind: "connection"; state: "CONNECTED" | "DISCONNECTED"; identity?: string; observedAt?: Date }
   | {
       kind: "status";
+      physicalPeer?:string;
       upstreamMessageId: string;
       state: "SENT" | "DELIVERED" | "READ" | "FAILED";
     };
@@ -132,12 +133,19 @@ export function normalizeQrEvent(
           };
         const state = states[String(status)];
         const destination=data.remoteJid??key.remoteJid;
+        // Only the native key itself may establish direction, peer and physical ID.
+        const exact=key.fromMe===true && typeof key.id==='string' && (data.keyId===undefined || data.keyId===key.id)
+          && typeof key.remoteJid==='string' && (data.remoteJid===undefined || data.remoteJid===key.remoteJid);
+        const pn=qrPhone(key.remoteJid);
+        const peer=exact && (key.remoteJidAlt===undefined || (pn&&qrPhone(key.remoteJidAlt)===pn))
+          ? (pn ?? (typeof key.remoteJid==='string'&&key.remoteJid.endsWith('@g.us')?key.remoteJid:undefined)) : undefined;
+        const evidence=peer?{physicalPeer:peer}:{};
         if(state && typeof destination==='string' && destination.endsWith('@g.us'))
-          return [{kind:'group-status',groupJid:groupJid.parse(destination),upstreamMessageId:id.parse(data.keyId??key.id),state}];
+          return [{kind:'group-status',...evidence,groupJid:groupJid.parse(destination),upstreamMessageId:id.parse(data.keyId??key.id),state}];
         return state
           ? [
               {
-                kind: "status",
+                kind: "status",...evidence,
                 upstreamMessageId: id.parse(data.keyId ?? key.id),
                 state,
               },

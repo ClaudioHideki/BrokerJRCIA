@@ -1,3 +1,9 @@
+import {reportQrEvidence} from '../../../../scripts/report-qr-outbound-evidence.mjs';
+import {createPostgresMessagingRepository} from '../../src/modules/messaging/repository.js';
+import {createQrMessagingService} from '../../src/modules/messaging/qr-service.js';
+import {observeQrIdentityScope} from '../../src/modules/messaging/qr-identity.js';
+import {recordPhysicalAcknowledgment} from '../../src/modules/evolution-fleet/dispatch-trace.js';
+import {createHmac} from 'node:crypto';
 import {randomUUID} from 'node:crypto';import {readFileSync} from 'node:fs';import {resolve} from 'node:path';
 import {Pool} from 'pg';import {beforeAll,afterAll,it,expect,vi} from 'vitest';
 import {runMigrations} from '../../src/db/migrate.js';
@@ -123,4 +129,75 @@ it('I/O acquisition waits for instance authority without holding the engine lock
   expect((await holder.query('SELECT evolution_assert_binding($1,$2,$3,$4,$5,false) AS valid',[a.org,a.id,binding.engineId,binding.generation,binding.destinationFingerprint])).rows[0].valid).toBe(true);
   await holder.query('COMMIT');const io=await acquire;await store.settle(io,true,null);
  }finally{await holder.query('ROLLBACK');holder.release();await acquire?.catch(()=>{});}
+});
+it('keeps late physical receipts per original part, peer and authenticated engine generation',async()=>{
+ await maintenance(async tx=>{
+   if(!(await tx.query('SELECT EXISTS(SELECT 1 FROM evolution_engines) registered')).rows[0].registered)await registerEvolutionEngines(env,tx,true);
+   await tx.query("UPDATE evolution_engines SET state=CASE WHEN id='east' THEN 'ACTIVE' ELSE 'DRAINING' END,session_budget=100");
+ });
+ const a=await provision(await tenant()),channel=randomUUID(),contact=randomUUID(),conversation=randomUUID(),integration=randomUUID(),obs=randomUUID();
+ const peer='15550000001',owner='15550000002',remote=71902,subject=688;
+ let posts=0;
+ const runtime=createEvolutionFleetRuntime({...env,QR_DISPATCH_TRACE_ORGANIZATIONS:a.org},transact,{factories:{
+   messaging:()=>({async sendText(){posts++;return{upstreamMessageId:'physical-key'};}}) as any}});
+ const snapshot=await runtime.capture(a.org,a.key);
+ await transact(a.org,async tx=>{
+   await tx.query("UPDATE provider_operations SET status='SUCCEEDED',reconciliation_required=false WHERE id=$1",[a.operation]);
+   await tx.query("UPDATE instances SET status='CONNECTED' WHERE id=$1",[a.id]);
+   await tx.query("INSERT INTO messaging_channels(id,organization_id,provider_account_id,provider,instance_id,credential_reference) VALUES($1,$2,$3,'BAILEYS',$4,'qr-engine')",[channel,a.org,a.account,a.id]);
+   await tx.query('INSERT INTO messaging_contacts(id,organization_id,external_id) VALUES($1,$2,$3)',[contact,a.org,peer]);
+   await tx.query('INSERT INTO messaging_conversations(id,organization_id,channel_id,contact_id) VALUES($1,$2,$3,$4)',[conversation,a.org,channel,contact]);
+   await tx.query("INSERT INTO chatwoot_accounts(organization_id,base_url,account_id,status) VALUES($1,'https://synthetic.example.test',7,'READY')",[a.org]);
+   await tx.query("INSERT INTO chatwoot_connections(id,organization_id,channel_id,inbox_id,name,status) VALUES($1,$2,$3,9,'synthetic','READY')",[integration,a.org,channel]);
+   await tx.query('INSERT INTO chatwoot_conversations(organization_id,integration_id,conversation_id,contact_id,source_id,remote_conversation_id) VALUES($1,$2,$3,41,\'synthetic\',$4)',[a.org,integration,conversation,subject]);
+   await tx.query(`INSERT INTO chatwoot_attendance_observations(organization_id,id,integration_id,channel_id,destination_revision,credential_revision,account_id,inbox_id,remote_conversation_id,conversation_id,event_key,event,disposition)
+     VALUES($1,$2,$3,$4,1,1,7,9,$5,$6,'synthetic',$7,'APPLIED')`,[a.org,obs,integration,channel,subject,conversation,{kind:'HUMAN_PUBLIC',remoteMessageId:remote}]);
+   await tx.query("INSERT INTO integration_jobs(organization_id,integration_id,kind,dedupe_key,payload,status) VALUES($1,$2,'CHATWOOT_REPLY','synthetic',$3,'SUCCEEDED')",
+     [a.org,integration,{attendanceObservationId:obs,conversationId:subject,messageId:remote,destinationRevision:1}]);
+ });
+ const qr=createQrMessagingService({baseUrl:env.EVOLUTION_BASE_URL,apiKey:env.EVOLUTION_API_KEY,signingKey:env.QR_WEBHOOK_SIGNING_KEY,
+   webhookOrigin:'https://synthetic-broker.example.test',fleet:runtime,traceOrganizations:new Set([a.org]),transact,
+   resolveChannel:async id=>id===channel?{organizationId:a.org,instanceId:a.id}:undefined});
+ const token='Bearer '+(await runtime.webhook(a.org,a.key,channel)).token;
+ const binding=createHmac('sha256',env.QR_WEBHOOK_SIGNING_KEY).update(JSON.stringify(['qr-engine:v1',snapshot.engineId,snapshot.generation,snapshot.destinationFingerprint,snapshot.traditional])).digest('hex');
+ await transact(a.org,tx=>observeQrIdentityScope(tx,{organizationId:a.org,channelId:channel,instanceId:a.id,instanceKey:a.key,
+   signingKey:env.QR_WEBHOOK_SIGNING_KEY,bindingFingerprint:binding},owner,true));
+ const originals=[];
+ for(let part=0;part<2;part++){
+   const message=randomUUID(),lease=randomUUID();originals.push(message);
+   await transact(a.org,async tx=>{
+     await tx.query(`INSERT INTO messaging_messages(id,organization_id,channel_id,conversation_id,direction,source,content,state,idempotency_key,idempotency_body_hash)
+       VALUES($1,$2,$3,$4,'OUTGOING','OPERATOR','{"type":"TEXT","text":"synthetic"}','SENDING',$5,repeat('a',64))`,[message,a.org,channel,conversation,'chatwoot:'+integration+':1:'+remote+':'+part]);
+     await tx.query('INSERT INTO chatwoot_messages(organization_id,integration_id,message_id,remote_message_id) VALUES($1,$2,$3,$4)',[a.org,integration,message,remote]);
+     await tx.query("INSERT INTO messaging_outbox(organization_id,message_id,lease_token,lease_expires_at) VALUES($1,$2,$3,now()+interval '90 seconds')",[a.org,message,lease]);
+     await tx.query("INSERT INTO qr_dispatch_attempts(organization_id,channel_id,conversation_id,message_id,lease_token,lease_expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '90 seconds')",[a.org,channel,conversation,message,lease]);
+   });
+   if(part===0){await(await runtime.messaging(a.org,a.key,{kind:'QR_DISPATCH',messageId:message,leaseToken:lease})).sendText(peer,'synthetic');
+     await transact(a.org,tx=>createPostgresMessagingRepository().completeSend(tx,{organizationId:a.org,messageId:message,leaseToken:lease,outcome:{state:'SENT',upstreamMessageId:'physical-key'}}));}
+   else await transact(a.org,tx=>tx.query("UPDATE qr_dispatch_attempts SET state='REJECTED' WHERE message_id=$1",[message]));
+ }
+ const reportSql=readFileSync(resolve('docs/operations/qr-outbound-evidence.sql'),'utf8').replace('LEFT JOIN qr_dispatch_attempts a ON','LEFT JOIN qr_traced_dispatch_attempts a ON');
+ const report=(msg=remote,conv:number|null=subject)=>transact(a.org,tx=>tx.query(reportSql,[a.org,integration,7,9,1,msg,conv]));
+ const ack=(peerJid:string,fromMe:boolean,id:string,auth=token)=>qr.ingest(channel,auth,{event:'messages.update',instance:a.key,
+   sender:owner+'@s.whatsapp.net',data:{key:{id,fromMe,remoteJid:peerJid},status:'READ'}});
+ await ack('15550000099@s.whatsapp.net',true,'physical-key');
+ await ack(peer+'@s.whatsapp.net',false,'physical-key');
+ await ack(peer+'@s.whatsapp.net',true,'another-key');
+ await expect(ack(peer+'@s.whatsapp.net',true,'physical-key','Bearer invalid')).rejects.toThrow();
+ await transact(a.org,tx=>recordPhysicalAcknowledgment(tx,{...snapshot,generation:snapshot.generation+1},channel,{kind:'INDIVIDUAL',value:peer},owner,env.QR_WEBHOOK_SIGNING_KEY,'physical-key','READ'));
+ expect((await report()).rows.every(row=>row.finding!=='EXACT_PART_READ_RECEIPT')).toBe(true);
+ expect((await report()).rows.find(row=>row.part_id===originals[0]).canonical_state).toBe('SENT');
+ await ack(peer+'@s.whatsapp.net',true,'physical-key');
+ await ack(peer+'@s.whatsapp.net',true,'physical-key');
+ const findings=(await report()).rows;
+ expect(findings.find(row=>row.part_id===originals[0])).toMatchObject({finding:'EXACT_PART_READ_RECEIPT',canonical_state:'READ'});
+ expect(findings.find(row=>row.part_id===originals[1]).finding).not.toBe('EXACT_PART_READ_RECEIPT');
+ expect((await report(remote,null)).rows[0].finding).toBe('ORIGINAL_CONVERSATION_MISSING');
+ expect((await report(remote+1)).rows[0].finding).toBe('NO_EXACT_REPLY_JOB');
+ const reader=await app.connect();
+ try{
+   const output=await reportQrEvidence(reader,[{organization:a.org,integration,account:7,inbox:9,revision:1,message:remote,conversation:subject}]);
+   expect(output.schema).toBe('0097-or-later');expect(output.results[0].rows).toEqual(findings);
+ }finally{reader.release();}
+ expect(posts).toBe(1);
 });

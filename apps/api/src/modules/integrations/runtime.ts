@@ -1,3 +1,4 @@
+import {dispatchTraceOrganizations} from '../evolution-fleet/dispatch-trace.js';
 import {createEvolutionFleetRuntime} from '../evolution-fleet/runtime.js';
 import {createHistoryConnectionAdmission} from '../history-sync/connection-admission.js';
 import {createHistoryLiveMediaRecovery} from '../history-sync/live-media-recovery.js';
@@ -172,6 +173,7 @@ export function createIntegrationRuntime(
   const qr = config.qr
     ? createQrMessagingService({
         ...config.qr,
+        traceOrganizations:dispatchTraceOrganizations(environment.QR_DISPATCH_TRACE_ORGANIZATIONS),
         fleet:fleet!,
         transact,
         identity,
