@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import {inboundNoticesEnabled,readTerminalInboundMedia,unavailableMediaText} from '../messaging/inbound-notices.js';
 import {createChatwootGroupWorker} from './chatwoot-group-worker.js';
 import { z } from "zod";
 import type {TenantTransaction} from '../../db/tenant-transaction.js';
@@ -456,8 +457,9 @@ export function createChatwootWorker(options: ChatwootOptions) {
   async function progress(
     job: Job,
     patch: Record<string, unknown>,
+    current?:TenantTransaction,
   ): Promise<void> {
-    await tx(job.organization_id, async (t) => {
+    const write=async (t:TenantTransaction) => {
       const result = await t.query(
         `UPDATE integration_jobs SET payload=payload || $4::jsonb,updated_at=now()
         WHERE organization_id=$1 AND id=$2 AND lease_token=$3 AND status='RUNNING' AND lease_expires_at>now() RETURNING id`,
@@ -466,7 +468,9 @@ export function createChatwootWorker(options: ChatwootOptions) {
       if (!result.rowCount)
         throw new IntegrationError("INTEGRATION_LEASE_LOST", 409);
       Object.assign(job.payload, patch);
-    });
+    };
+    if(current)await write(current);
+    else await tx(job.organization_id,write);
   }
   async function beforeExternal(job: Job, operation: string) {
     const channelId=job.mirrorLane?.channelId ?? (await tx(job.organization_id, t => readChatwootConnection(t,job.organization_id,job.integration_id)))?.channel_id;
@@ -973,18 +977,33 @@ export function createChatwootWorker(options: ChatwootOptions) {
     }
     const brokerOwnsConversation=!historical&&context.owner?.executor==='BROKER'&&context.owner.remote_binding_id===null;
     let media: BinaryMedia | undefined;
+    let arrivalText:string|undefined;
     if (
       !context.mappedMessage &&
       typeof job.payload.remoteMessageId !== "number" &&
       message.content.type === "MEDIA"
     ) {
-      if (!options.media) throw new MediaError("MEDIA_NOT_CONFIGURED");
-      media = {
-        ...(await options.media.read(org, message.content.mediaId)),
-        ...(message.content.caption
-          ? { caption: message.content.caption }
-          : {}),
-      };
+      const mediaId=message.content.mediaId;
+      if(job.payload.inboundMediaNotice && !inboundNoticesEnabled(org,c.channel_id))
+        throw new IntegrationError('CHATWOOT_INBOUND_NOTICE_PAUSED',409);
+      if(!historical && message.direction==='INCOMING' && message.source==='CONTACT' && inboundNoticesEnabled(org,c.channel_id)){
+        arrivalText=unavailableMediaText(job.payload.inboundMediaNotice);
+        if(!arrivalText && !message.has_mirror_attempt && !priorNative && !originalMirrorOperation){
+          arrivalText=await tx(org,async t=>{
+            const proof=await readTerminalInboundMedia(t,org,job.id);
+            if(!proof || proof.possible_effect)return;
+            await progress(job,{inboundMediaNotice:proof.reason},t);
+            return unavailableMediaText(proof.reason);
+          });
+        }
+      }
+      if(!arrivalText){
+        if (!options.media) throw new MediaError("MEDIA_NOT_CONFIGURED");
+        media = {
+          ...(await options.media.read(org, mediaId)),
+          ...(message.content.caption ? { caption: message.content.caption } : {}),
+        };
+      }
     }
     let map = context.map;
     if(!map&&historical){
@@ -1105,7 +1124,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
           ? externalObserved?`${originLabel}\n${message.content.text}`:message.content.text
           : message.content.type === "TEMPLATE"
             ? message.content.name
-            : undefined;
+            : arrivalText;
       if (!text && !media)
         throw new IntegrationError("CHATWOOT_CONTENT_UNSUPPORTED");
       await progress(job, {
@@ -1121,7 +1140,8 @@ export function createChatwootWorker(options: ChatwootOptions) {
             throw new IntegrationError('CHATWOOT_NATIVE_RECEIPT_REQUIRED',409);
           throw error;
         });
-      if ((job.mirrorLane || job.payload.requiresNativeReceipt === true) && protocol !== LIVE_INGRESS_PROTOCOL)
+      const cardArrival = message.direction==='INCOMING' && message.source==='CONTACT' && message.content.type==='TEXT' && message.content.arrivalNotice==='CONTACT_CARD';
+      if ((arrivalText || cardArrival || job.mirrorLane || job.payload.requiresNativeReceipt === true) && protocol !== LIVE_INGRESS_PROTOCOL)
         throw new IntegrationError('CHATWOOT_NATIVE_RECEIPT_REQUIRED',409);
       const previousNativeProof=job.payload.liveIngressProof;
       const presentationText=media?(externalObserved?`${originLabel}${message.content.type==='MEDIA'&&message.content.caption?'\n'+message.content.caption:''}`:media.caption??''):text!;

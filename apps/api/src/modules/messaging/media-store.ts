@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   MediaError,
+  MAX_MEDIA_BYTES,
   safeMediaName,
   validateMedia,
   validateUploadMedia,
@@ -23,7 +24,9 @@ const descriptor = z.discriminatedUnion("source", [
   ])}),
   z.object({
     source: z.literal("QR"),
-    descriptor: z.strictObject({ messageId: z.string().min(1).max(256) }),
+    descriptor: z.strictObject({ messageId: z.string().min(1).max(256),inboundNotice:z.literal(true).optional(),declaredBytes:z.number().int().positive().optional(),
+      lastDownload:z.strictObject({requested:z.boolean(),elapsedMs:z.number().int().nonnegative(),decodedBytes:z.number().int().nonnegative(),
+        responseBytes:z.number().int().nonnegative().optional()}).optional() }),
   }),
   z.object({
     source: z.literal("META"),
@@ -239,10 +242,22 @@ export function createMediaStore(options: MediaStoreOptions) {
         ).rows[0];
       });
       if (!asset) return;
+      const measure=asset.source==='QR'&&asset.descriptor.inboundNotice===true;
+      const started=performance.now();
+      const measured:{requested:boolean;elapsedMs:number;decodedBytes:number;responseBytes?:number}={requested:false,elapsedMs:0,decodedBytes:0};
       try {
         descriptor.parse(asset);
+        const declared = asset.source==='QR' ? asset.descriptor.declaredBytes : undefined;
+        if(typeof declared==='number' && declared>MAX_MEDIA_BYTES)throw new MediaError('MEDIA_SIZE_LIMIT');
+        measured.requested=true;
         const file = await options.download(asset);
+        measured.elapsedMs=Math.round(performance.now()-started);
+        measured.decodedBytes=file.bytes.byteLength;
+        if(file.downloadResponseBytes!==undefined)measured.responseBytes=file.downloadResponseBytes;
         validateMedia(file);
+        if(typeof declared==='number' && file.bytes.byteLength!==declared)throw new MediaError('MEDIA_LENGTH_MISMATCH',true);
+        if(measure)await tx(org,t=>t.query(`UPDATE messaging_media SET descriptor=jsonb_set(descriptor,'{lastDownload}',$4::jsonb)
+          WHERE organization_id=$1 AND id=$2 AND lease_token=$3 AND status='DOWNLOADING'`,[org,asset.id,asset.lease_token,JSON.stringify(measured)]));
         if (privateStore) {
           const staged = await privateStore.stage(org, asset.id, file, { downloadLeaseToken: asset.lease_token });
           await privateStore.dispatchPut(org, staged.objectId);
@@ -285,6 +300,9 @@ export function createMediaStore(options: MediaStoreOptions) {
           );
         });
       } catch (error) {
+        if(!measured.elapsedMs && measured.requested)measured.elapsedMs=Math.round(performance.now()-started);
+        if(error instanceof MediaError && error.downloadResponseBytes!==undefined)measured.responseBytes=error.downloadResponseBytes;
+        if(error instanceof MediaError && error.decodedDownloadBytes!==undefined)measured.decodedBytes=error.decodedDownloadBytes;
         const retry =
           (!(error instanceof MediaError) || error.retrySafe) &&
           asset.attempts < 6;
@@ -292,7 +310,8 @@ export function createMediaStore(options: MediaStoreOptions) {
           error instanceof MediaError ? error.code : "MEDIA_DOWNLOAD_FAILED";
         await tx(org, (t) =>
           t.query(
-            `UPDATE messaging_media SET status=$4,last_error=$5,lease_token=NULL,lease_expires_at=NULL,available_at=now()+($6*interval '1 second'),updated_at=now()
+            `UPDATE messaging_media SET status=$4,last_error=$5,lease_token=NULL,lease_expires_at=NULL,available_at=now()+($6*interval '1 second'),updated_at=now(),
+              descriptor=CASE WHEN $7::jsonb IS NULL THEN descriptor ELSE jsonb_set(descriptor,'{lastDownload}',$7::jsonb) END
      WHERE organization_id=$1 AND id=$2 AND lease_token=$3 AND status='DOWNLOADING' AND storage_backend='INLINE_V1' AND private_object_id IS NULL`,
             [
               org,
@@ -301,6 +320,7 @@ export function createMediaStore(options: MediaStoreOptions) {
               retry ? "PENDING" : "FAILED",
               code,
               Math.min(300, 5 * 2 ** asset.attempts),
+              measure?JSON.stringify(measured):null,
             ],
           ),
         );

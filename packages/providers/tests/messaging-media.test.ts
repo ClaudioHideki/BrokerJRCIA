@@ -3,6 +3,26 @@ import { MetaCloudClient } from '../src/meta/cloud-client.js';
 import { EvolutionMessagingClient } from '../src/evolution/messaging.js';
 const png=new Uint8Array([137,80,78,71,13,10,26,10]);
 const media={bytes:png,mimeType:'image/png',fileName:'teste.png',kind:'image' as const};
+it('counts received HTTP body bytes even when the QR media stream fails after a partial chunk',async()=>{
+ let started=false;
+ const client=new EvolutionMessagingClient({baseUrl:'https://example.invalid',apiKey:'synthetic',instanceKey:'synthetic',
+   fetch:async()=>new Response(new ReadableStream({pull(controller){
+     if(started){controller.error(Error('stream truncated'));return;}
+     started=true;controller.enqueue(new Uint8Array(29));
+   }}))});
+ await expect(client.downloadMedia('synthetic',true)).rejects.toMatchObject({code:'MEDIA_DOWNLOAD_INTERRUPTED',downloadResponseBytes:29});
+});
+it.each([
+  [()=>new Response('',{status:410}),'MEDIA_REFERENCE_EXPIRED',false],
+  [()=>new Response('',{status:404}),'MEDIA_SOURCE_NOT_FOUND',true],
+  [()=>new Response('',{status:503}),'MEDIA_DOWNLOAD_UNAVAILABLE',true],
+  [()=>new Response('{'),'MEDIA_RESPONSE_INVALID',true],
+  [()=>Response.json({base64:'abc',mimetype:'image/png'}),'MEDIA_RESPONSE_INVALID',true],
+  [()=>new Response(new ReadableStream({start(c){c.error(new Error('interrupted'));}})),'MEDIA_DOWNLOAD_INTERRUPTED',true],
+] as const)('classifies a scoped QR download as %s', async (response,code,retrySafe)=>{
+  const client=new EvolutionMessagingClient({baseUrl:'https://synthetic.invalid',apiKey:'test',instanceKey:'test',fetch:async()=>response()});
+  await expect(client.downloadMedia('synthetic',true)).rejects.toMatchObject({code,retrySafe});
+});
 it('uploads binary media to the bound Meta phone then sends only the resulting media ID',async()=>{
  const fetch=vi.fn().mockResolvedValueOnce(Response.json({id:'123456789'})).mockResolvedValueOnce(Response.json({messages:[{id:'wamid.test'}]}));
  const client=new MetaCloudClient({accessToken:'secret',graphVersion:'v25.0',phoneNumberId:'12345',wabaId:'67890',fetch});

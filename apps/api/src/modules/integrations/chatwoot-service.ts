@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import {readTerminalInboundMedia} from '../messaging/inbound-notices.js';
 import {readDeliverySummary} from './delivery-summary.js';
 import {readJobFailureDiagnostic} from './job-failure-diagnostics.js';
 import { createChatwootAttendanceService } from './chatwoot-attendance-service.js';
@@ -766,7 +767,9 @@ export function createChatwootService(options: ChatwootOptions) {
         );
         if (!result.rowCount)
           throw new IntegrationError("JOB_REQUIRES_RECONCILIATION", 409);
-        await t.query(
+        const terminal=await readTerminalInboundMedia(t,org,id);
+        if(terminal?.possible_effect)throw new IntegrationError("JOB_REQUIRES_RECONCILIATION",409);
+        if(!terminal)await t.query(
           `UPDATE messaging_media SET status='PENDING',attempts=0,available_at=now(),last_error=NULL,updated_at=now() WHERE organization_id=$1 AND status='FAILED' AND storage_backend='INLINE_V1' AND private_object_id IS NULL AND id IN (SELECT media_id FROM messaging_messages WHERE organization_id=$1 AND id=$2)`,
           [org, result.rows[0]?.message_id],
         );

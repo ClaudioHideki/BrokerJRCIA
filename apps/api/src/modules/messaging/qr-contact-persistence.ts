@@ -19,7 +19,8 @@ export async function persistQrContactEvent(tx:TenantTransaction,channel:Messagi
   const observed=event.kind==='outbound'||event.kind==='outbound-media';
   if(observed)await lockAttendanceChannel(tx,org,channelId);
   else await repository.findChannel(tx,org,channelId,{lock:true});
-  const fact:Extract<HistorySyncRecord,{kind:'MESSAGE'}>|null=!event.historical && 'content' in event && event.content.type==='TEXT'
+  const arrivalNotice = 'arrivalNotice' in event && event.arrivalNotice === 'CONTACT_CARD';
+  const fact:Extract<HistorySyncRecord,{kind:'MESSAGE'}>|null=!arrivalNotice && !event.historical && 'content' in event && event.content.type==='TEXT'
     ?{kind:'MESSAGE',recipientKind:'INDIVIDUAL',chatJid:`${event.externalId}@s.whatsapp.net`,providerMessageId:event.upstreamMessageId,
       fromMe:observed,participantJid:null,messageTimestamp:Math.floor(event.occurredAt.getTime()/1000),displayName:null,content:event.content,state:'DELIVERED'}:null;
   if(fact && await reuseHistoryForLive(tx,org,channelId,fact))return false;
@@ -57,7 +58,8 @@ export async function persistQrContactEvent(tx:TenantTransaction,channel:Messagi
     }
   }
   const content:MessageContent='media' in event?{type:'MEDIA',mediaId:capturedMediaId!,
-    kind:event.media.kind,fileName:event.media.fileName,caption:event.caption}:event.content;
+    kind:event.media.kind,fileName:event.media.fileName,caption:event.caption}:arrivalNotice&&event.content.type==='TEXT'
+      ? {...event.content,arrivalNotice:'CONTACT_CARD'} : event.content;
   const liveFact=fact??(!event.historical&&'media' in event?{kind:'MESSAGE',recipientKind:'INDIVIDUAL',chatJid:`${event.externalId}@s.whatsapp.net`,
     providerMessageId:event.upstreamMessageId,fromMe:observed,participantJid:null,displayName:null,messageTimestamp:Math.floor(event.occurredAt.getTime()/1000),
     state:'DELIVERED',content:{type:'LIVE_MEDIA',mediaType:event.media.kind.toUpperCase(),filename:event.media.fileName,caption:event.caption}} as LiveMediaFact:null);
@@ -67,7 +69,7 @@ export async function persistQrContactEvent(tx:TenantTransaction,channel:Messagi
     return;}
   const outcome=await repository.recordIncoming(tx,{id:randomUUID(),organizationId:org,channelId,conversationId:conversation.id,
     webhookEventKey:`qr:${event.upstreamMessageId}`,upstreamMessageId:event.upstreamMessageId,content,occurredAt:event.occurredAt,
-    ...(event.recoveredIdentity||event.historical?{scheduleBot:false}:{}),...(event.historical?{historical:true}:{})});
+    ...(arrivalNotice||event.recoveredIdentity||event.historical?{scheduleBot:false}:{}),...(event.historical?{historical:true}:{})});
   if(liveFact && outcome.kind==='created')await recordLiveHistoryFact(tx,org,channelId,outcome.message.id,liveFact);
   return outcome.kind==='created';
 }

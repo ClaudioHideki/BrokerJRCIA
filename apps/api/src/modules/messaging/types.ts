@@ -15,6 +15,7 @@ export type MessageState =
 export interface TextMessageContent {
   type: "TEXT";
   text: string;
+  arrivalNotice?: "CONTACT_CARD";
 }
 
 export interface TemplateMessageContent {

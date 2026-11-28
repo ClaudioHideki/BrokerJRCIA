@@ -2,10 +2,12 @@ import { z } from "zod";
 import type { MessageContent } from "./types.js";
 import type { MediaRegistration } from "./media-store.js";
 import { safeMediaName } from "@jrc/providers";
+import { contactCardArrival } from './inbound-notices.js';
 import { normalizeQrGroupEvents, type QrGroupEvent } from './qr-group-events.js';
 
 export type QrContactEvent = ({
       kind: "message" | "outbound";
+      arrivalNotice?: 'CONTACT_CARD';
       upstreamMessageId: string;
       externalId: string;
       displayName: string | null;
@@ -43,6 +45,17 @@ const object = (value: unknown): Record<string, unknown> =>
     : {};
 const id = z.string().min(1).max(256);
 const text = z.string().min(1).max(4096);
+function declaredFileBytes(raw:unknown):number|undefined {
+  let size:unknown=raw;
+  if(typeof raw==='string' && /^\d{1,16}$/u.test(raw))size=Number(raw);
+  else if(raw && typeof raw==='object'){
+    const {low,high}=object(raw);
+    if(typeof low!=='number'||!Number.isInteger(low)||low < -2147483648||low>4294967295 ||
+       typeof high!=='number'||!Number.isInteger(high)||high<0||high>2097151)return;
+    size=high*4294967296+(low>>>0);
+  }
+  return typeof size==='number'&&Number.isSafeInteger(size)&&size>0?size:undefined;
+}
 const groupJid=z.string().max(128).regex(/^\d+(?:-\d+)?@g\.us$/u);
 const participantJid=z.string().max(128).regex(/^(?:[1-9]\d{6,14}(?::\d+)?@s\.whatsapp\.net|\d+(?::\d+)?@lid)$/u);
 export function qrPhone(jid: unknown): string | undefined {
@@ -84,6 +97,7 @@ export function normalizeQrEvent(
   payload: unknown,
   expectedInstance: string,
   acceptMixedGroupInbound = false,
+  acceptInboundNotices = false,
 ): QrEvent[] {
   const envelope = object(payload);
   if (envelope.instance !== expectedInstance)
@@ -212,11 +226,18 @@ export function normalizeQrEvent(
       const body =
         message.conversation ?? object(message.extendedTextMessage).text;
       if (body === undefined) {
+        if(acceptInboundNotices && key.fromMe === false && typeof object(message.contactMessage).vcard === 'string' &&
+          Object.keys(message).every(field=>field==='contactMessage'||field==='messageContextInfo')) {
+          return [contactEvent({kind:'message',arrivalNotice:'CONTACT_CARD',upstreamMessageId:id.parse(key.id),
+            displayName:typeof data.pushName==='string'?data.pushName.slice(0,256):null,occurredAt,
+            content:{type:'TEXT',text:contactCardArrival}})];
+        }
         const kind = (
           ["image", "audio", "video", "document", "sticker"] as const
         ).find((value) => message[value + "Message"]);
         if (kind) {
           const media = object(message[kind + "Message"]);
+          const declaredBytes = acceptInboundNotices && key.fromMe===false ? declaredFileBytes(media.fileLength) : undefined;
           return [
             contactEvent({
               kind: key.fromMe === true ? "outbound-media" : "media",
@@ -237,7 +258,8 @@ export function normalizeQrEvent(
                 fileName: safeMediaName(
                   typeof media.fileName === "string" ? media.fileName : kind,
                 ),
-                descriptor: { messageId: id.parse(key.id) },
+                descriptor: { messageId: id.parse(key.id),...(acceptInboundNotices && key.fromMe===false?{inboundNotice:true}:{}),
+                  ...(declaredBytes===undefined?{}:{declaredBytes}) },
               },
             }),
           ];

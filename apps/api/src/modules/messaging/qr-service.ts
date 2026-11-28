@@ -1,4 +1,5 @@
 import {lockAttendanceChannel} from '../attendance/repository.js';
+import {inboundNoticesEnabled} from './inbound-notices.js';
 import {admitOriginReceipt,assertOriginFactPersisted,type OriginReceiptInput} from './origin-receipt.js';
 import {persistConnectionFact} from './qr-connection-order.js';
 import {persistQrContactEvent} from './qr-contact-persistence.js';
@@ -173,13 +174,13 @@ export function createQrMessagingService(options: QrServiceOptions) {
         instanceKey: info.upstream_instance_key,
       });
     },
-    async downloadMedia(channel: MessagingChannel, messageId: string) {
+    async downloadMedia(channel: MessagingChannel, messageId: string, inboundNotice = false) {
       const info = await instance(channel);
       return (options.fleet ? await options.fleet.messaging(channel.organizationId,info.upstream_instance_key) : new EvolutionMessagingClient({
         baseUrl: options.baseUrl,
         apiKey: options.apiKey,
         instanceKey: info.upstream_instance_key,
-      })).downloadMedia(messageId);
+      })).downloadMedia(messageId,inboundNotice && inboundNoticesEnabled(channel.organizationId,channel.id));
     },
     async ingest(
       channelId: string,
@@ -230,7 +231,8 @@ export function createQrMessagingService(options: QrServiceOptions) {
           throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
         const historical=String(envelope.event).toLowerCase().replace(/_/gu,'.')==='messages.set';
         const groupCustody = groupIngressCustodyScopes.get(binding.organizationId + '/' + channelId);
-        let events=historical?normalizeQrHistoryEvent(payload,row.upstream_instance_key):normalizeQrEvent(payload,row.upstream_instance_key,Boolean(groupCustody));
+        let events=historical?normalizeQrHistoryEvent(payload,row.upstream_instance_key):normalizeQrEvent(payload,row.upstream_instance_key,Boolean(groupCustody),
+          !originReceipt && inboundNoticesEnabled(binding.organizationId,channelId));
         if(authority?.reconciliationOnly&&events.some(event=>!['status','group-status'].includes(event.kind)))throw error('EVOLUTION_ENGINE_DISABLED',409);
         // Receipt and message/projection effects are committed together. A duplicate does not rerun bots or observers.
         if(originReceipt){

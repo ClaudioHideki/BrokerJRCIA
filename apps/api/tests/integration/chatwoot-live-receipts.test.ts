@@ -3,16 +3,119 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {runMessagingWorker} from '../../src/commands/messaging-worker.js';
 import {connectionStringForRole} from './helpers/task7.js';
-import {randomUUID} from 'node:crypto';
+import {createHmac,randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import {attendanceDatabase,seedAttendanceTenant} from './helpers/attendance.js';
 import {chatwootEnvironment,createChatwootService,type ChatwootOptions} from '../../src/modules/integrations/chatwoot-service.js';
 import {createChatwootWorker} from '../../src/modules/integrations/chatwoot-worker.js';
 import {createPostgresMessagingRepository} from '../../src/modules/messaging/repository.js';
 import {persistQrContactEvent} from '../../src/modules/messaging/qr-contact-persistence.js';
+import {createQrMessagingService} from '../../src/modules/messaging/qr-service.js';
+import {MAX_MEDIA_BYTES,MediaError} from '@jrc/providers';
 import {inspectMirrorQueue,reviewPendingMirror} from '../../src/modules/integrations/review-pending-mirror.js';
 import {createMediaStore,registerPendingMedia} from '../../src/modules/messaging/media-store.js';
 let db:Awaited<ReturnType<typeof attendanceDatabase>>;
+it.each(['MEDIA_TYPE_UNSUPPORTED','MEDIA_SIZE_LIMIT','MEDIA_DOWNLOAD_FAILED'] as const)('mirrors the individual terminal %s as exactly one public arrival without any attachment or outgoing message',async reason=>{
+ const t=await fixture({lostAck:true});
+ const key=randomUUID();
+ const mediaId=await db.transact(t.org,tx=>registerPendingMedia(tx,t.org,t.channel,{source:'QR',sourceKey:key,
+   descriptor:{messageId:key},kind:'document',fileName:'synthetic.private'}));
+ await db.database.pool.query('UPDATE messaging_messages SET upstream_message_id=$2,content=$3 WHERE id=$1',
+   [t.message,key,JSON.stringify({type:'MEDIA',mediaId,kind:'document',fileName:'synthetic.private',caption:'synthetic secret'})]);
+ await db.database.pool.query("UPDATE messaging_media SET status='FAILED',attempts=$3,last_error=$2 WHERE id=$1",
+   [mediaId,reason,reason==='MEDIA_DOWNLOAD_FAILED'?6:1]);
+ const media=createMediaStore({encryptionKey:t.options.encryptionKey,transact:t.options.transact,download:async()=>{throw Error('unexpected download');}});
+ vi.stubEnv('QR_INBOUND_NOTICE_SCOPES',t.org+'/'+t.channel);
+ try{
+   await db.database.pool.query("UPDATE integration_jobs SET status='FAILED',last_error=$2 WHERE id=$1",[t.job,reason]);
+   await createChatwootService(t.options).retryJob(t.org,t.job,'Synthetic review of one incoming mirror');
+   expect((await db.database.pool.query('SELECT status,last_error FROM messaging_media WHERE id=$1',[mediaId])).rows[0]).toEqual({status:'FAILED',last_error:reason});
+   const run=()=>createChatwootWorker({...t.options,media}).runOnce(t.org);
+   await run();await run();
+   expect(t.nativeBodies).toHaveLength(1);
+   expect(t.nativeBodies[0]).toMatchObject({broker_message_id:t.message,message_type:'incoming',media:null});
+   expect(await t.read()).toMatchObject({status:'SUCCEEDED',payload:{remoteMessageId:901}});
+   expect(t.calls.filter(path=>path.includes('/receipts/'))).toHaveLength(1);
+   expect(String(t.nativeBodies[0]!.content)).toContain('indisponível');
+   expect(JSON.stringify(t.nativeBodies[0])).not.toContain('synthetic secret');
+   expect((await db.database.pool.query('SELECT count(*)::int AS n FROM messaging_outbox WHERE organization_id=$1',[t.org])).rows[0].n).toBe(0);
+ }finally{vi.unstubAllEnvs();}
+});
+it.each(['other-scope','wrong-source-key','pending-bytes','transient-before-budget','previous-post'] as const)('retains %s without issuing an arrival notice',async mode=>{
+ const t=await fixture({legacy:mode==='previous-post'}), key=randomUUID();
+ const mediaId=await db.transact(t.org,tx=>registerPendingMedia(tx,t.org,t.channel,{source:'QR',sourceKey:key,
+   descriptor:{messageId:key},kind:'document',fileName:'synthetic'}));
+ await db.database.pool.query('UPDATE messaging_messages SET upstream_message_id=$2,content=$3 WHERE id=$1',
+   [t.message,mode==='wrong-source-key'?randomUUID():key,JSON.stringify({type:'MEDIA',mediaId,kind:'document',fileName:'synthetic',caption:''})]);
+ await db.database.pool.query('UPDATE messaging_media SET status=$2,last_error=$3,attempts=1 WHERE id=$1',
+   [mediaId,mode==='pending-bytes'?'PENDING':'FAILED',mode==='transient-before-budget'?'MEDIA_DOWNLOAD_FAILED':'MEDIA_TYPE_UNSUPPORTED']);
+ const media=createMediaStore({encryptionKey:t.options.encryptionKey,transact:t.options.transact,download:async()=>{throw Error('unexpected');}});
+ vi.stubEnv('QR_INBOUND_NOTICE_SCOPES',(mode==='other-scope'?randomUUID():t.org)+'/'+t.channel);
+ try{
+  await createChatwootWorker({...t.options,media}).runOnce(t.org);
+  expect(t.nativeBodies).toHaveLength(0);
+  expect(t.calls.filter(path=>path.endsWith('/messages'))).toHaveLength(0);
+  expect((await t.read()).payload).not.toHaveProperty('inboundMediaNotice');
+  if(mode==='previous-post'){
+    await db.database.pool.query("UPDATE integration_jobs SET status='FAILED' WHERE id=$1",[t.job]);
+    await expect(createChatwootService(t.options).retryJob(t.org,t.job,'Review of possible prior effect')).rejects.toMatchObject({code:'JOB_REQUIRES_RECONCILIATION'});
+    expect(await t.read()).toMatchObject({status:'FAILED'});
+    expect((await db.database.pool.query('SELECT status,attempts FROM messaging_media WHERE id=$1',[mediaId])).rows[0]).toEqual({status:'FAILED',attempts:1});
+  }
+ }finally{vi.unstubAllEnvs();}
+});
+it('records one safely rendered public contact-card arrival for concurrent webhooks and no bot or WhatsApp dispatch',async()=>{
+ const t=await fixture({lostAck:true}), signing='synthetic-contact-card-route-signing-credential';
+ const phone='15555550123';
+ await db.database.pool.query('UPDATE messaging_contacts SET external_id=$2 WHERE organization_id=$1',[t.org,phone]);
+ await db.database.pool.query("UPDATE integration_jobs SET status='SUCCEEDED' WHERE id=$1",[t.job]);
+ vi.stubEnv('QR_INBOUND_NOTICE_SCOPES',t.org+'/'+t.channel);
+ try{
+  const qr=createQrMessagingService({signingKey:signing,baseUrl:'https://evolution.invalid',apiKey:'synthetic',
+    webhookOrigin:'https://broker.invalid',transact:t.options.transact,resolveChannel:async()=>({organizationId:t.org,instanceId:t.instance})});
+  const event={event:'messages.upsert',instance:t.instance,data:{key:{id:'synthetic-received-card',remoteJid:phone+'@s.whatsapp.net',fromMe:false},
+    messageTimestamp:Math.floor(Date.now()/1000),message:{contactMessage:{displayName:'private subject',vcard:'BEGIN:VCARD\nFN:private subject\nEND:VCARD'}}}};
+  const auth='Bearer '+createHmac('sha256',signing).update('qr-webhook\0'+t.org+'\0'+t.channel).digest('base64url');
+  await Promise.all([qr.ingest(t.channel,auth,event),qr.ingest(t.channel,auth,event)]);
+  const originals=(await db.database.pool.query("SELECT id,content FROM messaging_messages WHERE organization_id=$1 AND upstream_message_id=$2 AND direction='INCOMING'",[t.org,event.data.key.id])).rows;
+  expect(originals).toHaveLength(1);
+  expect(JSON.stringify(originals)).not.toContain('private subject');
+  const worker=createChatwootWorker(t.options);
+  await worker.runOnce(t.org);await worker.runOnce(t.org);
+  expect(t.nativeBodies).toHaveLength(1);
+  expect(t.nativeBodies[0]).toMatchObject({broker_message_id:originals[0].id,message_type:'incoming',media:null});
+  expect(t.stored()).toMatchObject({message_id:901,state:'PERSISTED'});
+  expect((await db.database.pool.query('SELECT message_id FROM messaging_bot_jobs WHERE organization_id=$1 AND message_id=$2',[t.org,originals[0].id])).rowCount).toBe(0);
+  expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
+ }finally{vi.unstubAllEnvs();}
+});
+it.each(['below','above','absent','underdeclared','temporarily-unavailable'] as const)('enforces incoming media custody for %s file length',async mode=>{
+ const t=await fixture(), key=randomUUID(), limit=MAX_MEDIA_BYTES;
+ const declarations={below:limit-1,above:limit+1,absent:undefined,underdeclared:12,'temporarily-unavailable':13};
+ const declaredBytes=declarations[mode];
+ const size=mode==='below'?limit-1:mode==='absent'?limit+1:13;
+ const id=await db.transact(t.org,tx=>registerPendingMedia(tx,t.org,t.channel,{source:'QR',sourceKey:key,kind:'document',fileName:'synthetic.pdf',
+   descriptor:{messageId:key,inboundNotice:true,...(declaredBytes===undefined?{}:{declaredBytes})}}));
+ let downloads=0;
+ const media=createMediaStore({encryptionKey:t.options.encryptionKey,transact:t.options.transact,download:async()=>{
+   downloads++;
+   if(mode==='temporarily-unavailable'&&downloads===1)throw new MediaError('MEDIA_DOWNLOAD_FAILED',true);
+   const bytes=new Uint8Array(size);bytes.set(new TextEncoder().encode('%PDF-1.4'));
+   return{kind:'document',fileName:'synthetic.pdf',mimeType:'application/pdf',bytes};
+ }});
+ const state=async()=>(await db.database.pool.query("SELECT status,last_error,byte_size,sha256,descriptor->'lastDownload' AS measured FROM messaging_media WHERE id=$1",[id])).rows[0];
+ await media.runOnce(t.org);
+ if(mode==='below')expect(await state()).toMatchObject({status:'READY',byte_size:limit-1,sha256:expect.stringMatching(/^[a-f0-9]{64}$/)});
+ if(mode==='above'||mode==='absent')expect(await state()).toMatchObject({status:'FAILED',last_error:'MEDIA_SIZE_LIMIT',sha256:null});
+ if(mode==='underdeclared')expect(await state()).toMatchObject({status:'PENDING',last_error:'MEDIA_LENGTH_MISMATCH',sha256:null});
+ if(mode==='temporarily-unavailable'){
+   expect(await state()).toMatchObject({status:'PENDING',last_error:'MEDIA_DOWNLOAD_FAILED'});
+   await db.database.pool.query("UPDATE messaging_media SET available_at=now()-interval '1 second' WHERE id=$1",[id]);
+   await media.runOnce(t.org);expect(await state()).toMatchObject({status:'READY',byte_size:13});
+ }
+ expect(downloads).toBe(mode==='above'?0:mode==='temporarily-unavailable'?2:1);
+ expect((await state()).measured).toMatchObject({requested:mode!=='above',elapsedMs:expect.any(Number),decodedBytes:mode==='above'?0:size});
+});
 beforeAll(async()=>{db=await attendanceDatabase();},60_000);
 afterAll(async()=>{await db?.dispose();});
 async function fixture(input:{admitted?:boolean;uniqueRemoteIds?:boolean;lostAck?:boolean;pending?:boolean;unavailable?:boolean;legacy?:boolean;mutate?:string;expireAfterPost?:boolean;rejectOnce?:boolean}={}){

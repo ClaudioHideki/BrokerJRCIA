@@ -6,8 +6,11 @@ export interface BinaryMedia {
   fileName: string;
   kind: MediaKind;
   caption?: string;
+  downloadResponseBytes?: number;
 }
 export class MediaError extends Error {
+  downloadResponseBytes?: number;
+  decodedDownloadBytes?: number;
   constructor(
     readonly code: string,
     readonly retrySafe = false,

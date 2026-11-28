@@ -1,5 +1,17 @@
 # Chatwoot por empresa — controle e operação
 
+## Chegada de cartão de contato e de anexo indisponível
+
+Nos canais QR individuais autorizados em `QR_INBOUND_NOTICE_SCOPES`, o Broker pode publicar uma linha de entrada no Atendimento quando recebe um cartão de contato ou quando o ativo de uma mensagem de entrada encerrou a aquisição com motivo conhecido. Configurar na API e no worker a mesma lista de pares `UUID-organização/UUID-canal` separados por vírgula, conferindo a caixa e a instância em cada ambiente. O padrão vazio mantém o comportamento anterior. Remover o par suspende novas admissões nesse canal. Verificar o destino, a capacidade LIVE do LAB2 e a custódia antes da habilitação.
+
+Um cartão individual `contactMessage` recebido com direção explícita gera texto fixo ligado à chave do original. O Broker descarta os bytes vCard e os dados do contato compartilhado. O aviso não agenda um bot. O formato não passa a ser aceito para saída. Para mídia, conferir `messaging_media.status`, `last_error`, `attempts` e, nas entradas novas diagnosticadas, `descriptor.declaredBytes` e `descriptor.lastDownload`. A última medição contém tempo em milissegundos, se a leitura foi solicitada, tamanho decodificado e, quando conhecido, bytes do corpo HTTP lidos inclusive em interrupção. O tamanho real e a integridade continuam validados pelo armazenamento; exceder o limite declarado de 16 MiB encerra a aquisição antes da leitura.
+
+Um aviso de mídia exige canônico individual `INCOMING/CONTACT`, mesmo canal, mesma chave física QR e ativo terminal. Em falha transitória, o limite da aquisição é seis tentativas. Os códigos distinguem formato, tamanho, referência expirada (HTTP 410), recurso não localizado (HTTP 404), leitura interrompida, resposta inválida, origem indisponível e divergência de tamanho. Para um erro legado `MEDIA_DOWNLOAD_FAILED` esgotado, o aviso relata somente o encerramento das tentativas. Não deduzir HTTP ou tamanho de um registro antigo a partir desse código.
+
+Para um job antigo já falho nas caixas autorizadas, conferir antes a tripla original, canônico, ativo, tentativa anterior, mapa, recibo e linha pública na rota do LAB2. Havendo comprovação de ausência de efeito, a ação administrativa de retry do próprio job conserva o diagnóstico e as tentativas do ativo terminal identificável. A transação recusa a retomada de um caso com possível efeito anterior e exige conciliação. A ação não é uma autorização em lote. Para confirmar o resultado, exigir um único `broker_message_id`, recibo LIVE `PERSISTED` e linha pública `incoming` na conversa correta. Um ACK do WhatsApp referente a outra direção não satisfaz esse aceite.
+
+O aviso preserva o ID do canônico e sua ligação ao ativo. Na revisão LAB2 compatível existe consulta ao recibo persistido, sem operação de enriquecimento do anexo nessa mesma linha. Se bytes válidos forem recuperados depois, preservar o ativo e a linha original. Anexação posterior no painel exigirá um contrato próprio que confirme sua identidade e a integridade do arquivo; repetir a criação com corpo diferente conflita com o recibo anterior.
+
 ## Escopo e evidência
 
 Uma organização Broker corresponde a uma conta em uma instalação Chatwoot.

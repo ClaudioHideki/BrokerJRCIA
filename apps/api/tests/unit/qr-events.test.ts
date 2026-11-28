@@ -4,6 +4,27 @@ import { normalizeQrEvent, normalizeQrHistoryEvent } from '../../src/modules/mes
 const envelope = (data: unknown, event = 'messages.upsert') => ({ event, instance: 'jrc-private-instance', data });
 const message = { key: { id: 'qr-message-1', remoteJid: '15550000001@s.whatsapp.net', fromMe: false }, messageTimestamp: 1789470000, pushName: 'Contato de teste', message: { conversation: 'Olá JRC' } };
 describe('eventos QR canônicos', () => {
+  it('retains verified numeric declarations only for opted-in received files',()=>{
+    const decode=(fileLength:unknown,enabled=true)=>normalizeQrEvent(envelope({...message,message:{documentMessage:{fileLength}}}),'jrc-private-instance',false,enabled)[0];
+    for(const n of [16777215,16777217]){
+      for(const value of [n,String(n),{low:n,high:0,unsigned:true}])
+        expect(decode(value)).toMatchObject({media:{descriptor:{declaredBytes:n}}});
+    }
+    for(const value of [undefined,-1,'2.4',{low:5,high:-1},'999999999999999999'])
+      expect(decode(value)).not.toHaveProperty('media.descriptor.declaredBytes');
+    expect(decode(16777217,false)).not.toHaveProperty('media.descriptor.declaredBytes');
+  });
+  it('projects an opted-in individual inbound contact card without storing its vCard or permitting outbound cards', () => {
+    const item={...message,message:{contactMessage:{displayName:'Synthetic sensitive name',vcard:'BEGIN:VCARD\nTEL:synthetic-sensitive\nEND:VCARD'}}};
+    const decoded=normalizeQrEvent(envelope(item),'jrc-private-instance',false,true);
+    expect(decoded).toMatchObject([{kind:'message',upstreamMessageId:message.key.id,arrivalNotice:'CONTACT_CARD',
+      content:{type:'TEXT',text:'Cartão de contato recebido pelo WhatsApp. O conteúdo do cartão está indisponível no Atendimento.'}}]);
+    expect(JSON.stringify(decoded)).not.toContain('synthetic-sensitive');
+    expect(JSON.stringify(decoded)).not.toContain('Synthetic sensitive name');
+    expect(()=>normalizeQrEvent(envelope(item),'jrc-private-instance')).toThrow();
+    expect(()=>normalizeQrEvent(envelope({...item,key:{...item.key,fromMe:true}}),'jrc-private-instance',false,true)).toThrow();
+    expect(()=>normalizeQrEvent(envelope({...item,key:{id:message.key.id,remoteJid:message.key.remoteJid}}),'jrc-private-instance',false,true)).toThrow();
+  });
   it('preserves only the inbound content of opted-in mixed group sender-key messages', () => {
     const key = { ...message.key, remoteJid: '100-200@g.us', participant: '15550000001@s.whatsapp.net' };
     const distribution = { senderKeyDistributionMessage: { groupId: key.remoteJid, axolotlSenderKeyDistributionMessage: 'synthetic-key-material' } };

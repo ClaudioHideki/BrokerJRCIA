@@ -251,6 +251,7 @@ export function createIntegrationRuntime(
             return qr.downloadMedia(
               channel,
               String(asset.descriptor.messageId),
+              asset.descriptor.inboundNotice === true,
             );
           }
           if (asset.source === "META") {

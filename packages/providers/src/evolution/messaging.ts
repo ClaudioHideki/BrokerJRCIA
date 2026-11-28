@@ -84,7 +84,9 @@ export class EvolutionMessagingClient {
     sending: boolean,
     maximumBytes = 1_048_576,
     context?:ProviderContext,
+    measurement?:{responseBytes:number},
   ): Promise<Record<string, unknown>> {
+    const classifyDownload=measurement!==undefined;
     let response: Response;
     try {
       response = await this.request(
@@ -104,12 +106,18 @@ export class EvolutionMessagingClient {
         },
       );
     } catch {
+      if(classifyDownload)throw new MediaError('MEDIA_DOWNLOAD_UNAVAILABLE',true);
       throw failure(
         sending ? "QR_SEND_UNKNOWN" : "QR_CONFIGURATION_UNAVAILABLE",
       );
     }
     if (!response.ok) {
       await response.body?.cancel();
+      if(classifyDownload){
+        if(response.status===410)throw new MediaError('MEDIA_REFERENCE_EXPIRED');
+        if(response.status===404)throw new MediaError('MEDIA_SOURCE_NOT_FOUND',true);
+        if(response.status===429||response.status>=500)throw new MediaError('MEDIA_DOWNLOAD_UNAVAILABLE',true);
+      }
       if ([400, 401, 403, 404, 422].includes(response.status))
         throw failure("QR_REQUEST_REJECTED");
       if (response.status === 429) throw failure("QR_RATE_LIMITED");
@@ -117,6 +125,7 @@ export class EvolutionMessagingClient {
         sending ? "QR_SEND_UNKNOWN" : "QR_CONFIGURATION_UNAVAILABLE",
       );
     }
+    let responseRead=false;
     try {
       const reader = response.body?.getReader();
       if (!reader) throw new Error();
@@ -126,19 +135,26 @@ export class EvolutionMessagingClient {
         const part = await reader.read();
         if (part.done) break;
         size += part.value.byteLength;
+        if(measurement)measurement.responseBytes=size;
         if (size > maximumBytes) {
           await reader.cancel();
+          if(classifyDownload)throw new MediaError('MEDIA_RESPONSE_SIZE_LIMIT');
           throw new Error();
         }
         chunks.push(part.value);
       }
+      responseRead=true;
       const result: unknown = JSON.parse(
         Buffer.concat(chunks).toString("utf8"),
       );
       if (!result || typeof result !== "object" || Array.isArray(result))
         throw new Error();
       return result as Record<string, unknown>;
-    } catch {
+    } catch (error) {
+      if(classifyDownload){
+        if(error instanceof MediaError)throw error;
+        throw new MediaError(responseRead?'MEDIA_RESPONSE_INVALID':'MEDIA_DOWNLOAD_INTERRUPTED',true);
+      }
       throw failure(
         sending ? "QR_SEND_UNKNOWN" : "QR_CONFIGURATION_UNAVAILABLE",
       );
@@ -160,7 +176,21 @@ export class EvolutionMessagingClient {
   async listTemplates(): Promise<MetaMessageTemplate[]> {
     return [];
   }
-  async downloadMedia(messageId: string): Promise<BinaryMedia> {
+  async downloadMedia(messageId: string, classifyDownload = false): Promise<BinaryMedia> {
+    const measurement=classifyDownload?{responseBytes:0,decodedBytes:0}:undefined;
+    try{
+      const file=await this.readMedia(messageId,measurement);
+      return measurement?{...file,downloadResponseBytes:measurement.responseBytes}:file;
+    }catch(error){
+      if(measurement && error instanceof MediaError){
+        error.downloadResponseBytes=measurement.responseBytes;
+        error.decodedDownloadBytes=measurement.decodedBytes;
+      }
+      throw error;
+    }
+  }
+  private async readMedia(messageId:string,measurement?:{responseBytes:number;decodedBytes:number}):Promise<BinaryMedia>{
+    const classifyDownload=measurement!==undefined;
     if (!messageId || messageId.length > 256)
       throw new MediaError("MEDIA_REFERENCE_INVALID");
     const result = await this.post(
@@ -168,15 +198,19 @@ export class EvolutionMessagingClient {
       { message: { key: { id: messageId } }, convertToMp4: false },
       false,
       Math.ceil((MAX_MEDIA_BYTES * 4) / 3) + 65536,
+      undefined,measurement,
     );
     if (
       typeof result.base64 !== "string" ||
       typeof result.mimetype !== "string" ||
-      !/^[A-Za-z0-9+/]*={0,2}$/.test(result.base64)
+      !/^[A-Za-z0-9+/]*={0,2}$/.test(result.base64) ||
+      classifyDownload && (!result.base64.length || result.base64.length%4!==0)
     )
-      throw new MediaError("MEDIA_DOWNLOAD_FAILED", true);
+      throw new MediaError(classifyDownload?"MEDIA_RESPONSE_INVALID":"MEDIA_DOWNLOAD_FAILED", true);
+    const bytes=new Uint8Array(Buffer.from(result.base64, "base64"));
+    if(measurement)measurement.decodedBytes=bytes.byteLength;
     const media: BinaryMedia = {
-      bytes: new Uint8Array(Buffer.from(result.base64, "base64")),
+      bytes,
       mimeType: canonicalMediaMime(result.mimetype),
       fileName: safeMediaName(
         typeof result.fileName === "string" ? result.fileName : "arquivo",
