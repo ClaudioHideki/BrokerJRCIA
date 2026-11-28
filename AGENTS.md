@@ -7,6 +7,10 @@
 - Do not deploy to production without an explicit approved release task.
 - Run `npm test` and review `git diff --check` before every commit.
 
+### Regressão de download HTTPS de mídia
+
+Em 27/11/2026, uma resposta em duas partes acima do limite terminou com sucesso no conector da revisão `8ddd1d70` e passou bytes parciais ao validador de mídia. A correção local rejeita a promessa HTTP antes de encerrar o socket e descarta o conteúdo. Ao alterar esse transporte, executar `npx vitest run apps/api/tests/unit/chatwoot-safe-http-socket.test.ts`. A regressão verifica o limite exato, o último bloco acima do limite e a rejeição integral, além dos testes de cancelamento e TLS. A homologação de publicação e de implantação é registrada separadamente.
+
 <!-- jrc-operational-init:v1 -->
 ## Segundo Cérebro e Governança Operacional
 

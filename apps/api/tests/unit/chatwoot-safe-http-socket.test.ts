@@ -57,6 +57,13 @@ it('bounds chunked bodies and cancels a stalled response', async () => {
   await expect(connectPinnedHttps({ ...connection('/large'), maxResponseBytes: 5 }, ca)).rejects.toThrow('CHATWOOT_RESPONSE_LIMIT');
   await expect(connectPinnedHttps({ ...connection('/slow'), signal: AbortSignal.timeout(50) }, ca)).rejects.toThrow();
 });
+
+it('rejects the entire transfer when the final data chunk takes it past the limit', async () => {
+  const exact = await connectPinnedHttps({ ...connection('/large'), maxResponseBytes: 19 }, ca);
+  expect(await exact.text()).toBe('1234567890123456789');
+  await expect(connectPinnedHttps({ ...connection('/large'), maxResponseBytes: 18 }, ca))
+    .rejects.toThrow('CHATWOOT_RESPONSE_LIMIT');
+});
 it('rejects malformed remote status without an uncaught callback exception', async () => {
   await expect(connectPinnedHttps(connection('/invalid-status'), ca)).rejects.toThrow('CHATWOOT_INVALID_RESPONSE');
 });

@@ -58,19 +58,26 @@ export function connectPinnedHttps(input: SafeConnectionInput, ca?: string): Pro
     }, res => {
       const chunks: Buffer[] = [];
       let size = 0;
+      const rejectLimitedResponse = () => {
+        const error = new Error('CHATWOOT_RESPONSE_LIMIT');
+        // Settle before closing: end can be emitted before the request's error.
+        reject(error);
+        req.destroy(error);
+      };
       res.on('error', reject);
       res.on('aborted', () => reject(new Error('CHATWOOT_RESPONSE_INTERRUPTED')));
       const encodedLength = Number(res.headers['content-length']);
       if (encodedLength > input.maxResponseBytes ||
         (res.headers['content-encoding'] && res.headers['content-encoding'] !== 'identity')) {
-        req.destroy(new Error('CHATWOOT_RESPONSE_LIMIT')); return;
+        rejectLimitedResponse(); return;
       }
       res.on('data', (chunk: Buffer) => {
         size += chunk.length;
-        if (size > input.maxResponseBytes) { req.destroy(new Error('CHATWOOT_RESPONSE_LIMIT')); return; }
+        if (size > input.maxResponseBytes) { rejectLimitedResponse(); return; }
         chunks.push(chunk);
       });
       res.on('end', () => {
+        if (size > input.maxResponseBytes) return;
         try {
           const status = res.statusCode ?? 502;
           const headers = new Headers();
