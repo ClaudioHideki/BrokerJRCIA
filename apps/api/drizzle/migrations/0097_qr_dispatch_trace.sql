@@ -18,7 +18,7 @@ ALTER TABLE qr_dispatch_evidence FORCE ROW LEVEL SECURITY;
 CREATE POLICY qr_evidence_tenant ON qr_dispatch_evidence TO jrc_app
  USING(organization_id=nullif(current_setting('app.organization_id',true),'')::uuid)
  WITH CHECK(organization_id=nullif(current_setting('app.organization_id',true),'')::uuid);
-CREATE POLICY qr_evidence_migrator ON qr_dispatch_evidence TO jrc_migrator USING(true) WITH CHECK(true);
+CREATE POLICY lifecycle_migrator ON qr_dispatch_evidence TO jrc_migrator USING(true) WITH CHECK(true);
 REVOKE ALL ON qr_dispatch_evidence FROM PUBLIC,jrc_app,jrc_auth,jrc_platform,jrc_lifecycle;
 GRANT SELECT,INSERT(organization_id,attempt_id,engine_scope,physical_dispatch),
   UPDATE(physical_response_key,key_conflict,conflicting_response_key) ON qr_dispatch_evidence TO jrc_app;
@@ -37,6 +37,8 @@ END $$;
 CREATE TRIGGER qr_keep_dispatch_trace BEFORE UPDATE ON qr_dispatch_evidence
   FOR EACH ROW EXECUTE FUNCTION qr_keep_dispatch_trace();
 CREATE VIEW qr_traced_dispatch_attempts WITH (security_invoker=true) AS
- SELECT a.*,e.physical_dispatch,e.physical_response_key,e.key_conflict FROM qr_dispatch_attempts a
+ SELECT a.id,a.organization_id,a.channel_id,a.conversation_id,a.message_id,a.lease_token,
+        a.state,a.provider_message_id,a.created_at,e.physical_dispatch,e.physical_response_key,e.key_conflict
+ FROM qr_dispatch_attempts a
  LEFT JOIN qr_dispatch_evidence e ON e.organization_id=a.organization_id AND e.attempt_id=a.id;
 GRANT SELECT ON qr_traced_dispatch_attempts TO jrc_app;
