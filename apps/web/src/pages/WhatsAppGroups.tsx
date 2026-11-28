@@ -91,7 +91,7 @@ export function WhatsAppGroups({ client, channelId, canManage,eventsConfiguratio
     return () => { clear(); unregister(); };
   }, [client, channelId]);
 
-  async function mutate(item?: WhatsAppGroupCatalogItem) {
+  async function mutate(item?: WhatsAppGroupCatalogItem | 'all-current') {
     const page = visible.page;
     if (lock.current || !grant.current || visible.loading || item && (!page || page.snapshot.status !== 'CURRENT')) return;
     lock.current = true;
@@ -104,7 +104,8 @@ export function WhatsAppGroups({ client, channelId, canManage,eventsConfiguratio
       const body = item && page ? UpdateWhatsAppGroupSelectionSchema.parse({
         expectedSnapshotId: page.snapshot.snapshotId, expectedCatalogRevision: page.snapshot.catalogRevision,
         expectedIdentityRevision: page.snapshot.scope.identityRevision,
-        expectedIdentityFingerprint: page.snapshot.scope.identityFingerprint, groupJid: item.groupJid, enabled: !item.selected,
+        expectedIdentityFingerprint: page.snapshot.scope.identityFingerprint,
+        ...(item === 'all-current' ? { allCurrent: true } : { groupJid: item.groupJid, enabled: !item.selected }),
       }) : {};
       const data = parse(await client.request<unknown>(`${base}/${item ? 'selection' : 'refresh'}`, {
         method: item ? 'PUT' : 'POST', body: JSON.stringify(body), signal: controller.signal,
@@ -142,7 +143,7 @@ export function WhatsAppGroups({ client, channelId, canManage,eventsConfiguratio
   const page = visible.page;
   return <section className="panel" aria-label="Grupos do WhatsApp">
     <div className="panel-heading"><h2>Grupos do WhatsApp</h2></div>
-    <p>Selecione o grupo e configure o bot. A ativação exige um menu publicado e uma mensagem para iniciar o atendimento.</p>
+    <p>Selecione os grupos para usar no JRC Conversas. A configuração do bot é opcional e individual por grupo.</p>
     {eventsConfigurationOrganizationId?<WhatsAppGroupEventsConfiguration client={client} channelId={channelId}
       organizationId={eventsConfigurationOrganizationId} revision={configurationRevision}/>:null}
     {visible.error ? <p className="notice notice--error" role="alert">{visible.error}</p> : null}
@@ -152,6 +153,9 @@ export function WhatsAppGroups({ client, channelId, canManage,eventsConfiguratio
       <p>Observado em <time dateTime={page.snapshot.observedAt}>{new Date(page.snapshot.observedAt).toLocaleString('pt-BR')}</time></p>
       {page.snapshot.status === 'STALE' ? <p>Atualize os grupos do WhatsApp antes de alterar a seleção.</p> : null}
       <p>Página {visible.stack.length} · {page.total} grupos no catálogo</p>
+      {canManage && <button className="button button--secondary" type="button"
+        disabled={page.total === 0 || page.snapshot.status !== 'CURRENT' || visible.busy || visible.loading}
+        onClick={() => { void mutate('all-current'); }}>Selecionar todos os grupos atuais</button>}
       {page.items.length === 0 ? <p>Nenhum grupo foi observado neste catálogo.</p> : <ul>{page.items.map(item => <li key={item.groupJid}>
         <label><input type="checkbox" aria-label={`Selecionar ${item.subject}`} checked={item.selected}
           disabled={!canManage || page.snapshot.status !== 'CURRENT' || visible.busy || visible.loading}

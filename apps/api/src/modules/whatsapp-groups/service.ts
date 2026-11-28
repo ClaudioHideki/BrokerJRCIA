@@ -245,6 +245,15 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
         return current;
       });
       const engine=await options.captureBinding?.(principal.organizationId,captured.upstream_instance_key);
+      const verifyReturn = async (tx: TenantTransaction) => {
+        const current = await access(tx, principal, channel, true);
+        if (engine) await options.assertBinding!(engine, tx, true);
+        const row = check(await catalog(tx, principal.organizationId, channel), current.connected);
+        if (current.instance_id !== captured.instance_id || current.upstream_instance_key !== captured.upstream_instance_key) {
+          throw new GroupCatalogError('GROUP_IDENTITY_CHANGED');
+        }
+        return row;
+      };
       try {
         const context: ProviderContext = { organizationId: principal.organizationId, requestId: randomUUID(), deadline: new Date(Date.now() + 10000), signal: AbortSignal.timeout(10000) };
         const identity = await options.readIdentity(context, captured.upstream_instance_key);
@@ -253,21 +262,30 @@ export function createWhatsAppGroupCatalog(options: GroupCatalogOptions) {
         if (fingerprint !== parsed.expectedIdentityFingerprint) throw new GroupCatalogError('GROUP_IDENTITY_CHANGED');
       } catch (error) {
         const code = error instanceof GroupCatalogError ? error.code : providerCode(error);
-        await options.transact(principal.organizationId, tx => tx.query(`UPDATE whatsapp_group_catalogs SET last_error_code=$5,updated_at=clock_timestamp()
-          WHERE organization_id=$1 AND channel_id=$2 AND snapshot_id=$3 AND catalog_revision=$4`, [principal.organizationId, channel, parsed.expectedSnapshotId, parsed.expectedCatalogRevision, code === 'GROUP_IDENTITY_CHANGED' ? 'IDENTITY_CHANGED' : code]));
+        await options.transact(principal.organizationId, async tx => {
+          if ('allCurrent' in parsed) await verifyReturn(tx);
+          await tx.query(`UPDATE whatsapp_group_catalogs SET last_error_code=$5,updated_at=clock_timestamp()
+            WHERE organization_id=$1 AND channel_id=$2 AND snapshot_id=$3 AND catalog_revision=$4`, [principal.organizationId, channel, parsed.expectedSnapshotId, parsed.expectedCatalogRevision, code === 'GROUP_IDENTITY_CHANGED' ? 'IDENTITY_CHANGED' : code]);
+        });
         throw error instanceof GroupCatalogError ? error : new GroupCatalogError(code, 502);
       }
       return options.transact(principal.organizationId, async tx => {
-      const current = await access(tx, principal, channel, true);
-      if(engine)await options.assertBinding!(engine,tx,true);
-      const row = check(await catalog(tx, principal.organizationId, channel), current.connected);
-      if (current.instance_id !== captured.instance_id || current.upstream_instance_key !== captured.upstream_instance_key) throw new GroupCatalogError('GROUP_IDENTITY_CHANGED');
-      const updated = await tx.query('UPDATE whatsapp_group_catalog_items SET selected=$4 WHERE organization_id=$1 AND channel_id=$2 AND group_jid=$3', [principal.organizationId, channel, parsed.groupJid, parsed.enabled]);
-      if (!updated.rowCount) throw new GroupCatalogError('GROUP_NOT_IN_CATALOG', 404);
-      await tx.query('UPDATE whatsapp_group_catalogs SET catalog_revision=catalog_revision+1,updated_at=now() WHERE organization_id=$1 AND channel_id=$2', [principal.organizationId, channel]);
-      await tx.query(`INSERT INTO audit_logs(organization_id,actor_id,event_type,resource_type,resource_id,request_id,outcome,metadata)
-        VALUES($1,$2,'WHATSAPP_GROUP_SELECTION_CHANGED','messaging_channel',$3,$4,'SUCCESS',$5::jsonb)`, [principal.organizationId, principal.actorId, channel, randomUUID(), JSON.stringify({ snapshotId: row.snapshot_id, selected: parsed.enabled })]);
-      return pageIn(tx, principal, channel, { limit: 50 }, true);
+      const row = await verifyReturn(tx);
+      const allCurrent = 'allCurrent' in parsed;
+      const selected = allCurrent || parsed.enabled;
+      const updated = allCurrent
+        ? await tx.query('UPDATE whatsapp_group_catalog_items SET selected=true WHERE organization_id=$1 AND channel_id=$2 AND NOT selected', [principal.organizationId, channel])
+        : await tx.query('UPDATE whatsapp_group_catalog_items SET selected=$4 WHERE organization_id=$1 AND channel_id=$2 AND group_jid=$3', [principal.organizationId, channel, parsed.groupJid, selected]);
+      if (!updated.rowCount && !allCurrent) throw new GroupCatalogError('GROUP_NOT_IN_CATALOG', 404);
+      if (updated.rowCount) {
+        await tx.query('UPDATE whatsapp_group_catalogs SET catalog_revision=catalog_revision+1,updated_at=now() WHERE organization_id=$1 AND channel_id=$2', [principal.organizationId, channel]);
+        await tx.query(`INSERT INTO audit_logs(organization_id,actor_id,event_type,resource_type,resource_id,request_id,outcome,metadata)
+          VALUES($1,$2,'WHATSAPP_GROUP_SELECTION_CHANGED','messaging_channel',$3,$4,'SUCCESS',$5::jsonb)`, [principal.organizationId, principal.actorId, channel, randomUUID(), JSON.stringify({ snapshotId: row.snapshot_id, selected,
+            ...(allCurrent ? { allCurrent: true, changedCount: updated.rowCount } : {}) })]);
+      }
+      const page = await pageIn(tx, principal, channel, { limit: 50 }, true);
+      if (allCurrent && page.snapshot.status !== 'CURRENT') throw new GroupCatalogError('GROUP_CATALOG_STALE');
+      return page;
       });
     },
   };
