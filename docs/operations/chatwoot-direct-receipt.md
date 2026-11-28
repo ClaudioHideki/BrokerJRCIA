@@ -43,3 +43,9 @@ instanceId, generation, peer, sourceId, providerMessageId, state, evidenceSha256
 ```
 
 O consumidor autenticado deve conferir o registro comprometido no Broker, identificar e bloquear a mesma obrigação e o mesmo original no Rails, preservar a distinção entre transporte direto e canônico Broker e atualizar apenas a projeção de estado. `evidenceSha256` é o hash dos bytes exatos do manifesto privado revalidado nas bases. Não substitui a verificação no provedor. O comando Broker não contém a projeção Rails.
+
+## Ecos de espelhamento com origem nula
+
+Nas integrações incluídas em qualquer das duas listas, um callback de saída pública ou a mensagem Rails canônica com `content_attributes.jrc_broker_message_id` presente veta o encaminhamento ao WhatsApp. A verificação cobre atributos em objeto e em string JSON válida, inclusive quando `source_id` é nulo. O marcador isolado não confirma o sucesso do espelho. A classificação e o controle de atendimento continuam sujeitos à prova e às regras existentes; a observação é preservada com sua identidade original. Uma referência de citação `in_reply_to` não é marcador de espelho.
+
+Uma duplicata autenticada e marcada pode chegar enquanto um trabalho antigo está reservado e o worker consulta o Rails. O Broker registra o veto na observação do mesmo destino/conta/caixa/conversa/mensagem. A transação que materializaria a saída verifica o veto sob o mesmo lock de canal, mesmo em trabalhos legados sem ID de observação. A chegada de um marcador depois de um outbox já comprometido exige conciliação dos efeitos anteriores. A implantação não cancela canônicos existentes nem reclassifica resultados terminais. Aplicar a mesma configuração em toda a API e todos os consumidores conforme a seção de proteção.

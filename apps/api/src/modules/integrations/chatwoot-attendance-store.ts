@@ -1,4 +1,4 @@
-import {railsAttributes,railsDeleted} from './direct-source-policy.js';
+import {hasBrokerMirrorMarker,railsAttributes,railsDeleted} from './direct-source-policy.js';
 import {settleResolvedPhysicalCycles} from '../attendance/resolved-cycle.js';
 import {requireCampaignIntent} from './chatwoot-campaign-authority.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -130,10 +130,28 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
   // intents remain observable but cannot pause the selected executor.
   if(event.kind==='AUTOMATED_REPLY'&&(event.campaignIntentId||record(original.additional_attributes).jrc_campaign_broker===true)&&
     !await mayForwardChatwootAttendanceReply(tx,s,event))event={...event,mayForwardReply:false,interruptsBot:false};
+  const markedMirror=guardDirectSource && event.kind!=='CONVERSATION_CONTROL' &&
+    (original.message_type===1 || original.message_type==='outgoing') && original.private===false &&
+    hasBrokerMirrorMarker(record(original.content_attributes));
   const key=event.kind==='CONVERSATION_CONTROL'?`control:${event.remoteConversationId}:${createHash('sha256').update(JSON.stringify(event)).digest('hex')}`:`message:${event.remoteMessageId}`;
   const prior=(await tx.query<Observation>(`SELECT id,event,disposition,reply_payload,conversation_id,cycle FROM chatwoot_attendance_observations
     WHERE organization_id=$1 AND integration_id=$2 AND destination_revision=$3 AND account_id=$4 AND inbox_id=$5 AND event_key=$6`,[...scopeValues(s),key])).rows[0];
-  if(prior)return {observationId:prior.id,duplicate:true,disposition:prior.disposition};
+  if(prior){
+    if(markedMirror){
+      // A duplicate never grants dispatch authority. It may withdraw a queued
+      // reply before the local outbox commit, under the same channel lock.
+      await tx.query(`UPDATE chatwoot_attendance_observations o SET reply_payload=NULL,
+          event=event||'{"brokerMirrorMarkerObserved":true,"mayForwardReply":false}'::jsonb
+        WHERE o.organization_id=$1 AND o.integration_id=$2 AND o.id=$3 AND o.channel_id=$4
+          AND o.remote_conversation_id=$5 AND o.event->>'brokerMirrorMarkerObserved' IS DISTINCT FROM 'true'
+          AND (o.reply_payload IS NOT NULL OR EXISTS(SELECT 1 FROM integration_jobs j WHERE j.organization_id=o.organization_id
+            AND j.integration_id=o.integration_id AND j.kind='CHATWOOT_REPLY' AND j.status IN ('PENDING','RUNNING')
+            AND j.payload->>'destinationRevision'=o.destination_revision::text AND j.payload->>'messageId'=o.event->>'remoteMessageId'
+            AND j.payload->>'conversationId'=o.remote_conversation_id::text))`,
+        [s.organizationId,s.integrationId,prior.id,s.channelId,event.remoteConversationId]);
+    }
+    return {observationId:prior.id,duplicate:true,disposition:prior.disposition};
+  }
   let candidate:string|null=null;
   if(event.kind!=='CONVERSATION_CONTROL'&&event.kind!=='CONTACT_MESSAGE'&&event.kind!=='SYSTEM_MESSAGE'){
     const echo=(await tx.query<{remote_message_id:string}>(`SELECT remote_message_id FROM chatwoot_mirror_attempts
@@ -153,9 +171,11 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
   }
   const effectCandidate=await candidateConversationEffect(tx,s,event,raw);
   if(effectCandidate?.confirmed&&event.kind!=='CONVERSATION_CONTROL')event={...event,kind:'BROKER_ECHO',interruptsBot:false,mayForwardReply:false};
+  if(markedMirror)event={...event,mayForwardReply:false};
   let reply:Record<string,unknown>|null=null;
   if(event.mayForwardReply){
-    const attributes={...record(original.content_attributes)}; delete attributes.jrc_broker_message_id;
+    const attributes={...record(original.content_attributes)};
+    if(!guardDirectSource)delete attributes.jrc_broker_message_id;
     try { reply=parseChatwootReply({...original,content_attributes:attributes},{accountId:s.accountId,inboxId:s.inboxId,guardDirectSource}); }
     catch { /* Unsupported content does not erase authenticated attendance control. */ }
   }
@@ -177,7 +197,7 @@ export async function recordChatwootAttendanceEvent(tx:TenantTransaction,s:Chatw
     account_id,inbox_id,remote_conversation_id,event_key,event,disposition,mirror_attempt_id,reply_payload,conversation_id,cycle,effect_outbox_id)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id,event,disposition,reply_payload,conversation_id,cycle`,
     [s.organizationId,randomUUID(),s.integrationId,s.channelId,s.destinationRevision,s.credentialRevision,s.accountId,s.inboxId,event.remoteConversationId,key,
-      JSON.stringify(newCycleAdmission?{...event,newCycleAdmission:1}:event),disposition,candidate,reply?JSON.stringify(reply):null,control?.conversation_id??null,control?.cycle??null,effectCandidate?.id??null])).rows[0]!;
+      JSON.stringify({...event,...(newCycleAdmission?{newCycleAdmission:1}:{}),...(markedMirror?{brokerMirrorMarkerObserved:true}:{})}),disposition,candidate,reply?JSON.stringify(reply):null,control?.conversation_id??null,control?.cycle??null,effectCandidate?.id??null])).rows[0]!;
   if(disposition==='ECHO_PENDING'){
     const effectId=effectCandidate?.id??(candidate?(await tx.query<{outbox_id:string}>(`select e.outbox_id from automation_conversation_effects e
       join chatwoot_mirror_attempts a on a.organization_id=e.organization_id and a.message_id=e.messaging_message_id

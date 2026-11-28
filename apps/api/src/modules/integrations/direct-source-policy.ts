@@ -6,6 +6,11 @@ export interface DirectSourcePolicy {
 export function guardDirectSource(policy:DirectSourcePolicy,integrationId:string) {
   return policy.directSourceGuardIntegrations?.has(integrationId)===true || policy.directTransportReviewIntegrations?.has(integrationId)===true;
 }
+// A reserved marker can veto egress. It cannot authenticate a successful mirror.
+export function hasBrokerMirrorMarker(attrs:Record<string,unknown>|undefined) {
+  return attrs?.jrc_broker_message_id!=null;
+}
+
 export function railsDeleted(attrs:Record<string,unknown>|undefined) {
   const value=attrs?.deleted;
   return value!==undefined && value!==false && value!=='false';

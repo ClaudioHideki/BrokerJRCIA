@@ -26,7 +26,7 @@ import { beginChatwootMirrorAttempt,confirmChatwootMirrorAttempt,failChatwootMir
 import type { ChatwootAttendanceEvent } from './chatwoot-attendance-events.js';
 import {mayStartIndependentHumanCycle,preparePhysicalConversationCycle} from './chatwoot-conversation-cycle.js';
 import {canonicalCampaignRecipient,requireCampaignIntent,verifyCanonicalCampaignMessage} from './chatwoot-campaign-authority.js';
-import {guardDirectSource,railsDeleted} from './direct-source-policy.js';
+import {guardDirectSource,hasBrokerMirrorMarker,railsDeleted} from './direct-source-policy.js';
 import {requireCanonicalHumanIntent} from './chatwoot-human-intent.js';
 import {lockChatwootDestination} from './chatwoot-destination.js';
 import {assertChatwootMirrorContext} from './chatwoot-mirror-context.js';
@@ -454,6 +454,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
       if(!scoped.account || !scoped.connection?.inbox_id || typeof job.payload.conversationId!=='number' || typeof job.payload.messageId!=='number')
         throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_UNAVAILABLE',409);
       guardedCanonical=await env.client(scoped.account).canonicalMessage(Number(scoped.account.account_id),Number(scoped.connection.inbox_id),job.payload.conversationId,job.payload.messageId,true);
+      if(hasBrokerMirrorMarker(guardedCanonical.content_attributes))throw new IntegrationError('CHATWOOT_MIRROR_SOURCE_REVIEW',409);
       if(guardedCanonical.source_id===undefined)throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_UNAVAILABLE',409);
       if(guardedCanonical.source_id!==null || railsDeleted(guardedCanonical.content_attributes) || railsDeleted(guardedCanonical.additional_attributes))throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_REVIEW',409);
       const account=scoped.account,connection=scoped.connection;
@@ -467,6 +468,12 @@ export function createChatwootWorker(options: ChatwootOptions) {
             AND a.credential_version=$7 AND d.revision=$8 AND d.approval_status='APPROVED' FOR SHARE OF c,a,d`,
           [job.organization_id,job.integration_id,connection.channel_id,connection.inbox_id,account.account_id,account.base_url,account.credential_version,account.destination?.revision]);
         if(!same.rowCount)throw new IntegrationError('CHATWOOT_DIRECT_SOURCE_CONTEXT_CHANGED',409);
+        const marked=await t.query(`SELECT 1 FROM chatwoot_attendance_observations WHERE organization_id=$1 AND integration_id=$2
+          AND destination_revision=$3 AND account_id=$4 AND inbox_id=$5 AND event_key=$6 AND channel_id=$7
+          AND remote_conversation_id=$8 AND event->>'brokerMirrorMarkerObserved'='true'`,
+          [job.organization_id,job.integration_id,account.destination?.revision,account.account_id,connection.inbox_id,
+           'message:'+job.payload.messageId,connection.channel_id,job.payload.conversationId]);
+        if(marked.rowCount)throw new IntegrationError('CHATWOOT_MIRROR_SOURCE_REVIEW',409);
       };
     }
     if(await groups.receiveReply(job,verifyDirectSourceScope))return;

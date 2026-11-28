@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { attendanceDatabase, seedAttendanceTenant } from './helpers/attendance.js';
 import { initializeChatwootAttendanceMap } from '../../src/modules/integrations/chatwoot-attendance-store.js';
 import { chatwootEnvironment, createChatwootService, type ChatwootOptions } from '../../src/modules/integrations/chatwoot-service.js';
+import { registerPendingMedia } from '../../src/modules/messaging/media-store.js';
 import { createChatwootWorker } from '../../src/modules/integrations/chatwoot-worker.js';
 
 describe('durable new human intent around unrelated uncertain mirrors', () => {
@@ -144,6 +145,59 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
     t.setCanonical({source_id:null,content_attributes:mode==='broken'?'bad':JSON.stringify({...t.message.content_attributes,deleted:true})});
     await t.ingest(t.message);await createChatwootWorker(t.options).runOnce(t.org);
     expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
+  });
+  it.each(['object','string','other-tenant'] as const)('scopes media-echo exclusion while keeping its attendance observation (%s)',async mode=>{
+    const t=await fixture(false,mode==='other-tenant'?'other':'guard');
+    const mediaId=await db.transact(t.org,tx=>registerPendingMedia(tx,t.org,t.channel,{source:'QR',sourceKey:'synthetic-origin',kind:'image',fileName:'synthetic.png',descriptor:{messageId:'synthetic-origin'}}));
+    const mirror=(await db.database.pool.query(`INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state,upstream_message_id)
+      VALUES($1,$2,$3,'OUTGOING','EXTERNAL_OBSERVED',$4::jsonb,'READ','synthetic-origin') RETURNING id`,[t.org,t.channel,t.next,JSON.stringify({type:'MEDIA',mediaId,kind:'image',fileName:'synthetic.png',caption:'synthetic caption'})])).rows[0].id;
+    const prior=(await db.database.pool.query("SELECT id FROM integration_jobs WHERE organization_id=$1 AND message_id=$2 AND kind='MIRROR_MESSAGE' LIMIT 1",[t.org,mirror])).rows[0].id;
+    await db.database.pool.query(`INSERT INTO chatwoot_mirror_attempts(organization_id,channel_id,integration_id,destination_revision,account_id,inbox_id,
+        conversation_id,remote_conversation_id,cycle,message_id,job_id,lease_token,state)
+      VALUES($1,$2,$3,1,7,9,$4,52,1,$5,$6,$7,'REJECTED')`,[t.org,t.channel,t.integration,t.next,mirror,prior,randomUUID()]);
+    const attrs={jrc_broker_message_id:mirror};
+    const raw={...t.message,source_id:null,content:'synthetic caption',attachments:[{id:5001,file_type:'image'}],
+      content_attributes:mode==='string'?JSON.stringify(attrs):attrs};
+    for(const id of [701,702]){await t.ingest({...raw,id});await t.ingest({...raw,id});}
+    const observed=await db.database.pool.query("SELECT disposition,event->>'kind' kind FROM chatwoot_attendance_observations WHERE organization_id=$1 AND event_key IN('message:701','message:702')",[t.org]);
+    expect(observed.rows).toEqual([{disposition:'APPLIED',kind:'HUMAN_PUBLIC'},{disposition:'APPLIED',kind:'HUMAN_PUBLIC'}]);
+    expect((await db.database.pool.query("SELECT id FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rowCount).toBe(mode==='other-tenant'?2:0);
+  });
+  it.each(['object','string'] as const)('fences legacy egress when the exact Rails original has a mirror marker and null source (%s)',async mode=>{
+    const t=await fixture(false,'guard'),attachments=[{id:5010,file_type:'image'}];
+    await t.ingest({...t.message,content:'synthetic caption',attachments});
+    await db.database.pool.query("UPDATE integration_jobs SET status='SUCCEEDED' WHERE id=$1",[t.unknown]);
+    await db.database.pool.query("UPDATE integration_jobs SET payload=payload-'outboundIntentId'-'attendanceObservationId' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+    const attrs={jrc_broker_message_id:randomUUID()};
+    t.setCanonical({source_id:null,attachments,content:'synthetic caption',content_attributes:mode==='string'?JSON.stringify(attrs):attrs});
+    await createChatwootWorker(t.options).runOnce(t.org);
+    expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
+  });
+  it.each([false,true])('fences an already claimed legacy reply when a marked duplicate arrives during the Rails GET (prior credential %s)',async rotated=>{
+    const t=await fixture(false,'guard');
+    await t.ingest(t.message);t.setCanonical({source_id:null});
+    await db.database.pool.query("UPDATE integration_jobs SET status='SUCCEEDED' WHERE id=$1",[t.unknown]);
+    await db.database.pool.query("UPDATE integration_jobs SET payload=payload-'outboundIntentId'-'attendanceObservationId' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+    if(rotated){
+      await db.database.pool.query('UPDATE chatwoot_accounts SET credential_version=credential_version+1 WHERE organization_id=$1',[t.org]);
+      await db.database.pool.query("UPDATE integration_jobs SET dedupe_key='synthetic-older-key' WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org]);
+    }
+    const duplicate={...t.message,source_id:null,content_attributes:JSON.stringify({jrc_broker_message_id:randomUUID()})};
+    const options={...t.options,fetch:async(...args:Parameters<typeof fetch>)=>{
+      const response=await t.options.fetch!(...args);
+      await t.ingest(duplicate);await t.ingest(duplicate);return response;
+    }};
+    await createChatwootWorker(options).runOnce(t.org);
+    expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(0);
+    expect((await db.database.pool.query("SELECT event->>'brokerMirrorMarkerObserved' mark, disposition FROM chatwoot_attendance_observations WHERE organization_id=$1 AND event_key='message:701'",[t.org])).rows).toEqual([{mark:'true',disposition:'APPLIED'}]);
+  });
+  it('keeps an unmarked human reply with a reply-to reference eligible once on a guarded integration',async()=>{
+    const t=await fixture(false,'guard');
+    const attrs={...t.message.content_attributes,in_reply_to:700};
+    t.setCanonical({source_id:null,content_attributes:JSON.stringify(attrs)});
+    await t.ingest({...t.message,content_attributes:attrs});await t.ingest({...t.message,content_attributes:attrs});
+    await Promise.all([createChatwootWorker(t.options).runOnce(t.org),createChatwootWorker(t.options).runOnce(t.org)]);
+    expect((await db.database.pool.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[t.org])).rowCount).toBe(1);
   });
   it('enqueues one new proven human reply without retrying or clearing an unrelated UNKNOWN',async()=>{
     const t=await fixture();
