@@ -255,3 +255,15 @@ docker compose --profile maintenance run --rm --no-deps --entrypoint node migrat
 ```
 
 Confira `CURRENT` com o preflight e a prontidão dos processos após a troca da imagem. Se for necessário voltar à imagem predecessora, mantenha a coluna aditiva e o registro Drizzle. API e worker anteriores consultam a estrutura da qual dependem. O comando de auditoria do manifesto do binário anterior identifica que o banco já está na revisão posterior.
+
+## Entradas de grupo com distribuição de chave na Evolution 2.3.8
+
+Um webhook de grupo pode trazer texto ou mídia junto de `senderKeyDistributionMessage`. Para habilitar a extração do conteúdo em um canal, configure `QR_GROUP_INGRESS_CUSTODY_SCOPES` na API e no worker. O valor padrão é vazio. A lista aceita escopos separados por vírgula, cada um no formato `UUID-organização/UUID-canal/revisão-da-identidade/fingerprint-hex-de-64-caracteres/corte-epoch-segundos`. Escopos duplicados ou inválidos interrompem a inicialização do serviço QR.
+
+Antes da ativação, confira o vínculo da organização, canal, conta, caixa e dono da sessão. Consulte a revisão e o fingerprint na mesma linha de `whatsapp_group_catalogs`. Confira a seleção, a participação e o webhook para essa identidade. Registre a configuração anterior e fixe o corte cinco minutos após a conferência da identidade, para cobrir a tolerância de relógio do normalizador. Conserve o mesmo corte nos reinícios. Em uma troca de dono ou revisão, confira o novo vínculo e defina outro corte. A observação de uma mensagem espontânea com chave, grupo e participante correspondentes permite conferir o canônico, o recibo e a mensagem pública na caixa.
+
+O Broker bloqueia a linha do catálogo enquanto verifica a revisão, o fingerprint, o dono e o horário do original. A Evolution envia o dono em `sender` e o participante em `key.participant`. O original precisa ter `messageTimestamp` posterior ao corte. Divergência retorna `409 GROUP_INGRESS_CUSTODY_CHANGED` antes do registro de mídia ou mensagem. Eventos exclusivamente técnicos continuam sendo descartados. As regras vigentes de seleção determinam o espelhamento no Atendimento.
+
+A ausência de identidade retorna `503 GROUP_IDENTITY_REQUIRED`. Na Evolution 2.3.8, as tentativas HTTP ficam em memória e um reinício pode interrompê-las. Quando a mensagem física existe na origem, sua recuperação exige conferir o dono e a geração no instante do evento, o original e os efeitos já gravados. O journal V2 também descarta esse formato misto. [Controlador de webhooks da Evolution 2.3.8](https://github.com/evolution-foundation/evolution-api/blob/182c255ae351ff31043d7d6b872799b809338c42/src/api/integrations/event/webhook/webhook.controller.ts)
+
+Para desativar o piloto, restaure a lista anterior na API e no worker e confira a configuração dos dois processos. O retorno afeta as entradas seguintes. Confira as pendências anteriores por original na origem e no destino.

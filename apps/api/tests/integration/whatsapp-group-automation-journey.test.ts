@@ -60,6 +60,65 @@ async function drain(t:Awaited<ReturnType<typeof fixture>>) {
 import {createQrMessagingService} from '../../src/modules/messaging/qr-service.js';
 import {createMessagingWorker} from '../../src/modules/messaging/worker.js';
 import {createWhatsAppGroupCatalog} from '../../src/modules/whatsapp-groups/service.js';
+it('refuses to acknowledge opted-in group ingress without custody and deduplicates retries after identity returns', async () => {
+  const a = await fixture(), b = await fixture();
+  const signing = 'synthetic-ingress-custody-signing-key';
+  const prior = process.env.QR_GROUP_INGRESS_CUSTODY_SCOPES;
+  const firstStamp = Math.floor(Date.now()/1000)-30;
+  const configure = (revision:number,fingerprint:string,after:number) => {
+    process.env.QR_GROUP_INGRESS_CUSTODY_SCOPES = [a.org,a.channel,revision,fingerprint,after].join('/');
+  };
+  configure(1,a.input.expectedIdentityFingerprint,firstStamp-1);
+  try {
+    const build = () => createQrMessagingService({baseUrl:'https://engine.invalid',apiKey:'synthetic',webhookOrigin:'https://broker.invalid',
+      signingKey:signing, transact:db.transact, groupAutomation:a.runtime, resolveChannel:async channel => {
+        const t = [a,b].find(item => item.channel === channel);
+        return t && {organizationId:t.org,instanceId:t.instance};
+      }});
+    let ingress = build();
+    const send = (t:typeof a, mixed:boolean,owner=phone,stamp=firstStamp,id='scoped-mixed-id') => ingress.ingest(t.channel,
+      'Bearer '+createHmac('sha256',signing).update('qr-webhook\0'+t.org+'\0'+t.channel).digest('base64url'),
+      {instance:t.instance,event:'messages.upsert',sender:owner+'@s.whatsapp.net',data:{key:{id,remoteJid:group,participant:author,fromMe:false},
+        messageTimestamp:stamp,message:{conversation:'Synthetic received text',...(mixed?{senderKeyDistributionMessage:{}}:{})}}});
+    const counts = async(t:typeof a) => (await db.database.pool.query(
+      'SELECT count(*)::int AS n FROM messaging_messages WHERE organization_id=$1 AND channel_id=$2 AND upstream_message_id=$3',
+      [t.org,t.channel,'scoped-mixed-id'])).rows[0]!.n;
+    await db.database.pool.query('UPDATE whatsapp_group_catalogs SET identity_fingerprint=NULL,snapshot_id=NULL,catalog_revision=0,observed_at=NULL,valid_until=NULL WHERE organization_id=$1 AND channel_id=$2',[a.org,a.channel]);
+    await expect(send(a,false)).rejects.toMatchObject({status:503,code:'GROUP_IDENTITY_REQUIRED'});
+    await expect(send(a,true)).rejects.toMatchObject({status:503,code:'GROUP_IDENTITY_REQUIRED'});
+    const delayed = () => send(a,true,phone,firstStamp,'only-seen-without-custody');
+    await expect(delayed()).rejects.toMatchObject({status:503,code:'GROUP_IDENTITY_REQUIRED'});
+    expect(await counts(a)).toBe(0);
+    await send(b,true);
+    expect(await counts(b)).toBe(0);
+    await db.database.pool.query("UPDATE whatsapp_group_catalogs SET identity_fingerprint=$3,snapshot_id=$4,catalog_revision=1,observed_at=now(),valid_until=now()+interval '5 minutes' WHERE organization_id=$1 AND channel_id=$2",
+      [a.org,a.channel,a.input.expectedIdentityFingerprint,randomUUID()]);
+    await Promise.all([send(a,true),send(a,true)]);
+    expect(await counts(a)).toBe(1);
+    await db.database.pool.query('UPDATE whatsapp_group_catalogs SET identity_revision=2 WHERE organization_id=$1 AND channel_id=$2',[a.org,a.channel]);
+    await expect(send(a,true)).rejects.toMatchObject({code:'GROUP_INGRESS_CUSTODY_CHANGED'});
+    const newOwner = '5511999990888';
+    const newFingerprint = createHmac('sha256',Buffer.from(key,'base64')).update(`whatsapp-group-identity:v1:${a.org}:${a.channel}:${newOwner}`).digest('hex');
+    await db.database.pool.query('UPDATE whatsapp_group_catalogs SET identity_fingerprint=$3 WHERE organization_id=$1 AND channel_id=$2',[a.org,a.channel,newFingerprint]);
+    await expect(send(a,true)).rejects.toMatchObject({code:'GROUP_INGRESS_CUSTODY_CHANGED'});
+    configure(2,newFingerprint,firstStamp+10);
+    ingress = build();
+    await expect(delayed()).rejects.toMatchObject({status:409,code:'GROUP_INGRESS_CUSTODY_CHANGED'});
+    expect((await db.database.pool.query('SELECT id FROM messaging_messages WHERE organization_id=$1 AND upstream_message_id=$2',
+      [a.org,'only-seen-without-custody'])).rows).toHaveLength(0);
+    // Even after explicit re-authorization, neither a newer clock with the old sender nor an old clock with the new sender grants custody.
+    await expect(send(a,true)).rejects.toMatchObject({code:'GROUP_INGRESS_CUSTODY_CHANGED'});
+    await expect(send(a,true,phone,firstStamp+11)).rejects.toMatchObject({code:'GROUP_INGRESS_CUSTODY_CHANGED'});
+    await expect(send(a,true,newOwner,firstStamp+10)).rejects.toMatchObject({code:'GROUP_INGRESS_CUSTODY_CHANGED'});
+    await expect(send(a,true,'',firstStamp+11)).rejects.toMatchObject({code:'GROUP_INGRESS_CUSTODY_CHANGED'});
+    await send(a,true,newOwner,firstStamp+11,'new-owner-fact');
+    expect(await counts(a)).toBe(1);
+    expect((await db.database.pool.query('SELECT count(*)::int AS n FROM messaging_messages WHERE organization_id=$1 AND upstream_message_id=$2',[a.org,'new-owner-fact'])).rows[0]!.n).toBe(1);
+  } finally {
+    if(prior === undefined) delete process.env.QR_GROUP_INGRESS_CUSTODY_SCOPES;
+    else process.env.QR_GROUP_INGRESS_CUSTODY_SCOPES = prior;
+  }
+});
 it('authenticates two companies into the existing GROUP engine, opt-in view, outbox and messaging worker without replaying UNKNOWN',async()=>{
   let uncertainPosts=0;
   const a=await fixture(),b=await fixture({sendText:async()=>{uncertainPosts++;throw Object.assign(new Error('QR_SEND_UNKNOWN'),{code:'QR_SEND_UNKNOWN'});}});

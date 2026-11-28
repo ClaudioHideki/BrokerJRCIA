@@ -6,6 +6,7 @@ import { withOrganizationTransaction } from '../../src/db/tenant-transaction.js'
 import { createOrganization, runInAdminTransaction } from '../../src/modules/organizations/repository.js';
 import { createPostgresMessagingRepository } from '../../src/modules/messaging/repository.js';
 import { dispatchClaim } from '../../src/modules/messaging/dispatcher.js';
+import { createMessagingWorker } from '../../src/modules/messaging/worker.js';
 import { createQrMessagingService, ensureQrChannel } from '../../src/modules/messaging/qr-service.js';
 import { createIsolatedPostgresDatabase, requireTestDatabaseAdminUrl, type IsolatedPostgresDatabase } from './helpers/postgres.js';
 import { connectionStringForRole } from './helpers/task7.js';
@@ -377,6 +378,56 @@ describe('P4.1 saída QR observada no PostgreSQL isolado', () => {
     expect((await h.outgoing()).rows).toHaveLength(0);
     expect((await h.transact(tx=>tx.query('SELECT id FROM qr_outbound_observations WHERE organization_id=$1',[h.org]))).rows).toHaveLength(0);
     expect((await h.transact(tx=>tx.query('SELECT mode FROM messaging_conversations WHERE organization_id=$1 AND id=$2',[h.org,h.conversation]))).rows).toEqual([{mode:'BOT'}]);
+  });
+
+  it('two real QR workers retain one accepted provider call when the receipt transaction rolls back before commit', async () => {
+    const h = await harness();
+    const messageId = randomUUID();
+    await h.transact(async tx => {
+      await repository.enqueueOutgoing(tx, { id: messageId, organizationId:h.org, channelId:h.channel, conversationId:h.conversation,
+        source:'OPERATOR', content:{ type:'TEXT',text:'Synthetic worker failure' }, idempotencyKey:randomUUID(),
+        bodyHash:'synthetic-worker-failure', policy:{requireOptIn:false} });
+      await tx.query("UPDATE messaging_outbox SET available_at=now()-interval '1 minute' WHERE organization_id=$1 AND message_id=$2",[h.org,messageId]);
+    });
+    let notifyAccepted!:()=>void, releaseResponse!:()=>void;
+    const accepted = new Promise<void>(resolve => { notifyAccepted = resolve; });
+    const pendingResponse = new Promise<void>(resolve => { releaseResponse = resolve; });
+    const physicalCalls:string[] = [];
+    const unexpected = async () => { throw new Error('unexpected transport'); };
+    const worker = (rollbackReceipt = false) => createMessagingWorker({
+      repository:rollbackReceipt ? { ...repository, async completeSend(tx, args) {
+        await repository.completeSend(tx,args);
+        throw new Error('synthetic worker loss before commit');
+      }} : repository,
+      transact:(org, operation)=>withOrganizationTransaction(pool,org,operation),
+      resolveMetaClient:unexpected, resolveTypebotClient:unexpected,
+      resolveQrClient:async()=>({sendTemplate:unexpected,listTemplates:async()=>[],sendText:async(_to,text)=>{
+        physicalCalls.push(text);
+        notifyAccepted();
+        await pendingResponse;
+        return { upstreamMessageId:'synthetic-accepted-by-provider' };
+      }}),
+    });
+    const first = worker(true), second = worker();
+    const interrupted = expect(first.runOnce(h.org)).rejects.toThrow('synthetic worker loss before commit');
+    try {
+      await accepted;
+      await second.runOnce(h.org);
+      expect(physicalCalls).toEqual(['Synthetic worker failure']);
+    } finally { releaseResponse(); }
+    await interrupted;
+    const attempts = async()=> (await h.transact(tx=>tx.query(
+      'SELECT state,provider_message_id FROM qr_dispatch_attempts WHERE organization_id=$1 AND message_id=$2',[h.org,messageId]))).rows;
+    expect(await attempts()).toEqual([{state:'DISPATCHED',provider_message_id:null}]);
+    await h.transact(async tx=>{
+      await tx.query("UPDATE qr_dispatch_attempts SET lease_expires_at=now()-interval '1 second' WHERE organization_id=$1 AND message_id=$2",[h.org,messageId]);
+      await tx.query("UPDATE messaging_outbox SET lease_expires_at=now()-interval '1 second' WHERE organization_id=$1 AND message_id=$2",[h.org,messageId]);
+    });
+    await Promise.all([second.runOnce(h.org),worker().runOnce(h.org)]);
+    expect(await attempts()).toEqual([{state:'UNKNOWN',provider_message_id:null}]);
+    expect((await h.outgoing()).rows).toMatchObject([{id:messageId,state:'UNKNOWN',upstream_message_id:null}]);
+    expect((await h.transact(tx=>tx.query('SELECT message_id FROM messaging_outbox WHERE organization_id=$1',[h.org]))).rows).toEqual([]);
+    expect(physicalCalls).toEqual(['Synthetic worker failure']);
   });
 
   it('recupera callback não persistido como UNKNOWN sem reenviar nem classificar por conteúdo', async () => {

@@ -273,7 +273,8 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
       });
     },
     view:(principal:GroupPrincipal,channel:string,group:string)=>options.transact(principal.organizationId,async tx=>{await member(tx,principal);return viewWithin(tx,principal.organizationId,channel,jid(group));}),
-    async ingestWithinTransaction(tx:TenantTransaction,org:string,channel:string,event:Extract<QrEvent,{kind:'group-text'|'group-media'|'group-status'}>){
+    async ingestWithinTransaction(tx:TenantTransaction,org:string,channel:string,event:Extract<QrEvent,{kind:'group-text'|'group-media'|'group-status'}>,
+      custody?:{revision:string;fingerprint:string;afterSeconds:number;ownerPhone:string|undefined}){
       await lockAttendanceChannel(tx,org,channel);jid(event.groupJid);
       if(event.kind==='group-status'){
         await lockMessageStatusKey(tx,org,channel,event.upstreamMessageId);
@@ -294,6 +295,12 @@ export function createGroupAutomationRuntime(options:GroupRuntimeOptions) {
       }
       const identity=(await tx.query<{identity_revision:string;identity_fingerprint:string|null}>(`SELECT identity_revision,identity_fingerprint FROM whatsapp_group_catalogs WHERE organization_id=$1 AND channel_id=$2 FOR UPDATE`,[org,channel])).rows[0];
       if(!identity?.identity_fingerprint)return{duplicate:false,executionId:null,reason:'GROUP_IDENTITY_REQUIRED'};
+      // The locked catalog and the owner on the original authenticated envelope must both match this activation.
+      if(event.mixedSenderKey && (!custody || !custody.ownerPhone || String(identity.identity_revision)!==custody.revision ||
+        identity.identity_fingerprint!==custody.fingerprint || fingerprint(org,channel,custody.ownerPhone)!==custody.fingerprint ||
+        event.occurredAt.getTime() <= custody.afterSeconds*1000)) {
+        return {duplicate:false,executionId:null,reason:'GROUP_INGRESS_CUSTODY_CHANGED'};
+      }
       const content:MessageContent=event.kind==='group-media'?{type:'MEDIA',mediaId:await registerPendingMedia(tx,org,channel,event.media),
         kind:event.media.kind,fileName:event.media.fileName,caption:event.caption}:event.content;
       const historyFact={kind:'MESSAGE' as const,recipientKind:'GROUP' as const,chatJid:event.groupJid,providerMessageId:event.upstreamMessageId,

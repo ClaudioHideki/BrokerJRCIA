@@ -4,6 +4,23 @@ import { normalizeQrEvent, normalizeQrHistoryEvent } from '../../src/modules/mes
 const envelope = (data: unknown, event = 'messages.upsert') => ({ event, instance: 'jrc-private-instance', data });
 const message = { key: { id: 'qr-message-1', remoteJid: '15550000001@s.whatsapp.net', fromMe: false }, messageTimestamp: 1789470000, pushName: 'Contato de teste', message: { conversation: 'Olá JRC' } };
 describe('eventos QR canônicos', () => {
+  it('preserves only the inbound content of opted-in mixed group sender-key messages', () => {
+    const key = { ...message.key, remoteJid: '100-200@g.us', participant: '15550000001@s.whatsapp.net' };
+    const distribution = { senderKeyDistributionMessage: { groupId: key.remoteJid, axolotlSenderKeyDistributionMessage: 'synthetic-key-material' } };
+    const group = (content: object, fromMe = false) => envelope({ ...message, key: { ...key, fromMe }, message: content });
+    const read = (content: object) => normalizeQrEvent(group(content), 'jrc-private-instance', true);
+    for (const [content, kind] of [[{ conversation: 'Texto de teste' }, 'group-text'],
+      [{ imageMessage: { caption: 'Legenda de teste' } }, 'group-media']] as const) {
+      const mixed = { ...distribution, ...content };
+      expect(read(mixed)).toEqual([{...read(content)[0],mixedSenderKey:true}]);
+      expect(read(mixed)[0]?.kind).toBe(kind);
+      expect(normalizeQrEvent(group(mixed), 'jrc-private-instance')).toEqual([]);
+      expect(normalizeQrEvent(group(mixed, true), 'jrc-private-instance', true)).toEqual([]);
+    }
+    expect(read(distribution)).toEqual([]);
+    expect(read({ ...distribution, conversation: 'synthetic', protocolMessage: {} })).toEqual([]);
+    expect(read({ ...distribution, conversation: 'synthetic', reactionMessage: {} })).toEqual([]);
+  });
   it('mantém os dois links de um contato sem nome, incluindo a mensagem com prévia', () => {
     const firstUrl = 'https://one.example.invalid/';
     const secondUrl = 'https://two.example.invalid/path';

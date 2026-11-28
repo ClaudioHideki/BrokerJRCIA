@@ -26,9 +26,9 @@ export type QrEvent =
   | QrContactEvent
   | {kind:'identity-pending';lid:string;event:QrUnresolvedContactEvent}
   | QrGroupEvent
-  | {kind:'group-text';groupJid:string;upstreamMessageId:string;fromMe:boolean;participantJid:string|null;
+  | {kind:'group-text';mixedSenderKey?:true;groupJid:string;upstreamMessageId:string;fromMe:boolean;participantJid:string|null;
       participantJidAlt:string|null;content:{type:'TEXT';text:string};occurredAt:Date}
-  | {kind:'group-media';groupJid:string;upstreamMessageId:string;fromMe:boolean;participantJid:string|null;
+  | {kind:'group-media';mixedSenderKey?:true;groupJid:string;upstreamMessageId:string;fromMe:boolean;participantJid:string|null;
       participantJidAlt:string|null;media:MediaRegistration;caption:string;occurredAt:Date}
   | {kind:'group-status';groupJid:string;upstreamMessageId:string;state:'SENT'|'DELIVERED'|'READ'|'FAILED'}
   | { kind: "connection"; state: "CONNECTED" | "DISCONNECTED"; identity?: string; observedAt?: Date }
@@ -83,6 +83,7 @@ export function normalizeQrHistoryEvent(payload:unknown,expectedInstance:string)
 export function normalizeQrEvent(
   payload: unknown,
   expectedInstance: string,
+  acceptMixedGroupInbound = false,
 ): QrEvent[] {
   const envelope = object(payload);
   if (envelope.instance !== expectedInstance)
@@ -156,17 +157,19 @@ export function normalizeQrEvent(
           const wrapped=object(message.ephemeralMessage??message.viewOnceMessage??message.viewOnceMessageV2??message.documentWithCaptionMessage);
           if(!wrapped.message)break;message=object(wrapped.message);
         }
-        if(message.protocolMessage||message.reactionMessage||message.senderKeyDistributionMessage)return [];
+        if(message.protocolMessage||message.reactionMessage)return [];
+        if(message.senderKeyDistributionMessage && (!acceptMixedGroupInbound || key.fromMe))return [];
+        const mixed = message.senderKeyDistributionMessage ? { mixedSenderKey:true as const } : {};
         const body=message.conversation??object(message.extendedTextMessage).text;
         if(body===undefined){
           const kind=(['image','audio','video','document','sticker'] as const).find(value=>message[value+'Message']);
           if(!kind)return[];
           const raw=object(message[kind+'Message']),messageId=id.parse(key.id);
-          return[{kind:'group-media',groupJid:group,upstreamMessageId:messageId,fromMe:key.fromMe,participantJid:author,participantJidAlt:alt,
+          return[{kind:'group-media',...mixed,groupJid:group,upstreamMessageId:messageId,fromMe:key.fromMe,participantJid:author,participantJidAlt:alt,
             occurredAt,caption:typeof raw.caption==='string'?raw.caption.slice(0,1024):'',
             media:{source:'QR',sourceKey:`group:${group}:${messageId}`,kind,fileName:safeMediaName(typeof raw.fileName==='string'?raw.fileName:kind),descriptor:{messageId}}}];
         }
-        return [{kind:'group-text',groupJid:group,upstreamMessageId:id.parse(key.id),fromMe:key.fromMe,
+        return [{kind:'group-text',...mixed,groupJid:group,upstreamMessageId:id.parse(key.id),fromMe:key.fromMe,
           participantJid:author,participantJidAlt:alt,content:{type:'TEXT',text:text.parse(body)},occurredAt}];
       }
       if (

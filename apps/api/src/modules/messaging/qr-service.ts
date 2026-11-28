@@ -65,6 +65,20 @@ export async function ensureQrChannel(
   ))!;
 }
 export function createQrMessagingService(options: QrServiceOptions) {
+  const groupIngressCustodyScopes = new Map<string, { revision:string; fingerprint:string; afterSeconds:number }>();
+  const configuredScopes = (process.env.QR_GROUP_INGRESS_CUSTODY_SCOPES ?? '').trim();
+  for (const entry of configuredScopes ? configuredScopes.split(',') : []) {
+    const fields = entry.trim().split('/');
+    const [org, channel, revision, fingerprint, cutoff] = fields;
+    const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u;
+    const scope = org + '/' + channel;
+    if(fields.length !== 5 || !org || !uuid.test(org) || !channel || !uuid.test(channel) ||
+       !revision || !/^[1-9]\d{0,18}$/u.test(revision) || !fingerprint || !/^[0-9a-f]{64}$/u.test(fingerprint) ||
+       !cutoff || !/^[1-9]\d{0,11}$/u.test(cutoff) || groupIngressCustodyScopes.has(scope)) {
+      throw error('QR_GROUP_INGRESS_SCOPE_INVALID',500);
+    }
+    groupIngressCustodyScopes.set(scope,{ revision,fingerprint,afterSeconds:Number(cutoff) });
+  }
   if (options.signingKey.length < 32) throw error("INVALID_QR_SIGNING_KEY");
   const repository = createPostgresMessagingRepository();
   const bindingFingerprint=(engine?:EngineSnapshot)=>createHmac('sha256',options.signingKey).update(JSON.stringify(engine
@@ -215,7 +229,8 @@ export function createQrMessagingService(options: QrServiceOptions) {
         if (!channel || !row || channel.instanceId !== binding.instanceId)
           throw error("QR_WEBHOOK_UNAUTHORIZED", 401);
         const historical=String(envelope.event).toLowerCase().replace(/_/gu,'.')==='messages.set';
-        let events=historical?normalizeQrHistoryEvent(payload,row.upstream_instance_key):normalizeQrEvent(payload,row.upstream_instance_key);
+        const groupCustody = groupIngressCustodyScopes.get(binding.organizationId + '/' + channelId);
+        let events=historical?normalizeQrHistoryEvent(payload,row.upstream_instance_key):normalizeQrEvent(payload,row.upstream_instance_key,Boolean(groupCustody));
         if(authority?.reconciliationOnly&&events.some(event=>!['status','group-status'].includes(event.kind)))throw error('EVOLUTION_ENGINE_DISABLED',409);
         // Receipt and message/projection effects are committed together. A duplicate does not rerun bots or observers.
         if(originReceipt){
@@ -275,7 +290,13 @@ export function createQrMessagingService(options: QrServiceOptions) {
             // A group JID and its participant are never converted to a contact/phone.
             // Persist the authenticated fact in this transaction before acknowledging it.
             if(!options.groupAutomation) throw error('GROUP_RUNTIME_UNAVAILABLE',503);
-            await options.groupAutomation.ingestWithinTransaction(tx,binding.organizationId,channelId,event);
+            const custody = groupCustody && event.kind !== 'group-status' && event.mixedSenderKey
+              ? [{...groupCustody, ownerPhone:qrPhone(envelope.sender)}] as const : [] as const;
+            const result = await options.groupAutomation.ingestWithinTransaction(tx,binding.organizationId,channelId,event,...custody);
+            if(result?.reason === 'GROUP_INGRESS_CUSTODY_CHANGED')throw error(result.reason,409);
+            if(groupCustody && event.kind !== 'group-status' && !event.fromMe && result.reason === 'GROUP_IDENTITY_REQUIRED'){
+              throw error('GROUP_IDENTITY_REQUIRED',503);
+            }
             if(originReceipt&&event.kind!=='group-status')await assertOriginFactPersisted(tx,{organizationId:binding.organizationId,channelId},event,originReceipt.projectionVersion);
             continue;
           }
