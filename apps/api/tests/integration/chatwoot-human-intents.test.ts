@@ -1,4 +1,5 @@
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { attendanceDatabase, seedAttendanceTenant } from './helpers/attendance.js';
 import { initializeChatwootAttendanceMap } from '../../src/modules/integrations/chatwoot-attendance-store.js';
@@ -55,6 +56,59 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
       return service.ingest(t.integration,bytes,timestamp,'sha256='+createHmac('sha256',secret).update(timestamp+'.').update(bytes).digest('hex'));};
     return {...t,next,intent,unknown,marker,message,options,calls,ingest,setCanonical:(value:Record<string,unknown>)=>{canonical={...canonical,...value};}};
   }
+
+  it('repairs the same failed job with independently proved trailing bytes and enqueues once',async()=>{
+    const t=await fixture(), truncated='Pedido sintético 🟣', original=truncated+'\r\n\n';
+    const event={...t.message,content:truncated};
+    t.setCanonical({content:original});
+    await t.ingest(event);
+    const worker=createChatwootWorker(t.options);
+    await worker.runOnce(t.org);
+    const job=(await db.database.pool.query("SELECT * FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows[0];
+    expect([job.status,job.last_error,job.attempts,job.message_id]).toEqual(['FAILED','CHATWOOT_HUMAN_INTENT_NOT_PROVEN',1,null]);
+    const sql=readFileSync(new URL('../../../../scripts/reconcile-human-reply-bytes.sql',import.meta.url),'utf8');
+    const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
+    const proof={organization_id:t.org,job_id:job.id,channel_id:t.channel,integration_id:t.integration,intent_id:t.intent,
+      account_id:7,inbox_id:9,conversation_id:52,message_id:701,sender_id:12,base_url:t.options.baseUrl,
+      original_sha256:hash(original),admitted_sha256:hash(truncated),suffix_hex:'0d0a0a',reviewed_no_equivalent_delivery:true};
+    const check=async(change:Record<string,unknown>,apply=false)=>(await db.database.pool.query(sql,[{...proof,...change},apply])).rows[0];
+    for(const change of [{suffix_hex:'0d'},{suffix_hex:'0a'},{channel_id:randomUUID()},{intent_id:randomUUID()},
+      {sender_id:99},{reviewed_no_equivalent_delivery:false},{original_sha256:hash('changed')}])
+      expect(await check(change,true)).toEqual({eligible:false,resumed:false});
+    const isolated=await db.database.pool.connect();
+    try {
+      for(const [statement,params] of [
+        ["UPDATE integration_jobs SET payload=payload||jsonb_build_object('campaignIntentId',$2::text) WHERE id=$1",[job.id,randomUUID()]],
+        ["UPDATE integration_jobs SET status='UNKNOWN' WHERE id=$1",[job.id]],
+        ["INSERT INTO messaging_messages(organization_id,channel_id,conversation_id,direction,source,content,state) VALUES($1,$2,$3,'OUTGOING','OPERATOR',$4,'SENT')",
+          [t.org,t.channel,t.next,{type:'TEXT',text:original}]],
+        ["INSERT INTO qr_outbound_observations(organization_id,channel_id,conversation_id,provider_message_id,content,occurred_at) VALUES($1,$2,$3,'synthetic-unresolved-key',$4,now())",
+          [t.org,t.channel,t.next,{type:'TEXT',text:'unresolved'}]],
+      ] as const) {
+        await isolated.query('BEGIN');
+        await isolated.query(statement,[...params]);
+        expect((await isolated.query(sql,[proof,true])).rows[0]).toEqual({eligible:false,resumed:false});
+        await isolated.query('ROLLBACK');
+      }
+      await isolated.query('BEGIN READ ONLY');
+      const review=sql.split('-- APPLY_RECONCILIATION')[0]+' SELECT EXISTS(SELECT FROM eligible) AS eligible';
+      expect((await isolated.query(review,[proof])).rows[0]).toEqual({eligible:true});
+    } finally {
+      await isolated.query('ROLLBACK');
+      isolated.release();
+    }
+    expect(await check({})).toEqual({eligible:true,resumed:false});
+    const concurrent=await Promise.all([check({},true),check({},true)]);
+    expect(concurrent.filter(result=>result.resumed)).toHaveLength(1);
+    await worker.runOnce(t.org);
+    await t.ingest(event);
+    await worker.runOnce(t.org);
+    const rows=(await db.database.pool.query("SELECT id,status,attempts FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY'",[t.org])).rows;
+    expect(rows).toEqual([{id:job.id,status:'SUCCEEDED',attempts:2}]);
+    expect((await db.database.pool.query('SELECT m.content FROM messaging_outbox o JOIN messaging_messages m ON o.message_id=m.id WHERE o.organization_id=$1',[t.org])).rows).toEqual([{content:{type:'TEXT',text:original}}]);
+    expect(await check({},true)).toEqual({eligible:false,resumed:false});
+    expect((await db.database.pool.query("SELECT resource_id FROM integration_audit WHERE action='CHATWOOT_HUMAN_TEXT_RECONCILED' AND organization_id=$1",[t.org])).rows).toEqual([{resource_id:job.id}]);
+  });
 
   it('enqueues one new proven human reply without retrying or clearing an unrelated UNKNOWN',async()=>{
     const t=await fixture();
