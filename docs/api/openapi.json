@@ -25111,47 +25111,91 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "enabled": {
-                    "type": "boolean"
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "expectedCatalogRevision": {
+                        "exclusiveMinimum": true,
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "expectedIdentityFingerprint": {
+                        "pattern": "^[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "expectedIdentityRevision": {
+                        "exclusiveMinimum": true,
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "expectedSnapshotId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "groupJid": {
+                        "maxLength": 128,
+                        "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "expectedSnapshotId",
+                      "expectedCatalogRevision",
+                      "expectedIdentityRevision",
+                      "expectedIdentityFingerprint",
+                      "groupJid",
+                      "enabled"
+                    ],
+                    "type": "object"
                   },
-                  "expectedCatalogRevision": {
-                    "exclusiveMinimum": true,
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "expectedIdentityFingerprint": {
-                    "pattern": "^[a-f0-9]{64}$",
-                    "type": "string"
-                  },
-                  "expectedIdentityRevision": {
-                    "exclusiveMinimum": true,
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "expectedSnapshotId": {
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                    "type": "string"
-                  },
-                  "groupJid": {
-                    "maxLength": 128,
-                    "pattern": "^\\d+(?:-\\d+)?@g\\.us$",
-                    "type": "string"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allCurrent": {
+                        "enum": [
+                          true
+                        ],
+                        "type": "boolean"
+                      },
+                      "expectedCatalogRevision": {
+                        "exclusiveMinimum": true,
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "expectedIdentityFingerprint": {
+                        "pattern": "^[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "expectedIdentityRevision": {
+                        "exclusiveMinimum": true,
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "expectedSnapshotId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "expectedSnapshotId",
+                      "expectedCatalogRevision",
+                      "expectedIdentityRevision",
+                      "expectedIdentityFingerprint",
+                      "allCurrent"
+                    ],
+                    "type": "object"
                   }
-                },
-                "required": [
-                  "expectedSnapshotId",
-                  "expectedCatalogRevision",
-                  "expectedIdentityRevision",
-                  "expectedIdentityFingerprint",
-                  "groupJid",
-                  "enabled"
-                ],
-                "type": "object"
+                ]
               }
             }
           },
