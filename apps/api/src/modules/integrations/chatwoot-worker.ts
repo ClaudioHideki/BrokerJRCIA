@@ -1390,7 +1390,9 @@ export function createChatwootWorker(options: ChatwootOptions) {
     async liveMirrorQueue(target:LiveMirrorTarget){
       const {organizationId:org,integrationId}=liveMirrorTargetSchema.parse(target);
       return tx(org,async t=>{
-        await t.query("SET LOCAL statement_timeout='5s'");
+        // Compiling the correlated eligibility checks can exhaust the diagnostic's
+        // five-second budget on a large inbox before it returns any counters.
+        await t.query("SELECT set_config('statement_timeout','5s',true),set_config('jit','off',true)");
         await assertPilotBinding(t,target);
         const result=await t.query(`WITH scoped AS (
           SELECT j.id,j.created_at,j.status,j.last_error,j.payload->>'groupScopeBlocker' AS group_blocker,
