@@ -8,7 +8,7 @@ import {IntegrationError} from './integration-error.js';
 /** Under the channel lock, an unresolved mirror may be isolated only after
  * canonical GETs prove the prior route for this physical contact. */
 export async function mayStartIndependentHumanCycle(tx:TenantTransaction,input:{
-  organizationId:string;integrationId:string;channelId:string;remoteContactId:number;sourceId:string;phone:string;
+  organizationId:string;integrationId:string;channelId:string;remoteContactId:number;sourceId:string;phone:string;allowFirstContact:boolean;
 }){
   const result=await tx.query<{allowed:boolean}>(`SELECT NOT EXISTS(
     SELECT 1 FROM integration_jobs blocked WHERE blocked.organization_id=$1 AND blocked.integration_id=$2 AND blocked.status='UNKNOWN'
@@ -31,7 +31,7 @@ export async function mayStartIndependentHumanCycle(tx:TenantTransaction,input:{
   ) OR (
     -- The first mapping has no prior route to prove. Reject partial matches to
     -- existing mappings and require a distinct proven route for every UNKNOWN.
-    EXISTS (SELECT 1 FROM messaging_channels WHERE organization_id=$1 AND id=$3 AND transport='BROKER_TRANSPORT')
+    $7::boolean AND EXISTS (SELECT 1 FROM messaging_channels WHERE organization_id=$1 AND id=$3 AND transport='BROKER_TRANSPORT')
     AND NOT EXISTS (
       SELECT 1 FROM chatwoot_conversations prior
       JOIN messaging_conversations route ON route.organization_id=prior.organization_id AND route.id=prior.conversation_id
@@ -55,7 +55,7 @@ export async function mayStartIndependentHumanCycle(tx:TenantTransaction,input:{
             AND contact.external_id ~ '^[1-9][0-9]{7,14}$' AND contact.external_id<>$6
         )
     )
-  ) AS allowed`,[input.organizationId,input.integrationId,input.channelId,input.remoteContactId,input.sourceId,input.phone.slice(1)]);
+  ) AS allowed`,[input.organizationId,input.integrationId,input.channelId,input.remoteContactId,input.sourceId,input.phone.slice(1),input.allowFirstContact]);
   return result.rows[0]?.allowed===true;
 }
 

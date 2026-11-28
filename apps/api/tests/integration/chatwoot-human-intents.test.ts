@@ -75,7 +75,7 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
       .toEqual([{status:'SUCCEEDED'}]);
   });
 
-  it.each(['success','first-contact','first-phone-overlap','first-source-overlap','first-id-overlap','same-contact','ambiguous-source','changed-message','historical-callback'] as const)
+  it.each(['success','first-contact','first-outside-rollout','first-phone-overlap','first-source-overlap','first-id-overlap','same-contact','ambiguous-source','changed-message','historical-callback'] as const)
     ('checks a new intent on a second remote conversation, preserving older waiting jobs (%s)',async scenario=>{
       const t=await fixture(scenario==='same-contact');
       const phone='15550004242',remote=53;
@@ -98,7 +98,7 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
           jrc_broker_outbound:{...t.marker,intent_id:randomUUID()},
         }});
       }
-      const options:ChatwootOptions={...t.options,fetch:async(input,init)=>{
+      const options:ChatwootOptions={...t.options,firstContactIntegrations:new Set([scenario==='first-outside-rollout'?randomUUID():t.integration]),fetch:async(input,init)=>{
         const path=new URL(String(input)).pathname;
         expect(init?.method??'GET').toBe('GET');
         if(path.endsWith('/53/messages'))return Response.json({payload:originals.map(original=>({
@@ -134,7 +134,7 @@ describe('durable new human intent around unrelated uncertain mirrors', () => {
       }
       const job=(await db.database.pool.query("SELECT status,last_error FROM integration_jobs WHERE organization_id=$1 AND kind='CHATWOOT_REPLY' AND payload->>'messageId'='701'",[t.org])).rows[0];
       const waiting='CHATWOOT_CYCLE_WAITING_PREVIOUS_MIRROR';
-      const expectedError={success:null,'first-contact':null,'first-phone-overlap':waiting,'first-source-overlap':waiting,'first-id-overlap':waiting,'same-contact':waiting,'ambiguous-source':'CHATWOOT_BINDING_MISMATCH',
+      const expectedError={success:null,'first-contact':null,'first-outside-rollout':waiting,'first-phone-overlap':waiting,'first-source-overlap':waiting,'first-id-overlap':waiting,'same-contact':waiting,'ambiguous-source':'CHATWOOT_BINDING_MISMATCH',
         'changed-message':'CHATWOOT_HUMAN_INTENT_NOT_PROVEN','historical-callback':'CHATWOOT_CYCLE_HISTORICAL_INTENT_REVIEW'};
       expect(job.last_error).toBe(expectedError[scenario]);
       if(admitted){

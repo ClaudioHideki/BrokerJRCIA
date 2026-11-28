@@ -196,6 +196,7 @@ export function createIntegrationRuntime(
   const options: ChatwootOptions | undefined = config.chatwoot
     ? {
         ...config.chatwoot,
+        firstContactIntegrations: new Set((environment.CHATWOOT_FIRST_CONTACT_INTEGRATIONS ?? '').split(',').map(id => id.trim()).filter(Boolean)),
         transact,
         mediaOrigins: (environment.CHATWOOT_MEDIA_ORIGINS ?? "")
           .split(",")

@@ -38,6 +38,7 @@ import type { AuthenticationContext } from '../../http/plugins/authorization.js'
 export { IntegrationError } from './integration-error.js';
 export { readChatwootAccount, type AccountRow } from './chatwoot-context.js';
 export interface ChatwootOptions {
+  firstContactIntegrations?: ReadonlySet<string>;
   groupPolicy?:import('../whatsapp-groups/automation-authority.js').GroupPhysicalPolicy;
   baseUrl?: string;
   publicOrigin: string;

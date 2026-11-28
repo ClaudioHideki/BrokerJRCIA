@@ -557,6 +557,7 @@ export function createChatwootWorker(options: ChatwootOptions) {
           if(!observed.rows[0]?.sender_id||!currentAccount)throw new IntegrationError('CHATWOOT_HUMAN_INTENT_NOT_PROVEN',409);
           verifyHumanIntent(Number(currentAccount.account_id),Number(connection.inbox_id),Number(observed.rows[0].sender_id),observed.rows[0].created_at);
           if(!await mayStartIndependentHumanCycle(t,{organizationId:job.organization_id,integrationId:job.integration_id,
+            allowFirstContact:options.firstContactIntegrations?.has(job.integration_id)===true,
             channelId:connection.channel_id,remoteContactId:remote.meta.sender.id,sourceId:remoteSource,phone:remote.meta.sender.phone_number!})){
             await t.query(`UPDATE integration_jobs SET status='PENDING',attempts=greatest(0,attempts-1),
               last_error='CHATWOOT_CYCLE_WAITING_PREVIOUS_MIRROR',available_at=now()+interval '5 minutes',
